@@ -1,44 +1,49 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 
 const props = defineProps(['node'])
 const emit = defineEmits(['close', 'update'])
 
-const config = ref({ ...props.node.data.config })
 
-const isValid = computed(() => {
-  switch (props.node.type) {
-    case 'vm':
-      return config.value.name && config.value.cpu && config.value.memory && config.value.disk
-    
-    case 'network-segment':
-      return config.value.name && config.value.cidr && config.value.gateway && config.value.segmentType
-    
-    case 'router':
-      return config.value.name && config.value.routingProtocol && config.value.interfaces?.length > 0
-    
-    case 'switch':
-      return config.value.name && config.value.portCount
-    
-    case 'firewall':
-      return config.value.name && config.value.zones?.length > 0
-    
-    case 'loadbalancer':
-      return config.value.name && config.value.algorithm && config.value.servers?.length > 0
-    
-    case 'dns':
-      return config.value.name && config.value.zones?.length > 0
-    
-    case 'dhcp':
-      return config.value.name && config.value.scope && config.value.gateway
-    
-    case 'docker':
-      return config.value.name && config.value.image && config.value.ports
-    
-    default:
-      return false
+const errors = ref([])
+const isLoading = ref(false)
+
+const config = ref({})
+
+onMounted(() => {
+  if (props.node?.data?.config) {
+    config.value = { ...props.node.data.config }
   }
 })
+
+// Add validation
+const validateConfig = () => {
+  errors.value = []
+  
+  if (!config.value.name?.trim()) {
+    errors.value.push('Name is required')
+  }
+  
+  // Add type-specific validations
+  switch (props.node?.type) {
+    case 'vm':
+      if (!config.value.cpu || config.value.cpu < 1) {
+        errors.value.push('CPU cores must be at least 1')
+      }
+      if (!config.value.memory?.trim()) {
+        errors.value.push('Memory is required')
+      }
+      break
+    //TODO Add more validations maybe something to be done via settings
+  }
+  
+  return errors.value.length === 0
+}
+
+const isValid = computed(() => {
+  return validateConfig()
+})
+
 
 // Add network interface management for routers
 const addInterface = () => {

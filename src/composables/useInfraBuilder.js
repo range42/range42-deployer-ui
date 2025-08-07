@@ -1,4 +1,3 @@
-// composables/useInfraBuilder.js
 import { ref } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 
@@ -20,7 +19,6 @@ export function useInfraBuilder() {
   const updateNodeStatus = (nodeId, updates) => {
     updateNodeData(nodeId, updates)
     
-    // Update the local selectedNode if it's the one being updated
     if (selectedNode.value && selectedNode.value.id === nodeId) {
       selectedNode.value = {
         ...selectedNode.value,
@@ -33,17 +31,25 @@ export function useInfraBuilder() {
   }
 
   const loadProjectData = (project) => {
-    nodes.value = project.nodes || []
-    edges.value = project.edges || []
+    if (project && project.nodes) {
+      nodes.value = project.nodes
+    } else {
+      nodes.value = []
+    }
+    
+    if (project && project.edges) {
+      edges.value = project.edges
+    } else {
+      edges.value = []
+    }
+    
     selectedNode.value = null
   }
 
-  // Handle nodes change
   const handleNodesChange = (changes) => {
     onNodesChange(changes)
   }
 
-  // Handle edges change  
   const handleEdgesChange = (changes) => {
     onEdgesChange(changes)
   }
