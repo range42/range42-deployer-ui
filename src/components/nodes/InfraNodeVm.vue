@@ -1,4 +1,3 @@
-<!-- src/components/nodes/InfraNodeVm.vue -->
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'

@@ -4,31 +4,80 @@ import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
 
 const props = defineProps(['project'])
-
 const { onDragStart } = useDragAndDrop()
 const projectStore = useProjectStore()
 
-// Use the project prop passed from parent component
 const currentProject = computed(() => props.project)
 
-const nodeTypes = [
+const infrastructureComponents = [
   {
-    type: 'vm',
-    label: 'Virtual Machine',
-    icon: '🖥️',
-    description: 'Create a virtual machine instance'
+    category: 'Compute & Virtualization',
+    items: [
+      {
+        type: 'vm',
+        label: 'Virtual Machine',
+        icon: '🖥️',
+        description: 'Deploy a virtual machine instance'
+      },
+      {
+        type: 'docker',
+        label: 'Container',
+        icon: '🐳',
+        description: 'Deploy a containerized application'
+      }
+    ]
   },
   {
-    type: 'network',
-    label: 'Network',
-    icon: '🌐',
-    description: 'Create a network infrastructure'
+    category: 'Network Infrastructure',
+    items: [
+      {
+        type: 'network-segment',
+        label: 'Network Segment',
+        icon: '🌐',
+        description: 'Create isolated network segment'
+      },
+      {
+        type: 'router',
+        label: 'Router',
+        icon: '🔄',
+        description: 'Layer 3 routing device'
+      },
+      {
+        type: 'switch',
+        label: 'Switch',
+        icon: '🔀',
+        description: 'Layer 2 switching device'
+      },
+      {
+        type: 'firewall',
+        label: 'Firewall',
+        icon: '🔥',
+        description: 'Network security appliance'
+      }
+    ]
   },
   {
-    type: 'docker',
-    label: 'Docker Container',
-    icon: '🐳',
-    description: 'Deploy a containerized application'
+    category: 'Network Services',
+    items: [
+      {
+        type: 'dns',
+        label: 'DNS Server',
+        icon: '🔍',
+        description: 'Domain name resolution'
+      },
+      {
+        type: 'dhcp',
+        label: 'DHCP Server',
+        icon: '📋',
+        description: 'Dynamic IP assignment'
+      },
+      {
+        type: 'loadbalancer',
+        label: 'Load Balancer',
+        icon: '⚖️',
+        description: 'Traffic distribution'
+      }
+    ]
   }
 ]
 
@@ -37,12 +86,6 @@ const exportProject = () => {
     projectStore.exportProject(currentProject.value.id)
   }
 }
-
-const importProject = () => {
-  // For now, redirect to dashboard for import functionality
-  // You could implement a more sophisticated import here
-  alert('Import functionality available from the dashboard')
-}
 </script>
 
 <template>
@@ -50,7 +93,7 @@ const importProject = () => {
     <!-- Header -->
     <div class="text-center">
       <h2 class="text-2xl font-bold">🏗️ Range42</h2>
-      <p class="text-sm opacity-70">Visual Infrastructure Builder</p>
+      <p class="text-sm opacity-70">Cyber Range Infrastructure Builder</p>
     </div>
 
     <!-- Project Info -->
@@ -64,62 +107,36 @@ const importProject = () => {
       </div>
     </div>
 
-    <!-- Infrastructure Components -->
-    <div class="space-y-3">
+    <!-- Infrastructure Components by Category -->
+    <div class="space-y-4">
       <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
-        Drag Components
+        Infrastructure Components
       </h3>
       
-      <div class="space-y-2">
-        <div
-          v-for="nodeType in nodeTypes"
-          :key="nodeType.type"
-          class="card bg-base-100 shadow-sm cursor-grab hover:shadow-md transition-shadow"
-          :draggable="true"
-          @dragstart="onDragStart($event, nodeType.type)"
-        >
-          <div class="card-body p-3">
-            <div class="flex items-center space-x-3">
-              <span class="text-2xl">{{ nodeType.icon }}</span>
-              <div class="flex-1">
-                <div class="font-medium text-sm">{{ nodeType.label }}</div>
-                <div class="text-xs opacity-70">{{ nodeType.description }}</div>
+      <div v-for="category in infrastructureComponents" :key="category.category" class="space-y-2">
+        <h4 class="text-xs font-medium opacity-60 uppercase tracking-wide">
+          {{ category.category }}
+        </h4>
+        
+        <div class="space-y-2">
+          <div
+            v-for="component in category.items"
+            :key="component.type"
+            class="card bg-base-100 shadow-sm cursor-grab hover:shadow-md transition-shadow border border-base-300 hover:border-primary/30"
+            :draggable="true"
+            @dragstart="onDragStart($event, component.type)"
+          >
+            <div class="card-body p-3">
+              <div class="flex items-center space-x-3">
+                <span class="text-xl">{{ component.icon }}</span>
+                <div class="flex-1">
+                  <div class="font-medium text-sm">{{ component.label }}</div>
+                  <div class="text-xs opacity-70">{{ component.description }}</div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- Inventory -->
-    <div class="space-y-3">
-      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
-        Inventory
-      </h3>
-      <div class="card bg-base-100 shadow-sm">
-        <div class="card-body p-3">
-          <div class="text-sm">Template Library</div>
-          <div class="text-xs opacity-70">Pre-configured components</div>
-          <div class="mt-2">
-            <div class="badge badge-outline badge-sm">Coming Soon</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Project Actions -->
-    <div class="space-y-2">
-      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
-        Project Actions
-      </h3>
-      
-      <div class="flex flex-col space-y-2">
-        <button class="btn btn-sm btn-outline" @click="exportProject">
-          📤 Export
-        </button>
-        <button class="btn btn-sm btn-outline" @click="importProject">
-          📥 Import
-        </button>
       </div>
     </div>
 
@@ -131,7 +148,7 @@ const importProject = () => {
       <div class="space-y-1 text-xs">
         <div class="flex items-center space-x-2">
           <div class="w-3 h-3 rounded-full bg-gray-400"></div>
-          <span>Incomplete</span>
+          <span>Incomplete Configuration</span>
         </div>
         <div class="flex items-center space-x-2">
           <div class="w-3 h-3 rounded-full bg-orange-400"></div>
@@ -139,12 +156,31 @@ const importProject = () => {
         </div>
         <div class="flex items-center space-x-2">
           <div class="w-3 h-3 rounded-full bg-green-400"></div>
-          <span>Deployed</span>
+          <span>Deployed & Running</span>
         </div>
         <div class="flex items-center space-x-2">
           <div class="w-3 h-3 rounded-full bg-red-400"></div>
-          <span>Error</span>
+          <span>Error / Failed</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="space-y-2">
+      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
+        Quick Actions
+      </h3>
+      
+      <div class="flex flex-col space-y-2">
+        <button class="btn btn-sm btn-outline" @click="exportProject">
+          📤 Export Configuration
+        </button>
+        <button class="btn btn-sm btn-outline" disabled>
+          🚀 Deploy Infrastructure (Coming Soon)
+        </button>
+        <button class="btn btn-sm btn-outline" disabled>
+          🔍 Validate Configuration (Coming Soon)
+        </button>
       </div>
     </div>
   </div>
