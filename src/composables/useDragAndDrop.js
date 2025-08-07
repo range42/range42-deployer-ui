@@ -62,9 +62,8 @@ export function useDragAndDrop() {
   const findParentNodeAtPosition = (position) => {
     const nodes = getNodes.value
     
-    // Look for network nodes that could contain the dropped node
     for (const node of nodes) {
-      if (node.type === 'network' && node.computedPosition && node.dimensions) {
+      if (node.type === 'network-segment' && node.computedPosition && node.dimensions) {
         const nodeRect = {
           x: node.computedPosition.x,
           y: node.computedPosition.y,
@@ -72,7 +71,6 @@ export function useDragAndDrop() {
           height: node.dimensions.height
         }
         
-        // Check if drop position is within the network node bounds
         if (position.x >= nodeRect.x && 
             position.x <= nodeRect.x + nodeRect.width &&
             position.y >= nodeRect.y && 
@@ -102,7 +100,6 @@ export function useDragAndDrop() {
       y: event.clientY,
     })
 
-    // Check if dropping inside a network node
     const parentInfo = findParentNodeAtPosition(position)
     const nodeConfig = getNodeConfig(draggedType.value)
     const nodeId = getId()
@@ -118,29 +115,24 @@ export function useDragAndDrop() {
       },
     }
 
-    // Configure node based on whether it's nested or standalone
     let newNode
-    if (parentInfo && draggedType.value !== 'network') {
-      // Create nested node
+    if (parentInfo && draggedType.value !== 'network-segment') {
       newNode = {
         ...baseNode,
         position: parentInfo.relativePosition,
         parentNode: parentInfo.parentNode.id,
-        extent: 'parent', // Constrain movement to parent bounds
-        expandParent: true, // Auto-expand parent if needed
+        extent: 'parent',
+        expandParent: true,
       }
 
-      // Update parent to indicate it has children
       updateNodeData(parentInfo.parentNode.id, { hasChildren: true })
     } else {
-      // Create standalone node
       newNode = {
         ...baseNode,
         position,
       }
 
-      // If it's a network node, set initial size
-      if (draggedType.value === 'network') {
+      if (draggedType.value === 'network-segment') {
         newNode.style = {
           width: '300px',
           height: '200px',
@@ -151,7 +143,6 @@ export function useDragAndDrop() {
     const { off } = onNodesInitialized(() => {
       updateNode(nodeId, (node) => {
         if (!node.parentNode) {
-          // Only center standalone nodes
           return {
             position: {
               x: node.position.x - (node.dimensions?.width || 150) / 2,
@@ -183,13 +174,87 @@ export function useDragAndDrop() {
           os: 'Ubuntu 22.04',
         },
       },
-      network: {
-        label: 'Network Zone',
+      'network-segment': {
+        label: 'Network Segment',
         defaultConfig: {
           name: '',
           cidr: '192.168.1.0/24',
           gateway: '192.168.1.1',
+          segmentType: 'production',
+          securityLevel: 'medium',
+          vlan: null,
+          dns: '',
           dhcp: true,
+        },
+      },
+      router: {
+        label: 'Router',
+        defaultConfig: {
+          name: '',
+          routingProtocol: 'OSPF',
+          routerId: '1.1.1.1',
+          interfaces: [
+            { name: 'eth0', ip: '', subnet: '', description: 'WAN Interface' },
+            { name: 'eth1', ip: '', subnet: '', description: 'LAN Interface' }
+          ],
+        },
+      },
+      switch: {
+        label: 'Network Switch',
+        defaultConfig: {
+          name: '',
+          portCount: 24,
+          vlanSupport: true,
+          vlans: [
+            { id: 1, name: 'default', description: 'Default VLAN' }
+          ],
+          spanningTreeProtocol: 'RSTP',
+          portSecurity: false
+        },
+      },
+      firewall: {
+        label: 'Firewall',
+        defaultConfig: {
+          name: '',
+          rules: [
+            { action: 'allow', source: 'internal', destination: 'external', port: '80,443', protocol: 'tcp' }
+          ],
+          zones: ['internal', 'external', 'dmz'],
+          natEnabled: true,
+          vpnSupport: false,
+          intrusionDetection: false
+        },
+      },
+      dns: {
+        label: 'DNS Server',
+        defaultConfig: {
+          name: '',
+          zones: [
+            { name: 'example.local', type: 'forward' }
+          ],
+          forwarders: ['8.8.8.8', '1.1.1.1'],
+          recursion: true,
+          dnssec: false
+        },
+      },
+      dhcp: {
+        label: 'DHCP Server',
+        defaultConfig: {
+          name: '',
+          scope: '192.168.1.100-200',
+          leaseTime: '24h',
+          gateway: '192.168.1.1',
+          dnsServers: ['192.168.1.1']
+        },
+      },
+      loadbalancer: {
+        label: 'Load Balancer',
+        defaultConfig: {
+          name: '',
+          algorithm: 'round-robin',
+          healthCheck: true,
+          servers: [],
+          sslTermination: false,
         },
       },
       docker: {
@@ -199,6 +264,7 @@ export function useDragAndDrop() {
           image: 'nginx:latest',
           ports: '80:80',
           env: '',
+          network: 'bridge',
         },
       },
     }
@@ -210,8 +276,8 @@ export function useDragAndDrop() {
     isDragOver,
     isDragging,
     onDragStart,
-    onDragOver,
     onDragLeave,
+    onDragOver,
     onDrop,
   }
 }

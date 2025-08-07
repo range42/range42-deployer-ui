@@ -1,4 +1,3 @@
-<!-- src/components/nodes/DockerNode.vue -->
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'

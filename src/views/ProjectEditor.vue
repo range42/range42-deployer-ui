@@ -10,6 +10,9 @@ import Sidebar from '../components/Sidebar.vue'
 import InfraNodeVm from '../components/nodes/InfraNodeVm.vue'
 import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeDocker from '../components/nodes/InfraNodeDocker.vue'
+import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
+import InfraNodeSwitch from '../components/nodes/InfraNodeSwitch.vue'
+import InfraNodeFirewall from '../components/nodes/InfraNodeFirewall.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
@@ -114,6 +117,7 @@ const handleDragLeave = (event) => {
               <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
                 <li><a @click="projectStore.exportProject(currentProject.id)">📤 Export Project</a></li>
                 <li><a>🚀 Deploy (Coming Soon)</a></li>
+                <li><a>🔍 Validate Configuration (Coming Soon)</a></li>
               </ul>
             </div>
           </div>
@@ -142,7 +146,7 @@ const handleDragLeave = (event) => {
             <Controls />
             <MiniMap />
 
-            <!-- Custom Node Templates -->
+            <!-- Existing Node Templates -->
             <template #node-vm="props">
               <InfraNodeVm v-bind="props" />
             </template>
@@ -153,6 +157,35 @@ const handleDragLeave = (event) => {
 
             <template #node-docker="props">
               <InfraNodeDocker v-bind="props" />
+            </template>
+
+            <!-- Enhanced Network Infrastructure Templates -->
+            <template #node-network-segment="props">
+              <InfraNodeNetwork v-bind="props" />
+            </template>
+
+            <template #node-router="props">
+              <InfraNodeRouter v-bind="props" />
+            </template>
+
+            <template #node-switch="props">
+              <InfraNodeSwitch v-bind="props" />
+            </template>
+
+            <template #node-firewall="props">
+              <InfraNodeFirewall v-bind="props" />
+            </template>
+
+            <template #node-dns="props">
+              <InfraNodeDns v-bind="props" />
+            </template>
+
+            <template #node-dhcp="props">
+              <InfraNodeDhcp v-bind="props" />
+            </template>
+
+            <template #node-loadbalancer="props">
+              <InfraNodeLoadBalancer v-bind="props" />
             </template>
           </VueFlow>
 
