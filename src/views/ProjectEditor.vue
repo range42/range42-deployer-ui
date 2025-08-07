@@ -7,12 +7,16 @@ import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 
 import Sidebar from '../components/Sidebar.vue'
+
 import InfraNodeVm from '../components/nodes/InfraNodeVm.vue'
 import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeDocker from '../components/nodes/InfraNodeDocker.vue'
 import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
 import InfraNodeSwitch from '../components/nodes/InfraNodeSwitch.vue'
 import InfraNodeFirewall from '../components/nodes/InfraNodeFirewall.vue'
+import InfraNodeDns from '../components/nodes/InfraNodeDns.vue'
+import InfraNodeDhcp from '../components/nodes/InfraNodeDhcp.vue'
+import InfraNodeLoadBalancer from '../components/nodes/InfraNodeLoadBalancer.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
@@ -35,7 +39,8 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { onDragOver, onDrop, onDragLeave, isDragOver } = useDragAndDrop()
+const dragAndDropComposable = useDragAndDrop()
+const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
 const currentProject = ref(null)
