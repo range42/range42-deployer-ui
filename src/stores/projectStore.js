@@ -46,11 +46,11 @@ export const useProjectStore = defineStore('projects', () => {
   const updateProject = (id, updates) => {
     const index = projects.value.findIndex(p => p.id === id)
     if (index !== -1) {
-      projects.value[index] = {
-        ...projects.value[index],
-        ...updates,
-        modified: new Date().toISOString()
-      }
+      Object.assign(
+        projects.value[index],
+        updates,
+        { modified: new Date().toISOString() }
+      )
       saveProjects()
     }
   }

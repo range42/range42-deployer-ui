@@ -1,11 +1,10 @@
 <script setup>
 import { computed } from 'vue'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
-import { useProjectStore } from '../stores/projectStore'
 
 const props = defineProps(['project'])
+const emit = defineEmits(['openExport'])
 const { onDragStart } = useDragAndDrop()
-const projectStore = useProjectStore()
 
 const currentProject = computed(() => props.project)
 
@@ -81,10 +80,8 @@ const infrastructureComponents = [
   }
 ]
 
-const exportProject = () => {
-  if (currentProject.value) {
-    projectStore.exportProject(currentProject.value.id)
-  }
+const openExport = () => {
+  emit('openExport')
 }
 </script>
 
@@ -172,7 +169,7 @@ const exportProject = () => {
       </h3>
       
       <div class="flex flex-col space-y-2">
-        <button class="btn btn-sm btn-outline" @click="exportProject">
+        <button class="btn btn-sm btn-outline" @click="openExport">
           📤 Export Configuration
         </button>
         <button class="btn btn-sm btn-outline" disabled>

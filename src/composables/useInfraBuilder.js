@@ -1,15 +1,16 @@
 import { ref } from 'vue'
-import { useVueFlow } from '@vue-flow/core'
+import { useVueFlow, applyNodeChanges, applyEdgeChanges, addEdge } from '@vue-flow/core'
 
 export function useInfraBuilder() {
-  const { onConnect, addEdges, updateNodeData, onNodesChange, onEdgesChange } = useVueFlow()
+  const { updateNodeData } = useVueFlow()
   
   const nodes = ref([])
   const edges = ref([])
   const selectedNode = ref(null)
 
   const handleConnect = (connection) => {
-    addEdges([connection])
+    // Keep edges controlled via local state
+    edges.value = addEdge(connection, edges.value)
   }
 
   const handleNodeClick = (event) => {
@@ -47,14 +48,16 @@ export function useInfraBuilder() {
   }
 
   const handleNodesChange = (changes) => {
-    onNodesChange(changes)
+    // Apply changes to local controlled nodes state
+    nodes.value = applyNodeChanges(changes, nodes.value)
   }
 
   const handleEdgesChange = (changes) => {
-    onEdgesChange(changes)
+    // Apply changes to local controlled edges state
+    edges.value = applyEdgeChanges(changes, edges.value)
   }
 
-  onConnect(handleConnect)
+  // We handle @connect from the component template via handleConnect
 
   return {
     nodes,

@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { VueFlow } from '@vue-flow/core'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -18,6 +18,7 @@ import InfraNodeDns from '../components/nodes/InfraNodeDns.vue'
 import InfraNodeDhcp from '../components/nodes/InfraNodeDhcp.vue'
 import InfraNodeLoadBalancer from '../components/nodes/InfraNodeLoadBalancer.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
+import ExportModal from '../components/ExportModal.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
@@ -39,11 +40,17 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
+const { getNodes: flowGetNodes, getEdges: flowGetEdges } = useVueFlow()
+
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
+const showExportModal = ref(false)
 const currentProject = ref(null)
+
+const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
+const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
 onMounted(() => {
   const project = projectStore.getProject(route.params.id)
@@ -64,6 +71,16 @@ watch([nodes, edges], () => {
     })
   }
 }, { deep: true })
+
+const manualSave = () => {
+  if (!currentProject.value) return
+  const nodesToSave = liveNodes.value
+  const edgesToSave = liveEdges.value
+  projectStore.updateProject(currentProject.value.id, {
+    nodes: nodesToSave,
+    edges: edgesToSave
+  })
+}
 
 const handleNodeClick = (event) => {
   onNodeClick(event)
@@ -98,7 +115,7 @@ const handleDragLeave = (event) => {
     <div class="drawer lg:drawer-open">
       <input id="drawer-toggle" type="checkbox" class="drawer-toggle" />
 
-      <div class="drawer-content flex flex-col">
+      <div class="drawer-content flex flex-col h-full">
         <!-- Navbar -->
         <div class="navbar bg-base-200">
           <div class="navbar-start">
@@ -116,13 +133,14 @@ const handleDragLeave = (event) => {
             <h1 class="text-xl font-bold">{{ currentProject.name }}</h1>
           </div>
 
-          <div class="navbar-end">
+          <div class="navbar-end space-x-2">
+            <button class="btn btn-sm" @click="manualSave">💾 Save</button>
             <div class="dropdown dropdown-end">
               <label tabindex="0" class="btn btn-ghost">⚙️</label>
               <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
+                <li><a @click="showExportModal = true">🚀 Export & Deploy</a></li>
                 <li><a @click="projectStore.exportProject(currentProject.id)">📤 Export Project</a></li>
-                <li><a>🚀 Deploy (Coming Soon)</a></li>
-                <li><a>🔍 Validate Configuration (Coming Soon)</a></li>
+                <li><a>🔍 Validate Configuration</a></li>
               </ul>
             </div>
           </div>
@@ -211,7 +229,7 @@ const handleDragLeave = (event) => {
 
       <div class="drawer-side">
         <label for="drawer-toggle" class="drawer-overlay"></label>
-        <Sidebar class="min-h-full" :project="currentProject" />
+        <Sidebar class="min-h-full" :project="currentProject" @openExport="showExportModal = true" />
       </div>
     </div>
 
@@ -221,5 +239,13 @@ const handleDragLeave = (event) => {
       @close="closeConfigPanel"
       @update="updateNodeStatus"
     />
+    <ExportModal 
+      :project="currentProject"
+      :visible="showExportModal"
+      :nodes="liveNodes"
+      :edges="liveEdges"
+      @close="showExportModal = false"
+    />
   </div>
+ 
 </template>
