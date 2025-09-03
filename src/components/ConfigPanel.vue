@@ -1,5 +1,8 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ensureNamespaces } from '@/i18n/index.js'
+const { t } = useI18n({ useScope: 'global' })
 
 const props = defineProps(['node'])
 const emit = defineEmits(['close', 'update'])
@@ -14,6 +17,8 @@ onMounted(() => {
   if (props.node?.data?.config) {
     config.value = { ...props.node.data.config }
   }
+  // Load i18n namespaces used by this panel
+  ensureNamespaces(['configPanel', 'common'])
 })
 
 // Add validation
@@ -21,17 +26,17 @@ const validateConfig = () => {
   errors.value = []
   
   if (!config.value.name?.trim()) {
-    errors.value.push('Name is required')
+    errors.value.push(t('configPanel.validation.nameRequired'))
   }
   
   // Add type-specific validations
   switch (props.node?.type) {
     case 'vm':
       if (!config.value.cpu || config.value.cpu < 1) {
-        errors.value.push('CPU cores must be at least 1')
+        errors.value.push(t('configPanel.validation.cpuMin'))
       }
       if (!config.value.memory?.trim()) {
-        errors.value.push('Memory is required')
+        errors.value.push(t('configPanel.validation.memoryRequired'))
       }
       break
     //TODO Add more validations maybe something to be done via settings
@@ -144,7 +149,7 @@ watch(() => props.node, (newNode) => {
       <!-- Header -->
       <div class="flex items-center justify-between mb-6">
         <h3 class="text-xl font-bold capitalize">
-          Configure {{ node.type.replace('-', ' ') }}
+          {{ t('configPanel.header', { type: node.type.replace('-', ' ') }) }}
         </h3>
         <button class="btn btn-sm btn-circle btn-ghost" @click="emit('close')">✕</button>
       </div>
@@ -154,13 +159,13 @@ watch(() => props.node, (newNode) => {
         <!-- Common Fields -->
         <div class="form-control">
           <label class="label">
-            <span class="label-text font-semibold">Name *</span>
+            <span class="label-text font-semibold">{{ t('configPanel.fields.name') }} *</span>
           </label>
           <input
             v-model="config.name"
             type="text"
             class="input input-bordered w-full"
-            :placeholder="`Enter ${node.type.replace('-', ' ')} name`"
+            :placeholder="t('configPanel.placeholders.name', { type: node.type.replace('-', ' ') })"
           />
         </div>
 
@@ -169,45 +174,45 @@ watch(() => props.node, (newNode) => {
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">CPU Cores *</span>
+                <span class="label-text">{{ t('configPanel.fields.cpu') }} *</span>
               </label>
               <input
                 v-model.number="config.cpu"
                 type="number"
                 class="input input-bordered"
-                placeholder="e.g., 2"
+                :placeholder="t('configPanel.placeholders.cpu')"
                 min="1"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Memory *</span>
+                <span class="label-text">{{ t('configPanel.fields.memory') }} *</span>
               </label>
               <input
                 v-model="config.memory"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 4GB"
+                :placeholder="t('configPanel.placeholders.memory')"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Disk Size *</span>
+                <span class="label-text">{{ t('configPanel.fields.disk') }} *</span>
               </label>
               <input
                 v-model="config.disk"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 20GB"
+                :placeholder="t('configPanel.placeholders.disk')"
               />
             </div>
           </div>
 
           <div class="form-control">
             <label class="label">
-              <span class="label-text">Operating System</span>
+              <span class="label-text">{{ t('configPanel.fields.os') }}</span>
             </label>
             <select v-model="config.os" class="select select-bordered">
               <option value="Ubuntu 22.04">Ubuntu 22.04</option>
@@ -226,51 +231,51 @@ watch(() => props.node, (newNode) => {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Segment Type *</span>
+                <span class="label-text">{{ t('configPanel.fields.segmentType') }} *</span>
               </label>
               <select v-model="config.segmentType" class="select select-bordered">
-                <option value="">Select segment type</option>
-                <option value="management">Management Network</option>
-                <option value="production">Production Network</option>
-                <option value="dmz">DMZ</option>
-                <option value="guest">Guest Network</option>
-                <option value="iot">IoT/OT Network</option>
-                <option value="security">Security Network</option>
+                <option value="">{{ t('configPanel.placeholders.segmentType') }}</option>
+                <option value="management">{{ t('configPanel.segment.management') }}</option>
+                <option value="production">{{ t('configPanel.segment.production') }}</option>
+                <option value="dmz">{{ t('configPanel.segment.dmz') }}</option>
+                <option value="guest">{{ t('configPanel.segment.guest') }}</option>
+                <option value="iot">{{ t('configPanel.segment.iot') }}</option>
+                <option value="security">{{ t('configPanel.segment.security') }}</option>
               </select>
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Security Level</span>
+                <span class="label-text">{{ t('configPanel.fields.securityLevel') }}</span>
               </label>
               <select v-model="config.securityLevel" class="select select-bordered">
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+                <option value="low">{{ t('configPanel.security.low') }}</option>
+                <option value="medium">{{ t('configPanel.security.medium') }}</option>
+                <option value="high">{{ t('configPanel.security.high') }}</option>
               </select>
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">CIDR Range *</span>
+                <span class="label-text">{{ t('configPanel.fields.cidr') }} *</span>
               </label>
               <input
                 v-model="config.cidr"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 192.168.1.0/24"
+                :placeholder="t('configPanel.placeholders.cidr')"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">VLAN ID</span>
+                <span class="label-text">{{ t('configPanel.fields.vlanId') }}</span>
               </label>
               <input
                 v-model.number="config.vlan"
                 type="number"
                 class="input input-bordered"
-                placeholder="e.g., 100"
+                :placeholder="t('configPanel.placeholders.vlanId')"
                 min="1"
                 max="4094"
               />
@@ -278,32 +283,32 @@ watch(() => props.node, (newNode) => {
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Gateway *</span>
+                <span class="label-text">{{ t('configPanel.fields.gateway') }} *</span>
               </label>
               <input
                 v-model="config.gateway"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 192.168.1.1"
+                :placeholder="t('configPanel.placeholders.gateway')"
               />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">DNS Server</span>
+                <span class="label-text">{{ t('configPanel.fields.dnsServer') }}</span>
               </label>
               <input
                 v-model="config.dns"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 192.168.1.1"
+                :placeholder="t('configPanel.placeholders.dnsServer')"
               />
             </div>
           </div>
 
           <div class="form-control">
             <label class="cursor-pointer label">
-              <span class="label-text">Enable DHCP</span>
+              <span class="label-text">{{ t('configPanel.fields.enableDhcp') }}</span>
               <input v-model="config.dhcp" type="checkbox" class="toggle toggle-primary" />
             </label>
           </div>
@@ -314,26 +319,26 @@ watch(() => props.node, (newNode) => {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Routing Protocol *</span>
+                <span class="label-text">{{ t('configPanel.fields.routingProtocol') }} *</span>
               </label>
               <select v-model="config.routingProtocol" class="select select-bordered">
                 <option value="OSPF">OSPF</option>
                 <option value="BGP">BGP</option>
                 <option value="EIGRP">EIGRP</option>
                 <option value="RIP">RIP</option>
-                <option value="Static">Static Routes</option>
+                <option value="Static">{{ t('configPanel.routing.static') }}</option>
               </select>
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Router ID</span>
+                <span class="label-text">{{ t('configPanel.fields.routerId') }}</span>
               </label>
               <input
                 v-model="config.routerId"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 1.1.1.1"
+                :placeholder="t('configPanel.placeholders.routerId')"
               />
             </div>
           </div>
@@ -341,9 +346,9 @@ watch(() => props.node, (newNode) => {
           <!-- Network Interface Management -->
           <div class="form-control">
             <label class="label">
-              <span class="label-text font-semibold">Network Interfaces</span>
+              <span class="label-text font-semibold">{{ t('configPanel.sections.interfaces') }}</span>
               <button type="button" @click="addInterface" class="btn btn-sm btn-primary">
-                Add Interface
+                {{ t('configPanel.actions.addInterface') }}
               </button>
             </label>
             <div v-if="config.interfaces?.length" class="space-y-3">
@@ -357,33 +362,33 @@ watch(() => props.node, (newNode) => {
                     v-model="networkInterface.name"
                     type="text"
                     class="input input-bordered input-sm"
-                    placeholder="Interface name"
+                    :placeholder="t('configPanel.placeholders.ifName')"
                   />
                   <input
                     v-model="networkInterface.ip"
                     type="text"
                     class="input input-bordered input-sm"
-                    placeholder="IP Address"
+                    :placeholder="t('configPanel.placeholders.ifIp')"
                   />
                   <input
                     v-model="networkInterface.subnet"
                     type="text"
                     class="input input-bordered input-sm"
-                    placeholder="Subnet mask"
+                    :placeholder="t('configPanel.placeholders.ifSubnet')"
                   />
                   <button
                     type="button"
                     @click="removeInterface(index)"
                     class="btn btn-sm btn-error"
                   >
-                    Remove
+                    {{ t('configPanel.actions.remove') }}
                   </button>
                 </div>
                 <input
                   v-model="networkInterface.description"
                   type="text"
                   class="input input-bordered input-sm w-full mt-2"
-                  placeholder="Description"
+                  :placeholder="t('configPanel.placeholders.description')"
                 />
               </div>
             </div>
@@ -828,12 +833,12 @@ watch(() => props.node, (newNode) => {
         <div class="flex justify-between items-center w-full">
           <div class="text-sm">
             <span :class="isValid ? 'text-success' : 'text-warning'">
-              {{ isValid ? '✓ Configuration valid' : '⚠ Missing required fields' }}
+              {{ isValid ? t('configPanel.status.valid') : t('configPanel.status.missing') }}
             </span>
           </div>
           <div class="space-x-2">
-            <button class="btn btn-ghost" @click="emit('close')">Cancel</button>
-            <button class="btn btn-primary" @click="handleSave">Save Configuration</button>
+            <button class="btn btn-ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
+            <button class="btn btn-primary" @click="handleSave">{{ t('configPanel.save') }}</button>
           </div>
         </div>
       </div>

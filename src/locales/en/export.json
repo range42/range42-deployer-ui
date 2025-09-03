@@ -1,0 +1,38 @@
+{
+  "title": "Export Topology",
+  "subtitle": "Generate and download topology.json",
+  "steps": {
+    "generate": "Generate",
+    "download": "Download"
+  },
+  "info": {
+    "title": "Topology JSON Only",
+    "desc": "This export includes only the canonical topology.json built from your current canvas."
+  },
+  "empty": {
+    "title": "Empty Project",
+    "desc": "Your project contains no components to export."
+  },
+  "cta": {
+    "generate": "Generate Topology JSON",
+    "download": "Download topology.json"
+  },
+  "generating": "Generating topology.json",
+  "failed": {
+    "title": "Export Failed"
+  },
+  "success": {
+    "title": "Topology Ready!"
+  },
+  "errors": {
+    "title": "Export Errors"
+  },
+  "stats": {
+    "nodes": "Nodes",
+    "nodesDesc": "Graph nodes",
+    "edges": "Edges",
+    "edgesDesc": "Connections",
+    "hsn": "Hosts/Services/Networks",
+    "breakdown": "Breakdown"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "title": "Range42",
+  "subtitle": "Constructeur d'infrastructure Cyber Range",
+  "currentProject": "Projet actuel",
+  "untitledProject": "Projet sans titre",
+  "componentsCount": "{count} composants",
+  "infrastructure.title": "Composants d'infrastructure",
+  "statusLegend.title": "Légende des statuts",
+  "statusLegend.incomplete": "Configuration incomplète",
+  "statusLegend.ready": "Prêt à déployer",
+  "statusLegend.deployed": "Déployé",
+  "statusLegend.deployedRunning": "Déployé et en cours d'exécution",
+  "statusLegend.inProgress": "En cours",
+  "statusLegend.error": "Erreur / Échec",
+  "quickActions.title": "Actions rapides",
+  "quickActions.export": "Exporter la topologie",
+  "quickActions.deploySoon": "Déployer l'infrastructure (bientôt)",
+  "quickActions.validateSoon": "Valider la configuration (bientôt)",
+  "language.label": "Langue"
+}

@@ -1,0 +1,68 @@
+{
+  "header": "Configure {type}",
+  "status": {
+    "valid": "✓ Configuration valid",
+    "missing": "⚠ Missing required fields"
+  },
+  "save": "Save Configuration",
+  "fields": {
+    "name": "Name",
+    "cpu": "CPU Cores",
+    "memory": "Memory",
+    "disk": "Disk Size",
+    "os": "Operating System",
+    "segmentType": "Segment Type",
+    "securityLevel": "Security Level",
+    "cidr": "CIDR Range",
+    "vlanId": "VLAN ID",
+    "gateway": "Gateway",
+    "dnsServer": "DNS Server",
+    "enableDhcp": "Enable DHCP",
+    "routingProtocol": "Routing Protocol",
+    "routerId": "Router ID"
+  },
+  "placeholders": {
+    "name": "Enter {type} name",
+    "cpu": "e.g., 2",
+    "memory": "e.g., 4GB",
+    "disk": "e.g., 20GB",
+    "cidr": "e.g., 192.168.1.0/24",
+    "vlanId": "e.g., 100",
+    "gateway": "e.g., 192.168.1.1",
+    "dnsServer": "e.g., 192.168.1.1",
+    "routerId": "e.g., 1.1.1.1",
+    "segmentType": "Select segment type",
+    "ifName": "Interface name",
+    "ifIp": "IP Address",
+    "ifSubnet": "Subnet mask",
+    "description": "Description"
+  },
+  "segment": {
+    "management": "Management Network",
+    "production": "Production Network",
+    "dmz": "DMZ",
+    "guest": "Guest Network",
+    "iot": "IoT/OT Network",
+    "security": "Security Network"
+  },
+  "security": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
+  },
+  "sections": {
+    "interfaces": "Network Interfaces"
+  },
+  "actions": {
+    "addInterface": "Add Interface",
+    "remove": "Remove"
+  },
+  "routing": {
+    "static": "Static Routes"
+  },
+  "validation": {
+    "nameRequired": "Name is required",
+    "cpuMin": "CPU cores must be at least 1",
+    "memoryRequired": "Memory is required"
+  }
+}

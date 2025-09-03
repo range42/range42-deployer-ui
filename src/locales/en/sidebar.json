@@ -1,0 +1,20 @@
+{
+  "title": "Range42",
+  "subtitle": "Cyber Range Infrastructure Builder",
+  "currentProject": "Current Project",
+  "untitledProject": "Untitled Project",
+  "componentsCount": "{count} components",
+  "infrastructure.title": "Infrastructure Components",
+  "statusLegend.title": "Status Legend",
+  "statusLegend.incomplete": "Incomplete Configuration",
+  "statusLegend.ready": "Ready to Deploy",
+  "statusLegend.deployed": "Deployed",
+  "statusLegend.deployedRunning": "Deployed & Running",
+  "statusLegend.inProgress": "In Progress",
+  "statusLegend.error": "Error / Failed",
+  "quickActions.title": "Quick Actions",
+  "quickActions.export": "Export Topology",
+  "quickActions.deploySoon": "Deploy Infrastructure (Coming Soon)",
+  "quickActions.validateSoon": "Validate Configuration (Coming Soon)",
+  "language.label": "Language"
+}

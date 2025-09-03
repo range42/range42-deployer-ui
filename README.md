@@ -56,3 +56,17 @@ npm run build
 # Preview production build
 npm run preview
 ```
+
+## 🌍 Internationalization (i18n)
+
+- The app uses `vue-i18n` with per-page/component JSON files under `src/locales/<lang>/...`.
+- Default and fallback locale is English (`en`). French (`fr`) is provided as a proof of concept.
+- Language can be switched at runtime from the sidebar language selector.
+
+Development notes:
+- i18n runtime is initialized in `src/i18n/index.js` with secure lazy-loading via `import.meta.glob`.
+- Supported locales are defined in `src/i18n/supported.js`.
+- When adding a new page/component, create a JSON file under each locale using the same filename.
+- Avoid using `v-html` for translated strings; keep translations as plain text.
+
+Docs: see `docs/i18n-plan.md` for structure, conventions, and acceptance tests.

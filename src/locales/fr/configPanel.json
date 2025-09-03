@@ -1,0 +1,68 @@
+{
+  "header": "Configurer {type}",
+  "status": {
+    "valid": "✓ Configuration valide",
+    "missing": "⚠ Champs requis manquants"
+  },
+  "save": "Enregistrer la configuration",
+  "fields": {
+    "name": "Nom",
+    "cpu": "Cœurs CPU",
+    "memory": "Mémoire",
+    "disk": "Taille du disque",
+    "os": "Système d'exploitation",
+    "segmentType": "Type de segment",
+    "securityLevel": "Niveau de sécurité",
+    "cidr": "Plage CIDR",
+    "vlanId": "ID VLAN",
+    "gateway": "Passerelle",
+    "dnsServer": "Serveur DNS",
+    "enableDhcp": "Activer DHCP",
+    "routingProtocol": "Protocole de routage",
+    "routerId": "ID Routeur"
+  },
+  "placeholders": {
+    "name": "Saisir le nom {type}",
+    "cpu": "ex. 2",
+    "memory": "ex. 4GB",
+    "disk": "ex. 20GB",
+    "cidr": "ex. 192.168.1.0/24",
+    "vlanId": "ex. 100",
+    "gateway": "ex. 192.168.1.1",
+    "dnsServer": "ex. 192.168.1.1",
+    "routerId": "ex. 1.1.1.1",
+    "segmentType": "Sélectionner le type de segment",
+    "ifName": "Nom de l'interface",
+    "ifIp": "Adresse IP",
+    "ifSubnet": "Masque de sous-réseau",
+    "description": "Description"
+  },
+  "segment": {
+    "management": "Réseau de gestion",
+    "production": "Réseau de production",
+    "dmz": "DMZ",
+    "guest": "Réseau invité",
+    "iot": "Réseau IoT/OT",
+    "security": "Réseau de sécurité"
+  },
+  "security": {
+    "low": "Faible",
+    "medium": "Moyen",
+    "high": "Élevé"
+  },
+  "sections": {
+    "interfaces": "Interfaces réseau"
+  },
+  "actions": {
+    "addInterface": "Ajouter une interface",
+    "remove": "Supprimer"
+  },
+  "routing": {
+    "static": "Routes statiques"
+  },
+  "validation": {
+    "nameRequired": "Le nom est requis",
+    "cpuMin": "Les cœurs CPU doivent être au moins 1",
+    "memoryRequired": "La mémoire est requise"
+  }
+}
