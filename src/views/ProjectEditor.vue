@@ -138,8 +138,7 @@ const handleDragLeave = (event) => {
             <div class="dropdown dropdown-end">
               <label tabindex="0" class="btn btn-ghost">⚙️</label>
               <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
-                <li><a @click="showExportModal = true">🚀 Export & Deploy</a></li>
-                <li><a @click="projectStore.exportProject(currentProject.id)">📤 Export Project</a></li>
+                <li><a @click="showExportModal = true">🧭 Export Topology</a></li>
                 <li><a>🔍 Validate Configuration</a></li>
               </ul>
             </div>
