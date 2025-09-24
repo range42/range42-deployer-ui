@@ -1,0 +1,20 @@
+{
+  "title": "Range42",
+  "subtitle": "サイバーレンジ インフラ構築ツール",
+  "currentProject": "現在のプロジェクト",
+  "untitledProject": "無題のプロジェクト",
+  "componentsCount": "{count} 個のコンポーネント",
+  "infrastructure.title": "インフラコンポーネント",
+  "statusLegend.title": "ステータス凡例",
+  "statusLegend.incomplete": "構成未完了",
+  "statusLegend.ready": "デプロイ準備完了",
+  "statusLegend.deployed": "デプロイ済み",
+  "statusLegend.deployedRunning": "デプロイ済み & 実行中",
+  "statusLegend.inProgress": "進行中",
+  "statusLegend.error": "エラー／失敗",
+  "quickActions.title": "クイックアクション",
+  "quickActions.export": "トポロジーをエクスポート",
+  "quickActions.deploySoon": "インフラをデプロイ（近日公開）",
+  "quickActions.validateSoon": "構成を検証（近日公開）",
+  "language.label": "言語"
+}
