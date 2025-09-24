@@ -8,8 +8,9 @@ Key files:
 - `src/main.js` – installs i18n and preloads the `common` namespace before mounting.
 
 Current locales and namespaces:
-- `en`: `common.json`, `sidebar.json`
-- `fr`: `common.json`, `sidebar.json`
+- `en`: `common.json`, `sidebar.json`, `configPanel.json`, `export.json`
+- `fr`: `common.json`, `sidebar.json`, `configPanel.json`, `export.json`
+- `jp`: `common.json`, `sidebar.json`, `configPanel.json`, `export.json`
 
 Note: By default, namespaces must be top-level JSON files per locale (e.g., `src/locales/en/sidebar.json`). Nested paths like `nodes/sidebar.json` are not resolved unless you customize `resolveModuleKey()` in `src/i18n/index.js`.
 
@@ -22,7 +23,8 @@ Note: By default, namespaces must be top-level JSON files per locale (e.g., `src
 export const SUPPORTED_LOCALES = [
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
-  { code: 'es', label: 'Español' } // <- example
+  { code: 'jp', label: '日本語' }
+  { code: 'es', label: 'Español' } // <- example language
 ]
 ```
 
@@ -32,12 +34,23 @@ export const SUPPORTED_LOCALES = [
 src/locales/
   en/
     common.json
+    configPanel.json
+    export.json
     sidebar.json
   fr/
     common.json
+    configPanel.json
+    export.json
+    sidebar.json
+  jp/
+    common.json
+    configPanel.json
+    export.json
     sidebar.json
   es/
     common.json
+    configPanel.json
+    export.json
     sidebar.json
 ```
 
