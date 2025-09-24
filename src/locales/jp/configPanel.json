@@ -1,0 +1,68 @@
+{
+  "header": "{type} の構成",
+  "status": {
+    "valid": "✓ 構成は有効です",
+    "missing": "⚠ 必須フィールドが不足しています"
+  },
+  "save": "構成を保存",
+  "fields": {
+    "name": "名前",
+    "cpu": "CPU コア数",
+    "memory": "メモリ",
+    "disk": "ディスクサイズ",
+    "os": "オペレーティングシステム",
+    "segmentType": "セグメントタイプ",
+    "securityLevel": "セキュリティレベル",
+    "cidr": "CIDR 範囲",
+    "vlanId": "VLAN ID",
+    "gateway": "ゲートウェイ",
+    "dnsServer": "DNS サーバー",
+    "enableDhcp": "DHCP を有効化",
+    "routingProtocol": "ルーティングプロトコル",
+    "routerId": "ルーター ID"
+  },
+  "placeholders": {
+    "name": "{type} 名を入力",
+    "cpu": "例: 2",
+    "memory": "例: 4GB",
+    "disk": "例: 20GB",
+    "cidr": "例: 192.168.1.0/24",
+    "vlanId": "例: 100",
+    "gateway": "例: 192.168.1.1",
+    "dnsServer": "例: 192.168.1.1",
+    "routerId": "例: 1.1.1.1",
+    "segmentType": "セグメントタイプを選択",
+    "ifName": "インターフェース名",
+    "ifIp": "IP アドレス",
+    "ifSubnet": "サブネットマスク",
+    "description": "説明"
+  },
+  "segment": {
+    "management": "管理ネットワーク",
+    "production": "プロダクションネットワーク",
+    "dmz": "DMZ",
+    "guest": "ゲストネットワーク",
+    "iot": "IoT/OT ネットワーク",
+    "security": "セキュリティネットワーク"
+  },
+  "security": {
+    "low": "低",
+    "medium": "中",
+    "high": "高"
+  },
+  "sections": {
+    "interfaces": "ネットワークインターフェース"
+  },
+  "actions": {
+    "addInterface": "インターフェースを追加",
+    "remove": "削除"
+  },
+  "routing": {
+    "static": "スタティックルート"
+  },
+  "validation": {
+    "nameRequired": "名前は必須です",
+    "cpuMin": "CPU コア数は 1 以上でなければなりません",
+    "memoryRequired": "メモリは必須です"
+  }
+}
