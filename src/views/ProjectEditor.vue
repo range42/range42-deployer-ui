@@ -27,9 +27,14 @@ import { useProjectStore } from '../stores/projectStore'
 
 ////
 
-import { useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/startStopPauseResumeVms'
-import { useBundleCoreProxmoxConfigureDefaultVmsTarget_delete } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/delete'
-import { useBundleCoreProxmoxConfigureDefault_CreateTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/create'
+import { useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/startStopPauseResumeVms'
+import { useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/delete'
+
+import { useBundleCoreProxmoxConfigureDefaultVms_createTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/create'
+
+
+import { useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/snapshots/revert'
+import { useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/snapshots/create'
 
 ////
 
@@ -65,51 +70,82 @@ const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.leng
 ////
 
 const {
-  // useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume,
+  // useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume,
   //
-  handleBundleCoreProxmoxConfigureDefault_StartVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_StopVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_startVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_stopVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln,
   //
-  handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_startVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin,
   //
-  handleBundleCoreProxmoxConfigureDefault_StartVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_StopVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent,
-  current_action: startStopPauseResumeDefaultVms_current_action,
-  loading: startStopPauseResumeDefaultVms_loading,
-  error: startStopPauseResumeDefaultVms_error,
-} = useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume()
+  handleBundleCoreProxmoxConfigureDefault_startVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_stopVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent,
+  //
+  current_action: current_action_startStopPauseResumeDefaultVms,
+  //
+  loading: loading_startStopPauseResumeDefaultVms,
+  error: error_startStopPauseResumeDefaultVms,
+} = useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume()
 
 const {
-  // useBundleCoreProxmoxConfigureDefaultVmsTarget_delete,
   //
-  handleBundleCoreProxmoxConfigureDefault_DeleteVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_DeleteVmsVuln,
+  // useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms,
   //
-  current_action: deleteVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
-  loading: deleteVms_loading,
-  error: deleteVms_error,
-} = useBundleCoreProxmoxConfigureDefaultVmsTarget_delete()
+  handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln,
+  //
+
+  current_action: current_action_deleteDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
+  loading: loading_deleteDefaultVms,
+  error: error_deleteDefaultVms,
+} = useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms()
 
 const {
-
-  // useBundleCoreProxmoxConfigureDefault_CreateTargetVms,
   //
-  handleBundleCoreProxmoxConfigureDefault_CreateVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_CreateVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_CreateVmsStudent,
+  // useBundleCoreProxmoxConfigureDefaultVms_createTargetVms,
   //
-  current_action, createVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
+  handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln,
+  handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent,
+  //
+  current_action: createVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: createVms_loading,
-  error: createVms_error,
-} = useBundleCoreProxmoxConfigureDefault_CreateTargetVms()
+  error: error_createDefaultVms,
+} = useBundleCoreProxmoxConfigureDefaultVms_createTargetVms()
+
+const {
+  //
+  // useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms,
+  //
+  handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotAdmin,
+  handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotStudent,
+  handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotVuln,
+  //
+  current_action: current_action_snapshotRevertDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
+  loading: loading_snapshotRevertDefaultVms,
+  error: error_snapshotRevertDefaultVms,
+} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms()
+
+const {
+  //
+  // useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms,
+  //
+  handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotAdmin,
+  handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotStudent,
+  handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotVuln,
+  //
+  current_action: current_action_snapshotCreateDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
+  loading: loading_snapshotCreateDefaultVms,
+  error: error_snapshotCreateDefaultVms,
+
+} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms()
 
 ////
 
@@ -223,7 +259,7 @@ const handleDragLeave = (event) => {
                   <ul class="mt-1 space-y-1 flex flex-col items-start">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_CreateVmsVuln()" :disabled="loading">
+                        @click="handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln()" :disabled="loading">
                         <span v-if="createVms_current_action === 'create'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
@@ -234,55 +270,83 @@ const handleDragLeave = (event) => {
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_StartVmsVuln()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_startVmsVuln()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'start'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          🟢 {{ startStopPauseResumeDefaultVms_current_action === 'start' ? 'Starting' : 'Start' }}
+                          🟢 {{ current_action_startStopPauseResumeDefaultVms === 'start' ? 'Starting' : 'Start' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_StopVmsVuln()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'stop'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_stopVmsVuln()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'stop'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          🛑 {{ startStopPauseResumeDefaultVms_current_action === 'stop' ? 'Stopping' : 'Stop' }}
+                          🛑 {{ current_action_startStopPauseResumeDefaultVms === 'stop' ? 'Stopping' : 'Stop' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'pause'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'pause'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          ⏸️ {{ startStopPauseResumeDefaultVms_current_action === 'pause' ? 'Pausing' : 'Pause' }}
+                          ⏸️ {{ current_action_startStopPauseResumeDefaultVms === 'pause' ? 'Pausing' : 'Pause' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'resume'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'resume'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          ▶️ {{ startStopPauseResumeDefaultVms_current_action === 'resume' ? 'Resuming' : 'Resume' }}
+                          ▶️ {{ current_action_startStopPauseResumeDefaultVms === 'resume' ? 'Resuming' : 'Resume' }}
                         </span>
                       </button>
                     </li>
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsVuln()" :disabled="loading">
-                        <span v-if="deleteVms_current_action === 'delete'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln()" :disabled="loading">
+                        <span v-if="current_action_deleteDefaultVms === 'delete'"
                           class="loading loading-spinner loading-xs"></span>
-                        <span>🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
+                        <span>
+                          🗑️ {{ current_action_deleteDefaultVms === 'delete' ? 'deleting' : 'Delete' }}
+                        </span>
                       </button>
                     </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotVuln()"
+                        :disabled="loading">
+                        <span v-if="current_action_snapshotCreateDefaultVms === 'vm_snapshot_create'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          💾 {{ current_action_snapshotCreateDefaultVms === 'snapshot' ? 'snapshoting' : 'Snapshot' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotVuln()"
+                        :disabled="loading">
+                        <span v-if="current_action_snapshotRevertDefaultVms === 'vm_snapshot_revert'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ↩️ {{ current_action_snapshotRevertDefaultVms === 'revert' ? 'reverting' : 'Revert' }}
+                        </span>
+                      </button>
+                    </li>
+
+
                   </ul>
                 </details>
               </li>
@@ -298,7 +362,7 @@ const handleDragLeave = (event) => {
                   <ul class="mt-1 space-y-1 flex flex-col items-start">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_CreateVmsAdmin()" :disabled="loading">
+                        @click="handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin()" :disabled="loading">
                         <span v-if="createVms_current_action === 'create'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
@@ -309,54 +373,80 @@ const handleDragLeave = (event) => {
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_startVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'start'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          🟢 {{ startStopPauseResumeDefaultVms_current_action === 'start' ? 'Starting' : 'Start' }}
+                          🟢 {{ current_action_startStopPauseResumeDefaultVms === 'start' ? 'Starting' : 'Start' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'stop'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'stop'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          🛑 {{ startStopPauseResumeDefaultVms_current_action === 'stop' ? 'Stopping' : 'Stop' }}
+                          🛑 {{ current_action_startStopPauseResumeDefaultVms === 'stop' ? 'Stopping' : 'Stop' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'pause'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'pause'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          ⏸️ {{ startStopPauseResumeDefaultVms_current_action === 'pause' ? 'Pausing' : 'Pause' }}
+                          ⏸️ {{ current_action_startStopPauseResumeDefaultVms === 'pause' ? 'Pausing' : 'Pause' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'resume'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'resume'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          ▶️ {{ startStopPauseResumeDefaultVms_current_action === 'resume' ? 'Resuming' : 'Resume' }}
+                          ▶️ {{ current_action_startStopPauseResumeDefaultVms === 'resume' ? 'Resuming' : 'Resume' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsAdmin()" :disabled="loading">
-                        <span v-if="deleteVms_current_action === 'delete'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action_deleteDefaultVms === 'delete'"
                           class="loading loading-spinner loading-xs"></span>
-                        <span>🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
+                        <span>
+                          🗑️ {{ current_action_deleteDefaultVms === 'delete' ? 'deleting' : 'Delete' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotAdmin()"
+                        :disabled="loading">
+                        <span v-if="current_action_snapshotCreateDefaultVms === 'vm_snapshot_create'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          💾 {{ current_action_snapshotCreateDefaultVms === 'snapshot' ? 'snapshoting' : 'Snapshot' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotAdmin()"
+                        :disabled="loading">
+                        <span v-if="current_action_snapshotRevertDefaultVms === 'vm_snapshot_revert'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ↩️ {{ current_action_snapshotRevertDefaultVms === 'revert' ? 'reverting' : 'Revert' }}
+                        </span>
                       </button>
                     </li>
                   </ul>
@@ -374,7 +464,8 @@ const handleDragLeave = (event) => {
                   <ul class="mt-1 space-y-1 flex flex-col items-start">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_CreateVmsStudent()" :disabled="loading">
+                        @click="handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent()"
+                        :disabled="loading">
                         <span v-if="createVms_current_action === 'create'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
@@ -385,54 +476,82 @@ const handleDragLeave = (event) => {
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_StartVmsStudent()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_startVmsStudent()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'start'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          🟢 {{ startStopPauseResumeDefaultVms_current_action === 'start' ? 'Starting' : 'Start' }}
+                          🟢 {{ current_action_startStopPauseResumeDefaultVms === 'start' ? 'Starting' : 'Start' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_StopVmsStudent()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'stop'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_stopVmsStudent()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'stop'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          🛑 {{ startStopPauseResumeDefaultVms_current_action === 'stop' ? 'Stopping' : 'Stop' }}
+                          🛑 {{ current_action_startStopPauseResumeDefaultVms === 'stop' ? 'Stopping' : 'Stop' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'pause'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'pause'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          ⏸️ {{ startStopPauseResumeDefaultVms_current_action === 'pause' ? 'Pausing' : 'Pause' }}
+                          ⏸️ {{ current_action_startStopPauseResumeDefaultVms === 'pause' ? 'Pausing' : 'Pause' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent()" :disabled="loading">
-                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'resume'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent()" :disabled="loading">
+                        <span v-if="current_action_startStopPauseResumeDefaultVms === 'resume'"
                           class="loading loading-spinner loading-xs"></span>
                         <span>
-                          ▶️ {{ startStopPauseResumeDefaultVms_current_action === 'resume' ? 'Resuming' : 'Resume' }}
+                          ▶️ {{ current_action_startStopPauseResumeDefaultVms === 'resume' ? 'Resuming' : 'Resume' }}
                         </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
-                        @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent()" :disabled="loading">
-                        <span v-if="deleteVms_current_action === 'delete'"
+                        @click="handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent()" :disabled="loading">
+                        <span v-if="current_action_deleteDefaultVms === 'delete'"
                           class="loading loading-spinner loading-xs"></span>
-                        <span>🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
+                        <span>
+                          🗑️ {{ current_action_deleteDefaultVms === 'delete' ? 'deleting' : 'Delete' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotStudent()"
+                        :disabled="loading">
+                        <span v-if="current_action_snapshotCreateDefaultVms === 'vm_snapshot_create'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          💾 {{ current_action_snapshotCreateDefaultVms === 'vm_snapshot_create' ? 'snapshoting' :
+                            'Snapshot' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotStudent()"
+                        :disabled="loading">
+                        <span v-if="current_action_snapshotRevertDefaultVms === 'vm_snapshot_revert'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ↩️ {{ current_action_snapshotRevertDefaultVms === 'vm_snapshot_revert' ? 'reverting' :
+                            'Revert' }}
+                        </span>
                       </button>
                     </li>
                   </ul>
@@ -443,16 +562,24 @@ const handleDragLeave = (event) => {
                 {{ error }}
               </p> -->
 
-              <p v-if="createVms_error" class="m-4 p-4  bg-red-500 text-white  ">
-                {{ createVms_error }}
+              <p v-if="error_startStopPauseResumeDefaultVms" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ error_startStopPauseResumeDefaultVms }}
               </p>
 
-              <p v-if="startStopPauseResumeDefaultVms_error" class="m-4 p-4  bg-red-500 text-white  ">
-                {{ startStopPauseResumeDefaultVms_error }}
+              <p v-if="error_deleteDefaultVms" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ error_deleteDefaultVms }}
               </p>
 
-              <p v-if="deleteVms_error" class="m-4 p-4  bg-red-500 text-white  ">
-                {{ deleteVms_error }}
+              <p v-if="error_createDefaultVms" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ error_createDefaultVms }}
+              </p>
+
+              <p v-if="error_snapshotRevertDefaultVms" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ error_snapshotRevertDefaultVms }}
+              </p>
+
+              <p v-if="error_snapshotCreateDefaultVms" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ error_snapshotCreateDefaultVms }}
               </p>
 
             </ul>
