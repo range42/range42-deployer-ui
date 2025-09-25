@@ -28,6 +28,7 @@ import { useProjectStore } from '../stores/projectStore'
 ////
 
 import { useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/startStopPauseResumeVms'
+import { useBundleCoreProxmoxConfigureDefaultVmsTarget_delete } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/delete'
 
 ////
 
@@ -79,10 +80,22 @@ const {
   handleBundleCoreProxmoxConfigureDefault_StopVmsStudent,
   handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent,
   handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent,
-  current_action,
-  loading,
-  error
+  current_action: startStopPauseResumeDefaultVms_current_action,
+  loading: startStopPauseResumeDefaultVms_loading,
+  error: startStopPauseResumeDefaultVms_error,
 } = useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume()
+
+const {
+  // useBundleCoreProxmoxConfigureDefaultVmsTarget_delete,
+  //
+  handleBundleCoreProxmoxConfigureDefault_DeleteVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_DeleteVmsVuln,
+  //
+  current_action: deleteVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
+  loading: deleteVms_loading,
+  error: deleteVms_error,
+} = useBundleCoreProxmoxConfigureDefaultVmsTarget_delete()
 
 ////
 
@@ -191,42 +204,61 @@ const handleDragLeave = (event) => {
 
               <li>
                 <details>
-                  <summary> ⚡ Vulnerable Virtual Machines </summary>
-                  <ul class="mt-2 space-y-2">
+                  <summary> ⚡ Vulnerable Virtual Machines (default) </summary>
+                  <!-- <ul class="mt-2 space-y-2 items-start text-left"> -->
+                  <ul class="mt-1 space-y-1 flex flex-col items-start">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StartVmsVuln()" :disabled="loading">
-                        <span v-if="current_action === 'start'" class="loading loading-spinner loading-xs"></span>
-                        <span>🟢 {{ current_action === 'start' ? 'Starting' : 'Start' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          🟢 {{ startStopPauseResumeDefaultVms_current_action === 'start' ? 'Starting' : 'Start' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StopVmsVuln()" :disabled="loading">
-                        <span v-if="current_action === 'stop'" class="loading loading-spinner loading-xs"></span>
-                        <span>🛑 {{ current_action === 'stop' ? 'Stopping' : 'Stop' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'stop'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          🛑 {{ startStopPauseResumeDefaultVms_current_action === 'stop' ? 'Stopping' : 'Stop' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln()" :disabled="loading">
-                        <span v-if="current_action === 'pause'" class="loading loading-spinner loading-xs"></span>
-                        <span>⏸️ {{ current_action === 'pause' ? 'Pausing' : 'Pause' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'pause'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ⏸️ {{ startStopPauseResumeDefaultVms_current_action === 'pause' ? 'Pausing' : 'Pause' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln()" :disabled="loading">
-                        <span v-if="current_action === 'resume'" class="loading loading-spinner loading-xs"></span>
-                        <span>▶️ {{ current_action === 'resume' ? 'Resuming' : 'Resume' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'resume'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ▶️ {{ startStopPauseResumeDefaultVms_current_action === 'resume' ? 'Resuming' : 'Resume' }}
+                        </span>
+                      </button>
+                    </li>
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsVuln()" :disabled="loading">
+                        <span v-if="deleteVms_current_action === 'delete'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
                       </button>
                     </li>
                   </ul>
-
-
                 </details>
               </li>
 
@@ -236,37 +268,58 @@ const handleDragLeave = (event) => {
 
               <li>
                 <details>
-                  <summary> ⚡ Admin Virtual Machines </summary>
+                  <summary> ⚡ Admin Virtual Machines (default)</summary>
                   <ul class="mt-2 space-y-2">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin()" :disabled="loading">
-                        <span v-if="current_action === 'start'" class="loading loading-spinner loading-xs"></span>
-                        <span>🟢 {{ current_action === 'start' ? 'Starting' : 'Start' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          🟢 {{ startStopPauseResumeDefaultVms_current_action === 'start' ? 'Starting' : 'Start' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin()" :disabled="loading">
-                        <span v-if="current_action === 'stop'" class="loading loading-spinner loading-xs"></span>
-                        <span>🛑 {{ current_action === 'stop' ? 'Stopping' : 'Stop' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'stop'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          🛑 {{ startStopPauseResumeDefaultVms_current_action === 'stop' ? 'Stopping' : 'Stop' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin()" :disabled="loading">
-                        <span v-if="current_action === 'pause'" class="loading loading-spinner loading-xs"></span>
-                        <span>⏸️ {{ current_action === 'pause' ? 'Pausing' : 'Pause' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'pause'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ⏸️ {{ startStopPauseResumeDefaultVms_current_action === 'pause' ? 'Pausing' : 'Pause' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin()" :disabled="loading">
-                        <span v-if="current_action === 'resume'" class="loading loading-spinner loading-xs"></span>
-                        <span>▶️ {{ current_action === 'resume' ? 'Resuming' : 'Resume' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'resume'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ▶️ {{ startStopPauseResumeDefaultVms_current_action === 'resume' ? 'Resuming' : 'Resume' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsAdmin()" :disabled="loading">
+                        <span v-if="deleteVms_current_action === 'delete'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
                       </button>
                     </li>
                   </ul>
@@ -279,37 +332,58 @@ const handleDragLeave = (event) => {
 
               <li>
                 <details>
-                  <summary> ⚡ Student Virtual Machines </summary>
+                  <summary> ⚡ Student Virtual Machines (default) </summary>
                   <ul class="mt-2 space-y-2">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StartVmsStudent()" :disabled="loading">
-                        <span v-if="current_action === 'start'" class="loading loading-spinner loading-xs"></span>
-                        <span>🟢 {{ current_action === 'start' ? 'Starting' : 'Start' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          🟢 {{ startStopPauseResumeDefaultVms_current_action === 'start' ? 'Starting' : 'Start' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StopVmsStudent()" :disabled="loading">
-                        <span v-if="current_action === 'stop'" class="loading loading-spinner loading-xs"></span>
-                        <span>🛑 {{ current_action === 'stop' ? 'Stopping' : 'Stop' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'stop'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          🛑 {{ startStopPauseResumeDefaultVms_current_action === 'stop' ? 'Stopping' : 'Stop' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent()" :disabled="loading">
-                        <span v-if="current_action === 'pause'" class="loading loading-spinner loading-xs"></span>
-                        <span>⏸️ {{ current_action === 'pause' ? 'Pausing' : 'Pause' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'pause'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ⏸️ {{ startStopPauseResumeDefaultVms_current_action === 'pause' ? 'Pausing' : 'Pause' }}
+                        </span>
                       </button>
                     </li>
 
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent()" :disabled="loading">
-                        <span v-if="current_action === 'resume'" class="loading loading-spinner loading-xs"></span>
-                        <span>▶️ {{ current_action === 'resume' ? 'Resuming' : 'Resume' }}</span>
+                        <span v-if="startStopPauseResumeDefaultVms_current_action === 'resume'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          ▶️ {{ startStopPauseResumeDefaultVms_current_action === 'resume' ? 'Resuming' : 'Resume' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent()" :disabled="loading">
+                        <span v-if="deleteVms_current_action === 'delete'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>▶🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
                       </button>
                     </li>
                   </ul>
