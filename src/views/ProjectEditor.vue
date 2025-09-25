@@ -29,6 +29,7 @@ import { useProjectStore } from '../stores/projectStore'
 
 import { useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/startStopPauseResumeVms'
 import { useBundleCoreProxmoxConfigureDefaultVmsTarget_delete } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/delete'
+import { useBundleCoreProxmoxConfigureDefault_CreateTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/create'
 
 ////
 
@@ -96,6 +97,19 @@ const {
   loading: deleteVms_loading,
   error: deleteVms_error,
 } = useBundleCoreProxmoxConfigureDefaultVmsTarget_delete()
+
+const {
+
+  // useBundleCoreProxmoxConfigureDefault_CreateTargetVms,
+  //
+  handleBundleCoreProxmoxConfigureDefault_CreateVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_CreateVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_CreateVmsStudent,
+  //
+  current_action, createVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
+  loading: createVms_loading,
+  error: createVms_error,
+} = useBundleCoreProxmoxConfigureDefault_CreateTargetVms()
 
 ////
 
@@ -209,6 +223,17 @@ const handleDragLeave = (event) => {
                   <ul class="mt-1 space-y-1 flex flex-col items-start">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_CreateVmsVuln()" :disabled="loading">
+                        <span v-if="createVms_current_action === 'create'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          📦 {{ createVms_current_action === 'create' ? 'Creating' : 'Create' }}
+                        </span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StartVmsVuln()" :disabled="loading">
                         <span v-if="startStopPauseResumeDefaultVms_current_action === 'start'"
                           class="loading loading-spinner loading-xs"></span>
@@ -269,7 +294,19 @@ const handleDragLeave = (event) => {
               <li>
                 <details>
                   <summary> ⚡ Admin Virtual Machines (default)</summary>
-                  <ul class="mt-2 space-y-2">
+                  <!-- <ul class="mt-2 space-y-2"> -->
+                  <ul class="mt-1 space-y-1 flex flex-col items-start">
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_CreateVmsAdmin()" :disabled="loading">
+                        <span v-if="createVms_current_action === 'create'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          📦 {{ createVms_current_action === 'create' ? 'Creating' : 'Create' }}
+                        </span>
+                      </button>
+                    </li>
+
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin()" :disabled="loading">
@@ -333,7 +370,19 @@ const handleDragLeave = (event) => {
               <li>
                 <details>
                   <summary> ⚡ Student Virtual Machines (default) </summary>
-                  <ul class="mt-2 space-y-2">
+                  <!-- <ul class="mt-2 space-y-2"> -->
+                  <ul class="mt-1 space-y-1 flex flex-col items-start">
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_CreateVmsStudent()" :disabled="loading">
+                        <span v-if="createVms_current_action === 'create'"
+                          class="loading loading-spinner loading-xs"></span>
+                        <span>
+                          📦 {{ createVms_current_action === 'create' ? 'Creating' : 'Create' }}
+                        </span>
+                      </button>
+                    </li>
+
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
                         @click="handleBundleCoreProxmoxConfigureDefault_StartVmsStudent()" :disabled="loading">
@@ -383,15 +432,27 @@ const handleDragLeave = (event) => {
                         @click="handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent()" :disabled="loading">
                         <span v-if="deleteVms_current_action === 'delete'"
                           class="loading loading-spinner loading-xs"></span>
-                        <span>▶🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
+                        <span>🗑️ {{ deleteVms_current_action === 'delete' ? 'deleting' : 'Delete' }}</span>
                       </button>
                     </li>
                   </ul>
                 </details>
               </li>
 
-              <p v-if="error" class="m-4 p-4  bg-red-500 text-white  ">
+              <!-- <p v-if="error" class="m-4 p-4  bg-red-500 text-white  ">
                 {{ error }}
+              </p> -->
+
+              <p v-if="createVms_error" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ createVms_error }}
+              </p>
+
+              <p v-if="startStopPauseResumeDefaultVms_error" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ startStopPauseResumeDefaultVms_error }}
+              </p>
+
+              <p v-if="deleteVms_error" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ deleteVms_error }}
               </p>
 
             </ul>
