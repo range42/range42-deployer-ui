@@ -24,6 +24,13 @@ import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
 
+
+////
+
+import { useBundleCoreProxmoxConfigureDefaultVmsTarget } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultStartVmsVuln'
+
+////
+
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -51,6 +58,33 @@ const currentProject = ref(null)
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
+
+
+////
+
+const {
+  // useBundleCoreProxmoxConfigureDefaultVmsTarget,
+  //
+  handleBundleCoreProxmoxConfigureDefault_StartVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_StopVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln,
+  handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln,
+  //
+  handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin,
+  handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin,
+  //
+  handleBundleCoreProxmoxConfigureDefault_StartVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_StopVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent,
+  handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent,
+  current_action,
+  loading,
+  error
+} = useBundleCoreProxmoxConfigureDefaultVmsTarget()
+
+////
 
 onMounted(() => {
   const project = projectStore.getProject(route.params.id)
@@ -121,7 +155,8 @@ const handleDragLeave = (event) => {
           <div class="navbar-start">
             <label for="drawer-toggle" class="btn btn-square btn-ghost lg:hidden">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16">
+                </path>
               </svg>
             </label>
             <button class="btn btn-ghost" @click="goBack">
@@ -143,27 +178,158 @@ const handleDragLeave = (event) => {
               </ul>
             </div>
           </div>
+
+
+          <div class="dropdown dropdown-end" :class="{ 'dropdown-open': loading || !!error }">
+            <label tabindex="0" class="btn btn-ghost">🛠</label>
+
+            <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-200">
+
+              <!-- ---------------------------------- --------------------------- ---------------------------------- -->
+              <!-- ---------------------------------- VULNERABLE VIRTUAL MACHINES ---------------------------------- -->
+              <!-- ---------------------------------- --------------------------- ---------------------------------- -->
+
+              <li>
+                <details>
+                  <summary>Vulnerable Virtual Machines </summary>
+                  <ul class="mt-2 space-y-2">
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_StartVmsVuln()" :disabled="loading">
+                        <span v-if="current_action === 'start'" class="loading loading-spinner loading-xs"></span>
+                        <span>🟢 {{ current_action === 'start' ? 'Starting' : 'Start' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_StopVmsVuln()" :disabled="loading">
+                        <span v-if="current_action === 'stop'" class="loading loading-spinner loading-xs"></span>
+                        <span>🛑 {{ current_action === 'stop' ? 'Stopping' : 'Stop' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln()" :disabled="loading">
+                        <span v-if="current_action === 'pause'" class="loading loading-spinner loading-xs"></span>
+                        <span>⏸️ {{ current_action === 'pause' ? 'Pausing' : 'Pause' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln()" :disabled="loading">
+                        <span v-if="current_action === 'resume'" class="loading loading-spinner loading-xs"></span>
+                        <span>▶️ {{ current_action === 'resume' ? 'Resuming' : 'Resume' }}</span>
+                      </button>
+                    </li>
+                  </ul>
+
+
+                </details>
+              </li>
+
+              <!-- ---------------------------------- ---------------------- ---------------------------------- -->
+              <!-- ---------------------------------- ADMIN VIRTUAL MACHINES ---------------------------------- -->
+              <!-- ---------------------------------- ---------------------- ---------------------------------- -->
+
+              <li>
+                <details>
+                  <summary>Admin Virtual Machines </summary>
+                  <ul class="mt-2 space-y-2">
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action === 'start'" class="loading loading-spinner loading-xs"></span>
+                        <span>🟢 {{ current_action === 'start' ? 'Starting' : 'Start' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action === 'stop'" class="loading loading-spinner loading-xs"></span>
+                        <span>🛑 {{ current_action === 'stop' ? 'Stopping' : 'Stop' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action === 'pause'" class="loading loading-spinner loading-xs"></span>
+                        <span>⏸️ {{ current_action === 'pause' ? 'Pausing' : 'Pause' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin()" :disabled="loading">
+                        <span v-if="current_action === 'resume'" class="loading loading-spinner loading-xs"></span>
+                        <span>▶️ {{ current_action === 'resume' ? 'Resuming' : 'Resume' }}</span>
+                      </button>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+
+              <!-- ---------------------------------- ------------------------ ---------------------------------- -->
+              <!-- ---------------------------------- STUDENT VIRTUAL MACHINES ---------------------------------- -->
+              <!-- ---------------------------------- ------------------------ ---------------------------------- -->
+
+              <li>
+                <details>
+                  <summary>Student Virtual Machines </summary>
+                  <ul class="mt-2 space-y-2">
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_StartVmsStudent()" :disabled="loading">
+                        <span v-if="current_action === 'start'" class="loading loading-spinner loading-xs"></span>
+                        <span>🟢 {{ current_action === 'start' ? 'Starting' : 'Start' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_StopVmsStudent()" :disabled="loading">
+                        <span v-if="current_action === 'stop'" class="loading loading-spinner loading-xs"></span>
+                        <span>🛑 {{ current_action === 'stop' ? 'Stopping' : 'Stop' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent()" :disabled="loading">
+                        <span v-if="current_action === 'pause'" class="loading loading-spinner loading-xs"></span>
+                        <span>⏸️ {{ current_action === 'pause' ? 'Pausing' : 'Pause' }}</span>
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="btn btn-ghost inline-flex items-center gap-2"
+                        @click="handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent()" :disabled="loading">
+                        <span v-if="current_action === 'resume'" class="loading loading-spinner loading-xs"></span>
+                        <span>▶️ {{ current_action === 'resume' ? 'Resuming' : 'Resume' }}</span>
+                      </button>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+
+              <p v-if="error" class="m-4 p-4  bg-red-500 text-white  ">
+                {{ error }}
+              </p>
+
+            </ul>
+          </div>
         </div>
 
         <!-- VueFlow Canvas -->
-        <div 
-          class="flex-1 relative transition-colors duration-200"
-          :class="{ 'bg-primary bg-opacity-5': isDragOver }"
-          @drop="handleDrop"
-          @dragover="handleDragOver"
-          @dragleave="handleDragLeave"
-        >
-          <VueFlow
-            :nodes="nodes"
-            :edges="edges"
-            @connect="onConnect"
-            @node-click="handleNodeClick"
-            @nodes-change="onNodesChange"
-            @edges-change="onEdgesChange"
-            fit-view-on-init
-            elevate-edges-on-select
-            class="h-full w-full"
-          >
+        <div class="flex-1 relative transition-colors duration-200" :class="{ 'bg-primary bg-opacity-5': isDragOver }"
+          @drop="handleDrop" @dragover="handleDragOver" @dragleave="handleDragLeave">
+          <VueFlow :nodes="nodes" :edges="edges" @connect="onConnect" @node-click="handleNodeClick"
+            @nodes-change="onNodesChange" @edges-change="onEdgesChange" fit-view-on-init elevate-edges-on-select
+            class="h-full w-full">
             <Background />
             <Controls />
             <MiniMap />
@@ -212,13 +378,12 @@ const handleDragLeave = (event) => {
           </VueFlow>
 
           <!-- Drop Indicator -->
-          <div 
-            v-if="isDragOver" 
-            class="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
-          >
+          <div v-if="isDragOver" class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div class="alert alert-info max-w-md">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                class="stroke-current shrink-0 w-6 h-6">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               <span>Drop here to create component or inside a network zone</span>
             </div>
@@ -232,19 +397,10 @@ const handleDragLeave = (event) => {
       </div>
     </div>
 
-    <ConfigPanel
-      v-if="selectedNode && showConfigPanel"
-      :node="selectedNode"
-      @close="closeConfigPanel"
-      @update="updateNodeStatus"
-    />
-    <ExportModal 
-      :project="currentProject"
-      :visible="showExportModal"
-      :nodes="liveNodes"
-      :edges="liveEdges"
-      @close="showExportModal = false"
-    />
+    <ConfigPanel v-if="selectedNode && showConfigPanel" :node="selectedNode" @close="closeConfigPanel"
+      @update="updateNodeStatus" />
+    <ExportModal :project="currentProject" :visible="showExportModal" :nodes="liveNodes" :edges="liveEdges"
+      @close="showExportModal = false" />
   </div>
- 
+
 </template>
