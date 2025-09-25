@@ -1,6 +1,3 @@
-
-
-
 import { ref } from 'vue'
 
 
@@ -82,7 +79,7 @@ const DEFAULT_VMS: Record<string, any> = {
 
 // // // //
 
-export function useBundleCoreProxmoxConfigureDefault_CreateTargetVms() {
+export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms() {
 
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -108,7 +105,7 @@ export function useBundleCoreProxmoxConfigureDefault_CreateTargetVms() {
   }
 
   //
-  async function handleBundleCoreProxmoxConfigureDefaultCreate_VmsTarget(
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
     target_infrastructure_group: string,
     proxmoxNode: string = DEFAULT_NODE
   ) {
@@ -137,25 +134,25 @@ export function useBundleCoreProxmoxConfigureDefault_CreateTargetVms() {
 
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_CreateVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln(node = DEFAULT_NODE) {
 
-    return handleBundleCoreProxmoxConfigureDefaultCreate_VmsTarget(
+    return handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
       'vuln',
       node
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_CreateVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin(node = DEFAULT_NODE) {
 
-    return handleBundleCoreProxmoxConfigureDefaultCreate_VmsTarget(
+    return handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
       'admin',
       node
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_CreateVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent(node = DEFAULT_NODE) {
 
-    return handleBundleCoreProxmoxConfigureDefaultCreate_VmsTarget(
+    return handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
       'student',
       node
     )
@@ -164,11 +161,14 @@ export function useBundleCoreProxmoxConfigureDefault_CreateTargetVms() {
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
   return {
-    useBundleCoreProxmoxConfigureDefault_CreateTargetVms,
+    useBundleCoreProxmoxConfigureDefaultVms_createTargetVms,
     //
-    handleBundleCoreProxmoxConfigureDefault_CreateVmsVuln,
-    handleBundleCoreProxmoxConfigureDefault_CreateVmsAdmin,
-    handleBundleCoreProxmoxConfigureDefault_CreateVmsStudent,
+    handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin,
+    handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln,
+    handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent,
+
+
+
     //
     current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
     loading,

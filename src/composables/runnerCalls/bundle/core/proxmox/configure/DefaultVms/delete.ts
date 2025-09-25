@@ -9,7 +9,7 @@ const DEFAULT_NODE = 'px-testing'
 
 // // // //
 
-export function useBundleCoreProxmoxConfigureDefaultVmsTarget_delete() {
+export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms() {
 
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -36,7 +36,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_delete() {
   }
 
   //
-  async function handleBundleCoreProxmoxConfigureDefaultDelete_VmsTarget(
+  async function handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
     target_infrastructure_group: string,
     proxmoxNode: string = DEFAULT_NODE) {
 
@@ -64,25 +64,25 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_delete() {
 
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_DeleteVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln(node = DEFAULT_NODE) {
 
-    return handleBundleCoreProxmoxConfigureDefaultDelete_VmsTarget(
+    return handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
       'vuln',
       node
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_DeleteVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin(node = DEFAULT_NODE) {
 
-    return handleBundleCoreProxmoxConfigureDefaultDelete_VmsTarget(
+    return handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
       'admin',
       node
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent(node = DEFAULT_NODE) {
 
-    return handleBundleCoreProxmoxConfigureDefaultDelete_VmsTarget(
+    return handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
       'student',
       node
     )
@@ -91,11 +91,11 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_delete() {
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
   return {
-    useBundleCoreProxmoxConfigureDefaultVmsTarget_delete,
+    useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms,
     //
-    handleBundleCoreProxmoxConfigureDefault_DeleteVmsAdmin,
-    handleBundleCoreProxmoxConfigureDefault_DeleteVmsStudent,
-    handleBundleCoreProxmoxConfigureDefault_DeleteVmsVuln,
+    handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin,
+    handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent,
+    handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln,
     //
     current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
     loading,

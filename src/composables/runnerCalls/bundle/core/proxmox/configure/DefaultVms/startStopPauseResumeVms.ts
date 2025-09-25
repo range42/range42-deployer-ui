@@ -10,7 +10,9 @@ const DEFAULT_NODE = 'px-testing'
 
 // // // //
 
-export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume() {
+
+
+export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
 
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -65,7 +67,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
   }
 
 
-  async function handleBundleCoreProxmoxConfigureDefault_StartVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_startVmsVuln(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget(
       'start',
@@ -74,7 +76,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_StopVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_stopVmsVuln(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('stop',
       'vuln',
@@ -82,7 +84,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('pause',
       'vuln',
@@ -90,7 +92,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('resume',
       'vuln',
@@ -102,7 +104,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_startVmsAdmin(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('start',
       'admin',
@@ -110,7 +112,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('stop',
       'admin',
@@ -118,7 +120,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('pause',
       'admin',
@@ -126,7 +128,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('resume',
       'admin',
@@ -138,7 +140,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_StartVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_startVmsStudent(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('start',
       'student',
@@ -146,7 +148,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_StopVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_stopVmsStudent(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('stop',
       'student',
@@ -154,7 +156,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('pause',
       'student',
@@ -162,7 +164,7 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent(node = DEFAULT_NODE) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('resume',
       'student',
@@ -172,22 +174,22 @@ export function useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResu
 
 
   return {
-    useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume,
+    useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume,
     //
-    handleBundleCoreProxmoxConfigureDefault_StartVmsVuln,
-    handleBundleCoreProxmoxConfigureDefault_StopVmsVuln,
-    handleBundleCoreProxmoxConfigureDefault_PauseVmsVuln,
-    handleBundleCoreProxmoxConfigureDefault_ResumeVmsVuln,
+    handleBundleCoreProxmoxConfigureDefault_startVmsVuln,
+    handleBundleCoreProxmoxConfigureDefault_stopVmsVuln,
+    handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln,
+    handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln,
     //
-    handleBundleCoreProxmoxConfigureDefault_StartVmsAdmin,
-    handleBundleCoreProxmoxConfigureDefault_StopVmsAdmin,
-    handleBundleCoreProxmoxConfigureDefault_PauseVmsAdmin,
-    handleBundleCoreProxmoxConfigureDefault_ResumeVmsAdmin,
+    handleBundleCoreProxmoxConfigureDefault_startVmsAdmin,
+    handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin,
+    handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin,
+    handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin,
     //
-    handleBundleCoreProxmoxConfigureDefault_StartVmsStudent,
-    handleBundleCoreProxmoxConfigureDefault_StopVmsStudent,
-    handleBundleCoreProxmoxConfigureDefault_PauseVmsStudent,
-    handleBundleCoreProxmoxConfigureDefault_ResumeVmsStudent,
+    handleBundleCoreProxmoxConfigureDefault_startVmsStudent,
+    handleBundleCoreProxmoxConfigureDefault_stopVmsStudent,
+    handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent,
+    handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent,
     current_action,
     loading,
     error
