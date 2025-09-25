@@ -27,7 +27,7 @@ import { useProjectStore } from '../stores/projectStore'
 
 ////
 
-import { useBundleCoreProxmoxConfigureDefaultVmsTarget } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultStartVmsVuln'
+import { useBundleCoreProxmoxConfigureDefaultVmsTarget } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultStartVms'
 
 ////
 
