@@ -27,7 +27,7 @@ import { useProjectStore } from '../stores/projectStore'
 
 ////
 
-import { useBundleCoreProxmoxConfigureDefaultVmsTarget } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultStartVms'
+import { useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/startStopPauseResumeVms'
 
 ////
 
@@ -63,7 +63,7 @@ const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.leng
 ////
 
 const {
-  // useBundleCoreProxmoxConfigureDefaultVmsTarget,
+  // useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume,
   //
   handleBundleCoreProxmoxConfigureDefault_StartVmsVuln,
   handleBundleCoreProxmoxConfigureDefault_StopVmsVuln,
@@ -82,7 +82,7 @@ const {
   current_action,
   loading,
   error
-} = useBundleCoreProxmoxConfigureDefaultVmsTarget()
+} = useBundleCoreProxmoxConfigureDefaultVmsTarget_StartStopPauseResume()
 
 ////
 
@@ -191,7 +191,7 @@ const handleDragLeave = (event) => {
 
               <li>
                 <details>
-                  <summary>Vulnerable Virtual Machines </summary>
+                  <summary> ⚡ Vulnerable Virtual Machines </summary>
                   <ul class="mt-2 space-y-2">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
@@ -236,7 +236,7 @@ const handleDragLeave = (event) => {
 
               <li>
                 <details>
-                  <summary>Admin Virtual Machines </summary>
+                  <summary> ⚡ Admin Virtual Machines </summary>
                   <ul class="mt-2 space-y-2">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
@@ -279,7 +279,7 @@ const handleDragLeave = (event) => {
 
               <li>
                 <details>
-                  <summary>Student Virtual Machines </summary>
+                  <summary> ⚡ Student Virtual Machines </summary>
                   <ul class="mt-2 space-y-2">
                     <li>
                       <button class="btn btn-ghost inline-flex items-center gap-2"
