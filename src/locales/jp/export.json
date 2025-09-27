@@ -1,0 +1,38 @@
+{
+  "title": "トポロジーをエクスポート",
+  "subtitle": "topology.json を生成してダウンロード",
+  "steps": {
+    "generate": "生成",
+    "download": "ダウンロード"
+  },
+  "info": {
+    "title": "トポロジー JSON のみ",
+    "desc": "このエクスポートには、現在のキャンバスから構築された標準的な topology.json のみが含まれます。"
+  },
+  "empty": {
+    "title": "空のプロジェクト",
+    "desc": "このプロジェクトにはエクスポート可能なコンポーネントが含まれていません。"
+  },
+  "cta": {
+    "generate": "トポロジー JSON を生成",
+    "download": "topology.json をダウンロード"
+  },
+  "generating": "topology.json を生成中",
+  "failed": {
+    "title": "エクスポート失敗"
+  },
+  "success": {
+    "title": "トポロジーの準備完了！"
+  },
+  "errors": {
+    "title": "エクスポートエラー"
+  },
+  "stats": {
+    "nodes": "ノード",
+    "nodesDesc": "グラフノード",
+    "edges": "エッジ",
+    "edgesDesc": "接続",
+    "hsn": "ホスト／サービス／ネットワーク",
+    "breakdown": "内訳"
+  }
+}
