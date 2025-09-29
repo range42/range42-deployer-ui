@@ -14,7 +14,8 @@
 **RANGE42** is a modular cyber range platform designed for real-world readiness.
 We build, deploy, and document offensive, defensive, and hybrid cyber training environments using reproducible, infrastructure-as-code methodologies.
 
-## What we buildu
+## What we build
+
 - Proxmox-based cyber ranges with dynamic catalog 
 - Ansible roles for automated deployments (Wazuh, Kong, Docker, etc.)
 - Private APIs for range orchestration and telemetry
@@ -22,6 +23,7 @@ We build, deploy, and document offensive, defensive, and hybrid cyber training e
 - ...
 
 ## Repository Overview
+
 - **RANGE42 deployer UI** : A web interface to visually design infrastructure schemas and trigger deployments.
 - **RANGE42 deployer backend API** : Orchestrates deployments by executing playbooks and bundles from the catalog.
 - **RANGE42 catalog** : A collection of Ansible roles and Docker/Docker Compose stacks, forming deployable bundles.
@@ -37,12 +39,11 @@ We build, deploy, and document offensive, defensive, and hybrid cyber training e
 
 These repositories provide a modular and extensible platform to design, manage and deploy infrastructures automatically  either from the UI (coming soon) or from the CLI through the playbooks repository.
 
-
 # Repository Content
 
-**range42-deployer** is a web application designed to visually orchestrate and manage infrastructure through an intuitive interface powered by **VueFlow**. The primary goal of this project is to enable users to build, configure, and deploy complex infrastructure systems using a node-based visual editor.
+**range42-deployer-ui** is a web application designed to visually orchestrate and manage infrastructure through an intuitive interface powered by **VueFlow**. The primary goal of this project is to enable users to build, configure, and deploy complex infrastructure systems using a node-based visual editor.
 
-## 🔧 Node-Based Infrastructure Design
+## Node-Based Infrastructure Design
 
 Users interact with a canvas where each node represents a component of the infrastructure (e.g., networks, VMs, Docker containers). Each node's behavior and configuration depend on its type:
 
@@ -112,11 +113,9 @@ Development notes:
 Docs: see `docs/i18n-plan.md` for structure, conventions, and acceptance tests.
 
 
-
 ## Contributing
 
 To be defined.
-
 
 ## License
 
