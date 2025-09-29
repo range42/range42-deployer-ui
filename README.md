@@ -2,7 +2,8 @@
 # Table of Contents
 
 - [Project Overview](#Project-Overview)
-- [Repository Content](#Fpository-Content)
+- [Repository Content](#Repository-Content)
+- [Getting Started](#Getting-Started)
 - [Contributing](#Contributing)
 - [License](#License)
 
