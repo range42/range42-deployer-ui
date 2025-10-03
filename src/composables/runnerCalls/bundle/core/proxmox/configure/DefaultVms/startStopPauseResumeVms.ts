@@ -1,23 +1,32 @@
 
 
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useProxmoxSettings, normalizeProxmoxBaseUrl, DEFAULT_PROXMOX_BASE_DOMAIN } from '@/composables/useProxmoxSettings'
 
-
-const BASE = `http://127.0.0.1:8000/v0/admin/run/bundles/core/proxmox/configure/default`
-// const TARGET_INFRASTRUCTURE_GROUP = "vms" // vuln"
-const DEFAULT_NODE = 'px-testing'
+// Fallback constants (used only if project settings not configured)
+const FALLBACK_DOMAIN = DEFAULT_PROXMOX_BASE_DOMAIN
+const BASE_PATH = '/v0/admin/run/bundles/core/proxmox/configure/default'
+const FALLBACK_DEFAULT_NODE = 'px-testing'
 
 // // // //
 
 
 
-export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
+export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume(projectId?: any) {
 
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   const current_action = ref<null | 'start' | 'stop' | 'pause' | 'resume'>(null)
+
+  // Get project-specific settings
+  const proxmoxSettings = projectId ? useProxmoxSettings(projectId) : null
+  const baseDomain = computed(() => proxmoxSettings?.baseUrl?.value
+    ? normalizeProxmoxBaseUrl(proxmoxSettings.baseUrl.value)
+    : FALLBACK_DOMAIN)
+  const BASE = computed(() => `${baseDomain.value}${BASE_PATH}`)
+  const DEFAULT_NODE = computed(() => proxmoxSettings?.defaultNode?.value || FALLBACK_DEFAULT_NODE)
 
 
   //
@@ -42,16 +51,22 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
   async function handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget(
     action: string,
     target_infrastructure_group: string,
-    proxmoxNode: string = DEFAULT_NODE) {
+    proxmoxNode?: string) {
 
     loading.value = true
     error.value = null
     current_action.value = action as any
 
     try {
-      const current_endpoint = `${BASE}/${action}-vms-${target_infrastructure_group}`
+      // Check if Proxmox settings are configured
+      if (!proxmoxSettings?.isConfigured?.value) {
+        throw new Error('⚙️ Proxmox settings not configured. Please configure Base Domain and Default Node in project settings.')
+      }
 
-      return await post(current_endpoint, { as_json: true, proxmox_node: proxmoxNode })
+      const node = proxmoxNode || DEFAULT_NODE.value
+      const current_endpoint = `${BASE.value}/${action}-vms-${target_infrastructure_group}`
+
+      return await post(current_endpoint, { as_json: true, proxmox_node: node })
 
     } catch (e: any) {
 
@@ -67,7 +82,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
   }
 
 
-  async function handleBundleCoreProxmoxConfigureDefault_startVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_startVmsVuln(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget(
       'start',
@@ -76,7 +91,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_stopVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_stopVmsVuln(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('stop',
       'vuln',
@@ -84,7 +99,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('pause',
       'vuln',
@@ -92,7 +107,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('resume',
       'vuln',
@@ -104,7 +119,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_startVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_startVmsAdmin(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('start',
       'admin',
@@ -112,7 +127,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('stop',
       'admin',
@@ -120,7 +135,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('pause',
       'admin',
@@ -128,7 +143,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('resume',
       'admin',
@@ -140,7 +155,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_startVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_startVmsStudent(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('start',
       'student',
@@ -148,7 +163,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_stopVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_stopVmsStudent(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('stop',
       'student',
@@ -156,7 +171,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('pause',
       'student',
@@ -164,7 +179,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultStartStopPauseResume_VmsTarget('resume',
       'student',

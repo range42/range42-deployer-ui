@@ -1,20 +1,30 @@
 
 
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useProxmoxSettings, normalizeProxmoxBaseUrl, DEFAULT_PROXMOX_BASE_DOMAIN } from '@/composables/useProxmoxSettings'
 
-
-const BASE = `http://127.0.0.1:8000/v0/admin/run/bundles/core/proxmox/configure/default`
-const DEFAULT_NODE = 'px-testing'
+// Fallback constants (used only if project settings not configured)
+const FALLBACK_DOMAIN = DEFAULT_PROXMOX_BASE_DOMAIN
+const BASE_PATH = '/v0/admin/run/bundles/core/proxmox/configure/default'
+const FALLBACK_DEFAULT_NODE = 'px-testing'
 
 // // // //
 
-export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms() {
+export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms(projectId?: any) {
 
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   const current_action = ref<null | 'delete'>(null)
+
+  // Get project-specific settings
+  const proxmoxSettings = projectId ? useProxmoxSettings(projectId) : null
+  const baseDomain = computed(() => proxmoxSettings?.baseUrl?.value
+    ? normalizeProxmoxBaseUrl(proxmoxSettings.baseUrl.value)
+    : FALLBACK_DOMAIN)
+  const BASE = computed(() => `${baseDomain.value}${BASE_PATH}`)
+  const DEFAULT_NODE = computed(() => proxmoxSettings?.defaultNode?.value || FALLBACK_DEFAULT_NODE)
 
 
   //
@@ -38,16 +48,22 @@ export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms() {
   //
   async function handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
     target_infrastructure_group: string,
-    proxmoxNode: string = DEFAULT_NODE) {
+    proxmoxNode?: string) {
 
     loading.value = true
     error.value = null
     current_action.value = "delete" // as any
 
     try {
-      const current_endpoint = `${BASE}/delete-vms-${target_infrastructure_group}`
+      // Check if Proxmox settings are configured
+      if (!proxmoxSettings?.isConfigured?.value) {
+        throw new Error('⚙️ Proxmox settings not configured. Please configure Base Domain and Default Node in project settings.')
+      }
 
-      return await call_delete(current_endpoint, { as_json: true, proxmox_node: proxmoxNode })
+      const node = proxmoxNode || DEFAULT_NODE.value
+      const current_endpoint = `${BASE.value}/delete-vms-${target_infrastructure_group}`
+
+      return await call_delete(current_endpoint, { as_json: true, proxmox_node: node })
 
     } catch (e: any) {
 
@@ -64,7 +80,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms() {
 
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
       'vuln',
@@ -72,7 +88,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
       'admin',
@@ -80,7 +96,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultDelete_vmsTarget(
       'student',

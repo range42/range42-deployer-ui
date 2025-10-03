@@ -1,8 +1,10 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useProxmoxSettings, normalizeProxmoxBaseUrl, DEFAULT_PROXMOX_BASE_DOMAIN } from '@/composables/useProxmoxSettings'
 
-
-const BASE = `http://127.0.0.1:8000/v0/admin/run/bundles/core/proxmox/configure/default`
-const DEFAULT_NODE = 'px-testing'
+// Fallback constants (used only if project settings not configured)
+const FALLBACK_DOMAIN = DEFAULT_PROXMOX_BASE_DOMAIN
+const BASE_PATH = '/v0/admin/run/bundles/core/proxmox/configure/default'
+const FALLBACK_DEFAULT_NODE = 'px-testing'
 
 const DEFAULT_VMS: Record<string, any> = {
   // "proxmox_node": "px-testing",
@@ -79,12 +81,20 @@ const DEFAULT_VMS: Record<string, any> = {
 
 // // // //
 
-export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms() {
+export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms(projectId?: any) {
 
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   const current_action = ref<null | 'create'>(null)
+
+  // Get project-specific settings
+  const proxmoxSettings = projectId ? useProxmoxSettings(projectId) : null
+  const baseDomain = computed(() => proxmoxSettings?.baseUrl?.value
+    ? normalizeProxmoxBaseUrl(proxmoxSettings.baseUrl.value)
+    : FALLBACK_DOMAIN)
+  const BASE = computed(() => `${baseDomain.value}${BASE_PATH}`)
+  const DEFAULT_NODE = computed(() => proxmoxSettings?.defaultNode?.value || FALLBACK_DEFAULT_NODE)
 
   //
   async function call_post(url: string, payload: object) {
@@ -107,18 +117,23 @@ export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms() {
   //
   async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
     target_infrastructure_group: string,
-    proxmoxNode: string = DEFAULT_NODE
+    proxmoxNode?: string
   ) {
     loading.value = true
     error.value = null
     current_action.value = "create" //  as any
 
     try {
+      // Check if Proxmox settings are configured
+      if (!proxmoxSettings?.isConfigured?.value) {
+        throw new Error('⚙️ Proxmox settings not configured. Please configure Base Domain and Default Node in project settings.')
+      }
 
+      const node = proxmoxNode || DEFAULT_NODE.value
       const vms = DEFAULT_VMS[target_infrastructure_group]
-      const body = { as_json: true, proxmox_node: proxmoxNode, vms }
+      const body = { as_json: true, proxmox_node: node, vms }
 
-      return await call_post(`${BASE}/create-vms-${target_infrastructure_group}`, body)
+      return await call_post(`${BASE.value}/create-vms-${target_infrastructure_group}`, body)
 
     } catch (e: any) {
 
@@ -134,7 +149,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms() {
 
   // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // // //
 
-  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
       'vuln',
@@ -142,7 +157,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
       'admin',
@@ -150,7 +165,7 @@ export function useBundleCoreProxmoxConfigureDefaultVms_createTargetVms() {
     )
   }
 
-  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent(node = DEFAULT_NODE) {
+  async function handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent(node?: string) {
 
     return handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsTarget(
       'student',

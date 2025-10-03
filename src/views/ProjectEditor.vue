@@ -19,6 +19,7 @@ import InfraNodeDhcp from '../components/nodes/InfraNodeDhcp.vue'
 import InfraNodeLoadBalancer from '../components/nodes/InfraNodeLoadBalancer.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
+import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
@@ -61,6 +62,7 @@ const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable ||
 
 const showConfigPanel = ref(false)
 const showExportModal = ref(false)
+const showProxmoxSettings = ref(false)
 const currentProject = ref(null)
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
@@ -91,7 +93,7 @@ const {
   //
   loading: loading_startStopPauseResumeDefaultVms,
   error: error_startStopPauseResumeDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume()
+} = useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume(computed(() => currentProject.value?.id))
 
 const {
   //
@@ -105,7 +107,7 @@ const {
   current_action: current_action_deleteDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: loading_deleteDefaultVms,
   error: error_deleteDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms()
+} = useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms(computed(() => currentProject.value?.id))
 
 const {
   //
@@ -118,7 +120,7 @@ const {
   current_action: createVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: createVms_loading,
   error: error_createDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVms_createTargetVms()
+} = useBundleCoreProxmoxConfigureDefaultVms_createTargetVms(computed(() => currentProject.value?.id))
 
 const {
   //
@@ -131,7 +133,7 @@ const {
   current_action: current_action_snapshotRevertDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: loading_snapshotRevertDefaultVms,
   error: error_snapshotRevertDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms()
+} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms(computed(() => currentProject.value?.id))
 
 const {
   //
@@ -145,7 +147,25 @@ const {
   loading: loading_snapshotCreateDefaultVms,
   error: error_snapshotCreateDefaultVms,
 
-} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms()
+} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms(computed(() => currentProject.value?.id))
+
+////
+
+const loading = computed(() => {
+  return loading_startStopPauseResumeDefaultVms.value ||
+    loading_deleteDefaultVms.value ||
+    createVms_loading.value ||
+    loading_snapshotRevertDefaultVms.value ||
+    loading_snapshotCreateDefaultVms.value
+})
+
+const error = computed(() => {
+  return error_startStopPauseResumeDefaultVms.value ||
+    error_deleteDefaultVms.value ||
+    error_createDefaultVms.value ||
+    error_snapshotRevertDefaultVms.value ||
+    error_snapshotCreateDefaultVms.value
+})
 
 ////
 
@@ -205,6 +225,14 @@ const handleDragOver = (event) => {
 const handleDragLeave = (event) => {
   onDragLeave(event)
 }
+
+const openProxmoxSettings = () => {
+  showProxmoxSettings.value = true
+}
+
+const closeProxmoxSettings = () => {
+  showProxmoxSettings.value = false
+}
 </script>
 
 <template>
@@ -236,6 +264,11 @@ const handleDragLeave = (event) => {
             <div class="dropdown dropdown-end">
               <label tabindex="0" class="btn btn-ghost">⚙️</label>
               <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
+                <li>
+                  <button type="button" class="btn btn-ghost justify-start" @click="openProxmoxSettings">
+                    🔧 Proxmox Settings
+                  </button>
+                </li>
                 <li><a @click="showExportModal = true">🧭 Export Topology</a></li>
                 <li><a>🔍 Validate Configuration</a></li>
               </ul>
@@ -663,6 +696,13 @@ const handleDragLeave = (event) => {
       @update="updateNodeStatus" />
     <ExportModal :project="currentProject" :visible="showExportModal" :nodes="liveNodes" :edges="liveEdges"
       @close="showExportModal = false" />
+    <ProxmoxSettingsModal
+      v-if="currentProject"
+      :visible="showProxmoxSettings"
+      :project-id="currentProject.id"
+      @close="closeProxmoxSettings"
+      @saved="closeProxmoxSettings"
+    />
   </div>
 
 </template>
