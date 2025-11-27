@@ -6,7 +6,7 @@ import { SUPPORTED_LOCALES } from '@/i18n/supported.js'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 
 const props = defineProps(['project'])
-const emit = defineEmits(['openExport'])
+const emit = defineEmits(['openExport', 'openDeploy', 'openValidate'])
 const { onDragStart } = useDragAndDrop()
 
 const currentProject = computed(() => props.project)
@@ -23,7 +23,18 @@ const changeLocale = async () => {
 
 const infrastructureComponents = [
   {
-    category: 'Compute & Virtualization',
+    category: 'Organization',
+    items: [
+      {
+        type: 'group',
+        label: 'Group',
+        icon: '📁',
+        description: 'Container for organizing infrastructure'
+      }
+    ]
+  },
+  {
+    category: 'Compute',
     items: [
       {
         type: 'vm',
@@ -32,27 +43,39 @@ const infrastructureComponents = [
         description: 'Deploy a virtual machine instance'
       },
       {
+        type: 'lxc',
+        label: 'LXC Container',
+        icon: '📦',
+        description: 'Lightweight Linux container'
+      },
+      {
         type: 'docker',
-        label: 'Container',
+        label: 'Docker Container',
         icon: '🐳',
         description: 'Deploy a containerized application'
       }
     ]
   },
   {
-    category: 'Network Infrastructure',
+    category: 'Network',
     items: [
       {
         type: 'network-segment',
-        label: 'Network Segment',
+        label: 'Network',
         icon: '🌐',
-        description: 'Create isolated network segment'
+        description: 'Network zone / bridge (vmbr*)'
+      },
+      {
+        type: 'edge-firewall',
+        label: 'Firewall Appliance',
+        icon: '🛡️',
+        description: 'pfSense, OPNsense, VyOS, etc.'
       },
       {
         type: 'router',
         label: 'Router',
         icon: '🔄',
-        description: 'Layer 3 routing device'
+        description: 'Network routing device'
       },
       {
         type: 'switch',
@@ -62,14 +85,14 @@ const infrastructureComponents = [
       },
       {
         type: 'firewall',
-        label: 'Firewall',
+        label: 'Firewall Rules',
         icon: '🔥',
-        description: 'Network security appliance'
+        description: 'Proxmox firewall configuration'
       }
     ]
   },
   {
-    category: 'Network Services',
+    category: 'Services',
     items: [
       {
         type: 'dns',
@@ -95,6 +118,14 @@ const infrastructureComponents = [
 
 const openExport = () => {
   emit('openExport')
+}
+
+const openDeploy = () => {
+  emit('openDeploy')
+}
+
+const openValidate = () => {
+  emit('openValidate')
 }
 </script>
 
@@ -190,14 +221,14 @@ const openExport = () => {
       </h3>
       
       <div class="flex flex-col space-y-2">
+        <button class="btn btn-sm btn-primary" @click="openDeploy">
+          🚀 {{ t('sidebar.quickActions.deploy') || 'Deploy' }}
+        </button>
+        <button class="btn btn-sm btn-outline" @click="openValidate">
+          🔍 {{ t('sidebar.quickActions.validate') || 'Validate' }}
+        </button>
         <button class="btn btn-sm btn-outline" @click="openExport">
           🧭 {{ t('sidebar.quickActions.export') }}
-        </button>
-        <button class="btn btn-sm btn-outline" disabled>
-          🚀 {{ t('sidebar.quickActions.deploySoon') }}
-        </button>
-        <button class="btn btn-sm btn-outline" disabled>
-          🔍 {{ t('sidebar.quickActions.validateSoon') }}
         </button>
       </div>
     </div>

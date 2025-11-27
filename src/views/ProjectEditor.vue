@@ -17,11 +17,18 @@ import InfraNodeFirewall from '../components/nodes/InfraNodeFirewall.vue'
 import InfraNodeDns from '../components/nodes/InfraNodeDns.vue'
 import InfraNodeDhcp from '../components/nodes/InfraNodeDhcp.vue'
 import InfraNodeLoadBalancer from '../components/nodes/InfraNodeLoadBalancer.vue'
+// Additional node components
+import InfraNodeGroup from '../components/nodes/InfraNodeGroup.vue'
+import InfraNodeLxc from '../components/nodes/InfraNodeLxc.vue'
+import InfraNodeEdgeFirewall from '../components/nodes/InfraNodeEdgeFirewall.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
 import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
+import DeploymentPanel from '../components/DeploymentPanel.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
+import { useDeployment } from '../composables/useDeployment'
+import { useProxmoxSettings } from '../composables/useProxmoxSettings'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
 
@@ -63,7 +70,13 @@ const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable ||
 const showConfigPanel = ref(false)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
+const showDeploymentPanel = ref(false)
+const validationErrors = ref([])
 const currentProject = ref(null)
+
+// Deployment composable
+const deployment = useDeployment()
+const proxmoxSettings = useProxmoxSettings()
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
@@ -232,6 +245,57 @@ const openProxmoxSettings = () => {
 
 const closeProxmoxSettings = () => {
   showProxmoxSettings.value = false
+}
+
+// Deployment handlers
+const handleOpenDeploy = () => {
+  // Get Proxmox settings for current project
+  const projectId = route.params.id
+  const settings = proxmoxSettings.getProjectSettings(projectId)
+  
+  if (!settings?.baseUrl || !settings?.defaultNode) {
+    // Show settings modal if not configured
+    alert('Please configure Proxmox settings first (click ⚙️ → Proxmox Settings)')
+    showProxmoxSettings.value = true
+    return
+  }
+  
+  // Prepare deployment
+  const result = deployment.deploy(
+    liveNodes.value,
+    liveEdges.value,
+    {
+      proxmoxNode: settings.defaultNode,
+      baseUrl: settings.baseUrl,
+      projectId: projectId,
+      projectName: currentProject.value?.name,
+      startVmId: 100,
+    }
+  )
+  
+  if (!result.success) {
+    validationErrors.value = result.errors
+    alert(`Validation failed:\n${result.errors.map(e => `- ${e.message}`).join('\n')}`)
+    return
+  }
+  
+  showDeploymentPanel.value = true
+}
+
+const handleOpenValidate = () => {
+  const result = deployment.validateTopology(liveNodes.value, liveEdges.value)
+  
+  if (result.valid) {
+    alert('✅ Topology is valid!\n\nNo errors found.')
+  } else {
+    const errorList = result.errors.map(e => `❌ ${e.message}`).join('\n')
+    const warningList = result.warnings.map(w => `⚠️ ${w.message}`).join('\n')
+    alert(`Validation Results:\n\n${errorList}\n\n${warningList || 'No warnings'}`)
+  }
+}
+
+const closeDeploymentPanel = () => {
+  showDeploymentPanel.value = false
 }
 </script>
 
@@ -670,6 +734,21 @@ const closeProxmoxSettings = () => {
             <template #node-loadbalancer="props">
               <InfraNodeLoadBalancer v-bind="props" />
             </template>
+
+            <!-- Container/Group Template -->
+            <template #node-group="props">
+              <InfraNodeGroup v-bind="props" />
+            </template>
+
+            <!-- LXC Container Template -->
+            <template #node-lxc="props">
+              <InfraNodeLxc v-bind="props" />
+            </template>
+
+            <!-- Firewall Appliance Template -->
+            <template #node-edge-firewall="props">
+              <InfraNodeEdgeFirewall v-bind="props" />
+            </template>
           </VueFlow>
 
           <!-- Drop Indicator -->
@@ -688,7 +767,13 @@ const closeProxmoxSettings = () => {
 
       <div class="drawer-side">
         <label for="drawer-toggle" class="drawer-overlay"></label>
-        <Sidebar class="min-h-full" :project="currentProject" @openExport="showExportModal = true" />
+        <Sidebar 
+          class="min-h-full" 
+          :project="currentProject" 
+          @openExport="showExportModal = true"
+          @openDeploy="handleOpenDeploy"
+          @openValidate="handleOpenValidate"
+        />
       </div>
     </div>
 
@@ -702,6 +787,12 @@ const closeProxmoxSettings = () => {
       :project-id="currentProject.id"
       @close="closeProxmoxSettings"
       @saved="closeProxmoxSettings"
+    />
+    
+    <!-- Deployment Panel -->
+    <DeploymentPanel
+      v-if="showDeploymentPanel"
+      @close="closeDeploymentPanel"
     />
   </div>
 

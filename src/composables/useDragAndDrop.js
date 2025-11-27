@@ -58,29 +58,35 @@ export function useDragAndDrop() {
     document.removeEventListener('dragend', onDragEnd)
   }
 
+  // Container node types that can hold child nodes
+  const containerTypes = ['network-segment', 'group']
+
   // Find potential parent node at drop position
   const findParentNodeAtPosition = (position) => {
     const nodes = getNodes.value
     
-    for (const node of nodes) {
-      if (node.type === 'network-segment' && node.computedPosition && node.dimensions) {
-        const nodeRect = {
-          x: node.computedPosition.x,
-          y: node.computedPosition.y,
-          width: node.dimensions.width,
-          height: node.dimensions.height
-        }
-        
-        if (position.x >= nodeRect.x && 
-            position.x <= nodeRect.x + nodeRect.width &&
-            position.y >= nodeRect.y && 
-            position.y <= nodeRect.y + nodeRect.height) {
-          return {
-            parentNode: node,
-            relativePosition: {
-              x: position.x - nodeRect.x,
-              y: position.y - nodeRect.y
-            }
+    // Sort by z-index/layer - prefer smaller containers over larger ones
+    const containerNodes = nodes
+      .filter(n => containerTypes.includes(n.type) && n.computedPosition && n.dimensions)
+      .sort((a, b) => (a.dimensions.width * a.dimensions.height) - (b.dimensions.width * b.dimensions.height))
+    
+    for (const node of containerNodes) {
+      const nodeRect = {
+        x: node.computedPosition.x,
+        y: node.computedPosition.y,
+        width: node.dimensions.width,
+        height: node.dimensions.height
+      }
+      
+      if (position.x >= nodeRect.x && 
+          position.x <= nodeRect.x + nodeRect.width &&
+          position.y >= nodeRect.y && 
+          position.y <= nodeRect.y + nodeRect.height) {
+        return {
+          parentNode: node,
+          relativePosition: {
+            x: position.x - nodeRect.x,
+            y: position.y - nodeRect.y
           }
         }
       }
@@ -116,7 +122,9 @@ export function useDragAndDrop() {
     }
 
     let newNode
-    if (parentInfo && draggedType.value !== 'network-segment') {
+    const isContainerType = containerTypes.includes(draggedType.value)
+    
+    if (parentInfo && !isContainerType) {
       newNode = {
         ...baseNode,
         position: parentInfo.relativePosition,
@@ -132,11 +140,11 @@ export function useDragAndDrop() {
         position,
       }
 
-      if (draggedType.value === 'network-segment') {
-        newNode.style = {
-          width: '300px',
-          height: '200px',
-        }
+      // Set default size for container types
+      if (isContainerType) {
+        newNode.style = draggedType.value === 'group' 
+          ? { width: '450px', height: '350px' }
+          : { width: '300px', height: '200px' }
       }
     }
 
@@ -265,6 +273,49 @@ export function useDragAndDrop() {
           ports: '80:80',
           env: '',
           network: 'bridge',
+        },
+      },
+      // Generic container/group for organizing infrastructure
+      group: {
+        label: 'Group',
+        defaultConfig: {
+          name: '',
+          description: '',
+          prefix: '',
+          resourcePool: '',
+          tags: [],
+        },
+      },
+      // LXC container
+      lxc: {
+        label: 'LXC Container',
+        defaultConfig: {
+          name: '',
+          hostname: '',
+          template: 'ubuntu-22.04-standard',
+          cores: 1,
+          memory: 512,
+          rootfsSize: '8G',
+          bridge: 'vmbr0',
+          unprivileged: true,
+        },
+      },
+      // Edge firewall (pfSense, OPNsense, etc.)
+      'edge-firewall': {
+        label: 'Edge Firewall',
+        defaultConfig: {
+          name: '',
+          applianceType: 'pfsense',
+          template: '',
+          cpu: 2,
+          memory: 2048,
+          interfaces: [
+            { name: 'WAN', bridge: '', address: '' },
+            { name: 'LAN', bridge: '', address: '' },
+          ],
+          natEnabled: true,
+          vpnEnabled: false,
+          idsEnabled: false,
         },
       },
     }

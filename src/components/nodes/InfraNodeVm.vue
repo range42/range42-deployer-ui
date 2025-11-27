@@ -22,35 +22,47 @@ const statusColor = computed(() => {
 
 <template>
   <div
-    class="rounded-lg shadow-md p-3 min-w-[160px] border bg-base-100 text-base-content transition-all duration-200"
+    class="rounded-lg shadow-md p-3 min-w-[170px] border-2 transition-all duration-200"
     :class="{
-      'border-2 border-primary shadow-lg': selected,
-      'border-base-300 hover:border-base-400': !selected,
+      'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40': true,
+      'border-blue-400 shadow-lg shadow-blue-200/50 dark:shadow-blue-900/30': selected,
+      'border-blue-200 dark:border-blue-800 hover:border-blue-300 dark:hover:border-blue-700': !selected,
     }"
   >
     <!-- Status Indicator -->
     <div class="flex items-center justify-between mb-2">
       <div class="flex items-center space-x-2">
-        <div :class="`w-3 h-3 rounded-full ${statusColor}`"></div>
+        <div :class="`w-3 h-3 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
         <span class="text-lg">🖥️</span>
       </div>
-      <div class="text-xs opacity-70 uppercase tracking-wide">VM</div>
+      <div class="text-xs bg-blue-500/90 text-white px-2 py-0.5 rounded-full font-medium uppercase tracking-wide">
+        VM
+      </div>
     </div>
 
     <!-- Node Content -->
     <div class="space-y-1">
-      <div class="font-medium text-sm">
+      <div class="font-semibold text-sm text-blue-900 dark:text-blue-100">
         {{ data.config?.name || 'Virtual Machine' }}
       </div>
-      <div class="text-xs opacity-80 space-y-1">
-        <div v-if="data.config?.cpu">CPU: {{ data.config.cpu }} cores</div>
-        <div v-if="data.config?.memory">RAM: {{ data.config.memory }}</div>
-        <div v-if="data.config?.os">OS: {{ data.config.os }}</div>
+      <div class="text-xs text-blue-700/80 dark:text-blue-300/70 space-y-0.5">
+        <div v-if="data.config?.cpu" class="flex items-center gap-1">
+          <span class="opacity-60">CPU:</span>
+          <span class="font-medium">{{ data.config.cpu }} cores</span>
+        </div>
+        <div v-if="data.config?.memory" class="flex items-center gap-1">
+          <span class="opacity-60">RAM:</span>
+          <span class="font-medium">{{ data.config.memory }}</span>
+        </div>
+        <div v-if="data.config?.os" class="flex items-center gap-1">
+          <span class="opacity-60">OS:</span>
+          <span class="font-medium">{{ data.config.os }}</span>
+        </div>
       </div>
     </div>
 
     <!-- Connection Handles -->
-    <Handle type="target" :position="Position.Top" class="!bg-blue-500 !border-blue-600" />
-    <Handle type="source" :position="Position.Bottom" class="!bg-blue-500 !border-blue-600" />
+    <Handle type="target" :position="Position.Top" class="!bg-blue-500 !border-blue-700 !border-2" />
+    <Handle type="source" :position="Position.Bottom" class="!bg-blue-500 !border-blue-700 !border-2" />
   </div>
 </template>

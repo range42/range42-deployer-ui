@@ -17,43 +17,49 @@ const statusColor = computed(() => {
 
 <template>
   <div
-    class="rounded-lg shadow-md p-4 min-w-[180px] border bg-base-100 text-base-content transition-all duration-200"
+    class="rounded-lg shadow-md p-4 min-w-[180px] border-2 transition-all duration-200"
     :class="{
-      'border-2 border-primary shadow-lg': selected,
-      'border-base-300 hover:border-base-400': !selected,
+      'bg-gradient-to-br from-cyan-50 to-sky-50 dark:from-cyan-950/40 dark:to-sky-950/40': true,
+      'border-cyan-400 shadow-lg shadow-cyan-200/50 dark:shadow-cyan-900/30': selected,
+      'border-cyan-200 dark:border-cyan-800 hover:border-cyan-300 dark:hover:border-cyan-700': !selected,
     }"
   >
     <!-- Status Indicator -->
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center space-x-2">
-        <div :class="`w-3 h-3 rounded-full ${statusColor}`"></div>
+        <div :class="`w-3 h-3 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
         <span class="text-xl">🔀</span>
       </div>
-      <div class="text-xs opacity-70 uppercase tracking-wide">Switch</div>
+      <div class="text-xs bg-cyan-500/90 text-white px-2 py-0.5 rounded-full font-medium uppercase tracking-wide">
+        Switch
+      </div>
     </div>
 
     <!-- Node Content -->
     <div class="space-y-2">
-      <div class="font-medium text-sm">
+      <div class="font-semibold text-sm text-cyan-900 dark:text-cyan-100">
         {{ data.config?.name || 'Network Switch' }}
       </div>
-      <div class="text-xs opacity-80 space-y-1">
-        <div v-if="data.config?.portCount">
-          Ports: {{ data.config.portCount }}
+      <div class="text-xs text-cyan-700/80 dark:text-cyan-300/70 space-y-1">
+        <div v-if="data.config?.portCount" class="flex items-center gap-1">
+          <span class="opacity-60">Ports:</span>
+          <span class="font-medium">{{ data.config.portCount }}</span>
         </div>
-        <div v-if="data.config?.vlans?.length">
-          VLANs: {{ data.config.vlans.length }}
+        <div v-if="data.config?.vlans?.length" class="flex items-center gap-1">
+          <span class="opacity-60">VLANs:</span>
+          <span class="font-medium">{{ data.config.vlans.length }}</span>
         </div>
-        <div v-if="data.config?.spanningTreeProtocol">
-          STP: {{ data.config.spanningTreeProtocol }}
+        <div v-if="data.config?.spanningTreeProtocol" class="flex items-center gap-1">
+          <span class="opacity-60">STP:</span>
+          <span class="font-medium">{{ data.config.spanningTreeProtocol }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Connection Handles -->
-    <Handle type="target" :position="Position.Top" class="!bg-blue-500 !border-blue-600" />
-    <Handle type="source" :position="Position.Bottom" class="!bg-blue-500 !border-blue-600" />
-    <Handle type="source" :position="Position.Left" class="!bg-blue-500 !border-blue-600" />
-    <Handle type="source" :position="Position.Right" class="!bg-blue-500 !border-blue-600" />
+    <!-- Connection Handles - Cyan themed -->
+    <Handle type="target" :position="Position.Top" class="!bg-cyan-500 !border-cyan-700 !border-2" />
+    <Handle type="source" :position="Position.Bottom" class="!bg-cyan-500 !border-cyan-700 !border-2" />
+    <Handle type="source" :position="Position.Left" class="!bg-cyan-500 !border-cyan-700 !border-2" />
+    <Handle type="source" :position="Position.Right" class="!bg-cyan-500 !border-cyan-700 !border-2" />
   </div>
 </template>

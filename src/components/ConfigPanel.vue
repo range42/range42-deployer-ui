@@ -826,6 +826,444 @@ watch(() => props.node, (newNode) => {
             </select>
           </div>
         </template>
+
+        <!-- Group/Container Specific Fields -->
+        <template v-if="node.type === 'group'">
+          <div class="alert alert-info mb-4">
+            <span>📁 Groups organize related infrastructure components together.</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Prefix</span>
+              </label>
+              <input
+                v-model="config.prefix"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., lab1, prod, dev"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Resource Pool</span>
+              </label>
+              <input
+                v-model="config.resourcePool"
+                type="text"
+                class="input input-bordered"
+                placeholder="Proxmox resource pool name"
+              />
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Description</span>
+            </label>
+            <textarea
+              v-model="config.description"
+              class="textarea textarea-bordered"
+              placeholder="Describe this group..."
+              rows="2"
+            ></textarea>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Tags (comma-separated)</span>
+            </label>
+            <input
+              v-model="config.tagsString"
+              type="text"
+              class="input input-bordered"
+              placeholder="e.g., production, web-tier, database"
+            />
+          </div>
+        </template>
+
+        <!-- Simulated Internet Specific Fields -->
+        <template v-if="node.type === 'simulated-internet'">
+          <div class="alert alert-warning mb-4">
+            <span>🌍 Simulated Internet provides fake public IPs and services for isolated training.</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Bridge Name *</span>
+              </label>
+              <input
+                v-model="config.bridge"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., vmbr100"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Public CIDR *</span>
+              </label>
+              <input
+                v-model="config.publicCidr"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., 203.0.113.0/24"
+              />
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="cursor-pointer label">
+              <span class="label-text">Include Fake DNS (8.8.8.8, 1.1.1.1)</span>
+              <input v-model="config.fakeDns" type="checkbox" class="toggle toggle-primary" />
+            </label>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Fake Services (comma-separated)</span>
+            </label>
+            <input
+              v-model="config.fakeServices"
+              type="text"
+              class="input input-bordered"
+              placeholder="e.g., cdn, updates, cloud"
+            />
+          </div>
+        </template>
+
+        <!-- Edge Firewall Specific Fields -->
+        <template v-if="node.type === 'edge-firewall'">
+          <div class="alert alert-success mb-4">
+            <span>🛡️ Edge Firewall (pfSense/OPNsense) connects your network to the simulated internet.</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Appliance Type *</span>
+              </label>
+              <select v-model="config.appliance" class="select select-bordered">
+                <option value="">Select appliance...</option>
+                <option value="pfsense">pfSense</option>
+                <option value="opnsense">OPNsense</option>
+                <option value="vyos">VyOS</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Template Name</span>
+              </label>
+              <input
+                v-model="config.template"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., pfsense-2.7.2-template"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">CPU Cores</span>
+              </label>
+              <input
+                v-model.number="config.cpu"
+                type="number"
+                class="input input-bordered"
+                placeholder="2"
+                min="1"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Memory (MB)</span>
+              </label>
+              <input
+                v-model.number="config.memory"
+                type="number"
+                class="input input-bordered"
+                placeholder="2048"
+                min="512"
+              />
+            </div>
+          </div>
+
+          <!-- Firewall Interfaces -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-semibold">Network Interfaces</span>
+              <button type="button" @click="addInterface" class="btn btn-xs btn-primary">+ Add Interface</button>
+            </label>
+            <div class="space-y-2">
+              <div v-for="(iface, index) in config.interfaces" :key="index" class="flex gap-2">
+                <input
+                  v-model="iface.name"
+                  type="text"
+                  class="input input-bordered input-sm w-24"
+                  placeholder="WAN/LAN/DMZ"
+                />
+                <input
+                  v-model="iface.bridge"
+                  type="text"
+                  class="input input-bordered input-sm flex-1"
+                  placeholder="vmbr100"
+                />
+                <input
+                  v-model="iface.address"
+                  type="text"
+                  class="input input-bordered input-sm flex-1"
+                  placeholder="10.0.100.1/24"
+                />
+                <button
+                  type="button"
+                  @click="removeInterface(index)"
+                  class="btn btn-sm btn-error"
+                >×</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- LXC Container Specific Fields -->
+        <template v-if="node.type === 'lxc'">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Hostname *</span>
+              </label>
+              <input
+                v-model="config.hostname"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., web-server-01"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">OS Template *</span>
+              </label>
+              <select v-model="config.template" class="select select-bordered">
+                <option value="">Select template...</option>
+                <option value="ubuntu-22.04-standard">Ubuntu 22.04</option>
+                <option value="ubuntu-20.04-standard">Ubuntu 20.04</option>
+                <option value="debian-12-standard">Debian 12</option>
+                <option value="alpine-3.18-default">Alpine 3.18</option>
+                <option value="centos-9-stream">CentOS 9 Stream</option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">CPU Cores</span>
+              </label>
+              <input
+                v-model.number="config.cores"
+                type="number"
+                class="input input-bordered"
+                placeholder="1"
+                min="1"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Memory (MB)</span>
+              </label>
+              <input
+                v-model.number="config.memory"
+                type="number"
+                class="input input-bordered"
+                placeholder="512"
+                min="128"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Root Disk Size</span>
+              </label>
+              <input
+                v-model="config.rootfsSize"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., 8G"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Network Bridge</span>
+              </label>
+              <input
+                v-model="config.bridge"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., vmbr0"
+              />
+            </div>
+          </div>
+
+          <div class="form-control">
+            <label class="cursor-pointer label">
+              <span class="label-text">Unprivileged Container (Recommended)</span>
+              <input v-model="config.unprivileged" type="checkbox" class="toggle toggle-primary" checked />
+            </label>
+          </div>
+        </template>
+
+        <!-- Vulnerable Target Specific Fields -->
+        <template v-if="node.type === 'vuln-target'">
+          <div class="alert alert-error mb-4">
+            <span>🎯 Vulnerable targets are intentionally insecure systems for training purposes.</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Target Type *</span>
+              </label>
+              <select v-model="config.targetType" class="select select-bordered">
+                <option value="">Select target...</option>
+                <option value="dvwa">DVWA (Web Vulnerabilities)</option>
+                <option value="juiceshop">OWASP Juice Shop</option>
+                <option value="metasploitable">Metasploitable 2/3</option>
+                <option value="dvl">Damn Vulnerable Linux</option>
+                <option value="dvcp">Damn Vulnerable Cloud Platform</option>
+                <option value="dvad">Damn Vulnerable AD</option>
+                <option value="custom">Custom Template</option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Template Name</span>
+              </label>
+              <input
+                v-model="config.template"
+                type="text"
+                class="input input-bordered"
+                placeholder="Template to clone from"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">CPU Cores</span>
+              </label>
+              <input
+                v-model.number="config.cores"
+                type="number"
+                class="input input-bordered"
+                placeholder="2"
+                min="1"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Memory (MB)</span>
+              </label>
+              <input
+                v-model.number="config.memory"
+                type="number"
+                class="input input-bordered"
+                placeholder="2048"
+                min="512"
+              />
+            </div>
+          </div>
+        </template>
+
+        <!-- Shared Service Specific Fields -->
+        <template v-if="node.type === 'shared-service'">
+          <div class="alert alert-info mb-4">
+            <span>🔧 Shared services are accessible from all Gamenets (Git, Chat, Wiki, Auth).</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Service Type *</span>
+              </label>
+              <select v-model="config.serviceType" class="select select-bordered">
+                <option value="">Select service...</option>
+                <option value="gitea">Gitea (Git Server)</option>
+                <option value="gitlab">GitLab</option>
+                <option value="mattermost">Mattermost (Chat)</option>
+                <option value="wiki">Wiki.js</option>
+                <option value="keycloak">Keycloak (SSO)</option>
+                <option value="registry">Docker Registry</option>
+                <option value="vault">HashiCorp Vault</option>
+                <option value="custom">Custom Service</option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Template Name</span>
+              </label>
+              <input
+                v-model="config.template"
+                type="text"
+                class="input input-bordered"
+                placeholder="Template to clone from"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">CPU Cores</span>
+              </label>
+              <input
+                v-model.number="config.cores"
+                type="number"
+                class="input input-bordered"
+                placeholder="2"
+                min="1"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Memory (MB)</span>
+              </label>
+              <input
+                v-model.number="config.memory"
+                type="number"
+                class="input input-bordered"
+                placeholder="2048"
+                min="512"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Network Bridge</span>
+              </label>
+              <input
+                v-model="config.bridge"
+                type="text"
+                class="input input-bordered"
+                placeholder="vmbr0 (management network)"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">IP Address</span>
+              </label>
+              <input
+                v-model="config.ipAddress"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., 10.0.0.10"
+              />
+            </div>
+          </div>
+        </template>
       </div>
 
       <!-- Actions -->
