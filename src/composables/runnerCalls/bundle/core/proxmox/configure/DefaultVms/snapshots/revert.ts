@@ -2,12 +2,14 @@
 
 
 import { ref, computed } from 'vue'
-import { useProxmoxSettings, normalizeProxmoxBaseUrl, DEFAULT_PROXMOX_BASE_DOMAIN } from '@/composables/useProxmoxSettings'
+import { 
+  useProxmoxSettings, 
+  normalizeBackendApiUrl, 
+  DEFAULT_BACKEND_API_URL 
+} from '@/composables/useProxmoxSettings'
 
-// Fallback constants (used only if project settings not configured)
-const FALLBACK_DOMAIN = DEFAULT_PROXMOX_BASE_DOMAIN
-const BASE_PATH = '/v0/admin/run/bundles/core/proxmox/configure/default/snapshot'
-const FALLBACK_DEFAULT_NODE = 'px-testing'
+// API endpoint path for snapshot bundle operations
+const BUNDLE_PATH = '/v0/admin/run/bundles/core/proxmox/configure/default/snapshot'
 const DEFAULT_VM_SNAPSHOT_NAME = 'this-default-snapshot-name'
 
 // // // //
@@ -16,16 +18,24 @@ export function useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTa
 
   const loading = ref(false)
   const error = ref<string | null>(null)
-
   const current_action = ref<null | 'vm_snapshot_revert'>(null)
 
-  // Get project-specific settings
-  const proxmoxSettings = projectId ? useProxmoxSettings(projectId) : null
-  const baseDomain = computed(() => proxmoxSettings?.baseUrl?.value
-    ? normalizeProxmoxBaseUrl(proxmoxSettings.baseUrl.value)
-    : FALLBACK_DOMAIN)
-  const BASE = computed(() => `${baseDomain.value}${BASE_PATH}`)
-  const DEFAULT_NODE = computed(() => proxmoxSettings?.defaultNode?.value || FALLBACK_DEFAULT_NODE)
+  // Get project-specific settings from the settings store
+  const settings = projectId ? useProxmoxSettings(projectId) : null
+  
+  // Compute API base URL from settings
+  const apiBaseUrl = computed(() => {
+    const url = settings?.backendApiUrl?.value || settings?.baseUrl?.value
+    return url ? normalizeBackendApiUrl(url) : DEFAULT_BACKEND_API_URL
+  })
+  
+  // Full endpoint URL
+  const endpointBase = computed(() => `${apiBaseUrl.value}${BUNDLE_PATH}`)
+  
+  // Proxmox node from settings
+  const proxmoxNode = computed(() => 
+    settings?.proxmoxNode?.value || settings?.defaultNode?.value || ''
+  )
 
 
   //
@@ -50,26 +60,30 @@ export function useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTa
 
   async function handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms(
     target_infrastructure_group: string,
-    proxmoxNode?: string) {
+    nodeOverride?: string) {
 
     loading.value = true
     error.value = null
-    current_action.value = "vm_snapshot_revert" // as any
+    current_action.value = "vm_snapshot_revert"
 
     try {
-      // Check if Proxmox settings are configured
-      if (!proxmoxSettings?.isConfigured?.value) {
-        throw new Error('⚙️ Proxmox settings not configured. Please configure Base Domain and Default Node in project settings.')
+      // Check if settings are configured
+      if (!settings?.isConfigured?.value) {
+        throw new Error('⚙️ Backend API settings not configured. Please configure Backend API URL and Proxmox Node in project settings.')
       }
 
-      const node = proxmoxNode || DEFAULT_NODE.value
-      const current_endpoint = `${BASE.value}/revert-vms-${target_infrastructure_group}`
+      const node = nodeOverride || proxmoxNode.value
+      if (!node) {
+        throw new Error('⚙️ Proxmox node not specified. Please configure in project settings.')
+      }
+      
+      const current_endpoint = `${endpointBase.value}/revert-vms-${target_infrastructure_group}`
 
       return await call_post(current_endpoint, { as_json: true, proxmox_node: node, vm_snapshot_name: DEFAULT_VM_SNAPSHOT_NAME })
 
     } catch (e: any) {
 
-      error.value = e?.message || 'something wrong.'
+      error.value = e?.message || 'Something went wrong.'
       throw e
 
     } finally {

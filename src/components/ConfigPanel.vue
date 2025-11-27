@@ -5,7 +5,7 @@ import { ensureNamespaces } from '@/i18n/index.js'
 const { t } = useI18n({ useScope: 'global' })
 
 const props = defineProps(['node'])
-const emit = defineEmits(['close', 'update'])
+const emit = defineEmits(['close', 'update', 'delete'])
 
 
 const errors = ref([])
@@ -130,6 +130,13 @@ const handleSave = () => {
   emit('close')
 }
 
+const handleDelete = () => {
+  if (confirm(`Are you sure you want to delete "${config.value.name || props.node.type}"?`)) {
+    emit('delete', props.node.id)
+    emit('close')
+  }
+}
+
 const handleBackdropClick = (event) => {
   if (event.target === event.currentTarget) {
     emit('close')
@@ -171,93 +178,92 @@ watch(() => props.node, (newNode) => {
 
         <!-- VM Specific Fields -->
         <template v-if="node.type === 'vm'">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.cpu') }} *</span>
-              </label>
-              <input
-                v-model.number="config.cpu"
-                type="number"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.cpu')"
-                min="1"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.memory') }} *</span>
-              </label>
-              <input
-                v-model="config.memory"
-                type="text"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.memory')"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.disk') }} *</span>
-              </label>
-              <input
-                v-model="config.disk"
-                type="text"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.disk')"
-              />
-            </div>
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Description</span>
+            </label>
+            <textarea
+              v-model="config.description"
+              class="textarea textarea-bordered"
+              placeholder="VM description..."
+              rows="2"
+            ></textarea>
           </div>
 
           <div class="form-control">
             <label class="label">
-              <span class="label-text">{{ t('configPanel.fields.os') }}</span>
+              <span class="label-text">IP Address</span>
             </label>
-            <select v-model="config.os" class="select select-bordered">
-              <option value="Ubuntu 22.04">Ubuntu 22.04</option>
-              <option value="Ubuntu 20.04">Ubuntu 20.04</option>
-              <option value="CentOS 8">CentOS 8</option>
-              <option value="Windows Server 2022">Windows Server 2022</option>
-              <option value="Windows Server 2019">Windows Server 2019</option>
-              <option value="Kali Linux">Kali Linux</option>
-              <option value="pfSense">pfSense</option>
-            </select>
+            <input
+              v-model="config.ipAddress"
+              type="text"
+              class="input input-bordered"
+              placeholder="e.g., 192.168.1.10"
+            />
+            <label class="label">
+              <span class="label-text-alt">Static IP for this VM (used during deployment)</span>
+            </label>
           </div>
         </template>
 
         <!-- Network Segment Specific Fields -->
         <template v-if="node.type === 'network-segment'">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Description</span>
+            </label>
+            <textarea
+              v-model="config.description"
+              class="textarea textarea-bordered"
+              placeholder="Network segment description..."
+              rows="2"
+            ></textarea>
+          </div>
+
+          <div class="divider">Bridge Configuration</div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.segmentType') }} *</span>
+                <span class="label-text font-semibold">🔌 Proxmox Bridge *</span>
               </label>
-              <select v-model="config.segmentType" class="select select-bordered">
-                <option value="">{{ t('configPanel.placeholders.segmentType') }}</option>
-                <option value="management">{{ t('configPanel.segment.management') }}</option>
-                <option value="production">{{ t('configPanel.segment.production') }}</option>
-                <option value="dmz">{{ t('configPanel.segment.dmz') }}</option>
-                <option value="guest">{{ t('configPanel.segment.guest') }}</option>
-                <option value="iot">{{ t('configPanel.segment.iot') }}</option>
-                <option value="security">{{ t('configPanel.segment.security') }}</option>
+              <select v-model="config.bridge" class="select select-bordered">
+                <option value="vmbr0">vmbr0 (Default)</option>
+                <option value="vmbr1">vmbr1</option>
+                <option value="vmbr2">vmbr2</option>
+                <option value="vmbr3">vmbr3</option>
+                <option value="vmbr4">vmbr4</option>
+                <option value="vmbr5">vmbr5</option>
               </select>
+              <label class="label">
+                <span class="label-text-alt">Bridge must exist on Proxmox node</span>
+              </label>
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.securityLevel') }}</span>
+                <span class="label-text">🏷️ VLAN Tag</span>
               </label>
-              <select v-model="config.securityLevel" class="select select-bordered">
-                <option value="low">{{ t('configPanel.security.low') }}</option>
-                <option value="medium">{{ t('configPanel.security.medium') }}</option>
-                <option value="high">{{ t('configPanel.security.high') }}</option>
-              </select>
+              <input
+                v-model.number="config.vlan"
+                type="number"
+                class="input input-bordered"
+                placeholder="Optional (1-4094)"
+                min="1"
+                max="4094"
+              />
+              <label class="label">
+                <span class="label-text-alt">802.1Q VLAN ID (optional)</span>
+              </label>
             </div>
+          </div>
 
+          <div class="divider">Network Addressing</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.cidr') }} *</span>
+                <span class="label-text">{{ t('configPanel.fields.cidr') }}</span>
               </label>
               <input
                 v-model="config.cidr"
@@ -265,25 +271,14 @@ watch(() => props.node, (newNode) => {
                 class="input input-bordered"
                 :placeholder="t('configPanel.placeholders.cidr')"
               />
-            </div>
-
-            <div class="form-control">
               <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.vlanId') }}</span>
+                <span class="label-text-alt">For documentation/planning</span>
               </label>
-              <input
-                v-model.number="config.vlan"
-                type="number"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.vlanId')"
-                min="1"
-                max="4094"
-              />
             </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.gateway') }} *</span>
+                <span class="label-text">{{ t('configPanel.fields.gateway') }}</span>
               </label>
               <input
                 v-model="config.gateway"
@@ -291,107 +286,39 @@ watch(() => props.node, (newNode) => {
                 class="input input-bordered"
                 :placeholder="t('configPanel.placeholders.gateway')"
               />
-            </div>
-
-            <div class="form-control">
               <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.dnsServer') }}</span>
+                <span class="label-text-alt">For documentation/planning</span>
               </label>
-              <input
-                v-model="config.dns"
-                type="text"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.dnsServer')"
-              />
             </div>
-          </div>
-
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">{{ t('configPanel.fields.enableDhcp') }}</span>
-              <input v-model="config.dhcp" type="checkbox" class="toggle toggle-primary" />
-            </label>
           </div>
         </template>
 
         <!-- Router Specific Fields -->
         <template v-if="node.type === 'router'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.routingProtocol') }} *</span>
-              </label>
-              <select v-model="config.routingProtocol" class="select select-bordered">
-                <option value="OSPF">OSPF</option>
-                <option value="BGP">BGP</option>
-                <option value="EIGRP">EIGRP</option>
-                <option value="RIP">RIP</option>
-                <option value="Static">{{ t('configPanel.routing.static') }}</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.routerId') }}</span>
-              </label>
-              <input
-                v-model="config.routerId"
-                type="text"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.routerId')"
-              />
-            </div>
-          </div>
-
-          <!-- Network Interface Management -->
           <div class="form-control">
             <label class="label">
-              <span class="label-text font-semibold">{{ t('configPanel.sections.interfaces') }}</span>
-              <button type="button" @click="addInterface" class="btn btn-sm btn-primary">
-                {{ t('configPanel.actions.addInterface') }}
-              </button>
+              <span class="label-text">Description</span>
             </label>
-            <div v-if="config.interfaces?.length" class="space-y-3">
-              <div
-                v-for="(networkInterface, index) in config.interfaces"
-                :key="index"
-                class="border border-base-300 rounded-lg p-4"
-              >
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <input
-                    v-model="networkInterface.name"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    :placeholder="t('configPanel.placeholders.ifName')"
-                  />
-                  <input
-                    v-model="networkInterface.ip"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    :placeholder="t('configPanel.placeholders.ifIp')"
-                  />
-                  <input
-                    v-model="networkInterface.subnet"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    :placeholder="t('configPanel.placeholders.ifSubnet')"
-                  />
-                  <button
-                    type="button"
-                    @click="removeInterface(index)"
-                    class="btn btn-sm btn-error"
-                  >
-                    {{ t('configPanel.actions.remove') }}
-                  </button>
-                </div>
-                <input
-                  v-model="networkInterface.description"
-                  type="text"
-                  class="input input-bordered input-sm w-full mt-2"
-                  :placeholder="t('configPanel.placeholders.description')"
-                />
-              </div>
-            </div>
+            <textarea
+              v-model="config.description"
+              class="textarea textarea-bordered"
+              placeholder="Router description..."
+              rows="2"
+            ></textarea>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Appliance Type</span>
+            </label>
+            <select v-model="config.applianceType" class="select select-bordered">
+              <option value="vyos">VyOS</option>
+              <option value="opnsense">OPNsense</option>
+              <option value="pfsense">pfSense</option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">Virtual router appliance type</span>
+            </label>
           </div>
         </template>
 
@@ -937,103 +864,53 @@ watch(() => props.node, (newNode) => {
         <!-- Edge Firewall Specific Fields -->
         <template v-if="node.type === 'edge-firewall'">
           <div class="alert alert-success mb-4">
-            <span>🛡️ Edge Firewall (pfSense/OPNsense) connects your network to the simulated internet.</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Appliance Type *</span>
-              </label>
-              <select v-model="config.appliance" class="select select-bordered">
-                <option value="">Select appliance...</option>
-                <option value="pfsense">pfSense</option>
-                <option value="opnsense">OPNsense</option>
-                <option value="vyos">VyOS</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Template Name</span>
-              </label>
-              <input
-                v-model="config.template"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., pfsense-2.7.2-template"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">CPU Cores</span>
-              </label>
-              <input
-                v-model.number="config.cpu"
-                type="number"
-                class="input input-bordered"
-                placeholder="2"
-                min="1"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Memory (MB)</span>
-              </label>
-              <input
-                v-model.number="config.memory"
-                type="number"
-                class="input input-bordered"
-                placeholder="2048"
-                min="512"
-              />
-            </div>
+            <span>🛡️ Edge Firewall connects your network segments.</span>
           </div>
 
-          <!-- Firewall Interfaces -->
           <div class="form-control">
             <label class="label">
-              <span class="label-text font-semibold">Network Interfaces</span>
-              <button type="button" @click="addInterface" class="btn btn-xs btn-primary">+ Add Interface</button>
+              <span class="label-text">Description</span>
             </label>
-            <div class="space-y-2">
-              <div v-for="(iface, index) in config.interfaces" :key="index" class="flex gap-2">
-                <input
-                  v-model="iface.name"
-                  type="text"
-                  class="input input-bordered input-sm w-24"
-                  placeholder="WAN/LAN/DMZ"
-                />
-                <input
-                  v-model="iface.bridge"
-                  type="text"
-                  class="input input-bordered input-sm flex-1"
-                  placeholder="vmbr100"
-                />
-                <input
-                  v-model="iface.address"
-                  type="text"
-                  class="input input-bordered input-sm flex-1"
-                  placeholder="10.0.100.1/24"
-                />
-                <button
-                  type="button"
-                  @click="removeInterface(index)"
-                  class="btn btn-sm btn-error"
-                >×</button>
-              </div>
-            </div>
+            <textarea
+              v-model="config.description"
+              class="textarea textarea-bordered"
+              placeholder="Edge firewall description..."
+              rows="2"
+            ></textarea>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Appliance Type</span>
+            </label>
+            <select v-model="config.applianceType" class="select select-bordered">
+              <option value="pfsense">pfSense</option>
+              <option value="opnsense">OPNsense</option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">Firewall appliance type</span>
+            </label>
           </div>
         </template>
 
         <!-- LXC Container Specific Fields -->
         <template v-if="node.type === 'lxc'">
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text">Description</span>
+            </label>
+            <textarea
+              v-model="config.description"
+              class="textarea textarea-bordered"
+              placeholder="Container description..."
+              rows="2"
+            ></textarea>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Hostname *</span>
+                <span class="label-text">Hostname</span>
               </label>
               <input
                 v-model="config.hostname"
@@ -1045,74 +922,18 @@ watch(() => props.node, (newNode) => {
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">OS Template *</span>
-              </label>
-              <select v-model="config.template" class="select select-bordered">
-                <option value="">Select template...</option>
-                <option value="ubuntu-22.04-standard">Ubuntu 22.04</option>
-                <option value="ubuntu-20.04-standard">Ubuntu 20.04</option>
-                <option value="debian-12-standard">Debian 12</option>
-                <option value="alpine-3.18-default">Alpine 3.18</option>
-                <option value="centos-9-stream">CentOS 9 Stream</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">CPU Cores</span>
+                <span class="label-text">IP Address</span>
               </label>
               <input
-                v-model.number="config.cores"
-                type="number"
-                class="input input-bordered"
-                placeholder="1"
-                min="1"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Memory (MB)</span>
-              </label>
-              <input
-                v-model.number="config.memory"
-                type="number"
-                class="input input-bordered"
-                placeholder="512"
-                min="128"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Root Disk Size</span>
-              </label>
-              <input
-                v-model="config.rootfsSize"
+                v-model="config.ipAddress"
                 type="text"
                 class="input input-bordered"
-                placeholder="e.g., 8G"
+                placeholder="e.g., 192.168.1.10"
               />
-            </div>
-
-            <div class="form-control">
               <label class="label">
-                <span class="label-text">Network Bridge</span>
+                <span class="label-text-alt">Static IP for this container</span>
               </label>
-              <input
-                v-model="config.bridge"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., vmbr0"
-              />
             </div>
-          </div>
-
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">Unprivileged Container (Recommended)</span>
-              <input v-model="config.unprivileged" type="checkbox" class="toggle toggle-primary" checked />
-            </label>
           </div>
         </template>
 
@@ -1269,8 +1090,11 @@ watch(() => props.node, (newNode) => {
       <!-- Actions -->
       <div class="modal-action">
         <div class="flex justify-between items-center w-full">
-          <div class="text-sm">
-            <span :class="isValid ? 'text-success' : 'text-warning'">
+          <div class="flex items-center gap-4">
+            <button class="btn btn-error btn-outline btn-sm" @click="handleDelete">
+              🗑️ Delete
+            </button>
+            <span class="text-sm" :class="isValid ? 'text-success' : 'text-warning'">
               {{ isValid ? t('configPanel.status.valid') : t('configPanel.status.missing') }}
             </span>
           </div>

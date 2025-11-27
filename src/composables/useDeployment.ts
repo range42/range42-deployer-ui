@@ -6,24 +6,46 @@
  * 2. Generate deployment plan
  * 3. Load into deployment store
  * 4. Execute deployment
+ * 
+ * Integrates with useProxmoxSettings for project-specific configuration.
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
 import { useTopologyResolver } from './useTopologyResolver'
 import { useDeploymentStore } from '@/stores/deploymentStore'
 import { setBaseUrl } from '@/services/proxmox'
+import { useProxmoxSettingsStore } from './useProxmoxSettings'
 
-export function useDeployment() {
+export interface DeploymentOptions {
+  proxmoxNode?: string
+  backendApiUrl?: string
+  projectId?: string
+  projectName?: string
+  startVmId?: number
+}
+
+export function useDeployment(projectIdRef?: Ref<string | null | undefined>) {
   const topologyResolver = useTopologyResolver()
   const deploymentStore = useDeploymentStore()
+  const settingsStore = useProxmoxSettingsStore()
 
   // State
   const isValidating = ref(false)
   const isGeneratingPlan = ref(false)
   const showDeploymentPanel = ref(false)
 
-  // Computed
+  // Computed - get settings from store if projectId provided
+  const projectSettings = computed(() => {
+    const id = projectIdRef?.value
+    return id ? settingsStore.getProjectSettings(id) : null
+  })
+  
+  const isConfigured = computed(() => {
+    const id = projectIdRef?.value
+    return id ? settingsStore.hasValidSettings(id) : false
+  })
+
   const validationErrors = computed(() => topologyResolver.errors.value)
   const validationWarnings = computed(() => topologyResolver.warnings.value)
   const hasValidationErrors = computed(() => validationErrors.value.length > 0)
@@ -31,10 +53,15 @@ export function useDeployment() {
   const isDeploying = computed(() => deploymentStore.isDeploying)
 
   /**
-   * Configure the API with Proxmox settings
+   * Configure the API with backend API URL
    */
-  function configureApi(baseUrl: string) {
-    setBaseUrl(baseUrl)
+  function configureApi(backendApiUrl?: string) {
+    const url = backendApiUrl || projectSettings.value?.backendApiUrl || projectSettings.value?.baseUrl
+    if (url) {
+      setBaseUrl(url)
+      return true
+    }
+    return false
   }
 
   /**
@@ -84,20 +111,41 @@ export function useDeployment() {
 
   /**
    * Prepare deployment: validate, generate plan, load into store
+   * Can use explicit options or fall back to project settings
    */
   function prepareDeployment(
     nodes: Node[],
     edges: Edge[],
-    options: {
-      proxmoxNode: string
-      baseUrl: string
-      projectId?: string
-      projectName?: string
-      startVmId?: number
-    }
+    options?: DeploymentOptions
   ) {
+    // Get settings from options or project settings
+    const backendApiUrl = options?.backendApiUrl || projectSettings.value?.backendApiUrl || projectSettings.value?.baseUrl
+    const proxmoxNode = options?.proxmoxNode || projectSettings.value?.proxmoxNode || projectSettings.value?.defaultNode
+    const projectId = options?.projectId || projectIdRef?.value
+    
+    // Validate we have required settings
+    if (!backendApiUrl) {
+      return {
+        success: false,
+        errors: [{ nodeId: '', field: 'settings', message: 'Backend API URL not configured. Please configure in project settings.' }],
+        warnings: [],
+        plan: null,
+        needsConfiguration: true,
+      }
+    }
+    
+    if (!proxmoxNode) {
+      return {
+        success: false,
+        errors: [{ nodeId: '', field: 'settings', message: 'Proxmox node not configured. Please configure in project settings.' }],
+        warnings: [],
+        plan: null,
+        needsConfiguration: true,
+      }
+    }
+
     // Configure API
-    configureApi(options.baseUrl)
+    configureApi(backendApiUrl)
 
     // Validate topology
     const validation = validateTopology(nodes, edges)
@@ -107,15 +155,16 @@ export function useDeployment() {
         errors: validation.errors,
         warnings: validation.warnings,
         plan: null,
+        needsConfiguration: false,
       }
     }
 
     // Generate plan
     const plan = generatePlan(nodes, edges, {
-      proxmoxNode: options.proxmoxNode,
-      projectId: options.projectId,
-      projectName: options.projectName,
-      startVmId: options.startVmId,
+      proxmoxNode,
+      projectId: projectId || undefined,
+      projectName: options?.projectName,
+      startVmId: options?.startVmId,
     })
 
     // Load into store
@@ -126,6 +175,7 @@ export function useDeployment() {
       errors: [],
       warnings: validation.warnings,
       plan,
+      needsConfiguration: false,
     }
   }
 
@@ -152,17 +202,12 @@ export function useDeployment() {
 
   /**
    * Full deployment flow: prepare and open panel
+   * Uses project settings automatically if projectIdRef was provided
    */
   function deploy(
     nodes: Node[],
     edges: Edge[],
-    options: {
-      proxmoxNode: string
-      baseUrl: string
-      projectId?: string
-      projectName?: string
-      startVmId?: number
-    }
+    options?: DeploymentOptions
   ) {
     const result = prepareDeployment(nodes, edges, options)
     
@@ -179,7 +224,9 @@ export function useDeployment() {
     isGeneratingPlan,
     showDeploymentPanel,
 
-    // Computed
+    // Computed - settings awareness
+    projectSettings,
+    isConfigured,
     validationErrors,
     validationWarnings,
     hasValidationErrors,

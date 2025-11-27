@@ -8,27 +8,21 @@ import { MiniMap } from '@vue-flow/minimap'
 
 import Sidebar from '../components/Sidebar.vue'
 
+// Node components for deployable Proxmox resources
 import InfraNodeVm from '../components/nodes/InfraNodeVm.vue'
-import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
-import InfraNodeDocker from '../components/nodes/InfraNodeDocker.vue'
-import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
-import InfraNodeSwitch from '../components/nodes/InfraNodeSwitch.vue'
-import InfraNodeFirewall from '../components/nodes/InfraNodeFirewall.vue'
-import InfraNodeDns from '../components/nodes/InfraNodeDns.vue'
-import InfraNodeDhcp from '../components/nodes/InfraNodeDhcp.vue'
-import InfraNodeLoadBalancer from '../components/nodes/InfraNodeLoadBalancer.vue'
-// Additional node components
-import InfraNodeGroup from '../components/nodes/InfraNodeGroup.vue'
 import InfraNodeLxc from '../components/nodes/InfraNodeLxc.vue'
+import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
+import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
 import InfraNodeEdgeFirewall from '../components/nodes/InfraNodeEdgeFirewall.vue'
+import InfraNodeGroup from '../components/nodes/InfraNodeGroup.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
+import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
 import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
 import DeploymentPanel from '../components/DeploymentPanel.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
-import { useProxmoxSettings } from '../composables/useProxmoxSettings'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
 
@@ -54,15 +48,19 @@ const {
   nodes,
   edges,
   selectedNode,
+  selectedEdge,
   onConnect,
   onNodeClick,
+  onEdgeClick,
   updateNodeStatus,
+  updateEdgeData,
+  closeEdgeConfig,
   onNodesChange,
   onEdgesChange,
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, removeNodes } = useVueFlow()
 
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
@@ -74,9 +72,11 @@ const showDeploymentPanel = ref(false)
 const validationErrors = ref([])
 const currentProject = ref(null)
 
-// Deployment composable
-const deployment = useDeployment()
-const proxmoxSettings = useProxmoxSettings()
+// Project ID as computed ref for composables
+const projectId = computed(() => currentProject.value?.id || route.params.id)
+
+// Deployment composable - now auto-uses project settings
+const deployment = useDeployment(projectId)
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
@@ -222,6 +222,42 @@ const closeConfigPanel = () => {
   selectedNode.value = null
 }
 
+// Edge handlers for network connection configuration
+const handleEdgeClick = (event) => {
+  onEdgeClick(event)
+  showConfigPanel.value = false // Close node config when edge is selected
+}
+
+const showEdgeConfig = computed(() => !!selectedEdge.value?.data)
+
+// Get source and target nodes for the selected edge
+const edgeSourceNode = computed(() => {
+  if (!selectedEdge.value) return null
+  const allNodes = flowGetNodes.value || nodes.value
+  return allNodes.find(n => n.id === selectedEdge.value.source)
+})
+
+const edgeTargetNode = computed(() => {
+  if (!selectedEdge.value) return null
+  const allNodes = flowGetNodes.value || nodes.value
+  return allNodes.find(n => n.id === selectedEdge.value.target)
+})
+
+const handleEdgeUpdate = (edgeId, updates) => {
+  updateEdgeData(edgeId, updates)
+}
+
+const handleCloseEdgeConfig = () => {
+  closeEdgeConfig()
+}
+
+const handleDeleteNode = (nodeId) => {
+  // Remove the node from VueFlow
+  removeNodes([nodeId])
+  // Close the config panel
+  closeConfigPanel()
+}
+
 const goBack = () => {
   router.push('/')
 }
@@ -249,29 +285,22 @@ const closeProxmoxSettings = () => {
 
 // Deployment handlers
 const handleOpenDeploy = () => {
-  // Get Proxmox settings for current project
-  const projectId = route.params.id
-  const settings = proxmoxSettings.getProjectSettings(projectId)
-  
-  if (!settings?.baseUrl || !settings?.defaultNode) {
-    // Show settings modal if not configured
-    alert('Please configure Proxmox settings first (click ⚙️ → Proxmox Settings)')
-    showProxmoxSettings.value = true
-    return
-  }
-  
-  // Prepare deployment
+  // Deploy using project settings (auto-loaded by useDeployment)
   const result = deployment.deploy(
     liveNodes.value,
     liveEdges.value,
     {
-      proxmoxNode: settings.defaultNode,
-      baseUrl: settings.baseUrl,
-      projectId: projectId,
       projectName: currentProject.value?.name,
       startVmId: 100,
     }
   )
+  
+  // If settings not configured, show settings modal
+  if (result.needsConfiguration) {
+    alert('Please configure Backend API settings first (click ⚙️ → Proxmox Settings)')
+    showProxmoxSettings.value = true
+    return
+  }
   
   if (!result.success) {
     validationErrors.value = result.errors
@@ -687,67 +716,37 @@ const closeDeploymentPanel = () => {
         <div class="flex-1 relative transition-colors duration-200" :class="{ 'bg-primary bg-opacity-5': isDragOver }"
           @drop="handleDrop" @dragover="handleDragOver" @dragleave="handleDragLeave">
           <VueFlow :nodes="nodes" :edges="edges" @connect="onConnect" @node-click="handleNodeClick"
-            @nodes-change="onNodesChange" @edges-change="onEdgesChange" fit-view-on-init elevate-edges-on-select
-            class="h-full w-full">
+            @edge-click="handleEdgeClick" @nodes-change="onNodesChange" @edges-change="onEdgesChange" 
+            fit-view-on-init elevate-edges-on-select class="h-full w-full">
             <Background />
             <Controls />
             <MiniMap />
 
-            <!-- Existing Node Templates -->
-            <template #node-vm="props">
-              <InfraNodeVm v-bind="props" />
-            </template>
-
-            <template #node-network="props">
-              <InfraNodeNetwork v-bind="props" />
-            </template>
-
-            <template #node-docker="props">
-              <InfraNodeDocker v-bind="props" />
-            </template>
-
-            <!-- Enhanced Network Infrastructure Templates -->
-            <template #node-network-segment="props">
-              <InfraNodeNetwork v-bind="props" />
-            </template>
-
-            <template #node-router="props">
-              <InfraNodeRouter v-bind="props" />
-            </template>
-
-            <template #node-switch="props">
-              <InfraNodeSwitch v-bind="props" />
-            </template>
-
-            <template #node-firewall="props">
-              <InfraNodeFirewall v-bind="props" />
-            </template>
-
-            <template #node-dns="props">
-              <InfraNodeDns v-bind="props" />
-            </template>
-
-            <template #node-dhcp="props">
-              <InfraNodeDhcp v-bind="props" />
-            </template>
-
-            <template #node-loadbalancer="props">
-              <InfraNodeLoadBalancer v-bind="props" />
-            </template>
-
-            <!-- Container/Group Template -->
+            <!-- Organization -->
             <template #node-group="props">
               <InfraNodeGroup v-bind="props" />
             </template>
 
-            <!-- LXC Container Template -->
+            <!-- Compute -->
+            <template #node-vm="props">
+              <InfraNodeVm v-bind="props" />
+            </template>
+
             <template #node-lxc="props">
               <InfraNodeLxc v-bind="props" />
             </template>
 
-            <!-- Firewall Appliance Template -->
+            <!-- Network -->
+            <template #node-network-segment="props">
+              <InfraNodeNetwork v-bind="props" />
+            </template>
+
             <template #node-edge-firewall="props">
               <InfraNodeEdgeFirewall v-bind="props" />
+            </template>
+
+            <template #node-router="props">
+              <InfraNodeRouter v-bind="props" />
             </template>
           </VueFlow>
 
@@ -778,7 +777,19 @@ const closeDeploymentPanel = () => {
     </div>
 
     <ConfigPanel v-if="selectedNode && showConfigPanel" :node="selectedNode" @close="closeConfigPanel"
-      @update="updateNodeStatus" />
+      @update="updateNodeStatus" @delete="handleDeleteNode" />
+    
+    <!-- Edge Config Panel for network connections -->
+    <div v-if="showEdgeConfig" class="fixed right-4 top-20 z-50">
+      <EdgeConfigPanel 
+        :edge="selectedEdge" 
+        :source-node="edgeSourceNode"
+        :target-node="edgeTargetNode"
+        @close="handleCloseEdgeConfig"
+        @update="handleEdgeUpdate"
+      />
+    </div>
+    
     <ExportModal :project="currentProject" :visible="showExportModal" :nodes="liveNodes" :edges="liveEdges"
       @close="showExportModal = false" />
     <ProxmoxSettingsModal

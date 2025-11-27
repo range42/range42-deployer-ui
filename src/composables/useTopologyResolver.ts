@@ -23,7 +23,7 @@ import type {
   RouterNodeData,
   VmNodeData,
   LxcNodeData,
-  GamenetNodeData,
+  GroupNodeData,
   VmCreateRequest,
   LxcCreateRequest,
   NodeNetworkAddRequest,
@@ -69,20 +69,12 @@ export function useTopologyResolver() {
    */
   function getNodePriority(type: NodeType): number {
     const priorities: Record<NodeType, number> = {
-      'gamenet': 0,
-      'network-segment': 1,
-      'simulated-internet': 1,
-      'edge-firewall': 2,
-      'router': 2,
-      'shared-service': 3,
-      'vm': 4,
-      'lxc': 4,
-      'vuln-target': 4,
-      'docker': 5,
-      'dns': 5,
-      'dhcp': 5,
-      'switch': 5,
-      'loadbalancer': 5,
+      'group': 0,           // Groups/containers first (organizational)
+      'network-segment': 1, // Networks before VMs
+      'edge-firewall': 2,   // Firewalls connect networks
+      'router': 2,          // Routers connect networks
+      'vm': 3,              // VMs after infrastructure
+      'lxc': 3,             // Containers same priority as VMs
     }
     return priorities[type] ?? 99
   }
@@ -144,9 +136,7 @@ export function useTopologyResolver() {
         break
       }
 
-      case 'vm':
-      case 'vuln-target':
-      case 'shared-service': {
+      case 'vm': {
         const vmData = data as VmNodeData
         if (!vmData.template && !vmData.iso) {
           nodeErrors.push({
@@ -496,8 +486,7 @@ export function useTopologyResolver() {
     // Process nodes in priority order
     for (const node of sortedNodes) {
       switch (node.data.type) {
-        case 'network-segment':
-        case 'simulated-internet': {
+        case 'network-segment': {
           steps.push(createBridgeStep(node, options))
           break
         }
@@ -522,9 +511,7 @@ export function useTopologyResolver() {
           break
         }
 
-        case 'vm':
-        case 'vuln-target':
-        case 'shared-service': {
+        case 'vm': {
           const vmId = nextVmId++
           nodeVmIds.set(node.id, vmId)
           steps.push(createVmStep(node, vmId, options))
@@ -550,9 +537,11 @@ export function useTopologyResolver() {
           break
         }
 
-        case 'gamenet': {
-          // Gamenet is a logical grouping, creates resource pool
-          // TODO: Implement resource pool creation
+        case 'group': {
+          // Groups are logical containers - no direct Proxmox action needed
+          // Could create resource pools if specified in the future
+          // const groupData = node.data as GroupNodeData
+          // TODO: Implement resource pool creation when API supports it
           break
         }
 

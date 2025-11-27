@@ -176,103 +176,32 @@ export function useDragAndDrop() {
         label: 'Virtual Machine',
         defaultConfig: {
           name: '',
-          cpu: null,
-          memory: '',
-          disk: '',
-          os: 'Ubuntu 22.04',
+          description: '',
+          // These are used by topology resolver for deployment planning
+          // Backend API routes for custom VM creation are planned
+          vmId: null,              // Auto-assigned during deployment
+          ipAddress: '',           // Static IP for the VM
         },
       },
       'network-segment': {
         label: 'Network Segment',
         defaultConfig: {
           name: '',
+          description: '',
+          // Proxmox bridge - must exist on the target node
+          bridge: 'vmbr0',
+          vlan: null,             // Optional VLAN tag (1-4094)
+          // Network addressing (for documentation/planning)
           cidr: '192.168.1.0/24',
           gateway: '192.168.1.1',
-          segmentType: 'production',
-          securityLevel: 'medium',
-          vlan: null,
-          dns: '',
-          dhcp: true,
         },
       },
       router: {
         label: 'Router',
         defaultConfig: {
           name: '',
-          routingProtocol: 'OSPF',
-          routerId: '1.1.1.1',
-          interfaces: [
-            { name: 'eth0', ip: '', subnet: '', description: 'WAN Interface' },
-            { name: 'eth1', ip: '', subnet: '', description: 'LAN Interface' }
-          ],
-        },
-      },
-      switch: {
-        label: 'Network Switch',
-        defaultConfig: {
-          name: '',
-          portCount: 24,
-          vlanSupport: true,
-          vlans: [
-            { id: 1, name: 'default', description: 'Default VLAN' }
-          ],
-          spanningTreeProtocol: 'RSTP',
-          portSecurity: false
-        },
-      },
-      firewall: {
-        label: 'Firewall',
-        defaultConfig: {
-          name: '',
-          rules: [
-            { action: 'allow', source: 'internal', destination: 'external', port: '80,443', protocol: 'tcp' }
-          ],
-          zones: ['internal', 'external', 'dmz'],
-          natEnabled: true,
-          vpnSupport: false,
-          intrusionDetection: false
-        },
-      },
-      dns: {
-        label: 'DNS Server',
-        defaultConfig: {
-          name: '',
-          zones: [
-            { name: 'example.local', type: 'forward' }
-          ],
-          forwarders: ['8.8.8.8', '1.1.1.1'],
-          recursion: true,
-          dnssec: false
-        },
-      },
-      dhcp: {
-        label: 'DHCP Server',
-        defaultConfig: {
-          name: '',
-          scope: '192.168.1.100-200',
-          leaseTime: '24h',
-          gateway: '192.168.1.1',
-          dnsServers: ['192.168.1.1']
-        },
-      },
-      loadbalancer: {
-        label: 'Load Balancer',
-        defaultConfig: {
-          name: '',
-          algorithm: 'round-robin',
-          healthCheck: true,
-          servers: [],
-          sslTermination: false,
-        },
-      },
-      docker: {
-        label: 'Docker Container',
-        defaultConfig: {
-          name: '',
-          image: 'nginx:latest',
-          ports: '80:80',
-          env: '',
-          network: 'bridge',
+          description: '',
+          applianceType: 'vyos',  // vyos, opnsense, etc.
         },
       },
       // Generic container/group for organizing infrastructure
@@ -291,13 +220,9 @@ export function useDragAndDrop() {
         label: 'LXC Container',
         defaultConfig: {
           name: '',
+          description: '',
           hostname: '',
-          template: 'ubuntu-22.04-standard',
-          cores: 1,
-          memory: 512,
-          rootfsSize: '8G',
-          bridge: 'vmbr0',
-          unprivileged: true,
+          ipAddress: '',           // Static IP for the container
         },
       },
       // Edge firewall (pfSense, OPNsense, etc.)
@@ -305,17 +230,8 @@ export function useDragAndDrop() {
         label: 'Edge Firewall',
         defaultConfig: {
           name: '',
-          applianceType: 'pfsense',
-          template: '',
-          cpu: 2,
-          memory: 2048,
-          interfaces: [
-            { name: 'WAN', bridge: '', address: '' },
-            { name: 'LAN', bridge: '', address: '' },
-          ],
-          natEnabled: true,
-          vpnEnabled: false,
-          idsEnabled: false,
+          description: '',
+          applianceType: 'pfsense',  // pfsense, opnsense
         },
       },
     }

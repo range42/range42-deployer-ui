@@ -246,20 +246,12 @@ export interface StorageDownloadIsoRequest {
 // =============================================================================
 
 export type NodeType = 
-  | 'gamenet'
+  | 'group'
   | 'network-segment'
-  | 'simulated-internet'
   | 'edge-firewall'
   | 'router'
   | 'vm'
   | 'lxc'
-  | 'vuln-target'
-  | 'shared-service'
-  | 'docker'
-  | 'dns'
-  | 'dhcp'
-  | 'switch'
-  | 'loadbalancer'
 
 export interface BaseNodeData {
   label: string
@@ -269,11 +261,13 @@ export interface BaseNodeData {
   tags?: string[]
 }
 
-export interface GamenetNodeData extends BaseNodeData {
-  type: 'gamenet'
+export interface GroupNodeData extends BaseNodeData {
+  type: 'group'
   name: string
+  description?: string
+  prefix?: string // e.g., 'lab1_' for naming resources
   resourcePool?: string // Proxmox resource pool name
-  bridgePrefix: string // e.g., 'gn1_' -> gn1_wan, gn1_dmz, gn1_lan
+  tags?: string[]
 }
 
 export interface NetworkSegmentNodeData extends BaseNodeData {
@@ -285,14 +279,6 @@ export interface NetworkSegmentNodeData extends BaseNodeData {
   vlanTag?: number
   dhcpEnabled?: boolean
   dhcpRange?: { start: string; end: string }
-}
-
-export interface SimulatedInternetNodeData extends BaseNodeData {
-  type: 'simulated-internet'
-  bridge: string
-  publicCidr: string // e.g., '203.0.113.0/24'
-  fakeDns?: boolean
-  fakeServices?: string[]
 }
 
 export interface RouterNodeData extends BaseNodeData {
@@ -311,7 +297,7 @@ export interface RouterNodeData extends BaseNodeData {
 }
 
 export interface VmNodeData extends BaseNodeData {
-  type: 'vm' | 'vuln-target' | 'shared-service'
+  type: 'vm'
   vmId?: number
   template?: string
   iso?: string
@@ -341,9 +327,8 @@ export interface LxcNodeData extends BaseNodeData {
 
 // Union type for all node data
 export type CanvasNodeData = 
-  | GamenetNodeData
+  | GroupNodeData
   | NetworkSegmentNodeData
-  | SimulatedInternetNodeData
   | RouterNodeData
   | VmNodeData
   | LxcNodeData

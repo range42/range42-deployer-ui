@@ -40,19 +40,13 @@ const infrastructureComponents = [
         type: 'vm',
         label: 'Virtual Machine',
         icon: '🖥️',
-        description: 'Deploy a virtual machine instance'
+        description: 'Proxmox VM (QEMU/KVM)'
       },
       {
         type: 'lxc',
         label: 'LXC Container',
         icon: '📦',
-        description: 'Lightweight Linux container'
-      },
-      {
-        type: 'docker',
-        label: 'Docker Container',
-        icon: '🐳',
-        description: 'Deploy a containerized application'
+        description: 'Proxmox lightweight container'
       }
     ]
   },
@@ -63,54 +57,19 @@ const infrastructureComponents = [
         type: 'network-segment',
         label: 'Network',
         icon: '🌐',
-        description: 'Network zone / bridge (vmbr*)'
+        description: 'Proxmox bridge (vmbr*)'
       },
       {
         type: 'edge-firewall',
         label: 'Firewall Appliance',
         icon: '🛡️',
-        description: 'pfSense, OPNsense, VyOS, etc.'
+        description: 'pfSense, OPNsense VM'
       },
       {
         type: 'router',
         label: 'Router',
         icon: '🔄',
-        description: 'Network routing device'
-      },
-      {
-        type: 'switch',
-        label: 'Switch',
-        icon: '🔀',
-        description: 'Layer 2 switching device'
-      },
-      {
-        type: 'firewall',
-        label: 'Firewall Rules',
-        icon: '🔥',
-        description: 'Proxmox firewall configuration'
-      }
-    ]
-  },
-  {
-    category: 'Services',
-    items: [
-      {
-        type: 'dns',
-        label: 'DNS Server',
-        icon: '🔍',
-        description: 'Domain name resolution'
-      },
-      {
-        type: 'dhcp',
-        label: 'DHCP Server',
-        icon: '📋',
-        description: 'Dynamic IP assignment'
-      },
-      {
-        type: 'loadbalancer',
-        label: 'Load Balancer',
-        icon: '⚖️',
-        description: 'Traffic distribution'
+        description: 'VyOS, OPNsense router VM'
       }
     ]
   }
