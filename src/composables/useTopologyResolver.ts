@@ -19,8 +19,11 @@ import type {
   DeploymentPlan,
   BaseNodeData,
   CanvasNodeData,
+  CanvasEdgeData,
   NetworkSegmentNodeData,
+  NetworkConnectionData,
   RouterNodeData,
+  SwitchNodeData,
   VmNodeData,
   LxcNodeData,
   GroupNodeData,
@@ -71,6 +74,7 @@ export function useTopologyResolver() {
     const priorities: Record<NodeType, number> = {
       'group': 0,           // Groups/containers first (organizational)
       'network-segment': 1, // Networks before VMs
+      'switch': 1,          // Switches at network layer
       'edge-firewall': 2,   // Firewalls connect networks
       'router': 2,          // Routers connect networks
       'vm': 3,              // VMs after infrastructure
@@ -173,9 +177,55 @@ export function useTopologyResolver() {
         }
         break
       }
+
+      case 'switch': {
+        const switchData = data as SwitchNodeData
+        if (!switchData.portCount || switchData.portCount < 2) {
+          nodeErrors.push({
+            nodeId: node.id,
+            field: 'portCount',
+            message: 'Switch must have at least 2 ports',
+          })
+        }
+        // Validate VLAN IDs are in valid range (1-4094)
+        if (switchData.vlans) {
+          for (const vlan of switchData.vlans) {
+            if (vlan.id < 1 || vlan.id > 4094) {
+              nodeErrors.push({
+                nodeId: node.id,
+                field: 'vlans',
+                message: `Invalid VLAN ID ${vlan.id}: must be between 1-4094`,
+              })
+            }
+          }
+        }
+        break
+      }
     }
 
     return nodeErrors
+  }
+
+  /**
+   * Validate CIDR notation
+   */
+  function isValidCidr(cidr: string): boolean {
+    const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/
+    if (!cidrRegex.test(cidr)) return false
+    
+    const [ip, prefix] = cidr.split('/')
+    const prefixNum = parseInt(prefix)
+    if (prefixNum < 0 || prefixNum > 32) return false
+    
+    const octets = ip.split('.').map(Number)
+    return octets.every(o => o >= 0 && o <= 255)
+  }
+
+  /**
+   * Validate bridge name format (Proxmox convention)
+   */
+  function isValidBridgeName(name: string): boolean {
+    return /^vmbr\d+$/.test(name)
   }
 
   /**
@@ -191,13 +241,20 @@ export function useTopologyResolver() {
       allErrors.push(...nodeErrors)
     }
 
-    // Check for orphaned nodes (VMs not connected to any network)
+    // Build connection map for topology analysis
     const connectedNodeIds = new Set<string>()
+    const nodeConnections = new Map<string, string[]>()
     for (const edge of edges) {
       connectedNodeIds.add(edge.source)
       connectedNodeIds.add(edge.target)
+      
+      if (!nodeConnections.has(edge.source)) nodeConnections.set(edge.source, [])
+      if (!nodeConnections.has(edge.target)) nodeConnections.set(edge.target, [])
+      nodeConnections.get(edge.source)!.push(edge.target)
+      nodeConnections.get(edge.target)!.push(edge.source)
     }
 
+    // Check for orphaned compute nodes (VMs not connected to any network)
     for (const node of nodes) {
       if (['vm', 'lxc', 'vuln-target', 'shared-service'].includes(node.data.type)) {
         if (!connectedNodeIds.has(node.id)) {
@@ -221,6 +278,105 @@ export function useTopologyResolver() {
             nodeId: node.id,
             field: 'connection',
             message: 'Network segment has no connected nodes',
+          })
+        }
+        
+        // Validate CIDR format
+        const segData = node.data as NetworkSegmentNodeData
+        if (segData.cidr && !isValidCidr(segData.cidr)) {
+          allErrors.push({
+            nodeId: node.id,
+            field: 'cidr',
+            message: `Invalid CIDR format: ${segData.cidr}`,
+          })
+        }
+        
+        // Validate bridge name format
+        if (segData.bridge && !isValidBridgeName(segData.bridge)) {
+          allWarnings.push({
+            nodeId: node.id,
+            field: 'bridge',
+            message: `Non-standard bridge name: ${segData.bridge} (expected vmbr*)`,
+          })
+        }
+      }
+    }
+
+    // Check for routers/firewalls with insufficient connections
+    for (const node of nodes) {
+      if (['router', 'edge-firewall'].includes(node.data.type)) {
+        const connections = nodeConnections.get(node.id) || []
+        const networkConnections = connections.filter(connId => {
+          const connNode = nodes.find(n => n.id === connId)
+          return connNode?.data.type === 'network-segment'
+        })
+        
+        if (networkConnections.length < 2) {
+          allWarnings.push({
+            nodeId: node.id,
+            field: 'connection',
+            message: 'Router/Firewall should connect at least 2 network segments',
+          })
+        }
+      }
+    }
+
+    // Check for duplicate bridge names
+    const bridgeNames = new Map<string, string[]>()
+    for (const node of nodes) {
+      if (node.data.type === 'network-segment') {
+        const segData = node.data as NetworkSegmentNodeData
+        if (segData.bridge) {
+          if (!bridgeNames.has(segData.bridge)) {
+            bridgeNames.set(segData.bridge, [])
+          }
+          bridgeNames.get(segData.bridge)!.push(node.id)
+        }
+      }
+    }
+    
+    const bridgeEntries = Array.from(bridgeNames.entries())
+    for (const [bridge, nodeIds] of bridgeEntries) {
+      if (nodeIds.length > 1) {
+        for (const nodeId of nodeIds) {
+          allWarnings.push({
+            nodeId,
+            field: 'bridge',
+            message: `Bridge ${bridge} is used by multiple network segments`,
+          })
+        }
+      }
+    }
+
+    // Check for overlapping CIDRs
+    const cidrs: Array<{ nodeId: string; cidr: string }> = []
+    for (const node of nodes) {
+      if (node.data.type === 'network-segment') {
+        const segData = node.data as NetworkSegmentNodeData
+        if (segData.cidr && isValidCidr(segData.cidr)) {
+          cidrs.push({ nodeId: node.id, cidr: segData.cidr })
+        }
+      }
+    }
+    
+    // Simple overlap detection (same network)
+    const networkAddresses = new Map<string, string[]>()
+    for (const { nodeId, cidr } of cidrs) {
+      const network = cidr.split('/')[0].split('.').slice(0, 3).join('.')
+      if (!networkAddresses.has(network)) {
+        networkAddresses.set(network, [])
+      }
+      networkAddresses.get(network)!.push(nodeId)
+    }
+    
+    const networkEntries = Array.from(networkAddresses.entries())
+    for (const [, nodeIds] of networkEntries) {
+      if (nodeIds.length > 1) {
+        for (const nodeId of nodeIds) {
+          allWarnings.push({
+            nodeId,
+            field: 'cidr',
+            message: 'Network address may overlap with another segment',
           })
         }
       }
@@ -259,6 +415,37 @@ export function useTopologyResolver() {
     }
     
     return segments
+  }
+
+  /**
+   * Find connected network segments with their edge connection data
+   * Returns both the segment node and any NetworkConnectionData from the edge
+   */
+  function findConnectedSegmentsWithEdgeData(
+    nodeId: string,
+    nodes: CanvasNode[],
+    edges: Edge[]
+  ): Array<{ segment: CanvasNode; connectionData?: NetworkConnectionData }> {
+    const connections: Array<{ segment: CanvasNode; connectionData?: NetworkConnectionData }> = []
+    
+    for (const edge of edges) {
+      const connectedId = edge.source === nodeId ? edge.target : 
+                          edge.target === nodeId ? edge.source : null
+      
+      if (connectedId) {
+        const connectedNode = nodes.find(n => n.id === connectedId)
+        if (connectedNode && connectedNode.data.type === 'network-segment') {
+          // Extract connection data from edge if available
+          const edgeData = edge.data as CanvasEdgeData | undefined
+          connections.push({
+            segment: connectedNode,
+            connectionData: edgeData?.connection,
+          })
+        }
+      }
+    }
+    
+    return connections
   }
 
   /**
@@ -411,30 +598,35 @@ export function useTopologyResolver() {
 
   /**
    * Create deployment step to configure network interface
+   * Uses edge connection data if available for interface settings
    */
   function createNetworkConfigStep(
     node: CanvasNode,
     vmId: number,
     segment: CanvasNode,
     ifaceIndex: number,
-    options: ResolverOptions
+    options: ResolverOptions,
+    connectionData?: NetworkConnectionData
   ): DeploymentStep {
     const segmentData = segment.data as NetworkSegmentNodeData
 
+    // Use connection data from edge if available, otherwise use defaults
     const payload: VmNetworkAddRequest = {
       proxmox_node: options.proxmoxNode,
       vm_id: vmId,
       iface_id: ifaceIndex,
-      iface_model: 'virtio',
+      iface_model: connectionData?.interfaceModel || 'virtio',
       iface_bridge: segmentData.bridge,
-      iface_firewall: true,
+      iface_tag: connectionData?.vlanTag || segmentData.vlanTag,
+      iface_firewall: connectionData?.firewall ?? true,
+      iface_mac: connectionData?.macAddress,
     }
 
     return {
       id: generateStepId(),
       type: 'configure_network',
       name: `Configure ${node.data.label} network`,
-      description: `Connect to ${segmentData.label} (${segmentData.bridge})`,
+      description: `Connect to ${segmentData.label} (${segmentData.bridge})${connectionData?.ipAddress ? ` - ${connectionData.ipAddress}` : ''}`,
       nodeId: node.id,
       status: 'pending',
       payload,
@@ -511,15 +703,41 @@ export function useTopologyResolver() {
           break
         }
 
+        case 'switch': {
+          // Switches are logical containers for VLAN configuration
+          // They can create an underlying bridge if specified
+          const switchData = node.data as SwitchNodeData
+          if (switchData.bridge) {
+            // Create bridge for the switch if it has a backing bridge defined
+            const bridgePayload: NodeNetworkAddRequest = {
+              proxmox_node: options.proxmoxNode,
+              iface_name: switchData.bridge,
+              iface_type: 'bridge',
+              iface_autostart: true,
+              iface_comments: `${switchData.label} - VLAN switch (${switchData.portCount} ports)`,
+            }
+            steps.push({
+              id: generateStepId(),
+              type: 'create_bridge',
+              name: `Create switch bridge ${switchData.bridge}`,
+              description: `Create backing bridge for switch: ${switchData.label}`,
+              nodeId: node.id,
+              status: 'pending',
+              payload: bridgePayload,
+            })
+          }
+          break
+        }
+
         case 'vm': {
           const vmId = nextVmId++
           nodeVmIds.set(node.id, vmId)
           steps.push(createVmStep(node, vmId, options))
           
-          // Add network config for connected segments
-          const segments = findConnectedSegments(node.id, canvasNodes, edges)
-          segments.forEach((segment, index) => {
-            steps.push(createNetworkConfigStep(node, vmId, segment, index, options))
+          // Add network config for connected segments (with edge connection data)
+          const connections = findConnectedSegmentsWithEdgeData(node.id, canvasNodes, edges)
+          connections.forEach(({ segment, connectionData }, index) => {
+            steps.push(createNetworkConfigStep(node, vmId, segment, index, options, connectionData))
           })
           break
         }
@@ -529,10 +747,10 @@ export function useTopologyResolver() {
           nodeVmIds.set(node.id, vmId)
           steps.push(createLxcStep(node, vmId, options))
           
-          // Add network config for connected segments
-          const segments = findConnectedSegments(node.id, canvasNodes, edges)
-          segments.forEach((segment, index) => {
-            steps.push(createNetworkConfigStep(node, vmId, segment, index, options))
+          // Add network config for connected segments (with edge connection data)
+          const connections = findConnectedSegmentsWithEdgeData(node.id, canvasNodes, edges)
+          connections.forEach(({ segment, connectionData }, index) => {
+            steps.push(createNetworkConfigStep(node, vmId, segment, index, options, connectionData))
           })
           break
         }
@@ -552,7 +770,8 @@ export function useTopologyResolver() {
     }
 
     // Add start steps for all VMs (after all are created)
-    for (const [nodeId, vmId] of nodeVmIds) {
+    const vmIdEntries = Array.from(nodeVmIds.entries())
+    for (const [nodeId, vmId] of vmIdEntries) {
       const node = canvasNodes.find(n => n.id === nodeId)
       if (node) {
         steps.push(createStartVmStep(node, vmId, options))
