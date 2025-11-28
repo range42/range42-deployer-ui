@@ -6,12 +6,23 @@ import { SUPPORTED_LOCALES } from '@/i18n/supported.js'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 
 const props = defineProps(['project'])
-const emit = defineEmits(['openExport', 'openDeploy', 'openValidate'])
+const emit = defineEmits(['openExport', 'openDeploy', 'openValidate', 'openInventory', 'openTemplates', 'openImport'])
 const { onDragStart } = useDragAndDrop()
 
 const currentProject = computed(() => props.project)
 const { t } = useI18n({ useScope: 'global' })
 const selectedLocale = ref(getLocale())
+
+// Collapsible sections
+const expandedSections = ref({
+  components: true,
+  actions: true,
+  status: false,
+})
+
+const toggleSection = (section) => {
+  expandedSections.value[section] = !expandedSections.value[section]
+}
 
 onMounted(async () => {
   await ensureNamespaces(['sidebar', 'common'])
@@ -23,173 +34,232 @@ const changeLocale = async () => {
 
 const infrastructureComponents = [
   {
-    category: 'Organization',
-    items: [
-      {
-        type: 'group',
-        label: 'Group',
-        icon: '📁',
-        description: 'Container for organizing infrastructure'
-      }
-    ]
-  },
-  {
     category: 'Compute',
+    icon: '💻',
     items: [
-      {
-        type: 'vm',
-        label: 'Virtual Machine',
-        icon: '🖥️',
-        description: 'Proxmox VM (QEMU/KVM)'
-      },
-      {
-        type: 'lxc',
-        label: 'LXC Container',
-        icon: '📦',
-        description: 'Proxmox lightweight container'
-      }
+      { type: 'vm', label: 'Virtual Machine', icon: '🖥️', shortcut: 'V' },
+      { type: 'lxc', label: 'Container', icon: '📦', shortcut: 'C' },
     ]
   },
   {
     category: 'Network',
+    icon: '🌐',
     items: [
-      {
-        type: 'network-segment',
-        label: 'Network',
-        icon: '🌐',
-        description: 'Proxmox bridge (vmbr*)'
-      },
-      {
-        type: 'edge-firewall',
-        label: 'Firewall Appliance',
-        icon: '🛡️',
-        description: 'pfSense, OPNsense VM'
-      },
-      {
-        type: 'router',
-        label: 'Router',
-        icon: '🔄',
-        description: 'VyOS, OPNsense router VM'
-      }
+      { type: 'network-segment', label: 'Network', icon: '🔗', shortcut: 'N' },
+      { type: 'router', label: 'Router', icon: '🔀', shortcut: 'R' },
+      { type: 'edge-firewall', label: 'Firewall', icon: '🛡️', shortcut: 'F' },
+    ]
+  },
+  {
+    category: 'Organization',
+    icon: '📁',
+    items: [
+      { type: 'group', label: 'Group', icon: '📂', shortcut: 'G' },
     ]
   }
 ]
 
-const openExport = () => {
-  emit('openExport')
-}
+const openExport = () => emit('openExport')
+const openDeploy = () => emit('openDeploy')
+const openValidate = () => emit('openValidate')
+const openInventory = () => emit('openInventory')
+const openTemplates = () => emit('openTemplates')
+const openImport = () => emit('openImport')
 
-const openDeploy = () => {
-  emit('openDeploy')
-}
-
-const openValidate = () => {
-  emit('openValidate')
-}
+const nodeCount = computed(() => currentProject.value?.nodes?.length || 0)
+const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
 </script>
 
 <template>
-  <div class="w-80 bg-base-200 p-4 space-y-6">
+  <aside class="w-72 h-full flex flex-col bg-base-200 border-r border-base-300">
     <!-- Header -->
-    <div class="text-center">
-      <h2 class="text-2xl font-bold">🏗️ {{ t('sidebar.title') }}</h2>
-      <p class="text-sm opacity-70">{{ t('sidebar.subtitle') }}</p>
-    </div>
-
-    <!-- Language Switcher -->
-    <div class="flex items-center justify-center gap-2">
-      <label class="text-xs opacity-70">{{ t('sidebar.language.label') }}</label>
-      <select class="select select-bordered select-xs" v-model="selectedLocale" @change="changeLocale">
-        <option v-for="l in SUPPORTED_LOCALES" :key="l.code" :value="l.code">{{ l.label }}</option>
-      </select>
-    </div>
-
-    <!-- Project Info -->
-    <div class="card bg-base-100 shadow-sm">
-      <div class="card-body p-4">
-        <h3 class="card-title text-sm">{{ t('sidebar.currentProject') }}</h3>
-        <p class="text-xs opacity-70">{{ currentProject?.name || t('sidebar.untitledProject') }}</p>
-        <div class="text-xs opacity-50">
-          {{ t('sidebar.componentsCount', { count: currentProject?.nodes?.length || 0 }) }}
+    <div class="p-4 border-b border-base-300">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+          <span class="text-lg">🚀</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h2 class="font-semibold text-sm truncate">{{ currentProject?.name || 'Untitled' }}</h2>
+          <p class="text-xs text-base-content/50">{{ nodeCount }} nodes · {{ edgeCount }} connections</p>
         </div>
       </div>
     </div>
 
-    <!-- Infrastructure Components by Category -->
-    <div class="space-y-4">
-      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
-        {{ t('sidebar.infrastructure.title') }}
-      </h3>
-      
-      <div v-for="category in infrastructureComponents" :key="category.category" class="space-y-2">
-        <h4 class="text-xs font-medium opacity-60 uppercase tracking-wide">
-          {{ category.category }}
-        </h4>
-        
-        <div class="space-y-2">
-          <div
-            v-for="component in category.items"
-            :key="component.type"
-            class="card bg-base-100 shadow-sm cursor-grab hover:shadow-md transition-shadow border border-base-300 hover:border-primary/30"
-            :draggable="true"
-            @dragstart="onDragStart($event, component.type)"
+    <!-- Scrollable Content -->
+    <div class="flex-1 overflow-y-auto no-scrollbar">
+      <!-- Quick Actions -->
+      <div class="p-3 border-b border-base-300/50">
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn btn-primary btn-sm gap-1.5" @click="openDeploy">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Deploy
+          </button>
+          <button class="btn btn-ghost btn-sm gap-1.5" @click="openValidate">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Validate
+          </button>
+        </div>
+      </div>
+
+      <!-- Components Section -->
+      <div class="border-b border-base-300/50">
+        <button 
+          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors"
+          @click="toggleSection('components')"
+        >
+          <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Components</span>
+          <svg 
+            class="w-4 h-4 text-base-content/40 transition-transform" 
+            :class="{ 'rotate-180': expandedSections.components }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
-            <div class="card-body p-3">
-              <div class="flex items-center space-x-3">
-                <span class="text-xl">{{ component.icon }}</span>
-                <div class="flex-1">
-                  <div class="font-medium text-sm">{{ component.label }}</div>
-                  <div class="text-xs opacity-70">{{ component.description }}</div>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+        
+        <div v-show="expandedSections.components" class="px-3 pb-3 space-y-3">
+          <div v-for="category in infrastructureComponents" :key="category.category">
+            <div class="flex items-center gap-2 mb-2 px-1">
+              <span class="text-sm">{{ category.icon }}</span>
+              <span class="text-xs font-medium text-base-content/50">{{ category.category }}</span>
+            </div>
+            
+            <div class="space-y-1">
+              <div
+                v-for="component in category.items"
+                :key="component.type"
+                class="component-card flex items-center gap-3 group"
+                :draggable="true"
+                @dragstart="onDragStart($event, component.type)"
+              >
+                <div class="w-8 h-8 rounded-lg bg-base-200 flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
+                  <span class="text-base">{{ component.icon }}</span>
                 </div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-sm">{{ component.label }}</div>
+                </div>
+                <kbd class="kbd kbd-xs opacity-0 group-hover:opacity-50 transition-opacity">{{ component.shortcut }}</kbd>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resources Section -->
+      <div class="border-b border-base-300/50">
+        <button 
+          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors"
+          @click="toggleSection('actions')"
+        >
+          <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Resources</span>
+          <svg 
+            class="w-4 h-4 text-base-content/40 transition-transform" 
+            :class="{ 'rotate-180': expandedSections.actions }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+        
+        <div v-show="expandedSections.actions" class="px-3 pb-3 space-y-1">
+          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openInventory">
+            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
+              <span class="text-base">📚</span>
+            </div>
+            <div>
+              <div class="font-medium text-sm">Inventory Browser</div>
+              <div class="text-xs text-base-content/50">GitHub inventories</div>
+            </div>
+          </button>
+          
+          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openTemplates">
+            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
+              <span class="text-base">💿</span>
+            </div>
+            <div>
+              <div class="font-medium text-sm">Templates & ISOs</div>
+              <div class="text-xs text-base-content/50">Proxmox storage</div>
+            </div>
+          </button>
+          
+          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openImport">
+            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
+              <span class="text-base">📥</span>
+            </div>
+            <div>
+              <div class="font-medium text-sm">Import Infrastructure</div>
+              <div class="text-xs text-base-content/50">From Proxmox</div>
+            </div>
+          </button>
+          
+          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openExport">
+            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
+              <span class="text-base">📤</span>
+            </div>
+            <div>
+              <div class="font-medium text-sm">Export Topology</div>
+              <div class="text-xs text-base-content/50">JSON, YAML, Terraform</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Status Legend -->
+      <div>
+        <button 
+          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors"
+          @click="toggleSection('status')"
+        >
+          <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Status Legend</span>
+          <svg 
+            class="w-4 h-4 text-base-content/40 transition-transform" 
+            :class="{ 'rotate-180': expandedSections.status }"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+          </svg>
+        </button>
+        
+        <div v-show="expandedSections.status" class="px-4 pb-4">
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="flex items-center gap-2">
+              <span class="status-dot gray"></span>
+              <span class="text-base-content/70">Incomplete</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="status-dot orange"></span>
+              <span class="text-base-content/70">Ready</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="status-dot green"></span>
+              <span class="text-base-content/70">Running</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="status-dot red"></span>
+              <span class="text-base-content/70">Error</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="status-dot blue pulse"></span>
+              <span class="text-base-content/70">Deploying</span>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Status Legend -->
-    <div class="space-y-2">
-      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
-        {{ t('sidebar.statusLegend.title') }}
-      </h3>
-      <div class="space-y-1 text-xs">
-        <div class="flex items-center space-x-2">
-          <div class="w-3 h-3 rounded-full bg-gray-400"></div>
-          <span>{{ t('sidebar.statusLegend.incomplete') }}</span>
-        </div>
-        <div class="flex items-center space-x-2">
-          <div class="w-3 h-3 rounded-full bg-orange-400"></div>
-          <span>{{ t('sidebar.statusLegend.ready') }}</span>
-        </div>
-        <div class="flex items-center space-x-2">
-          <div class="w-3 h-3 rounded-full bg-green-400"></div>
-          <span>{{ t('sidebar.statusLegend.deployedRunning') }}</span>
-        </div>
-        <div class="flex items-center space-x-2">
-          <div class="w-3 h-3 rounded-full bg-red-400"></div>
-          <span>{{ t('sidebar.statusLegend.error') }}</span>
-        </div>
+    <!-- Footer -->
+    <div class="p-3 border-t border-base-300 bg-base-200">
+      <div class="flex items-center justify-between">
+        <select class="select select-ghost select-xs" v-model="selectedLocale" @change="changeLocale">
+          <option v-for="l in SUPPORTED_LOCALES" :key="l.code" :value="l.code">{{ l.label }}</option>
+        </select>
+        <div class="text-xs text-base-content/40">v0.1.0</div>
       </div>
     </div>
-
-    <!-- Quick Actions -->
-    <div class="space-y-2">
-      <h3 class="font-semibold text-sm uppercase tracking-wide opacity-70">
-        {{ t('sidebar.quickActions.title') }}
-      </h3>
-      
-      <div class="flex flex-col space-y-2">
-        <button class="btn btn-sm btn-primary" @click="openDeploy">
-          🚀 {{ t('sidebar.quickActions.deploy') || 'Deploy' }}
-        </button>
-        <button class="btn btn-sm btn-outline" @click="openValidate">
-          🔍 {{ t('sidebar.quickActions.validate') || 'Validate' }}
-        </button>
-        <button class="btn btn-sm btn-outline" @click="openExport">
-          🧭 {{ t('sidebar.quickActions.export') }}
-        </button>
-      </div>
-    </div>
-  </div>
+  </aside>
 </template>
