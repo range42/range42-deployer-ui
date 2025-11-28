@@ -250,6 +250,7 @@ export type NodeType =
   | 'network-segment'
   | 'edge-firewall'
   | 'router'
+  | 'switch'
   | 'vm'
   | 'lxc'
 
@@ -325,11 +326,56 @@ export interface LxcNodeData extends BaseNodeData {
   unprivileged?: boolean
 }
 
+export interface SwitchNodeData extends BaseNodeData {
+  type: 'switch'
+  portCount: number
+  vlans: Array<{
+    id: number
+    name: string
+    subnet?: string
+    gateway?: string
+  }>
+  trunkPorts: number[]      // Ports carrying multiple VLANs
+  accessPorts: Array<{
+    port: number
+    vlanId: number
+  }>
+  managementVlan?: number   // VLAN for switch management
+  bridge?: string           // Optional backing Proxmox bridge
+}
+
+// =============================================================================
+// Edge Types (Network Connections)
+// =============================================================================
+
+/**
+ * Network connection data stored on edges between nodes.
+ * Represents the actual network interface configuration.
+ */
+export interface NetworkConnectionData {
+  interfaceModel: 'virtio' | 'e1000' | 'rtl8139'
+  ipAddress?: string        // Static IP (CIDR notation, e.g., '10.0.100.10/24')
+  macAddress?: string       // Custom MAC address (optional)
+  firewall: boolean         // Enable Proxmox firewall on this interface
+  vlanTag?: number          // Optional VLAN tag for this connection
+  mtu?: number              // Custom MTU (optional)
+  rate?: number             // Rate limit in MB/s (optional)
+}
+
+/**
+ * Extended edge data for canvas edges with network connection info
+ */
+export interface CanvasEdgeData {
+  connection?: NetworkConnectionData
+  label?: string
+}
+
 // Union type for all node data
 export type CanvasNodeData = 
   | GroupNodeData
   | NetworkSegmentNodeData
   | RouterNodeData
+  | SwitchNodeData
   | VmNodeData
   | LxcNodeData
 

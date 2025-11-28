@@ -79,15 +79,18 @@ const removeVlan = (index) => {
   config.value.vlans.splice(index, 1)
 }
 
-// Add firewall rule management
+// Add firewall rule management (Proxmox-compatible format)
 const addFirewallRule = () => {
   if (!config.value.rules) config.value.rules = []
   config.value.rules.push({
-    action: 'allow',
+    action: 'ACCEPT',
+    direction: 'in',
     source: '',
-    destination: '',
-    port: '',
-    protocol: 'tcp'
+    dest: '',
+    dport: '',
+    proto: 'tcp',
+    comment: '',
+    enabled: true
   })
 }
 
@@ -327,6 +330,22 @@ watch(() => props.node, (newNode) => {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="form-control">
               <label class="label">
+                <span class="label-text">🔌 Backing Proxmox Bridge</span>
+              </label>
+              <select v-model="config.bridge" class="select select-bordered">
+                <option value="">None (Logical only)</option>
+                <option value="vmbr0">vmbr0</option>
+                <option value="vmbr1">vmbr1</option>
+                <option value="vmbr2">vmbr2</option>
+                <option value="vmbr3">vmbr3</option>
+              </select>
+              <label class="label">
+                <span class="label-text-alt">Optional bridge for VLAN trunking</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label">
                 <span class="label-text">Port Count *</span>
               </label>
               <select v-model.number="config.portCount" class="select select-bordered">
@@ -336,37 +355,43 @@ watch(() => props.node, (newNode) => {
                 <option :value="48">48 ports</option>
               </select>
             </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Management VLAN</span>
+              </label>
+              <input
+                v-model.number="config.managementVlan"
+                type="number"
+                class="input input-bordered"
+                placeholder="e.g., 1"
+                min="1"
+                max="4094"
+              />
+            </div>
 
             <div class="form-control">
               <label class="label">
-                <span class="label-text">Spanning Tree Protocol</span>
+                <span class="label-text">Trunk Ports (comma-separated)</span>
               </label>
-              <select v-model="config.spanningTreeProtocol" class="select select-bordered">
-                <option value="STP">STP</option>
-                <option value="RSTP">RSTP</option>
-                <option value="MSTP">MSTP</option>
-              </select>
+              <input
+                v-model="config.trunkPortsInput"
+                type="text"
+                class="input input-bordered"
+                placeholder="e.g., 1,2,24"
+              />
+              <label class="label">
+                <span class="label-text-alt">Ports carrying multiple VLANs</span>
+              </label>
             </div>
           </div>
 
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">VLAN Support</span>
-              <input v-model="config.vlanSupport" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
-
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">Port Security</span>
-              <input v-model="config.portSecurity" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
-
           <!-- VLAN Management -->
-          <div v-if="config.vlanSupport" class="form-control">
+          <div class="form-control">
             <label class="label">
-              <span class="label-text font-semibold">VLAN Configuration</span>
+              <span class="label-text font-semibold">🏷️ VLAN Configuration</span>
               <button type="button" @click="addVlan" class="btn btn-sm btn-primary">
                 Add VLAN
               </button>
@@ -377,7 +402,7 @@ watch(() => props.node, (newNode) => {
                 :key="index"
                 class="border border-base-300 rounded p-3"
               >
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <input
                     v-model.number="vlan.id"
                     type="number"
@@ -393,10 +418,16 @@ watch(() => props.node, (newNode) => {
                     placeholder="VLAN Name"
                   />
                   <input
-                    v-model="vlan.description"
+                    v-model="vlan.subnet"
                     type="text"
                     class="input input-bordered input-sm"
-                    placeholder="Description"
+                    placeholder="Subnet (e.g., 10.0.10.0/24)"
+                  />
+                  <input
+                    v-model="vlan.gateway"
+                    type="text"
+                    class="input input-bordered input-sm"
+                    placeholder="Gateway (e.g., 10.0.10.1)"
                   />
                   <button
                     type="button"
@@ -408,12 +439,15 @@ watch(() => props.node, (newNode) => {
                 </div>
               </div>
             </div>
+            <div v-else class="text-sm text-base-content/60 p-2">
+              No VLANs configured. Click "Add VLAN" to create one.
+            </div>
           </div>
         </template>
 
         <!-- Firewall Specific Fields -->
         <template v-if="node.type === 'firewall'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="form-control">
               <label class="cursor-pointer label">
                 <span class="label-text">Enable NAT</span>
@@ -427,67 +461,134 @@ watch(() => props.node, (newNode) => {
                 <input v-model="config.vpnSupport" type="checkbox" class="toggle toggle-primary" />
               </label>
             </div>
+
+            <div class="form-control">
+              <label class="cursor-pointer label">
+                <span class="label-text">Intrusion Detection</span>
+                <input v-model="config.intrusionDetection" type="checkbox" class="toggle toggle-primary" />
+              </label>
+            </div>
           </div>
 
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">Intrusion Detection</span>
-              <input v-model="config.intrusionDetection" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
-
-          <!-- Firewall Rules -->
-          <div class="form-control">
+          <!-- Enhanced Firewall Rules Builder -->
+          <div class="form-control mt-4">
             <label class="label">
-              <span class="label-text font-semibold">Firewall Rules</span>
+              <span class="label-text font-semibold">🛡️ Firewall Rules</span>
               <button type="button" @click="addFirewallRule" class="btn btn-sm btn-primary">
-                Add Rule
+                + Add Rule
               </button>
             </label>
-            <div v-if="config.rules?.length" class="space-y-3">
+            
+            <!-- Rules Header -->
+            <div v-if="config.rules?.length" class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 bg-base-200 rounded-t-lg text-xs font-semibold text-base-content/70">
+              <div class="col-span-1">#</div>
+              <div class="col-span-1">Action</div>
+              <div class="col-span-1">Dir</div>
+              <div class="col-span-2">Source</div>
+              <div class="col-span-2">Destination</div>
+              <div class="col-span-1">Port</div>
+              <div class="col-span-1">Proto</div>
+              <div class="col-span-2">Comment</div>
+              <div class="col-span-1"></div>
+            </div>
+
+            <div v-if="config.rules?.length" class="space-y-2">
               <div
                 v-for="(rule, index) in config.rules"
                 :key="index"
-                class="border border-base-300 rounded-lg p-3"
+                class="border border-base-300 rounded-lg p-3 hover:border-base-content/30 transition-colors"
+                :class="{ 'opacity-50': rule.enabled === false }"
               >
-                <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
-                  <select v-model="rule.action" class="select select-bordered select-sm">
-                    <option value="allow">Allow</option>
-                    <option value="deny">Deny</option>
+                <!-- Rule Row -->
+                <div class="grid grid-cols-2 md:grid-cols-12 gap-2 items-center">
+                  <!-- Position -->
+                  <div class="hidden md:flex col-span-1 text-sm font-mono text-base-content/50">
+                    {{ index + 1 }}
+                  </div>
+                  
+                  <!-- Action -->
+                  <select 
+                    v-model="rule.action" 
+                    class="select select-bordered select-sm col-span-1"
+                    :class="{
+                      'select-success': rule.action === 'ACCEPT',
+                      'select-error': rule.action === 'DROP' || rule.action === 'REJECT'
+                    }"
+                  >
+                    <option value="ACCEPT">Allow</option>
+                    <option value="DROP">Drop</option>
+                    <option value="REJECT">Reject</option>
                   </select>
+                  
+                  <!-- Direction -->
+                  <select v-model="rule.direction" class="select select-bordered select-sm col-span-1">
+                    <option value="in">In</option>
+                    <option value="out">Out</option>
+                  </select>
+                  
+                  <!-- Source -->
                   <input
                     v-model="rule.source"
                     type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Source"
+                    class="input input-bordered input-sm col-span-2"
+                    placeholder="any / CIDR"
                   />
+                  
+                  <!-- Destination -->
                   <input
-                    v-model="rule.destination"
+                    v-model="rule.dest"
                     type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Destination"
+                    class="input input-bordered input-sm col-span-2"
+                    placeholder="any / CIDR"
                   />
+                  
+                  <!-- Port -->
                   <input
-                    v-model="rule.port"
+                    v-model="rule.dport"
                     type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Port(s)"
+                    class="input input-bordered input-sm col-span-1"
+                    placeholder="80,443"
                   />
-                  <select v-model="rule.protocol" class="select select-bordered select-sm">
+                  
+                  <!-- Protocol -->
+                  <select v-model="rule.proto" class="select select-bordered select-sm col-span-1">
                     <option value="tcp">TCP</option>
                     <option value="udp">UDP</option>
                     <option value="icmp">ICMP</option>
-                    <option value="any">Any</option>
+                    <option value="">Any</option>
                   </select>
-                  <button
-                    type="button"
-                    @click="removeFirewallRule(index)"
-                    class="btn btn-sm btn-error"
-                  >
-                    ×
-                  </button>
+                  
+                  <!-- Comment -->
+                  <input
+                    v-model="rule.comment"
+                    type="text"
+                    class="input input-bordered input-sm col-span-2"
+                    placeholder="Description"
+                  />
+                  
+                  <!-- Actions -->
+                  <div class="col-span-1 flex gap-1">
+                    <label class="swap">
+                      <input type="checkbox" v-model="rule.enabled" />
+                      <span class="swap-on text-success">✓</span>
+                      <span class="swap-off text-error">✗</span>
+                    </label>
+                    <button
+                      type="button"
+                      @click="removeFirewallRule(index)"
+                      class="btn btn-xs btn-ghost text-error"
+                    >
+                      🗑️
+                    </button>
+                  </div>
                 </div>
               </div>
+            </div>
+
+            <!-- Empty State -->
+            <div v-else class="text-center py-6 text-base-content/50 border border-dashed border-base-300 rounded-lg">
+              <p>No firewall rules configured</p>
+              <p class="text-sm">Click "Add Rule" to create your first rule</p>
             </div>
           </div>
         </template>

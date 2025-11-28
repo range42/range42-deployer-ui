@@ -18,24 +18,44 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'update'])
 
-// Local form state
+// Local form state - matches NetworkConnectionData type
 const config = ref({
-  ipAddress: '',
-  useDhcp: true,
   interfaceModel: 'virtio',
+  ipAddress: '',
   macAddress: '',
-  firewall: true
+  firewall: true,
+  vlanTag: null,
+  mtu: null,
+  rate: null,
+  // UI helper
+  useDhcp: true
 })
 
 // Initialize form from edge data
 watch(() => props.edge, (edge) => {
-  if (edge?.data) {
+  if (edge?.data?.connection) {
+    const conn = edge.data.connection
     config.value = {
-      ipAddress: edge.data.ipAddress || '',
-      useDhcp: edge.data.useDhcp ?? true,
+      interfaceModel: conn.interfaceModel || 'virtio',
+      ipAddress: conn.ipAddress || '',
+      macAddress: conn.macAddress || '',
+      firewall: conn.firewall ?? true,
+      vlanTag: conn.vlanTag || null,
+      mtu: conn.mtu || null,
+      rate: conn.rate || null,
+      useDhcp: !conn.ipAddress
+    }
+  } else if (edge?.data) {
+    // Legacy format
+    config.value = {
       interfaceModel: edge.data.interfaceModel || 'virtio',
+      ipAddress: edge.data.ipAddress || '',
       macAddress: edge.data.macAddress || '',
-      firewall: edge.data.firewall ?? true
+      firewall: edge.data.firewall ?? true,
+      vlanTag: edge.data.vlanTag || null,
+      mtu: edge.data.mtu || null,
+      rate: edge.data.rate || null,
+      useDhcp: edge.data.useDhcp ?? true
     }
   }
 }, { immediate: true })
@@ -57,9 +77,24 @@ const networkNode = computed(() => {
 // Network CIDR for reference
 const networkCidr = computed(() => networkNode.value?.data?.config?.cidr || 'N/A')
 
+// Format config as NetworkConnectionData for the edge
+const connectionData = computed(() => ({
+  interfaceModel: config.value.interfaceModel,
+  ipAddress: config.value.useDhcp ? undefined : config.value.ipAddress || undefined,
+  macAddress: config.value.macAddress || undefined,
+  firewall: config.value.firewall,
+  vlanTag: config.value.vlanTag || undefined,
+  mtu: config.value.mtu || undefined,
+  rate: config.value.rate || undefined,
+}))
+
 // Auto-update parent when config changes
-watch(config, (newConfig) => {
-  emit('update', props.edge.id, newConfig)
+watch(config, () => {
+  // Emit the edge data in the correct format: { connection: NetworkConnectionData }
+  emit('update', props.edge.id, { 
+    connection: connectionData.value,
+    label: config.value.ipAddress || undefined
+  })
 }, { deep: true })
 
 const close = () => {
@@ -138,6 +173,60 @@ const close = () => {
           class="input input-bordered input-sm" 
           placeholder="Auto-generated"
         />
+      </div>
+
+      <!-- VLAN Tag -->
+      <div class="form-control mb-3">
+        <label class="label py-1">
+          <span class="label-text text-sm">VLAN Tag</span>
+          <span class="label-text-alt text-xs">Optional</span>
+        </label>
+        <input 
+          v-model.number="config.vlanTag" 
+          type="number" 
+          class="input input-bordered input-sm" 
+          placeholder="1-4094"
+          min="1"
+          max="4094"
+        />
+      </div>
+
+      <!-- Advanced Options -->
+      <div class="collapse collapse-arrow bg-base-100 rounded-box mb-3">
+        <input type="checkbox" />
+        <div class="collapse-title text-sm font-medium py-2 min-h-0">
+          Advanced Options
+        </div>
+        <div class="collapse-content">
+          <!-- MTU -->
+          <div class="form-control mb-2">
+            <label class="label py-1">
+              <span class="label-text text-sm">MTU</span>
+            </label>
+            <input 
+              v-model.number="config.mtu" 
+              type="number" 
+              class="input input-bordered input-sm" 
+              placeholder="Default (1500)"
+              min="576"
+              max="65535"
+            />
+          </div>
+
+          <!-- Rate Limit -->
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-sm">Rate Limit (MB/s)</span>
+            </label>
+            <input 
+              v-model.number="config.rate" 
+              type="number" 
+              class="input input-bordered input-sm" 
+              placeholder="Unlimited"
+              min="1"
+            />
+          </div>
+        </div>
       </div>
 
       <!-- Firewall -->

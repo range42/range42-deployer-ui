@@ -83,6 +83,71 @@ export const useProjectStore = defineStore('projects', () => {
     saveProjects()
   }
 
+  /**
+   * Update a single node's status within a project
+   * @param {string} projectId - Project ID
+   * @param {string} nodeId - Node ID to update
+   * @param {string} status - New status ('draft' | 'pending' | 'deploying' | 'running' | 'stopped' | 'error')
+   */
+  const updateNodeStatus = (projectId, nodeId, status) => {
+    const project = getProject(projectId)
+    if (!project) return false
+
+    const node = project.nodes.find(n => n.id === nodeId)
+    if (!node) return false
+
+    // Update the node's data.status
+    if (node.data) {
+      node.data.status = status
+    }
+
+    // Save changes
+    updateProject(projectId, { nodes: project.nodes })
+    return true
+  }
+
+  /**
+   * Update multiple node statuses at once
+   * @param {string} projectId - Project ID
+   * @param {Array<{nodeId: string, status: string}>} updates - Array of node status updates
+   */
+  const updateNodeStatuses = (projectId, updates) => {
+    const project = getProject(projectId)
+    if (!project) return false
+
+    for (const { nodeId, status } of updates) {
+      const node = project.nodes.find(n => n.id === nodeId)
+      if (node && node.data) {
+        node.data.status = status
+      }
+    }
+
+    // Save all changes at once
+    updateProject(projectId, { nodes: project.nodes })
+    return true
+  }
+
+  /**
+   * Associate a Proxmox VM ID with a canvas node
+   * @param {string} projectId - Project ID
+   * @param {string} nodeId - Canvas node ID
+   * @param {number} vmId - Proxmox VM ID
+   */
+  const setNodeVmId = (projectId, nodeId, vmId) => {
+    const project = getProject(projectId)
+    if (!project) return false
+
+    const node = project.nodes.find(n => n.id === nodeId)
+    if (!node) return false
+
+    if (node.data) {
+      node.data.vmId = vmId
+    }
+
+    updateProject(projectId, { nodes: project.nodes })
+    return true
+  }
+
   return {
     projects: computed(() => projects.value),
     loadProjects,
@@ -91,6 +156,9 @@ export const useProjectStore = defineStore('projects', () => {
     updateProject,
     deleteProject,
     exportProject,
-    clearAllData
+    clearAllData,
+    updateNodeStatus,
+    updateNodeStatuses,
+    setNodeVmId
   }
 })

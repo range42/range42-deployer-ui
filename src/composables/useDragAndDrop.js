@@ -234,6 +234,20 @@ export function useDragAndDrop() {
           applianceType: 'pfsense',  // pfsense, opnsense
         },
       },
+      // VLAN-aware switch for network segmentation
+      switch: {
+        label: 'Switch',
+        defaultConfig: {
+          name: '',
+          description: '',
+          portCount: 24,
+          vlans: [],                  // Array of {id, name, subnet?, gateway?}
+          trunkPorts: [],             // Ports carrying multiple VLANs
+          accessPorts: [],            // Array of {port, vlanId}
+          managementVlan: null,       // VLAN for switch management
+          bridge: 'vmbr0',            // Backing Proxmox bridge
+        },
+      },
     }
     return configs[type] || configs.vm
   }

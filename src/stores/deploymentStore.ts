@@ -12,6 +12,7 @@ import {
   type DeploymentPlan,
   type DeploymentStep,
 } from '@/services/proxmox'
+import { useProjectStore } from './projectStore'
 
 // =============================================================================
 // Types
@@ -48,6 +49,24 @@ export const useDeploymentStore = defineStore('deployment', () => {
 
   // Abort controller for cancellation
   let abortController: AbortController | null = null
+
+  // =============================================================================
+  // Node Status Integration
+  // =============================================================================
+
+  /**
+   * Update canvas node status based on deployment step result
+   * Maps deployment status to node status colors
+   */
+  function updateNodeStatus(
+    nodeId: string, 
+    status: 'pending' | 'deploying' | 'running' | 'stopped' | 'error'
+  ): void {
+    if (!currentPlan.value?.projectId) return
+    
+    const projectStore = useProjectStore()
+    projectStore.updateNodeStatus(currentPlan.value.projectId, nodeId, status)
+  }
 
   // =============================================================================
   // Computed
@@ -110,6 +129,9 @@ export const useDeploymentStore = defineStore('deployment', () => {
     step.startedAt = new Date().toISOString()
     addLog('info', `Starting: ${step.name}`, step.id)
 
+    // Update node status to 'deploying'
+    updateNodeStatus(step.nodeId, 'deploying')
+
     try {
       // Execute based on step type
       switch (step.type) {
@@ -165,6 +187,13 @@ export const useDeploymentStore = defineStore('deployment', () => {
       step.status = 'completed'
       step.completedAt = new Date().toISOString()
       addLog('success', `Completed: ${step.name}`, step.id)
+      
+      // Update node status based on step type
+      // For start_vm/start_lxc steps, mark as 'running'
+      // For create steps, mark as 'stopped' (not started yet)
+      const finalStatus = ['start_vm', 'start_lxc'].includes(step.type) ? 'running' : 'stopped'
+      updateNodeStatus(step.nodeId, finalStatus)
+      
       return true
 
     } catch (error) {
@@ -172,6 +201,10 @@ export const useDeploymentStore = defineStore('deployment', () => {
       step.completedAt = new Date().toISOString()
       step.error = error instanceof Error ? error.message : String(error)
       addLog('error', `Failed: ${step.name} - ${step.error}`, step.id)
+      
+      // Update node status to 'error'
+      updateNodeStatus(step.nodeId, 'error')
+      
       return false
     }
   }
