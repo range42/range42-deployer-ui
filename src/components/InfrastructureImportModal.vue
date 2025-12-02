@@ -1,0 +1,227 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useInfrastructureImport } from '@/composables/useInfrastructureImport'
+
+// Emits
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'import', result: { nodes: unknown[]; edges: unknown[] }): void
+}>()
+
+// Composable
+const {
+  vms,
+  lxcs,
+  isLoading,
+  error,
+  isConfigured,
+  selectedResources,
+  fetchResources,
+  toggleSelection,
+  selectAll,
+  deselectAll,
+  importSelected,
+} = useInfrastructureImport()
+
+// Local state
+const isImporting = ref(false)
+const importError = ref<string | null>(null)
+const activeTab = ref<'vms' | 'lxcs'>('vms')
+
+// Actions
+async function handleImport() {
+  if (selectedResources.value.length === 0) {
+    importError.value = 'Please select at least one resource to import'
+    return
+  }
+
+  try {
+    isImporting.value = true
+    importError.value = null
+    
+    const result = await importSelected()
+    
+    if (result.success || result.nodes.length > 0) {
+      emit('import', { nodes: result.nodes, edges: result.edges })
+      emit('close')
+    } else {
+      importError.value = result.errors.join(', ') || 'Import failed'
+    }
+  } catch (err) {
+    importError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    isImporting.value = false
+  }
+}
+
+function close() {
+  emit('close')
+}
+
+function getStatusBadge(status: string | undefined) {
+  switch (status) {
+    case 'running':
+      return 'badge-success'
+    case 'stopped':
+      return 'badge-error'
+    case 'paused':
+      return 'badge-warning'
+    default:
+      return 'badge-ghost'
+  }
+}
+
+// Load on mount
+onMounted(() => {
+  if (isConfigured.value) {
+    fetchResources()
+  }
+})
+</script>
+
+<template>
+  <div class="modal modal-open">
+    <div class="modal-box max-w-3xl">
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold flex items-center gap-2">
+          <span>📥</span>
+          Import Infrastructure
+        </h2>
+        <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
+      </div>
+
+      <!-- Not Configured Warning -->
+      <div v-if="!isConfigured" class="alert alert-warning mb-4">
+        <span>⚠️ Proxmox connection not configured. Please configure your Proxmox settings first.</span>
+      </div>
+
+      <!-- Error Display -->
+      <div v-if="error || importError" class="alert alert-error mb-4">
+        <span>{{ error || importError }}</span>
+      </div>
+
+      <!-- Content -->
+      <template v-if="isConfigured">
+        <!-- Tabs -->
+        <div class="tabs tabs-boxed mb-4">
+          <a 
+            class="tab" 
+            :class="{ 'tab-active': activeTab === 'vms' }"
+            @click="activeTab = 'vms'"
+          >
+            🖥️ VMs ({{ vms.length }})
+          </a>
+          <a 
+            class="tab" 
+            :class="{ 'tab-active': activeTab === 'lxcs' }"
+            @click="activeTab = 'lxcs'"
+          >
+            📦 Containers ({{ lxcs.length }})
+          </a>
+        </div>
+
+        <!-- Selection Controls -->
+        <div class="flex gap-2 mb-4">
+          <button class="btn btn-sm btn-ghost" @click="selectAll">Select All</button>
+          <button class="btn btn-sm btn-ghost" @click="deselectAll">Deselect All</button>
+          <button class="btn btn-sm btn-ghost" @click="fetchResources" :disabled="isLoading">
+            <span v-if="isLoading" class="loading loading-spinner loading-xs"></span>
+            <span v-else>🔄 Refresh</span>
+          </button>
+          <div class="flex-1"></div>
+          <span class="text-sm text-base-content/60 self-center">
+            {{ selectedResources.length }} selected
+          </span>
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="isLoading" class="flex justify-center items-center py-12">
+          <span class="loading loading-spinner loading-lg"></span>
+        </div>
+
+        <!-- VMs Tab -->
+        <div v-else-if="activeTab === 'vms'" class="max-h-80 overflow-y-auto">
+          <div v-if="vms.length === 0" class="text-center py-8 text-base-content/60">
+            <p>No VMs found</p>
+          </div>
+          <div v-else class="space-y-2">
+            <div 
+              v-for="vm in vms" 
+              :key="vm.id"
+              class="flex items-center gap-3 p-3 border border-base-300 rounded-lg hover:bg-base-200 cursor-pointer transition-colors"
+              :class="{ 'border-primary bg-primary/10': vm.selected }"
+              @click="toggleSelection(vm.id)"
+            >
+              <input 
+                type="checkbox" 
+                class="checkbox checkbox-primary" 
+                :checked="vm.selected"
+                @click.stop
+                @change="toggleSelection(vm.id)"
+              />
+              <div class="flex-1">
+                <div class="font-medium">{{ vm.name }}</div>
+                <div class="text-xs text-base-content/60">VMID: {{ vm.vmid }}</div>
+              </div>
+              <span class="badge badge-sm" :class="getStatusBadge(vm.status)">
+                {{ vm.status }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LXCs Tab -->
+        <div v-else-if="activeTab === 'lxcs'" class="max-h-80 overflow-y-auto">
+          <div v-if="lxcs.length === 0" class="text-center py-8 text-base-content/60">
+            <p>No containers found</p>
+          </div>
+          <div v-else class="space-y-2">
+            <div 
+              v-for="lxc in lxcs" 
+              :key="lxc.id"
+              class="flex items-center gap-3 p-3 border border-base-300 rounded-lg hover:bg-base-200 cursor-pointer transition-colors"
+              :class="{ 'border-primary bg-primary/10': lxc.selected }"
+              @click="toggleSelection(lxc.id)"
+            >
+              <input 
+                type="checkbox" 
+                class="checkbox checkbox-primary" 
+                :checked="lxc.selected"
+                @click.stop
+                @change="toggleSelection(lxc.id)"
+              />
+              <div class="flex-1">
+                <div class="font-medium">{{ lxc.name }}</div>
+                <div class="text-xs text-base-content/60">VMID: {{ lxc.vmid }}</div>
+              </div>
+              <span class="badge badge-sm" :class="getStatusBadge(lxc.status)">
+                {{ lxc.status }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Footer -->
+      <div class="modal-action">
+        <button class="btn btn-ghost" @click="close">Cancel</button>
+        <button 
+          class="btn btn-primary"
+          :disabled="selectedResources.length === 0 || isImporting || !isConfigured"
+          @click="handleImport"
+        >
+          <span v-if="isImporting" class="loading loading-spinner loading-xs"></span>
+          <span v-else>Import {{ selectedResources.length }} Resource(s)</span>
+        </button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="close"></div>
+  </div>
+</template>
+
+<style scoped>
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+</style>

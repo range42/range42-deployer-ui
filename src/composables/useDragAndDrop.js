@@ -58,29 +58,35 @@ export function useDragAndDrop() {
     document.removeEventListener('dragend', onDragEnd)
   }
 
+  // Container node types that can hold child nodes
+  const containerTypes = ['network-segment', 'group']
+
   // Find potential parent node at drop position
   const findParentNodeAtPosition = (position) => {
     const nodes = getNodes.value
     
-    for (const node of nodes) {
-      if (node.type === 'network-segment' && node.computedPosition && node.dimensions) {
-        const nodeRect = {
-          x: node.computedPosition.x,
-          y: node.computedPosition.y,
-          width: node.dimensions.width,
-          height: node.dimensions.height
-        }
-        
-        if (position.x >= nodeRect.x && 
-            position.x <= nodeRect.x + nodeRect.width &&
-            position.y >= nodeRect.y && 
-            position.y <= nodeRect.y + nodeRect.height) {
-          return {
-            parentNode: node,
-            relativePosition: {
-              x: position.x - nodeRect.x,
-              y: position.y - nodeRect.y
-            }
+    // Sort by z-index/layer - prefer smaller containers over larger ones
+    const containerNodes = nodes
+      .filter(n => containerTypes.includes(n.type) && n.computedPosition && n.dimensions)
+      .sort((a, b) => (a.dimensions.width * a.dimensions.height) - (b.dimensions.width * b.dimensions.height))
+    
+    for (const node of containerNodes) {
+      const nodeRect = {
+        x: node.computedPosition.x,
+        y: node.computedPosition.y,
+        width: node.dimensions.width,
+        height: node.dimensions.height
+      }
+      
+      if (position.x >= nodeRect.x && 
+          position.x <= nodeRect.x + nodeRect.width &&
+          position.y >= nodeRect.y && 
+          position.y <= nodeRect.y + nodeRect.height) {
+        return {
+          parentNode: node,
+          relativePosition: {
+            x: position.x - nodeRect.x,
+            y: position.y - nodeRect.y
           }
         }
       }
@@ -116,7 +122,9 @@ export function useDragAndDrop() {
     }
 
     let newNode
-    if (parentInfo && draggedType.value !== 'network-segment') {
+    const isContainerType = containerTypes.includes(draggedType.value)
+    
+    if (parentInfo && !isContainerType) {
       newNode = {
         ...baseNode,
         position: parentInfo.relativePosition,
@@ -132,11 +140,11 @@ export function useDragAndDrop() {
         position,
       }
 
-      if (draggedType.value === 'network-segment') {
-        newNode.style = {
-          width: '300px',
-          height: '200px',
-        }
+      // Set default size for container types
+      if (isContainerType) {
+        newNode.style = draggedType.value === 'group' 
+          ? { width: '450px', height: '350px' }
+          : { width: '300px', height: '200px' }
       }
     }
 
@@ -168,103 +176,76 @@ export function useDragAndDrop() {
         label: 'Virtual Machine',
         defaultConfig: {
           name: '',
-          cpu: null,
-          memory: '',
-          disk: '',
-          os: 'Ubuntu 22.04',
+          description: '',
+          // These are used by topology resolver for deployment planning
+          // Backend API routes for custom VM creation are planned
+          vmId: null,              // Auto-assigned during deployment
+          ipAddress: '',           // Static IP for the VM
         },
       },
       'network-segment': {
         label: 'Network Segment',
         defaultConfig: {
           name: '',
+          description: '',
+          // Proxmox bridge - must exist on the target node
+          bridge: 'vmbr0',
+          vlan: null,             // Optional VLAN tag (1-4094)
+          // Network addressing (for documentation/planning)
           cidr: '192.168.1.0/24',
           gateway: '192.168.1.1',
-          segmentType: 'production',
-          securityLevel: 'medium',
-          vlan: null,
-          dns: '',
-          dhcp: true,
         },
       },
       router: {
         label: 'Router',
         defaultConfig: {
           name: '',
-          routingProtocol: 'OSPF',
-          routerId: '1.1.1.1',
-          interfaces: [
-            { name: 'eth0', ip: '', subnet: '', description: 'WAN Interface' },
-            { name: 'eth1', ip: '', subnet: '', description: 'LAN Interface' }
-          ],
+          description: '',
+          applianceType: 'vyos',  // vyos, opnsense, etc.
         },
       },
+      // Generic container/group for organizing infrastructure
+      group: {
+        label: 'Group',
+        defaultConfig: {
+          name: '',
+          description: '',
+          prefix: '',
+          resourcePool: '',
+          tags: [],
+        },
+      },
+      // LXC container
+      lxc: {
+        label: 'LXC Container',
+        defaultConfig: {
+          name: '',
+          description: '',
+          hostname: '',
+          ipAddress: '',           // Static IP for the container
+        },
+      },
+      // Edge firewall (pfSense, OPNsense, etc.)
+      'edge-firewall': {
+        label: 'Edge Firewall',
+        defaultConfig: {
+          name: '',
+          description: '',
+          applianceType: 'pfsense',  // pfsense, opnsense
+        },
+      },
+      // VLAN-aware switch for network segmentation
       switch: {
-        label: 'Network Switch',
+        label: 'Switch',
         defaultConfig: {
           name: '',
+          description: '',
           portCount: 24,
-          vlanSupport: true,
-          vlans: [
-            { id: 1, name: 'default', description: 'Default VLAN' }
-          ],
-          spanningTreeProtocol: 'RSTP',
-          portSecurity: false
-        },
-      },
-      firewall: {
-        label: 'Firewall',
-        defaultConfig: {
-          name: '',
-          rules: [
-            { action: 'allow', source: 'internal', destination: 'external', port: '80,443', protocol: 'tcp' }
-          ],
-          zones: ['internal', 'external', 'dmz'],
-          natEnabled: true,
-          vpnSupport: false,
-          intrusionDetection: false
-        },
-      },
-      dns: {
-        label: 'DNS Server',
-        defaultConfig: {
-          name: '',
-          zones: [
-            { name: 'example.local', type: 'forward' }
-          ],
-          forwarders: ['8.8.8.8', '1.1.1.1'],
-          recursion: true,
-          dnssec: false
-        },
-      },
-      dhcp: {
-        label: 'DHCP Server',
-        defaultConfig: {
-          name: '',
-          scope: '192.168.1.100-200',
-          leaseTime: '24h',
-          gateway: '192.168.1.1',
-          dnsServers: ['192.168.1.1']
-        },
-      },
-      loadbalancer: {
-        label: 'Load Balancer',
-        defaultConfig: {
-          name: '',
-          algorithm: 'round-robin',
-          healthCheck: true,
-          servers: [],
-          sslTermination: false,
-        },
-      },
-      docker: {
-        label: 'Docker Container',
-        defaultConfig: {
-          name: '',
-          image: 'nginx:latest',
-          ports: '80:80',
-          env: '',
-          network: 'bridge',
+          vlans: [],                  // Array of {id, name, subnet?, gateway?}
+          trunkPorts: [],             // Ports carrying multiple VLANs
+          accessPorts: [],            // Array of {port, vlanId}
+          managementVlan: null,       // VLAN for switch management
+          bridge: 'vmbr0',            // Backing Proxmox bridge
         },
       },
     }

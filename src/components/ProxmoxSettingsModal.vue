@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import { useProxmoxSettings, DEFAULT_PROXMOX_BASE_DOMAIN } from '../composables/useProxmoxSettings'
+import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
 
-const DEFAULT_BASE_URL = DEFAULT_PROXMOX_BASE_DOMAIN
+const DEFAULT_API_URL = DEFAULT_BACKEND_API_URL
 
 const props = defineProps({
   visible: {
@@ -34,7 +34,7 @@ const isSaving = ref(false)
 const saveError = ref(null)
 
 const populateForm = () => {
-  formBaseUrl.value = currentBaseUrl.value || DEFAULT_BASE_URL
+  formBaseUrl.value = currentBaseUrl.value || DEFAULT_API_URL
   formDefaultNode.value = currentDefaultNode.value || ''
   saveError.value = null
 }
@@ -154,8 +154,8 @@ const formatDate = (isoString) => {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
         </svg>
         <div class="text-sm">
-          <p class="font-semibold">Project-level Proxmox settings</p>
-          <p class="text-xs opacity-80">These settings are stored locally in your browser and apply only to this project.</p>
+          <p class="font-semibold">Backend API Connection Settings</p>
+          <p class="text-xs opacity-80">Configure the Range42 Backend API that connects to your Proxmox cluster. Settings are stored locally per project.</p>
         </div>
       </div>
 
@@ -178,8 +178,8 @@ const formatDate = (isoString) => {
       <!-- Form -->
       <div class="form-control mb-4">
         <label class="label">
-          <span class="label-text font-semibold">Base Domain / IP</span>
-          <span class="label-text-alt text-xs opacity-70">Proxmox API base domain</span>
+          <span class="label-text font-semibold">🌐 Backend API URL</span>
+          <span class="label-text-alt text-xs opacity-70">Required</span>
         </label>
         <input 
           v-model="formBaseUrl" 
@@ -190,26 +190,26 @@ const formatDate = (isoString) => {
         />
         <label class="label">
           <span class="label-text-alt text-xs opacity-70">
-            The base domain/IP for Proxmox runner API (e.g., http://192.168.1.100:8000 or https://proxmox.example.com)
+            URL of the Range42 Backend API service (e.g., http://192.168.1.100:8000). This is NOT the Proxmox URL directly.
           </span>
         </label>
       </div>
 
       <div class="form-control mb-4">
         <label class="label">
-          <span class="label-text font-semibold">Default Node</span>
-          <span class="label-text-alt text-xs opacity-70">Target Proxmox node</span>
+          <span class="label-text font-semibold">🖥️ Proxmox Node</span>
+          <span class="label-text-alt text-xs opacity-70">Required</span>
         </label>
         <input 
           v-model="formDefaultNode" 
           type="text" 
-          placeholder="px-testing" 
+          placeholder="pve" 
           class="input input-bordered w-full"
           :class="{ 'input-error': saveError && !formDefaultNode.trim() }"
         />
         <label class="label">
           <span class="label-text-alt text-xs opacity-70">
-            The default Proxmox node where VMs will be deployed (e.g., px-testing, pve-node-1)
+            The Proxmox node name where VMs will be deployed (e.g., pve, px-testing, node1)
           </span>
         </label>
       </div>

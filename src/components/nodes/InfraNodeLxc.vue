@@ -18,14 +18,14 @@ const statusClass = computed(() => {
     <!-- Header -->
     <div class="flex items-center justify-between mb-2.5">
       <div class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-          <span class="text-lg">🖥️</span>
+        <div class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+          <span class="text-lg">📦</span>
         </div>
         <div>
           <div class="font-semibold text-sm">
-            {{ data.config?.name || 'Virtual Machine' }}
+            {{ data.config?.name || 'Container' }}
           </div>
-          <div class="text-[10px] text-base-content/50 uppercase tracking-wide">VM</div>
+          <div class="text-[10px] text-base-content/50 uppercase tracking-wide">LXC</div>
         </div>
       </div>
       <div :class="`status-dot ${data?.status || 'gray'}`"></div>
@@ -41,14 +41,19 @@ const statusClass = computed(() => {
         <span class="text-base-content/50">RAM</span>
         <span class="font-medium ml-auto">{{ data.config.memory }}</span>
       </div>
-      <div v-if="data.config?.os" class="col-span-2 flex items-center gap-1 bg-base-200/50 rounded px-2 py-1">
-        <span class="text-base-content/50">OS</span>
-        <span class="font-medium ml-auto truncate max-w-[100px]">{{ data.config.os }}</span>
+      <div v-if="data.config?.template" class="col-span-2 flex items-center gap-1 bg-base-200/50 rounded px-2 py-1">
+        <span class="text-base-content/50">Template</span>
+        <span class="font-medium ml-auto truncate max-w-[100px]">{{ data.config.template }}</span>
       </div>
     </div>
 
+    <!-- Unprivileged Badge -->
+    <div v-if="data.config?.unprivileged" class="mt-2">
+      <span class="badge badge-success badge-sm">Unprivileged</span>
+    </div>
+
     <!-- Connection Handles -->
-    <Handle type="target" :position="Position.Top" class="!w-3 !h-3 !bg-blue-500 !border-2 !border-blue-600" />
-    <Handle type="source" :position="Position.Bottom" class="!w-3 !h-3 !bg-blue-500 !border-2 !border-blue-600" />
+    <Handle type="target" :position="Position.Top" class="!w-3 !h-3 !bg-cyan-500 !border-2 !border-cyan-600" />
+    <Handle type="source" :position="Position.Bottom" class="!w-3 !h-3 !bg-cyan-500 !border-2 !border-cyan-600" />
   </div>
 </template>

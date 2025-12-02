@@ -66,12 +66,15 @@ const statusColor = computed(() => {
     </div>
 
     <!-- Network Details -->
-    <div class="absolute top-11 left-4 text-xs space-y-1 pointer-events-none z-10">
-      <div v-if="data.config?.cidr" class="bg-base-100/90 dark:bg-base-300/90 text-base-content px-2 py-1 rounded backdrop-blur-sm inline-block">
-        CIDR: {{ data.config.cidr }}
+    <div class="absolute top-11 left-4 text-xs pointer-events-none z-10 flex flex-wrap gap-1">
+      <div v-if="data.config?.bridge" class="bg-primary/20 text-primary-content px-2 py-1 rounded backdrop-blur-sm">
+        🔌 {{ data.config.bridge }}{{ data.config.vlan ? `:${data.config.vlan}` : '' }}
       </div>
-      <div v-if="data.config?.gateway" class="bg-base-100/90 dark:bg-base-300/90 text-base-content px-2 py-1 rounded backdrop-blur-sm inline-block ml-2">
-        Gateway: {{ data.config.gateway }}
+      <div v-if="data.config?.cidr" class="bg-base-100/90 dark:bg-base-300/90 text-base-content px-2 py-1 rounded backdrop-blur-sm">
+        {{ data.config.cidr }}
+      </div>
+      <div v-if="data.config?.gateway" class="bg-base-100/90 dark:bg-base-300/90 text-base-content px-2 py-1 rounded backdrop-blur-sm">
+        GW: {{ data.config.gateway }}
       </div>
     </div>
 
