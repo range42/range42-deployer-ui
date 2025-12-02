@@ -59,6 +59,23 @@ interface ValidationResult {
 }
 
 // =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Get node config from either direct properties or nested config object.
+ * The UI stores config in node.data.config, but types expect it directly on node.data.
+ * This helper handles both formats for backwards compatibility.
+ */
+function getNodeConfig<T>(data: CanvasNodeData): T {
+  // If config object exists, merge it with top-level data
+  if ('config' in data && data.config) {
+    return { ...data, ...(data.config as object) } as T
+  }
+  return data as T
+}
+
+// =============================================================================
 // Composable
 // =============================================================================
 
@@ -99,10 +116,10 @@ export function useTopologyResolver() {
       })
     }
 
-    // Type-specific validation
+    // Type-specific validation - use getNodeConfig to handle nested config
     switch (data.type) {
       case 'network-segment': {
-        const segData = data as NetworkSegmentNodeData
+        const segData = getNodeConfig<NetworkSegmentNodeData>(data)
         if (!segData.bridge) {
           nodeErrors.push({
             nodeId: node.id,
@@ -122,7 +139,7 @@ export function useTopologyResolver() {
 
       case 'edge-firewall':
       case 'router': {
-        const routerData = data as RouterNodeData
+        const routerData = getNodeConfig<RouterNodeData>(data)
         if (!routerData.appliance) {
           nodeErrors.push({
             nodeId: node.id,
@@ -130,44 +147,19 @@ export function useTopologyResolver() {
             message: 'Router/Firewall must specify an appliance type',
           })
         }
-        if (!routerData.interfaces || routerData.interfaces.length === 0) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'interfaces',
-            message: 'Router/Firewall must have at least one interface',
-          })
-        }
+        // Note: Interface validation is now done at topology level
+        // by checking edge connections to network-segments
         break
       }
 
       case 'vm': {
-        const vmData = data as VmNodeData
-        if (!vmData.template && !vmData.iso) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'template',
-            message: 'VM must have either a template or ISO specified',
-          })
-        }
-        if (!vmData.memory || vmData.memory < 128) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'memory',
-            message: 'VM must have at least 128MB memory',
-          })
-        }
+        // VM validation is relaxed - templates are optional in UI mode
+        // Full validation happens during deployment
         break
       }
 
       case 'lxc': {
-        const lxcData = data as LxcNodeData
-        if (!lxcData.template) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'template',
-            message: 'LXC container must have a template specified',
-          })
-        }
+        const lxcData = getNodeConfig<LxcNodeData>(data)
         if (!lxcData.hostname) {
           nodeErrors.push({
             nodeId: node.id,
@@ -462,7 +454,7 @@ export function useTopologyResolver() {
     node: CanvasNode,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as NetworkSegmentNodeData
+    const data = getNodeConfig<NetworkSegmentNodeData>(node.data)
     
     const payload: NodeNetworkAddRequest = {
       proxmox_node: options.proxmoxNode,
@@ -492,7 +484,7 @@ export function useTopologyResolver() {
     vmId: number,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as VmNodeData
+    const data = getNodeConfig<VmNodeData>(node.data)
     
     // If template is specified, we clone; otherwise create from ISO
     if (data.template) {
@@ -544,7 +536,7 @@ export function useTopologyResolver() {
     vmId: number,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as LxcNodeData
+    const data = getNodeConfig<LxcNodeData>(node.data)
 
     const payload: LxcCreateRequest = {
       proxmox_node: options.proxmoxNode,
@@ -576,7 +568,7 @@ export function useTopologyResolver() {
     vmId: number,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as RouterNodeData
+    const data = getNodeConfig<RouterNodeData>(node.data)
 
     // Routers are typically cloned from templates
     return {
@@ -608,7 +600,7 @@ export function useTopologyResolver() {
     options: ResolverOptions,
     connectionData?: NetworkConnectionData
   ): DeploymentStep {
-    const segmentData = segment.data as NetworkSegmentNodeData
+    const segmentData = getNodeConfig<NetworkSegmentNodeData>(segment.data)
 
     // Use connection data from edge if available, otherwise use defaults
     const payload: VmNetworkAddRequest = {
@@ -689,16 +681,11 @@ export function useTopologyResolver() {
           nodeVmIds.set(node.id, vmId)
           steps.push(createRouterStep(node, vmId, options))
           
-          // Add network config for each interface
-          const routerData = node.data as RouterNodeData
-          routerData.interfaces?.forEach((iface, index) => {
-            const segment = canvasNodes.find(
-              n => n.data.type === 'network-segment' && 
-                   (n.data as NetworkSegmentNodeData).bridge === iface.bridge
-            )
-            if (segment) {
-              steps.push(createNetworkConfigStep(node, vmId, segment, index, options))
-            }
+          // Add network config for each connected segment (via edges)
+          // This is the SAME pattern as VMs - edges define interfaces
+          const connections = findConnectedSegmentsWithEdgeData(node.id, canvasNodes, edges)
+          connections.forEach(({ segment, connectionData }, index) => {
+            steps.push(createNetworkConfigStep(node, vmId, segment, index, options, connectionData))
           })
           break
         }

@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
+import FormField from '@/components/ui/FormField.vue'
+import FormSection from '@/components/ui/FormSection.vue'
 
 const DEFAULT_API_URL = DEFAULT_BACKEND_API_URL
 
@@ -176,43 +178,28 @@ const formatDate = (isoString) => {
       </div>
 
       <!-- Form -->
-      <div class="form-control mb-4">
-        <label class="label">
-          <span class="label-text font-semibold">🌐 Backend API URL</span>
-          <span class="label-text-alt text-xs opacity-70">Required</span>
-        </label>
-        <input 
-          v-model="formBaseUrl" 
-          type="text" 
-          placeholder="http://127.0.0.1:8000" 
-          class="input input-bordered w-full"
-          :class="{ 'input-error': saveError && !formBaseUrl.trim() }"
+      <FormSection variant="bordered" :columns="1" class="mb-4">
+        <FormField
+          v-model="formBaseUrl"
+          label="Backend API URL"
+          type="text"
+          placeholder="http://127.0.0.1:8000"
+          :required="true"
+          :error="saveError && !formBaseUrl.trim() ? 'Required' : ''"
+          hint="URL of the Range42 Backend API service (e.g., http://192.168.1.100:8000)"
+          icon=""
         />
-        <label class="label">
-          <span class="label-text-alt text-xs opacity-70">
-            URL of the Range42 Backend API service (e.g., http://192.168.1.100:8000). This is NOT the Proxmox URL directly.
-          </span>
-        </label>
-      </div>
-
-      <div class="form-control mb-4">
-        <label class="label">
-          <span class="label-text font-semibold">🖥️ Proxmox Node</span>
-          <span class="label-text-alt text-xs opacity-70">Required</span>
-        </label>
-        <input 
-          v-model="formDefaultNode" 
-          type="text" 
-          placeholder="pve" 
-          class="input input-bordered w-full"
-          :class="{ 'input-error': saveError && !formDefaultNode.trim() }"
+        <FormField
+          v-model="formDefaultNode"
+          label="Proxmox Node"
+          type="text"
+          placeholder="pve"
+          :required="true"
+          :error="saveError && !formDefaultNode.trim() ? 'Required' : ''"
+          hint="The Proxmox node name where VMs will be deployed (e.g., pve, px-testing, node1)"
+          icon=""
         />
-        <label class="label">
-          <span class="label-text-alt text-xs opacity-70">
-            The Proxmox node name where VMs will be deployed (e.g., pve, px-testing, node1)
-          </span>
-        </label>
-      </div>
+      </FormSection>
 
       <!-- Error Message -->
       <div v-if="saveError" class="alert alert-error mb-4">
@@ -223,24 +210,37 @@ const formatDate = (isoString) => {
       </div>
 
       <!-- Actions -->
-      <div class="modal-action">
-        <button 
-          v-if="isConfigured" 
-          class="btn btn-ghost btn-sm" 
-          @click="handleReset"
-          :disabled="isSaving"
-        >
-          Reset
-        </button>
-        <button class="btn" type="button" @click="handleClose" :disabled="isSaving">Cancel</button>
-        <button 
-          class="btn btn-primary" 
-          @click="handleSave"
-          :disabled="!isFormValid || isSaving"
-        >
-          <span v-if="isSaving" class="loading loading-spinner loading-sm"></span>
-          <span v-else>Save Settings</span>
-        </button>
+      <div class="modal-action border-t border-base-300 pt-4">
+        <div class="flex justify-between items-center w-full">
+          <button 
+            v-if="isConfigured" 
+            class="btn btn-ghost btn-sm gap-1" 
+            @click="handleReset"
+            :disabled="isSaving"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Reset
+          </button>
+          <div v-else></div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" type="button" @click="handleClose" :disabled="isSaving">Cancel</button>
+            <button 
+              class="btn btn-primary gap-1" 
+              @click="handleSave"
+              :disabled="!isFormValid || isSaving"
+            >
+              <span v-if="isSaving" class="loading loading-spinner loading-sm"></span>
+              <template v-else>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Save Settings
+              </template>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop" @submit.prevent="handleClose">

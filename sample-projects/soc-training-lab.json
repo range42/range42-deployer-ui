@@ -1,0 +1,431 @@
+{
+  "id": "project_soc_training_lab",
+  "name": "SOC Training Lab",
+  "description": "A complete SOC training environment with simulated internet, DMZ, internal network, and target machines",
+  "created": "2025-11-28T17:00:00.000Z",
+  "modified": "2025-11-28T17:00:00.000Z",
+  "nodes": [
+    {
+      "id": "net-wan",
+      "type": "network-segment",
+      "position": { "x": 400, "y": 50 },
+      "data": {
+        "type": "network-segment",
+        "label": "Simulated Internet",
+        "status": "gray",
+        "config": {
+          "name": "Simulated Internet",
+          "description": "Fake WAN with simulated public IPs",
+          "segmentType": "wan",
+          "bridge": "vmbr100",
+          "cidr": "203.0.113.0/24",
+          "gateway": "203.0.113.1"
+        }
+      }
+    },
+    {
+      "id": "net-dmz",
+      "type": "network-segment",
+      "position": { "x": 400, "y": 300 },
+      "data": {
+        "type": "network-segment",
+        "label": "DMZ Network",
+        "status": "gray",
+        "config": {
+          "name": "DMZ Network",
+          "description": "Demilitarized zone for public-facing services",
+          "segmentType": "dmz",
+          "bridge": "vmbr200",
+          "cidr": "10.0.200.0/24",
+          "gateway": "10.0.200.1"
+        }
+      }
+    },
+    {
+      "id": "net-internal",
+      "type": "network-segment",
+      "position": { "x": 200, "y": 550 },
+      "data": {
+        "type": "network-segment",
+        "label": "Internal Network",
+        "status": "gray",
+        "config": {
+          "name": "Internal Network",
+          "description": "Corporate internal network with DC and SIEM",
+          "segmentType": "lan",
+          "bridge": "vmbr300",
+          "cidr": "10.0.100.0/24",
+          "gateway": "10.0.100.1"
+        }
+      }
+    },
+    {
+      "id": "net-targets",
+      "type": "network-segment",
+      "position": { "x": 600, "y": 550 },
+      "data": {
+        "type": "network-segment",
+        "label": "Target Network",
+        "status": "gray",
+        "config": {
+          "name": "Target Network",
+          "description": "Isolated network for vulnerable target machines",
+          "segmentType": "custom",
+          "bridge": "vmbr400",
+          "cidr": "10.0.50.0/24",
+          "gateway": "10.0.50.1"
+        }
+      }
+    },
+    {
+      "id": "fw-edge",
+      "type": "edge-firewall",
+      "position": { "x": 400, "y": 175 },
+      "data": {
+        "type": "edge-firewall",
+        "label": "Edge Firewall",
+        "status": "gray",
+        "config": {
+          "name": "Edge Firewall",
+          "description": "pfSense edge firewall - NAT, VPN, IDS",
+          "applianceType": "pfsense"
+        }
+      }
+    },
+    {
+      "id": "rtr-core",
+      "type": "router",
+      "position": { "x": 400, "y": 425 },
+      "data": {
+        "type": "router",
+        "label": "Core Router",
+        "status": "gray",
+        "config": {
+          "name": "Core Router",
+          "description": "VyOS core router - inter-VLAN routing",
+          "applianceType": "vyos"
+        }
+      }
+    },
+    {
+      "id": "vm-webserver",
+      "type": "vm",
+      "position": { "x": 250, "y": 300 },
+      "data": {
+        "type": "vm",
+        "label": "Web Server",
+        "status": "gray",
+        "config": {
+          "name": "Web Server",
+          "description": "Public-facing web server in DMZ",
+          "ipAddress": "10.0.200.10"
+        }
+      }
+    },
+    {
+      "id": "vm-mailserver",
+      "type": "vm",
+      "position": { "x": 550, "y": 300 },
+      "data": {
+        "type": "vm",
+        "label": "Mail Server",
+        "status": "gray",
+        "config": {
+          "name": "Mail Server",
+          "description": "Corporate mail server in DMZ",
+          "ipAddress": "10.0.200.11"
+        }
+      }
+    },
+    {
+      "id": "vm-dc",
+      "type": "vm",
+      "position": { "x": 100, "y": 650 },
+      "data": {
+        "type": "vm",
+        "label": "Domain Controller",
+        "status": "gray",
+        "config": {
+          "name": "Domain Controller",
+          "description": "Windows Server 2022 - Active Directory",
+          "ipAddress": "10.0.100.10"
+        }
+      }
+    },
+    {
+      "id": "vm-siem",
+      "type": "vm",
+      "position": { "x": 300, "y": 650 },
+      "data": {
+        "type": "vm",
+        "label": "Wazuh SIEM",
+        "status": "gray",
+        "config": {
+          "name": "Wazuh SIEM",
+          "description": "Wazuh SIEM for security monitoring",
+          "ipAddress": "10.0.100.20"
+        }
+      }
+    },
+    {
+      "id": "lxc-dns",
+      "type": "lxc",
+      "position": { "x": 100, "y": 550 },
+      "data": {
+        "type": "lxc",
+        "label": "Internal DNS",
+        "status": "gray",
+        "config": {
+          "name": "Internal DNS",
+          "description": "Internal DNS server (Bind9)",
+          "hostname": "dns-internal",
+          "ipAddress": "10.0.100.2"
+        }
+      }
+    },
+    {
+      "id": "vm-dvwa",
+      "type": "vm",
+      "position": { "x": 500, "y": 650 },
+      "data": {
+        "type": "vm",
+        "label": "DVWA",
+        "status": "gray",
+        "config": {
+          "name": "DVWA",
+          "description": "Damn Vulnerable Web Application",
+          "ipAddress": "10.0.50.10"
+        }
+      }
+    },
+    {
+      "id": "vm-juiceshop",
+      "type": "vm",
+      "position": { "x": 700, "y": 650 },
+      "data": {
+        "type": "vm",
+        "label": "OWASP Juice Shop",
+        "status": "gray",
+        "config": {
+          "name": "OWASP Juice Shop",
+          "description": "Modern vulnerable web application",
+          "ipAddress": "10.0.50.11"
+        }
+      }
+    },
+    {
+      "id": "vm-attacker",
+      "type": "vm",
+      "position": { "x": 600, "y": 50 },
+      "data": {
+        "type": "vm",
+        "label": "Attacker Box",
+        "status": "gray",
+        "config": {
+          "name": "Attacker Box",
+          "description": "Kali Linux attack machine on simulated internet",
+          "ipAddress": "203.0.113.100"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "type": "network",
+      "id": "edge-fw-wan",
+      "source": "fw-edge",
+      "target": "net-wan",
+      "data": {
+        "connection": {
+          "interfaceName": "WAN",
+          "interfaceModel": "virtio",
+          "ipAddress": "203.0.113.2/24",
+          "firewall": true,
+          "isGateway": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-fw-dmz",
+      "source": "fw-edge",
+      "target": "net-dmz",
+      "data": {
+        "label": "DMZ",
+        "connection": {
+          "interfaceName": "DMZ",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.200.1/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-rtr-dmz",
+      "source": "rtr-core",
+      "target": "net-dmz",
+      "data": {
+        "label": "eth0",
+        "connection": {
+          "interfaceName": "eth0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.200.254/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-rtr-internal",
+      "source": "rtr-core",
+      "target": "net-internal",
+      "data": {
+        "label": "eth1",
+        "connection": {
+          "interfaceName": "eth1",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.100.1/24",
+          "firewall": true,
+          "isGateway": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-rtr-targets",
+      "source": "rtr-core",
+      "target": "net-targets",
+      "data": {
+        "label": "eth2",
+        "connection": {
+          "interfaceName": "eth2",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.50.1/24",
+          "firewall": true,
+          "isGateway": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-web-dmz",
+      "source": "vm-webserver",
+      "target": "net-dmz",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.200.10/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-mail-dmz",
+      "source": "vm-mailserver",
+      "target": "net-dmz",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.200.11/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-dc-internal",
+      "source": "vm-dc",
+      "target": "net-internal",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.100.10/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-siem-internal",
+      "source": "vm-siem",
+      "target": "net-internal",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.100.20/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-dns-internal",
+      "source": "lxc-dns",
+      "target": "net-internal",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.100.2/24",
+          "firewall": true
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-dvwa-targets",
+      "source": "vm-dvwa",
+      "target": "net-targets",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.50.10/24",
+          "firewall": false
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-juiceshop-targets",
+      "source": "vm-juiceshop",
+      "target": "net-targets",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "10.0.50.11/24",
+          "firewall": false
+        }
+      }
+    },
+    {
+      "type": "network",
+      "id": "edge-attacker-wan",
+      "source": "vm-attacker",
+      "target": "net-wan",
+      "data": {
+        "label": "net0",
+        "connection": {
+          "interfaceName": "net0",
+          "interfaceModel": "virtio",
+          "ipAddress": "203.0.113.100/24",
+          "firewall": false
+        }
+      }
+    }
+  ]
+}

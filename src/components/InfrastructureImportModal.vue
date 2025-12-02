@@ -204,16 +204,28 @@ onMounted(() => {
       </template>
 
       <!-- Footer -->
-      <div class="modal-action">
-        <button class="btn btn-ghost" @click="close">Cancel</button>
-        <button 
-          class="btn btn-primary"
-          :disabled="selectedResources.length === 0 || isImporting || !isConfigured"
-          @click="handleImport"
-        >
-          <span v-if="isImporting" class="loading loading-spinner loading-xs"></span>
-          <span v-else>Import {{ selectedResources.length }} Resource(s)</span>
-        </button>
+      <div class="modal-action border-t border-base-300 pt-4 mt-4">
+        <div class="flex justify-between items-center w-full">
+          <div class="text-sm text-base-content/60">
+            {{ selectedResources.length }} resource(s) selected
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" @click="close">Cancel</button>
+            <button 
+              class="btn btn-primary gap-1"
+              :disabled="selectedResources.length === 0 || isImporting || !isConfigured"
+              @click="handleImport"
+            >
+              <span v-if="isImporting" class="loading loading-spinner loading-xs"></span>
+              <template v-else>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import {{ selectedResources.length }} Resource(s)
+              </template>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-backdrop" @click="close"></div>

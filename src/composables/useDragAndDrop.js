@@ -188,6 +188,7 @@ export function useDragAndDrop() {
         defaultConfig: {
           name: '',
           description: '',
+          segmentType: 'lan',     // wan, dmz, lan, management, custom
           // Proxmox bridge - must exist on the target node
           bridge: 'vmbr0',
           vlan: null,             // Optional VLAN tag (1-4094)

@@ -29,21 +29,32 @@ export function useInfraBuilder() {
       (NETWORK_TYPES.includes(sourceNode?.type) && COMPUTE_TYPES.includes(targetNode?.type))
     )
     
+    // Count existing connections to determine interface index
+    const existingConnections = edges.value.filter(e => 
+      e.source === connection.source || e.target === connection.source
+    ).length
+    
     // Create edge with connection data
     const edgeWithData = {
       ...connection,
       id: connection.id || `e-${connection.source}-${connection.target}`,
-      type: 'default',
-      animated: isComputeToNetwork,
+      type: isComputeToNetwork ? 'network' : 'default',  // Use custom network edge
+      animated: false,
       data: isComputeToNetwork ? {
-        // Network interface configuration
-        ipAddress: '',           // Static IP or empty for DHCP
-        useDhcp: true,           // Use DHCP from network segment
-        interfaceModel: 'virtio', // virtio, e1000, rtl8139
-        macAddress: '',          // Auto-generated if empty
-        firewall: true,          // Enable Proxmox firewall on interface
-        // Display
-        label: '',               // Edge label (auto-set to IP when configured)
+        // Nested connection object matching NetworkConnectionData
+        connection: {
+          interfaceName: `net${existingConnections}`,  // Auto-generate interface name
+          interfaceModel: 'virtio',
+          ipAddress: '',           // Static IP (CIDR notation) or empty for DHCP
+          macAddress: '',          // Auto-generated if empty
+          firewall: true,          // Enable Proxmox firewall on interface
+          vlanTag: null,
+          mtu: null,
+          rate: null,
+          isGateway: false,
+        },
+        // UI helper
+        useDhcp: true,
       } : {}
     }
     
@@ -60,18 +71,21 @@ export function useInfraBuilder() {
 
   /**
    * Update edge data
+   * Updates are expected in format: { connection: NetworkConnectionData, ... }
    */
   const updateEdgeData = (edgeId, updates) => {
     edges.value = edges.value.map(edge => {
       if (edge.id === edgeId) {
-        const newData = { ...edge.data, ...updates }
-        // Update label with IP if set
-        if (updates.ipAddress && !updates.useDhcp) {
-          newData.label = updates.ipAddress
-        } else if (updates.useDhcp) {
-          newData.label = 'DHCP'
+        // Merge connection data properly
+        const newData = {
+          ...edge.data,
+          ...updates,
+          connection: {
+            ...(edge.data?.connection || {}),
+            ...(updates.connection || {})
+          }
         }
-        return { ...edge, data: newData, label: newData.label }
+        return { ...edge, data: newData }
       }
       return edge
     })

@@ -11,6 +11,8 @@ const newProjectName = ref('')
 const newProjectDescription = ref('')
 const searchQuery = ref('')
 const viewMode = ref('grid') // 'grid' | 'list'
+const importFileInput = ref(null)
+const importError = ref('')
 
 onMounted(() => {
   projectStore.loadProjects()
@@ -35,20 +37,39 @@ const openProject = (projectId) => {
   router.push(`/project/${projectId}`)
 }
 
-const deleteProject = (projectId, event) => {
-  event.stopPropagation()
+const deleteProject = (projectId) => {
   if (confirm('Are you sure you want to delete this project?')) {
     projectStore.deleteProject(projectId)
   }
 }
 
-const duplicateProject = (project, event) => {
-  event.stopPropagation()
+const duplicateProject = (project) => {
   const newProject = projectStore.createProject(`${project.name} (Copy)`)
   projectStore.updateProject(newProject.id, {
-    nodes: project.nodes || [],
-    edges: project.edges || []
+    nodes: JSON.parse(JSON.stringify(project.nodes || [])),
+    edges: JSON.parse(JSON.stringify(project.edges || []))
   })
+}
+
+const triggerImport = () => {
+  importFileInput.value?.click()
+}
+
+const handleImportFile = async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  try {
+    importError.value = ''
+    const project = await projectStore.importProjectFromFile(file)
+    router.push(`/project/${project.id}`)
+  } catch (error) {
+    importError.value = error.message
+    console.error('Import failed:', error)
+  } finally {
+    // Reset file input
+    event.target.value = ''
+  }
 }
 
 const getProjectStats = (project) => {
@@ -93,12 +114,25 @@ const formatDate = (date) => {
 
           <!-- Actions -->
           <div class="flex items-center gap-3">
-            <button class="btn btn-ghost btn-sm gap-2" title="Settings">
+            <button class="btn btn-ghost btn-sm gap-2" title="Settings" @click="router.push('/settings')">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
               </svg>
             </button>
+            <button class="btn btn-ghost btn-sm gap-2" @click="triggerImport" title="Import Project">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+              </svg>
+              Import
+            </button>
+            <input 
+              ref="importFileInput" 
+              type="file" 
+              accept=".json" 
+              class="hidden" 
+              @change="handleImportFile"
+            />
             <button class="btn btn-primary btn-sm gap-2" @click="showCreateModal = true">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
@@ -237,26 +271,32 @@ const formatDate = (date) => {
                 </div>
                 
                 <!-- Actions Dropdown -->
-                <div class="dropdown dropdown-end" @click.stop>
-                  <label tabindex="0" class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                <div class="dropdown dropdown-end" @click.stop @mousedown.stop>
+                  <label tabindex="0" class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
                     </svg>
                   </label>
-                  <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-xl w-44 border border-base-300">
-                    <li><a @click="openProject(project.id)" class="gap-2">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                      Edit
-                    </a></li>
-                    <li><a @click="duplicateProject(project, $event)" class="gap-2">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                      Duplicate
-                    </a></li>
+                  <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-xl w-44 border border-base-300 z-50" @click.stop>
+                    <li>
+                      <button type="button" class="gap-2 w-full text-left" @click.stop="openProject(project.id)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        Edit
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" class="gap-2 w-full text-left" @click.stop="duplicateProject(project)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        Duplicate
+                      </button>
+                    </li>
                     <div class="divider my-1"></div>
-                    <li><a @click="deleteProject(project.id, $event)" class="text-error gap-2">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                      Delete
-                    </a></li>
+                    <li>
+                      <button type="button" class="gap-2 w-full text-left text-error" @click.stop="deleteProject(project.id)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        Delete
+                      </button>
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -318,7 +358,7 @@ const formatDate = (date) => {
             
             <button 
               class="btn btn-ghost btn-sm opacity-0 group-hover:opacity-100 transition-opacity"
-              @click.stop="deleteProject(project.id, $event)"
+              @click.stop="deleteProject(project.id)"
             >
               <svg class="w-4 h-4 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>

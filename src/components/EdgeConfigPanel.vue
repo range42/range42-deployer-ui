@@ -20,6 +20,7 @@ const emit = defineEmits(['close', 'update'])
 
 // Local form state - matches NetworkConnectionData type
 const config = ref({
+  interfaceName: '',
   interfaceModel: 'virtio',
   ipAddress: '',
   macAddress: '',
@@ -27,6 +28,7 @@ const config = ref({
   vlanTag: null,
   mtu: null,
   rate: null,
+  isGateway: false,
   // UI helper
   useDhcp: true
 })
@@ -36,6 +38,7 @@ watch(() => props.edge, (edge) => {
   if (edge?.data?.connection) {
     const conn = edge.data.connection
     config.value = {
+      interfaceName: conn.interfaceName || '',
       interfaceModel: conn.interfaceModel || 'virtio',
       ipAddress: conn.ipAddress || '',
       macAddress: conn.macAddress || '',
@@ -43,11 +46,13 @@ watch(() => props.edge, (edge) => {
       vlanTag: conn.vlanTag || null,
       mtu: conn.mtu || null,
       rate: conn.rate || null,
-      useDhcp: !conn.ipAddress
+      isGateway: conn.isGateway ?? false,
+      useDhcp: !conn.ipAddress || conn.ipAddress === 'dhcp'
     }
   } else if (edge?.data) {
     // Legacy format
     config.value = {
+      interfaceName: edge.data.interfaceName || '',
       interfaceModel: edge.data.interfaceModel || 'virtio',
       ipAddress: edge.data.ipAddress || '',
       macAddress: edge.data.macAddress || '',
@@ -55,6 +60,7 @@ watch(() => props.edge, (edge) => {
       vlanTag: edge.data.vlanTag || null,
       mtu: edge.data.mtu || null,
       rate: edge.data.rate || null,
+      isGateway: edge.data.isGateway ?? false,
       useDhcp: edge.data.useDhcp ?? true
     }
   }
@@ -79,6 +85,7 @@ const networkCidr = computed(() => networkNode.value?.data?.config?.cidr || 'N/A
 
 // Format config as NetworkConnectionData for the edge
 const connectionData = computed(() => ({
+  interfaceName: config.value.interfaceName || undefined,
   interfaceModel: config.value.interfaceModel,
   ipAddress: config.value.useDhcp ? undefined : config.value.ipAddress || undefined,
   macAddress: config.value.macAddress || undefined,
@@ -86,6 +93,7 @@ const connectionData = computed(() => ({
   vlanTag: config.value.vlanTag || undefined,
   mtu: config.value.mtu || undefined,
   rate: config.value.rate || undefined,
+  isGateway: config.value.isGateway || undefined,
 }))
 
 // Auto-update parent when config changes
@@ -123,6 +131,22 @@ const close = () => {
             <span class="opacity-70">({{ networkCidr }})</span>
           </div>
         </div>
+      </div>
+
+      <!-- Interface Name -->
+      <div class="form-control mb-3">
+        <label class="label py-1">
+          <span class="label-text text-sm">Interface Name</span>
+        </label>
+        <input 
+          v-model="config.interfaceName" 
+          type="text" 
+          class="input input-bordered input-sm font-mono" 
+          placeholder="e.g., net0, eth0, WAN"
+        />
+        <label class="label py-0">
+          <span class="label-text-alt text-xs opacity-70">Display name for this NIC</span>
+        </label>
       </div>
 
       <!-- IP Configuration -->
@@ -230,12 +254,23 @@ const close = () => {
       </div>
 
       <!-- Firewall -->
-      <div class="form-control">
+      <div class="form-control mb-3">
         <label class="cursor-pointer label justify-start gap-4">
           <input v-model="config.firewall" type="checkbox" class="checkbox checkbox-primary checkbox-sm" />
           <div>
             <span class="label-text text-sm">Enable Firewall</span>
             <p class="text-xs opacity-70">Proxmox firewall on this interface</p>
+          </div>
+        </label>
+      </div>
+
+      <!-- Default Gateway -->
+      <div class="form-control">
+        <label class="cursor-pointer label justify-start gap-4">
+          <input v-model="config.isGateway" type="checkbox" class="checkbox checkbox-success checkbox-sm" />
+          <div>
+            <span class="label-text text-sm">Default Gateway</span>
+            <p class="text-xs opacity-70">This is the default route for the device</p>
           </div>
         </label>
       </div>

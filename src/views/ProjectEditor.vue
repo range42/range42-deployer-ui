@@ -15,6 +15,7 @@ import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
 import InfraNodeEdgeFirewall from '../components/nodes/InfraNodeEdgeFirewall.vue'
 import InfraNodeGroup from '../components/nodes/InfraNodeGroup.vue'
+import NetworkEdge from '../components/edges/NetworkEdge.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
@@ -72,6 +73,8 @@ const showDeploymentPanel = ref(false)
 const showInventoryBrowser = ref(false)
 const showTemplateBrowser = ref(false)
 const showImportModal = ref(false)
+const showDeleteProjectModal = ref(false)
+const deleteConfirmName = ref('')
 const validationErrors = ref([])
 const currentProject = ref(null)
 
@@ -329,6 +332,15 @@ const handleOpenValidate = () => {
 const closeDeploymentPanel = () => {
   showDeploymentPanel.value = false
 }
+
+const confirmDeleteProject = () => {
+  if (deleteConfirmName.value === currentProject.value?.name) {
+    projectStore.deleteProject(currentProject.value.id)
+    showDeleteProjectModal.value = false
+    deleteConfirmName.value = ''
+    router.push('/')
+  }
+}
 </script>
 
 <template>
@@ -415,6 +427,15 @@ const closeDeploymentPanel = () => {
                   Export
                 </button>
               </li>
+              <div class="divider my-1"></div>
+              <li>
+                <button class="gap-3 text-error" @click="showDeleteProjectModal = true">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                  Delete Project
+                </button>
+              </li>
             </ul>
           </div>
         </div>
@@ -471,6 +492,11 @@ const closeDeploymentPanel = () => {
           <template #node-router="props">
             <InfraNodeRouter v-bind="props" />
           </template>
+
+          <!-- Custom Edge for network connections -->
+          <template #edge-network="props">
+            <NetworkEdge v-bind="props" />
+          </template>
         </VueFlow>
 
         <!-- Drop Indicator -->
@@ -497,14 +523,13 @@ const closeDeploymentPanel = () => {
       </div>
     </div>
 
-    <!-- Config Panel (Slide-in) -->
+    <!-- Config Panel -->
     <ConfigPanel 
       v-if="selectedNode && showConfigPanel" 
       :node="selectedNode" 
       @close="closeConfigPanel"
       @update="updateNodeStatus" 
       @delete="handleDeleteNode" 
-      class="fixed right-0 top-0 h-full w-96 z-40 slide-panel"
     />
     
     <!-- Edge Config Panel -->
@@ -539,6 +564,42 @@ const closeDeploymentPanel = () => {
       v-if="showDeploymentPanel"
       @close="closeDeploymentPanel"
     />
+
+    <!-- Delete Project Confirmation Modal -->
+    <div v-if="showDeleteProjectModal" class="modal modal-open">
+      <div class="modal-box max-w-md">
+        <h3 class="text-lg font-bold text-error flex items-center gap-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+          </svg>
+          Delete Project
+        </h3>
+        <p class="py-4 text-base-content/70">
+          This action cannot be undone. To confirm, type the project name:
+        </p>
+        <p class="font-mono text-sm bg-base-200 px-3 py-2 rounded mb-4">{{ currentProject?.name }}</p>
+        <input
+          v-model="deleteConfirmName"
+          type="text"
+          class="input input-bordered w-full"
+          placeholder="Type project name to confirm"
+          @keyup.enter="confirmDeleteProject"
+        />
+        <div class="modal-action">
+          <button class="btn btn-ghost" @click="showDeleteProjectModal = false; deleteConfirmName = ''">
+            Cancel
+          </button>
+          <button
+            class="btn btn-error"
+            :disabled="deleteConfirmName !== currentProject?.name"
+            @click="confirmDeleteProject"
+          >
+            Delete Forever
+          </button>
+        </div>
+      </div>
+      <div class="modal-backdrop bg-base-300/80" @click="showDeleteProjectModal = false"></div>
+    </div>
   </div>
 
   <!-- Loading state -->

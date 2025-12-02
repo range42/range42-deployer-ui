@@ -78,6 +78,65 @@ export const useProjectStore = defineStore('projects', () => {
     linkElement.click()
   }
 
+  /**
+   * Import a project from JSON data
+   * @param {Object|string} projectData - Project data (object or JSON string)
+   * @param {Object} options - Import options
+   * @param {boolean} options.generateNewId - Generate a new ID for the project (default: true)
+   * @param {string} options.namePrefix - Prefix to add to project name (optional)
+   * @returns {Object} The imported project
+   */
+  const importProject = (projectData, options = {}) => {
+    const { generateNewId = true, namePrefix = '' } = options
+    
+    // Parse if string
+    const data = typeof projectData === 'string' ? JSON.parse(projectData) : projectData
+    
+    // Validate required fields
+    if (!data.name || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+      throw new Error('Invalid project format: missing name, nodes, or edges')
+    }
+    
+    // Create new project object
+    const project = {
+      ...data,
+      id: generateNewId ? `project_${Date.now()}` : data.id,
+      name: namePrefix ? `${namePrefix}${data.name}` : data.name,
+      created: new Date().toISOString(),
+      modified: new Date().toISOString(),
+    }
+    
+    // Check for duplicate ID
+    if (!generateNewId && getProject(project.id)) {
+      throw new Error(`Project with ID ${project.id} already exists`)
+    }
+    
+    projects.value.push(project)
+    saveProjects()
+    return project
+  }
+
+  /**
+   * Import project from a File object (for file input handling)
+   * @param {File} file - File object from file input
+   * @returns {Promise<Object>} The imported project
+   */
+  const importProjectFromFile = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const project = importProject(e.target.result)
+          resolve(project)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsText(file)
+    })
+  }
+
   const clearAllData = () => {
     projects.value = []
     saveProjects()
@@ -156,6 +215,8 @@ export const useProjectStore = defineStore('projects', () => {
     updateProject,
     deleteProject,
     exportProject,
+    importProject,
+    importProjectFromFile,
     clearAllData,
     updateNodeStatus,
     updateNodeStatuses,
