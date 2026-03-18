@@ -177,8 +177,10 @@ export function useDragAndDrop() {
         defaultConfig: {
           name: '',
           description: '',
-          // These are used by topology resolver for deployment planning
-          // Backend API routes for custom VM creation are planned
+          template: '',            // Proxmox template VMID to clone from
+          cores: 2,                // CPU cores
+          memory: 2048,            // RAM in MB
+          diskSize: '32G',         // Disk size
           vmId: null,              // Auto-assigned during deployment
           ipAddress: '',           // Static IP for the VM
         },
@@ -190,11 +192,11 @@ export function useDragAndDrop() {
           description: '',
           segmentType: 'lan',     // wan, dmz, lan, management, custom
           // Proxmox bridge - must exist on the target node
-          bridge: 'vmbr0',
+          bridge: 'vmbr142',
           vlan: null,             // Optional VLAN tag (1-4094)
           // Network addressing (for documentation/planning)
-          cidr: '192.168.1.0/24',
-          gateway: '192.168.1.1',
+          cidr: '192.168.42.0/24',
+          gateway: '192.168.42.1',
         },
       },
       router: {

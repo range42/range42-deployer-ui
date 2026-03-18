@@ -6,6 +6,8 @@ import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
 import FormDivider from '@/components/ui/FormDivider.vue'
 import FormList from '@/components/ui/FormList.vue'
+import { proxmoxApi } from '@/services/proxmox'
+import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
 
 const { t } = useI18n({ useScope: 'global' })
 
@@ -15,13 +17,32 @@ const emit = defineEmits(['close', 'update', 'delete'])
 
 const errors = ref([])
 const isLoading = ref(false)
+const availableTemplates = ref([])
 
 const config = ref({})
 
-onMounted(() => {
+onMounted(async () => {
   if (props.node?.data?.config) {
     config.value = { ...props.node.data.config }
   }
+
+  // Fetch available templates for VM template selector
+  if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
+    try {
+      const settingsStore = useProxmoxSettingsStore()
+      const node = settingsStore.defaultNode || 'pve01'
+      const vms = await proxmoxApi.vm.list(node)
+      availableTemplates.value = vms
+        .filter(v => v.vmid >= 9000 && v.status === 'stopped')
+        .map(v => ({
+          value: String(v.vmid),
+          label: `${v.name} (${v.maxmem ? Math.floor(v.maxmem / 1024 / 1024) : '?'}MB, ${v.vmid})`,
+        }))
+    } catch (e) {
+      console.warn('Failed to fetch templates:', e)
+    }
+  }
+
   // Load i18n namespaces used by this panel
   ensureNamespaces(['configPanel', 'common'])
 })
@@ -276,21 +297,59 @@ watch(() => props.node, (newNode) => {
         <template v-else-if="node.type === 'vm'">
           <FormDivider label="Virtual Machine" icon="" />
 
-          <FormSection title="Basic Configuration" icon="" variant="bordered" :columns="2">
+          <FormSection title="Template & Resources" icon="" variant="bordered" :columns="2">
+            <FormField
+              v-model="config.template"
+              label="Template"
+              type="select"
+              :options="availableTemplates"
+              placeholder="Select a template..."
+              hint="Proxmox VM template to clone from"
+              icon=""
+            />
+            <FormField
+              v-model="config.cores"
+              label="CPU Cores"
+              type="number"
+              placeholder="2"
+              :min="1"
+              :max="32"
+              icon=""
+            />
+            <FormField
+              v-model="config.memory"
+              label="Memory (MB)"
+              type="number"
+              placeholder="2048"
+              :min="512"
+              hint="RAM in megabytes"
+              icon=""
+            />
+            <FormField
+              v-model="config.diskSize"
+              label="Disk Size"
+              type="text"
+              placeholder="32G"
+              hint="e.g., 16G, 32G, 100G"
+              icon=""
+            />
+          </FormSection>
+
+          <FormSection title="Network" icon="" variant="bordered" :columns="2">
+            <FormField
+              v-model="config.ipAddress"
+              label="IP Address"
+              type="text"
+              placeholder="e.g., 192.168.42.10"
+              hint="Static IP for this VM"
+              icon=""
+            />
             <FormField
               v-model="config.description"
               label="Description"
               type="textarea"
               placeholder="VM description..."
               :rows="2"
-              icon=""
-            />
-            <FormField
-              v-model="config.ipAddress"
-              label="IP Address"
-              type="text"
-              placeholder="e.g., 192.168.1.10"
-              hint="Static IP for this VM (used during deployment)"
               icon=""
             />
           </FormSection>
