@@ -116,10 +116,21 @@ async function request<T>(
     }
 
     if (!response.ok) {
-      const errorMessage = typeof data === 'object' && data !== null && 'detail' in data
-        ? String((data as Record<string, unknown>).detail)
-        : `HTTP ${response.status}: ${response.statusText}`
-      
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+      if (typeof data === 'object' && data !== null && 'detail' in data) {
+        const detail = (data as Record<string, unknown>).detail
+        if (Array.isArray(detail)) {
+          // Pydantic validation errors: [{field, msg, type}]
+          errorMessage = detail.map((e: Record<string, unknown>) =>
+            `${e.field || e.loc || 'unknown'}: ${e.msg || e.message || 'validation error'}`
+          ).join('; ')
+        } else {
+          errorMessage = String(detail)
+        }
+      } else if (typeof data === 'object' && data !== null && 'message' in data) {
+        errorMessage = String((data as Record<string, unknown>).message)
+      }
+
       throw new ProxmoxApiError(response.status, errorMessage, JSON.stringify(data))
     }
 
@@ -154,14 +165,16 @@ async function query<T>(endpoint: string, params: Record<string, unknown> = {}):
 // Helper for write operations — injects ansible defaults AND checks rc for Ansible failures
 async function command<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
   const result = await post<T>(endpoint, { ...ANSIBLE_DEFAULTS, ...body })
-  const data = result as unknown as { rc?: number; log_multiline?: string[] }
+  const data = result as unknown as { rc?: number; log_multiline?: string[]; log_plain?: string }
   if (data.rc !== undefined && data.rc !== 0) {
-    const logs = data.log_multiline?.slice(-5).join('\n') || ''
-    throw new ProxmoxApiError(
-      data.rc,
-      `Ansible execution failed (rc=${data.rc})`,
-      logs
-    )
+    // Extract meaningful error from Ansible logs
+    const logs = data.log_multiline || []
+    const fatalLine = logs.find(l => l.includes('fatal:') || l.includes('FAILED'))
+    const msgMatch = fatalLine?.match(/"msg":\s*"([^"]+)"/)
+    const errorMsg = msgMatch?.[1]
+      || fatalLine?.replace(/^.*fatal:\s*\[.*?\]:\s*FAILED!\s*=>\s*/, '').slice(0, 200)
+      || `Ansible failed with rc=${data.rc}`
+    throw new ProxmoxApiError(data.rc, errorMsg, logs.slice(-8).join('\n'))
   }
   return result
 }

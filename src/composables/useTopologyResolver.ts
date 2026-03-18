@@ -13,6 +13,7 @@
 
 import { computed, ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
+import { proxmoxCache } from '@/services/proxmox/cache'
 import type {
   NodeType,
   DeploymentStep,
@@ -663,6 +664,19 @@ export function useTopologyResolver() {
     const steps: DeploymentStep[] = []
     let nextVmId = options.startVmId || 2000
 
+    // Build set of existing VMIDs from cache to avoid conflicts
+    const existingVmIds = new Set(proxmoxCache.vmCache.value.map(v => v.vmid))
+
+    // Helper: get next available VMID that doesn't conflict
+    function allocateVmId(): number {
+      while (existingVmIds.has(nextVmId)) {
+        nextVmId++
+      }
+      const id = nextVmId++
+      existingVmIds.add(id) // Reserve it for this plan
+      return id
+    }
+
     // Sort nodes by deployment priority
     const sortedNodes = [...canvasNodes].sort((a, b) => {
       return getNodePriority(a.data.type) - getNodePriority(b.data.type)
@@ -681,7 +695,7 @@ export function useTopologyResolver() {
 
         case 'edge-firewall':
         case 'router': {
-          const vmId = nextVmId++
+          const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createRouterStep(node, vmId, options))
           
@@ -721,7 +735,7 @@ export function useTopologyResolver() {
         }
 
         case 'vm': {
-          const vmId = nextVmId++
+          const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createVmStep(node, vmId, options))
           
@@ -734,7 +748,7 @@ export function useTopologyResolver() {
         }
 
         case 'lxc': {
-          const vmId = nextVmId++
+          const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createLxcStep(node, vmId, options))
           

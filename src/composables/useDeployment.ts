@@ -94,7 +94,7 @@ export function useDeployment(projectIdRef?: Ref<string | null | undefined>) {
     try {
       const plan = topologyResolver.resolve(nodes, edges, {
         proxmoxNode: options.proxmoxNode,
-        startVmId: options.startVmId || 100,
+        startVmId: options.startVmId || 2000,
       })
 
       // Update plan metadata
