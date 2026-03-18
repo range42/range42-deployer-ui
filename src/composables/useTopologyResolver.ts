@@ -503,7 +503,7 @@ export function useTopologyResolver() {
           proxmox_node: options.proxmoxNode,
           vm_id: templateVmId,
           vm_new_id: String(vmId),
-          vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+          vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
           full_clone: true,
         },
       }
@@ -516,7 +516,7 @@ export function useTopologyResolver() {
     const payload: VmCreateRequest = {
       proxmox_node: options.proxmoxNode,
       vm_id: String(vmId),
-      vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+      vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
       vm_cpu: 'host',
       vm_cores: data.cores || 1,
       vm_sockets: 1,
@@ -591,7 +591,7 @@ export function useTopologyResolver() {
         proxmox_node: options.proxmoxNode,
         vm_id: templateVmId,
         vm_new_id: String(vmId),
-        vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+        vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
         full_clone: true,
       },
     }
