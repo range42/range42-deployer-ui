@@ -206,10 +206,15 @@ interface BackendVm {
 }
 
 function normalizeVm(vm: BackendVm): VmListItem {
+  // Detect templates: backend doesn't pass template flag from Proxmox,
+  // so we infer from name pattern + stopped + zero uptime
+  const isTemplate = vm.vm_name?.startsWith('template-') && vm.vm_status === 'stopped' && vm.vm_uptime === 0
   return {
     vmid: vm.vm_id,
     name: vm.vm_name,
     status: vm.vm_status as VmListItem['status'],
+    isTemplate,
+    tags: isTemplate ? 'template' : '',
     mem: vm.vm_meta?.ram_current_usage || 0,
     maxmem: vm.vm_meta?.ram_max || 0,
     cpu: vm.vm_meta?.cpu_current_usage || 0,

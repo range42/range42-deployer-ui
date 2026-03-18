@@ -34,14 +34,15 @@ onMounted(async () => {
       const node = stored.defaultNode || 'pve01'
       const vms = await proxmoxApi.vm.list(node)
       availableTemplates.value = vms
-        .filter(v => v.vmid >= 9000 && v.status === 'stopped')
+        .filter(v => v.isTemplate)
         .sort((a, b) => a.vmid - b.vmid)
         .map(v => {
           const ram = v.maxmem ? Math.floor(v.maxmem / 1024 / 1024) : 0
           const ramLabel = ram >= 1024 ? `${(ram / 1024).toFixed(0)}GB` : `${ram}MB`
+          const cores = v.maxcpu || '?'
           return {
             value: String(v.vmid),
-            label: `${v.name} — ${ramLabel} RAM`,
+            label: `${v.name} — ${cores} cores, ${ramLabel}`,
           }
         })
     } catch (e) {

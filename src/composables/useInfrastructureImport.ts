@@ -104,7 +104,7 @@ export function useInfrastructureImport() {
       // Fetch VMs — filter out templates (VMID >= 9000 convention)
       const vmList = await proxmoxApi.vm.list(proxmoxNode.value) as VmListItem[]
       vms.value = vmList
-        .filter((vm) => vm.vmid < 9000 && vm.status !== 'stopped')
+        .filter((vm) => !vm.isTemplate && vm.status !== 'stopped')
         .map((vm) => ({
           id: `vm-${vm.vmid}`,
           type: 'vm' as const,

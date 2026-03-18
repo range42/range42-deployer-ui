@@ -66,6 +66,8 @@ export interface VmListItem {
   maxcpu: number
   uptime: number
   node: ProxmoxNode
+  isTemplate: boolean
+  tags: string
 }
 
 export interface VmActionRequest {
