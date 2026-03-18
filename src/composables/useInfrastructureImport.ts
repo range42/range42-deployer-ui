@@ -64,9 +64,18 @@ export function useInfrastructureImport() {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
-  // Computed
-  const isConfigured = computed(() => settingsStore.isConfigured)
-  const proxmoxNode = computed(() => settingsStore.defaultNode as ProxmoxNode)
+  // Override node ref — can be set externally via setNode()
+  const nodeOverride = ref<string | null>(null)
+
+  // Computed — try store first, fall back to override
+  const isConfigured = computed(() => {
+    if (nodeOverride.value) return true
+    try { return !!settingsStore.isConfigured } catch { return false }
+  })
+  const proxmoxNode = computed(() => {
+    if (nodeOverride.value) return nodeOverride.value as ProxmoxNode
+    try { return (settingsStore.defaultNode || '') as ProxmoxNode } catch { return '' as ProxmoxNode }
+  })
 
   const selectedResources = computed(() => {
     return [...vms.value, ...lxcs.value].filter(r => r.selected)
@@ -92,29 +101,36 @@ export function useInfrastructureImport() {
       error.value = null
       bridges.value.clear()
 
-      // Fetch VMs
+      // Fetch VMs — filter out templates (VMID >= 9000 convention)
       const vmList = await proxmoxApi.vm.list(proxmoxNode.value) as VmListItem[]
-      vms.value = vmList.map((vm) => ({
-        id: `vm-${vm.vmid}`,
-        type: 'vm' as const,
-        name: vm.name || `VM ${vm.vmid}`,
-        vmid: vm.vmid,
-        status: vm.status,
-        node: proxmoxNode.value,
-        selected: false,
-      }))
+      vms.value = vmList
+        .filter((vm) => vm.vmid < 9000 && vm.status !== 'stopped')
+        .map((vm) => ({
+          id: `vm-${vm.vmid}`,
+          type: 'vm' as const,
+          name: vm.name || `VM ${vm.vmid}`,
+          vmid: vm.vmid,
+          status: vm.status,
+          node: proxmoxNode.value,
+          selected: false,
+        }))
 
-      // Fetch LXCs
-      const lxcList = await proxmoxApi.lxc.list(proxmoxNode.value) as Array<{ vmid: number; name?: string; hostname?: string; status: string }>
-      lxcs.value = lxcList.map((lxc) => ({
-        id: `lxc-${lxc.vmid}`,
-        type: 'lxc' as const,
-        name: lxc.name || lxc.hostname || `LXC ${lxc.vmid}`,
-        vmid: lxc.vmid,
-        status: lxc.status,
-        node: proxmoxNode.value,
-        selected: false,
-      }))
+      // Fetch LXCs — skip if backend doesn't support it yet
+      try {
+        const lxcList = await proxmoxApi.lxc.list(proxmoxNode.value) as Array<{ vmid: number; name?: string; hostname?: string; status: string }>
+        lxcs.value = lxcList.map((lxc) => ({
+          id: `lxc-${lxc.vmid}`,
+          type: 'lxc' as const,
+          name: lxc.name || lxc.hostname || `LXC ${lxc.vmid}`,
+          vmid: lxc.vmid,
+          status: lxc.status,
+          node: proxmoxNode.value,
+          selected: false,
+        }))
+      } catch {
+        // LXC endpoint not available — leave empty
+        lxcs.value = []
+      }
 
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err)
@@ -124,22 +140,30 @@ export function useInfrastructureImport() {
     }
   }
 
+  // Cache of fetched VM data to avoid redundant API calls during import
+  let cachedVmList: VmListItem[] | null = null
+
   /**
-   * Fetch detailed config for a VM
-   * Note: This uses basic info since getConfig may not be available
+   * Fetch detailed config for a VM using cached list data
    */
   async function fetchVmConfig(vmid: number): Promise<Record<string, unknown> | null> {
     try {
-      // Use basic VM info as config - detailed config endpoint may need to be added
-      const vmList = await proxmoxApi.vm.list(proxmoxNode.value) as VmListItem[]
-      const vm = vmList.find(v => v.vmid === vmid)
+      if (!cachedVmList) {
+        cachedVmList = await proxmoxApi.vm.list(proxmoxNode.value) as VmListItem[]
+      }
+      const vm = cachedVmList.find(v => v.vmid === vmid)
       if (vm) {
         return {
           vmid: vm.vmid,
           name: vm.name,
           cores: vm.maxcpu || 1,
-          memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 512,
+          memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 0,
+          memUsed: vm.mem ? Math.floor(vm.mem / 1024 / 1024) : 0,
+          diskMax: (vm as unknown as Record<string, unknown>).maxdisk || 0,
+          cpuUsage: vm.cpu || 0,
+          uptime: vm.uptime || 0,
           status: vm.status,
+          node: vm.node || '',
         }
       }
       return null
@@ -150,28 +174,10 @@ export function useInfrastructureImport() {
   }
 
   /**
-   * Fetch detailed config for an LXC
-   * Note: This uses basic info since getConfig may not be available
+   * Fetch detailed config for an LXC (no-op if LXC endpoint unavailable)
    */
-  async function fetchLxcConfig(vmid: number): Promise<Record<string, unknown> | null> {
-    try {
-      // Use basic LXC info as config
-      const lxcList = await proxmoxApi.lxc.list(proxmoxNode.value) as Array<{ vmid: number; name?: string; hostname?: string; status: string; maxmem?: number; cpus?: number }>
-      const lxc = lxcList.find(l => l.vmid === vmid)
-      if (lxc) {
-        return {
-          vmid: lxc.vmid,
-          hostname: lxc.name || lxc.hostname,
-          cores: lxc.cpus || 1,
-          memory: lxc.maxmem ? Math.floor(lxc.maxmem / 1024 / 1024) : 512,
-          status: lxc.status,
-        }
-      }
-      return null
-    } catch (err) {
-      console.error(`[useInfrastructureImport] Failed to fetch LXC ${vmid} config:`, err)
-      return null
-    }
+  async function fetchLxcConfig(_vmid: number): Promise<Record<string, unknown> | null> {
+    return null
   }
 
   /**
@@ -319,14 +325,18 @@ export function useInfrastructureImport() {
             type: resource.type,
             label: resource.name,
             vmId: resource.vmid,
+            deployed: true,
             status: resource.status === 'running' ? 'running' : 'stopped',
             config: {
               name: resource.name,
               vmid: resource.vmid,
               cores: config.cores || 1,
-              memory: config.memory || 512,
-              ...(resource.type === 'vm' ? { sockets: config.sockets || 1 } : {}),
-              ...(resource.type === 'lxc' ? { unprivileged: config.unprivileged } : {}),
+              memory: String(config.memory || 0),
+              memUsed: config.memUsed || 0,
+              diskMax: config.diskMax || 0,
+              cpuUsage: config.cpuUsage || 0,
+              uptime: config.uptime || 0,
+              proxmoxNode: config.node || '',
             }
           }
         })
@@ -365,6 +375,10 @@ export function useInfrastructureImport() {
     await fetchResources()
   }
 
+  function setNode(node: string): void {
+    nodeOverride.value = node
+  }
+
   return {
     // State
     vms,
@@ -385,6 +399,7 @@ export function useInfrastructureImport() {
     deselectAll,
     importSelected,
     refresh,
+    setNode,
   }
 }
 

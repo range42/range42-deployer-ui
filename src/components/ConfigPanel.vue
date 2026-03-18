@@ -35,7 +35,7 @@ const validateConfig = () => {
       if (!config.value.cpu || config.value.cpu < 1) {
         errors.value.push(t('configPanel.validation.cpuMin'))
       }
-      if (!config.value.memory?.trim()) {
+      if (!String(config.value.memory || '').trim()) {
         errors.value.push(t('configPanel.validation.memoryRequired'))
       }
       break
@@ -158,9 +158,15 @@ watch(() => props.node, (newNode) => {
     <div class="modal-box w-full max-w-4xl max-h-[90vh] overflow-y-auto" @click.stop>
       <!-- Header -->
       <div class="flex items-center justify-between mb-6">
-        <h3 class="text-xl font-bold capitalize">
-          {{ t('configPanel.header', { type: node.type.replace('-', ' ') }) }}
-        </h3>
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="node.data?.deployed ? 'bg-primary/10' : 'bg-base-200'">
+            <span class="text-xl">{{ node.type === 'vm' ? '🖥️' : node.type === 'lxc' ? '📦' : node.type === 'network-segment' ? '🔗' : node.type === 'router' ? '🔀' : '⚙️' }}</span>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold">{{ config.name || node.type.replace('-', ' ') }}</h3>
+            <p class="text-xs text-base-content/50 uppercase tracking-wider">{{ node.data?.deployed ? 'Deployed' : 'Design' }} · {{ node.type.replace('-', ' ') }}</p>
+          </div>
+        </div>
         <button class="btn btn-sm btn-circle btn-ghost" @click="emit('close')">✕</button>
       </div>
 
@@ -179,8 +185,91 @@ watch(() => props.node, (newNode) => {
           />
         </div>
 
-        <!-- VM Specific Fields -->
-        <template v-if="node.type === 'vm'">
+        <!-- Deployed VM Status View -->
+        <template v-if="node.type === 'vm' && node.data?.deployed">
+          <!-- Status Banner -->
+          <div class="flex items-center gap-3 px-4 py-3 rounded-lg border"
+            :class="node.data.status === 'running'
+              ? 'bg-success/5 border-success/20 text-success'
+              : node.data.status === 'stopped'
+                ? 'bg-base-200 border-base-300 text-base-content/50'
+                : 'bg-warning/5 border-warning/20 text-warning'"
+          >
+            <div class="w-2.5 h-2.5 rounded-full shrink-0"
+              :class="node.data.status === 'running'
+                ? 'bg-success shadow-[0_0_8px_theme(colors.success)]'
+                : node.data.status === 'stopped'
+                  ? 'bg-base-content/20'
+                  : 'bg-warning animate-pulse'"
+            ></div>
+            <span class="font-semibold text-sm uppercase tracking-wider">{{ node.data.status }}</span>
+            <div class="ml-auto flex items-center gap-2">
+              <span class="badge badge-sm badge-outline">VMID {{ config.vmid }}</span>
+              <span v-if="config.proxmoxNode" class="badge badge-sm badge-ghost">{{ config.proxmoxNode }}</span>
+            </div>
+          </div>
+
+          <!-- Info Table -->
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <tbody>
+                <tr>
+                  <td class="text-base-content/50 w-32">Hostname</td>
+                  <td class="font-medium">{{ config.name }}</td>
+                </tr>
+                <tr>
+                  <td class="text-base-content/50">VMID</td>
+                  <td class="font-mono">{{ config.vmid }}</td>
+                </tr>
+                <tr>
+                  <td class="text-base-content/50">Node</td>
+                  <td>{{ config.proxmoxNode || '—' }}</td>
+                </tr>
+                <tr>
+                  <td class="text-base-content/50">Uptime</td>
+                  <td>{{ config.uptime ? Math.floor(config.uptime / 3600) + 'h ' + Math.floor((config.uptime % 3600) / 60) + 'm' : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Resource Cards -->
+          <div class="grid grid-cols-3 gap-3">
+            <!-- CPU -->
+            <div class="rounded-lg border border-base-300 p-3">
+              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">CPU</div>
+              <div class="text-xl font-bold">{{ config.cores }}<span class="text-sm font-normal text-base-content/40 ml-1">cores</span></div>
+              <progress class="progress progress-primary w-full mt-2 h-1.5" :value="Math.round((config.cpuUsage || 0) * 100)" max="100"></progress>
+              <div class="text-[10px] text-base-content/50 mt-0.5">{{ Math.round((config.cpuUsage || 0) * 100) }}% utilization</div>
+            </div>
+
+            <!-- RAM -->
+            <div class="rounded-lg border border-base-300 p-3">
+              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">Memory</div>
+              <div class="text-xl font-bold">
+                {{ parseInt(config.memory) >= 1024 ? (parseInt(config.memory) / 1024).toFixed(1) : config.memory }}
+                <span class="text-sm font-normal text-base-content/40 ml-1">{{ parseInt(config.memory) >= 1024 ? 'GB' : 'MB' }}</span>
+              </div>
+              <progress class="progress progress-secondary w-full mt-2 h-1.5" :value="config.memUsed || 0" :max="parseInt(config.memory) || 1"></progress>
+              <div class="text-[10px] text-base-content/50 mt-0.5">
+                {{ config.memUsed ? (config.memUsed >= 1024 ? (config.memUsed / 1024).toFixed(1) + ' GB' : config.memUsed + ' MB') : '0' }} used
+              </div>
+            </div>
+
+            <!-- Disk -->
+            <div class="rounded-lg border border-base-300 p-3">
+              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">Disk</div>
+              <div class="text-xl font-bold">
+                {{ config.diskMax ? (config.diskMax / 1024 / 1024 / 1024).toFixed(0) : '—' }}
+                <span class="text-sm font-normal text-base-content/40 ml-1">GB</span>
+              </div>
+              <div class="text-[10px] text-base-content/50 mt-2">Provisioned</div>
+            </div>
+          </div>
+        </template>
+
+        <!-- VM Design Fields (non-deployed) -->
+        <template v-else-if="node.type === 'vm'">
           <div class="form-control">
             <label class="label">
               <span class="label-text">Description</span>
@@ -1191,18 +1280,17 @@ watch(() => props.node, (newNode) => {
       <!-- Actions -->
       <div class="modal-action">
         <div class="flex justify-between items-center w-full">
-          <div class="flex items-center gap-4">
-            <button class="btn btn-error btn-outline btn-sm" @click="handleDelete">
-              🗑️ Delete
-            </button>
-            <span class="text-sm" :class="isValid ? 'text-success' : 'text-warning'">
+          <button class="btn btn-error btn-outline btn-sm" @click="handleDelete">
+            🗑️ Remove from canvas
+          </button>
+          <div class="space-x-2" v-if="!node.data?.deployed">
+            <span class="text-sm mr-2" :class="isValid ? 'text-success' : 'text-warning'">
               {{ isValid ? t('configPanel.status.valid') : t('configPanel.status.missing') }}
             </span>
-          </div>
-          <div class="space-x-2">
             <button class="btn btn-ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
             <button class="btn btn-primary" @click="handleSave">{{ t('configPanel.save') }}</button>
           </div>
+          <button v-else class="btn btn-ghost" @click="emit('close')">Close</button>
         </div>
       </div>
     </div>

@@ -42,6 +42,13 @@ import type {
 let baseUrl = ''
 
 /**
+ * Default Ansible params injected into every backend request.
+ * The backend requires `hosts` and `inventory` for ansible-runner,
+ * but these are server-side concerns the UI shouldn't need to know about.
+ */
+const ANSIBLE_DEFAULTS = { hosts: 'px-testing', inventory: 'hosts.yml' }
+
+/**
  * Set the backend API base URL
  */
 export function setBaseUrl(url: string): void {
@@ -131,17 +138,17 @@ async function request<T>(
   }
 }
 
-// Helper for GET requests
-async function get<T>(endpoint: string): Promise<T> {
-  return request<T>(endpoint, { method: 'GET' })
-}
-
 // Helper for POST requests
 async function post<T>(endpoint: string, body?: unknown): Promise<T> {
   return request<T>(endpoint, {
     method: 'POST',
     body: body ? JSON.stringify(body) : undefined,
   })
+}
+
+// Helper for POST with ansible defaults injected
+async function query<T>(endpoint: string, params: Record<string, unknown> = {}): Promise<T> {
+  return post<T>(endpoint, { ...ANSIBLE_DEFAULTS, ...params })
 }
 
 // Helper for DELETE requests
@@ -156,26 +163,69 @@ async function del<T>(endpoint: string, body?: unknown): Promise<T> {
 // VM API
 // =============================================================================
 
+/**
+ * Unwrap backend response: { rc, result: [[...items...]] } → items[]
+ * The backend wraps Ansible results in a nested array.
+ */
+function unwrapResult<T>(raw: unknown): T[] {
+  const data = raw as { rc?: number; result?: unknown[] }
+  if (!data?.result || !Array.isArray(data.result)) return []
+  // result is [[...items...]] — unwrap one level
+  const inner = data.result[0]
+  return Array.isArray(inner) ? inner as T[] : data.result as T[]
+}
+
+interface BackendVm {
+  vm_id: number
+  vm_name: string
+  vm_status: string
+  vm_uptime: number
+  proxmox_node: string
+  vm_meta: {
+    cpu_current_usage: number
+    cpu_allocated: number
+    ram_current_usage: number
+    ram_max: number
+    disk_max: number
+  }
+}
+
+function normalizeVm(vm: BackendVm): VmListItem {
+  return {
+    vmid: vm.vm_id,
+    name: vm.vm_name,
+    status: vm.vm_status as VmListItem['status'],
+    mem: vm.vm_meta?.ram_current_usage || 0,
+    maxmem: vm.vm_meta?.ram_max || 0,
+    cpu: vm.vm_meta?.cpu_current_usage || 0,
+    maxcpu: vm.vm_meta?.cpu_allocated || 1,
+    uptime: vm.vm_uptime || 0,
+    node: vm.proxmox_node as ProxmoxNode,
+  }
+}
+
 export const vm = {
   /**
    * List all VMs on a node
    */
   async list(node: ProxmoxNode): Promise<VmListItem[]> {
-    return get(`/v0/admin/proxmox/vms/list?proxmox_node=${node}`)
+    const raw = await query('/v0/admin/proxmox/vms/list', { proxmox_node: node })
+    return unwrapResult<BackendVm>(raw).map(normalizeVm)
   },
 
   /**
    * List VMs with resource usage
    */
   async listUsage(node: ProxmoxNode): Promise<VmListItem[]> {
-    return get(`/v0/admin/proxmox/vms/list-usage?proxmox_node=${node}`)
+    const raw = await query('/v0/admin/proxmox/vms/list_usage', { proxmox_node: node })
+    return unwrapResult<BackendVm>(raw).map(normalizeVm)
   },
 
   /**
    * Get VM configuration
    */
   async getConfig(node: ProxmoxNode, vmId: number): Promise<VmConfig> {
-    return get(`/v0/admin/proxmox/vms/vm_id/config/get?proxmox_node=${node}&vm_id=${vmId}`)
+    return query('/v0/admin/proxmox/vms/vm_id/config/vm_get_config', { proxmox_node: node, vm_id: String(vmId) })
   },
 
   /**
@@ -262,7 +312,7 @@ export const snapshot = {
    * List VM snapshots
    */
   async list(node: ProxmoxNode, vmId: number): Promise<unknown[]> {
-    return get(`/v0/admin/proxmox/vms/vm_id/snapshot/list?proxmox_node=${node}&vm_id=${vmId}`)
+    return query('/v0/admin/proxmox/vms/vm_id/snapshot/list', { proxmox_node: node, vm_id: String(vmId) })
   },
 
   /**
@@ -289,8 +339,7 @@ export const lxc = {
    * List all LXC containers on a node
    */
   async list(node: ProxmoxNode): Promise<unknown[]> {
-    // TODO: Implement when backend route is added
-    return get(`/v0/admin/proxmox/lxc/list?proxmox_node=${node}`)
+    return query('/v0/admin/proxmox/lxc/list', { proxmox_node: node })
   },
 
   /**
@@ -350,7 +399,7 @@ export const network = {
    * List VM network interfaces
    */
   async listVmInterfaces(node: ProxmoxNode, vmId: number): Promise<NetworkInterface[]> {
-    return get(`/v0/admin/proxmox/network/vm/list?proxmox_node=${node}&vm_id=${vmId}`)
+    return query('/v0/admin/proxmox/network/vm/list', { proxmox_node: node, vm_id: String(vmId) })
   },
 
   /**
@@ -374,7 +423,7 @@ export const network = {
    * List node network interfaces
    */
   async listNodeInterfaces(node: ProxmoxNode): Promise<NodeNetwork[]> {
-    return get(`/v0/admin/proxmox/network/node/list?proxmox_node=${node}`)
+    return query('/v0/admin/proxmox/network//node/list', { proxmox_node: node })
   },
 }
 
@@ -387,14 +436,14 @@ export const firewall = {
    * Apply an iptables rule to a VM
    */
   async addRule(request: FirewallRuleAddRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/firewall/rules/apply', request)
+    return post('/v0/admin/proxmox/firewall/vm/rules/apply', request)
   },
 
   /**
    * Delete a firewall rule
    */
   async deleteRule(node: ProxmoxNode, vmId: number, pos: number): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/firewall/rules/delete', {
+    return del('/v0/admin/proxmox/firewall/vm/rules/delete', {
       proxmox_node: node,
       vm_id: vmId,
       pos,
@@ -405,14 +454,14 @@ export const firewall = {
    * List firewall rules for a VM
    */
   async listRules(node: ProxmoxNode, vmId: number): Promise<FirewallRule[]> {
-    return get(`/v0/admin/proxmox/firewall/rules/list?proxmox_node=${node}&vm_id=${vmId}`)
+    return query('/v0/admin/proxmox/firewall/vm/rules/list', { proxmox_node: node, vm_id: String(vmId) })
   },
 
   /**
    * Add a firewall alias
    */
   async addAlias(node: ProxmoxNode, vmId: number, alias: FirewallAlias): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/firewall/alias/add', {
+    return post('/v0/admin/proxmox/firewall/vm/alias/add', {
       proxmox_node: node,
       vm_id: vmId,
       ...alias,
@@ -423,7 +472,7 @@ export const firewall = {
    * Delete a firewall alias
    */
   async deleteAlias(node: ProxmoxNode, vmId: number, name: string): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/firewall/alias/delete', {
+    return del('/v0/admin/proxmox/firewall/vm/alias/delete', {
       proxmox_node: node,
       vm_id: vmId,
       name,
@@ -434,7 +483,7 @@ export const firewall = {
    * List firewall aliases
    */
   async listAliases(node: ProxmoxNode, vmId: number): Promise<FirewallAlias[]> {
-    return get(`/v0/admin/proxmox/firewall/alias/list?proxmox_node=${node}&vm_id=${vmId}`)
+    return query('/v0/admin/proxmox/firewall/vm/alias/list', { proxmox_node: node, vm_id: String(vmId) })
   },
 
   /**
@@ -488,29 +537,29 @@ export const storage = {
   /**
    * List storage pools
    */
-  async list(node: ProxmoxNode): Promise<unknown[]> {
-    return get(`/v0/admin/proxmox/storage/list?proxmox_node=${node}`)
+  async list(node: ProxmoxNode, storageName = 'local-zfs'): Promise<unknown[]> {
+    return query('/v0/admin/proxmox/storage/list', { proxmox_node: node, storage_name: storageName })
   },
 
   /**
    * List ISOs in a storage
    */
   async listIsos(node: ProxmoxNode, storageName: string): Promise<IsoInfo[]> {
-    return get(`/v0/admin/proxmox/storage/${storageName}/list-iso?proxmox_node=${node}`)
+    return query('/v0/admin/proxmox/storage/storage_name/list_iso', { proxmox_node: node, storage_name: storageName })
   },
 
   /**
    * List templates in a storage
    */
   async listTemplates(node: ProxmoxNode, storageName: string): Promise<TemplateInfo[]> {
-    return get(`/v0/admin/proxmox/storage/${storageName}/list-template?proxmox_node=${node}`)
+    return query('/v0/admin/proxmox/storage/storage_name/list_template', { proxmox_node: node, storage_name: storageName })
   },
 
   /**
    * Download an ISO from URL
    */
   async downloadIso(request: StorageDownloadIsoRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/storage/download-iso', request)
+    return post('/v0/admin/proxmox/storage/download_iso', request)
   },
 }
 
