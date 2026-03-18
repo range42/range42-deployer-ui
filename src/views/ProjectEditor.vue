@@ -21,9 +21,12 @@ import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
 import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
 import DeploymentPanel from '../components/DeploymentPanel.vue'
+import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
+import { useApiConfig } from '../composables/useApiConfig'
+import { setBaseUrl } from '@/services/proxmox/api'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
 
@@ -61,7 +64,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, removeNodes } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, removeNodes, addNodes: vfAddNodes, addEdges: vfAddEdges } = useVueFlow()
 
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
@@ -258,9 +261,10 @@ const handleCloseEdgeConfig = () => {
 }
 
 const handleDeleteNode = (nodeId) => {
-  // Remove the node from VueFlow
-  removeNodes([nodeId])
-  // Close the config panel
+  // Remove from controlled nodes ref (VueFlow controlled mode)
+  nodes.value = nodes.value.filter(n => n.id !== nodeId)
+  // Also remove any edges connected to this node
+  edges.value = edges.value.filter(e => e.source !== nodeId && e.target !== nodeId)
   closeConfigPanel()
 }
 
@@ -341,6 +345,25 @@ const confirmDeleteProject = () => {
     router.push('/')
   }
 }
+
+// Import config: resolved from per-project settings at setup level
+const importApiConfig = useApiConfig(projectId, { autoSync: true })
+
+const handleOpenImport = () => {
+  // Ensure the API client has the correct base URL from per-project settings
+  importApiConfig.configure()
+  showImportModal.value = true
+}
+
+const handleInfrastructureImport = (result) => {
+  if (result.nodes && result.nodes.length > 0) {
+    vfAddNodes(JSON.parse(JSON.stringify(result.nodes)))
+  }
+  if (result.edges && result.edges.length > 0) {
+    vfAddEdges(JSON.parse(JSON.stringify(result.edges)))
+  }
+  showImportModal.value = false
+}
 </script>
 
 <template>
@@ -353,7 +376,7 @@ const confirmDeleteProject = () => {
       @openValidate="handleOpenValidate"
       @openInventory="showInventoryBrowser = true"
       @openTemplates="showTemplateBrowser = true"
-      @openImport="showImportModal = true"
+      @openImport="handleOpenImport"
       class="hidden lg:flex shrink-0"
     />
 
@@ -524,12 +547,12 @@ const confirmDeleteProject = () => {
     </div>
 
     <!-- Config Panel -->
-    <ConfigPanel 
-      v-if="selectedNode && showConfigPanel" 
-      :node="selectedNode" 
+    <ConfigPanel
+      v-if="selectedNode && showConfigPanel"
+      :node="selectedNode"
       @close="closeConfigPanel"
-      @update="updateNodeStatus" 
-      @delete="handleDeleteNode" 
+      @update="updateNodeStatus"
+      @delete="handleDeleteNode"
     />
     
     <!-- Edge Config Panel -->
@@ -606,4 +629,15 @@ const confirmDeleteProject = () => {
   <div v-else class="h-screen flex items-center justify-center bg-base-100">
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
+
+  <!-- Import modal — teleported to body so it's not constrained by the flex layout -->
+  <Teleport to="body">
+    <InfrastructureImportModal
+      v-if="showImportModal"
+      :api-url="importApiConfig.apiUrl.value"
+      :proxmox-node="importApiConfig.node.value"
+      @close="showImportModal = false"
+      @import="handleInfrastructureImport"
+    />
+  </Teleport>
 </template>

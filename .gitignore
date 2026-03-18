@@ -30,3 +30,4 @@ coverage
 *.tsbuildinfo
 .cursor
 notes
+CLAUDE.md

@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useInfrastructureImport } from '@/composables/useInfrastructureImport'
+import { setBaseUrl } from '@/services/proxmox/api'
+
+// Props — receive config from ProjectEditor (per-project settings)
+const props = defineProps<{
+  apiUrl?: string
+  proxmoxNode?: string
+}>()
 
 // Emits
 const emit = defineEmits<{
@@ -14,14 +21,17 @@ const {
   lxcs,
   isLoading,
   error,
-  isConfigured,
   selectedResources,
   fetchResources,
   toggleSelection,
   selectAll,
   deselectAll,
   importSelected,
+  setNode,
 } = useInfrastructureImport()
+
+// Override isConfigured: use props instead of the broken global store
+const isConfigured = computed(() => !!(props.apiUrl && props.proxmoxNode))
 
 // Local state
 const isImporting = ref(false)
@@ -38,9 +48,9 @@ async function handleImport() {
   try {
     isImporting.value = true
     importError.value = null
-    
+
     const result = await importSelected()
-    
+
     if (result.success || result.nodes.length > 0) {
       emit('import', { nodes: result.nodes, edges: result.edges })
       emit('close')
@@ -71,9 +81,11 @@ function getStatusBadge(status: string | undefined) {
   }
 }
 
-// Load on mount
+// Load on mount: configure API client from props and fetch
 onMounted(() => {
   if (isConfigured.value) {
+    setBaseUrl(props.apiUrl!)
+    setNode(props.proxmoxNode!)
     fetchResources()
   }
 })
@@ -211,7 +223,7 @@ onMounted(() => {
           </div>
           <div class="flex gap-2">
             <button class="btn btn-ghost" @click="close">Cancel</button>
-            <button 
+            <button
               class="btn btn-primary gap-1"
               :disabled="selectedResources.length === 0 || isImporting || !isConfigured"
               @click="handleImport"
@@ -228,12 +240,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    <div class="modal-backdrop" @click="close"></div>
+    <div class="modal-backdrop bg-black/50" @click="close"></div>
   </div>
 </template>
-
-<style scoped>
-.modal-backdrop {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-</style>

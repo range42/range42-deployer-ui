@@ -37,10 +37,25 @@ const openProject = (projectId) => {
   router.push(`/project/${projectId}`)
 }
 
-const deleteProject = (projectId) => {
-  if (confirm('Are you sure you want to delete this project?')) {
-    projectStore.deleteProject(projectId)
+const pendingDeleteId = ref(null)
+
+const deleteProject = (projectId, event) => {
+  if (event) {
+    event.stopPropagation()
+    event.preventDefault()
   }
+  pendingDeleteId.value = projectId
+}
+
+const confirmDelete = () => {
+  if (pendingDeleteId.value) {
+    projectStore.deleteProject(pendingDeleteId.value)
+    pendingDeleteId.value = null
+  }
+}
+
+const cancelDelete = () => {
+  pendingDeleteId.value = null
 }
 
 const duplicateProject = (project) => {
@@ -292,7 +307,7 @@ const formatDate = (date) => {
                     </li>
                     <div class="divider my-1"></div>
                     <li>
-                      <button type="button" class="gap-2 w-full text-left text-error" @click.stop="deleteProject(project.id)">
+                      <button type="button" class="gap-2 w-full text-left text-error" @click.stop="deleteProject(project.id, $event)">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         Delete
                       </button>
@@ -358,7 +373,7 @@ const formatDate = (date) => {
             
             <button 
               class="btn btn-ghost btn-sm opacity-0 group-hover:opacity-100 transition-opacity"
-              @click.stop="deleteProject(project.id)"
+              @click.stop="deleteProject(project.id, $event)"
             >
               <svg class="w-4 h-4 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -449,6 +464,19 @@ const formatDate = (date) => {
       </div>
       <div class="modal-backdrop" @click="showCreateModal = false"></div>
     </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div v-if="pendingDeleteId" class="modal modal-open">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Delete Project</h3>
+      <p class="py-4">Are you sure you want to delete this project? This action cannot be undone.</p>
+      <div class="modal-action">
+        <button class="btn btn-ghost" @click="cancelDelete">Cancel</button>
+        <button class="btn btn-error" @click="confirmDelete">Delete</button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="cancelDelete"></div>
   </div>
 </template>
 
