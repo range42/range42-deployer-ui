@@ -739,10 +739,28 @@ export function useTopologyResolver() {
         }
 
         case 'vm': {
+          const nodeData = node.data as CanvasNodeData
+
+          // Already deployed VMs: skip create/start, just track the existing VMID
+          if (nodeData.deployed && nodeData.vmId) {
+            const existingId = Number(nodeData.vmId)
+            nodeVmIds.set(node.id, existingId)
+            steps.push({
+              id: generateStepId(),
+              type: 'noop',
+              name: `${nodeData.label} (already deployed)`,
+              description: `VMID ${existingId} — already running on Proxmox`,
+              nodeId: node.id,
+              status: 'completed',
+              payload: {},
+            })
+            break
+          }
+
           const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createVmStep(node, vmId, options))
-          
+
           // Add network config for connected segments (with edge connection data)
           const connections = findConnectedSegmentsWithEdgeData(node.id, canvasNodes, edges)
           connections.forEach(({ segment, connectionData }, index) => {
@@ -752,6 +770,21 @@ export function useTopologyResolver() {
         }
 
         case 'lxc': {
+          const lxcData = node.data as CanvasNodeData
+          if (lxcData.deployed && lxcData.vmId) {
+            nodeVmIds.set(node.id, Number(lxcData.vmId))
+            steps.push({
+              id: generateStepId(),
+              type: 'noop',
+              name: `${lxcData.label} (already deployed)`,
+              description: `VMID ${lxcData.vmId} — already running on Proxmox`,
+              nodeId: node.id,
+              status: 'completed',
+              payload: {},
+            })
+            break
+          }
+
           const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createLxcStep(node, vmId, options))
@@ -778,11 +811,11 @@ export function useTopologyResolver() {
       }
     }
 
-    // Add start steps for all VMs (after all are created)
+    // Add start steps only for NEW VMs (skip already deployed ones)
     const vmIdEntries = Array.from(nodeVmIds.entries())
     for (const [nodeId, vmId] of vmIdEntries) {
       const node = canvasNodes.find(n => n.id === nodeId)
-      if (node) {
+      if (node && !(node.data as CanvasNodeData).deployed) {
         steps.push(createStartVmStep(node, vmId, options))
       }
     }

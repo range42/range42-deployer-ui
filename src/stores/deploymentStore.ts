@@ -135,6 +135,11 @@ export const useDeploymentStore = defineStore('deployment', () => {
     try {
       // Execute based on step type
       switch (step.type) {
+        case 'noop': {
+          // Already deployed — nothing to do
+          break
+        }
+
         case 'create_bridge': {
           await proxmoxApi.network.addToNode(step.payload as Parameters<typeof proxmoxApi.network.addToNode>[0])
           break
@@ -250,8 +255,13 @@ export const useDeploymentStore = defineStore('deployment', () => {
 
     // Execute steps sequentially
     for (const step of currentPlan.value.steps) {
-      // Skip already completed steps (for resume)
-      if (step.status === 'completed') continue
+      // Skip already completed/deployed steps
+      if (step.status === 'completed') {
+        if (step.type === 'noop') {
+          addLog('info', `Skipping: ${step.name} (already on Proxmox)`, step.id)
+        }
+        continue
+      }
 
       // Check for pause/cancel
       if (isPaused.value) {
