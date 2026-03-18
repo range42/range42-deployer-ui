@@ -491,7 +491,7 @@ export function useTopologyResolver() {
     if (data.template) {
       // data.template holds the source template VMID (e.g., 9221)
       // vmId is the auto-assigned ID for the NEW clone target
-      const templateVmId = parseInt(String(data.template), 10) || 0
+      const templateVmId = String(parseInt(String(data.template), 10) || 0)
       return {
         id: generateStepId(),
         type: 'clone_template',
@@ -502,22 +502,26 @@ export function useTopologyResolver() {
         payload: {
           proxmox_node: options.proxmoxNode,
           vm_id: templateVmId,
-          new_vm_id: vmId,
+          new_vm_id: String(vmId),
           new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
           full_clone: true,
         },
       }
     }
 
+    // Parse disk size: "32G" → 32, "100G" → 100
+    const diskStr = String(data.diskSize || '32G')
+    const diskGb = parseInt(diskStr.replace(/[gG]$/, ''), 10) || 32
+
     const payload: VmCreateRequest = {
       proxmox_node: options.proxmoxNode,
-      vm_id: vmId,
+      vm_id: String(vmId),
       vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
       vm_cpu: 'host',
       vm_cores: data.cores || 1,
       vm_sockets: 1,
       vm_memory: data.memory || 1024,
-      vm_disk_size: data.diskSize || '32G',
+      vm_disk_size: diskGb,
       vm_iso: data.iso,
     }
 
@@ -575,7 +579,7 @@ export function useTopologyResolver() {
     const data = getNodeConfig<RouterNodeData>(node.data)
 
     // Routers are typically cloned from templates
-    const templateVmId = parseInt(String(data.template), 10) || 0
+    const templateVmId = String(parseInt(String(data.template), 10) || 0)
     return {
       id: generateStepId(),
       type: 'clone_template',
@@ -586,7 +590,7 @@ export function useTopologyResolver() {
       payload: {
         proxmox_node: options.proxmoxNode,
         vm_id: templateVmId,
-        new_vm_id: vmId,
+        new_vm_id: String(vmId),
         new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
         full_clone: true,
       },
@@ -647,7 +651,7 @@ export function useTopologyResolver() {
       status: 'pending',
       payload: {
         proxmox_node: options.proxmoxNode,
-        vm_id: vmId,
+        vm_id: String(vmId),
       },
     }
   }

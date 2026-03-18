@@ -30,15 +30,15 @@ export interface ApiError {
 
 export interface VmCreateRequest {
   proxmox_node: ProxmoxNode
-  vm_id: number
+  vm_id: string           // Backend expects string
   vm_name: string
-  vm_cpu: string // e.g., 'host', 'kvm64'
+  vm_cpu: string          // e.g., 'host', 'kvm64'
   vm_cores: number
   vm_sockets: number
-  vm_memory: number // MB
-  vm_disk_size?: string // e.g., '32G'
-  vm_iso?: string // ISO path
-  vm_template?: string // Template to clone from
+  vm_memory: number       // MB
+  vm_disk_size?: number   // GB as integer (backend expects int)
+  vm_iso?: string         // ISO path
+  vm_template?: string    // Template to clone from
 }
 
 export interface VmConfig {
@@ -72,11 +72,11 @@ export interface VmListItem {
 
 export interface VmActionRequest {
   proxmox_node: ProxmoxNode
-  vm_id: number
+  vm_id: string | number
 }
 
 export interface VmCloneRequest extends VmActionRequest {
-  new_vm_id: number
+  new_vm_id: string | number
   new_vm_name: string
   full_clone?: boolean
 }
