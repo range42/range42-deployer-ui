@@ -22,5 +22,8 @@ export {
   storage,
 } from './api'
 
+// Cache
+export { proxmoxCache } from './cache'
+
 // Default export
 export { default } from './api'

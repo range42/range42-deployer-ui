@@ -6,8 +6,8 @@ import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
 import FormDivider from '@/components/ui/FormDivider.vue'
 import FormList from '@/components/ui/FormList.vue'
-import { proxmoxApi } from '@/services/proxmox'
 import { getBaseUrl } from '@/services/proxmox/api'
+import { proxmoxCache } from '@/services/proxmox/cache'
 
 const { t } = useI18n({ useScope: 'global' })
 
@@ -17,37 +17,46 @@ const emit = defineEmits(['close', 'update', 'delete'])
 
 const errors = ref([])
 const isLoading = ref(false)
+const loadingTemplates = ref(false)
 const availableTemplates = ref([])
 
 const config = ref({})
+
+function getProxmoxNode() {
+  const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
+  return stored.defaultNode || 'pve01'
+}
+
+async function loadTemplates(force = false) {
+  if (!getBaseUrl()) return
+  loadingTemplates.value = true
+  try {
+    await proxmoxCache.fetchVms(getProxmoxNode(), force)
+    availableTemplates.value = proxmoxCache.getTemplateOptions()
+  } catch (e) {
+    console.warn('[ConfigPanel] Failed to fetch templates:', e)
+  } finally {
+    loadingTemplates.value = false
+  }
+}
+
+// Auto-fill cores/memory/disk when template selection changes
+watch(() => config.value.template, (newTemplate) => {
+  if (!newTemplate) return
+  const templateVm = proxmoxCache.templates.value.find(t => String(t.vmid) === newTemplate)
+  if (templateVm) {
+    config.value.cores = templateVm.maxcpu || config.value.cores
+    config.value.memory = templateVm.maxmem ? Math.floor(templateVm.maxmem / 1024 / 1024) : config.value.memory
+  }
+})
 
 onMounted(async () => {
   if (props.node?.data?.config) {
     config.value = { ...props.node.data.config }
   }
 
-  // Fetch available templates for VM template selector
-  if (props.node?.type === 'vm' && !props.node?.data?.deployed && getBaseUrl()) {
-    try {
-      // Read node from localStorage (per-project settings store it there)
-      const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
-      const node = stored.defaultNode || 'pve01'
-      const vms = await proxmoxApi.vm.list(node)
-      availableTemplates.value = vms
-        .filter(v => v.isTemplate)
-        .sort((a, b) => a.vmid - b.vmid)
-        .map(v => {
-          const ram = v.maxmem ? Math.floor(v.maxmem / 1024 / 1024) : 0
-          const ramLabel = ram >= 1024 ? `${(ram / 1024).toFixed(0)}GB` : `${ram}MB`
-          const cores = v.maxcpu || '?'
-          return {
-            value: String(v.vmid),
-            label: `${v.name} — ${cores} cores, ${ramLabel}`,
-          }
-        })
-    } catch (e) {
-      console.warn('[ConfigPanel] Failed to fetch templates:', e)
-    }
+  if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
+    await loadTemplates()
   }
 
   // Load i18n namespaces used by this panel
@@ -304,16 +313,35 @@ watch(() => props.node, (newNode) => {
         <template v-else-if="node.type === 'vm'">
           <FormDivider label="Virtual Machine" icon="" />
 
-          <FormSection title="Template & Resources" icon="" variant="bordered" :columns="2">
-            <FormField
-              v-model="config.template"
-              label="Template"
-              type="select"
-              :options="availableTemplates"
-              placeholder="Select a template..."
-              hint="Proxmox VM template to clone from"
-              icon=""
-            />
+          <FormSection title="Template" icon="" variant="bordered" :columns="1">
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <FormField
+                  v-model="config.template"
+                  label="Clone from template"
+                  type="select"
+                  :options="availableTemplates"
+                  :placeholder="loadingTemplates ? 'Loading templates...' : 'Select a template...'"
+                  :disabled="loadingTemplates"
+                  hint="Selecting a template auto-fills CPU and RAM (editable)"
+                  icon=""
+                />
+              </div>
+              <button
+                class="btn btn-sm btn-ghost mb-1"
+                :class="{ 'loading': loadingTemplates }"
+                :disabled="loadingTemplates"
+                @click="loadTemplates(true)"
+                title="Refresh templates from Proxmox"
+              >
+                <svg v-if="!loadingTemplates" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
+          </FormSection>
+
+          <FormSection title="Resources" icon="" variant="bordered" :columns="3">
             <FormField
               v-model="config.cores"
               label="CPU Cores"
@@ -329,15 +357,15 @@ watch(() => props.node, (newNode) => {
               type="number"
               placeholder="2048"
               :min="512"
-              hint="RAM in megabytes"
+              hint="Auto-filled from template"
               icon=""
             />
             <FormField
               v-model="config.diskSize"
-              label="Disk Size"
+              label="Disk"
               type="text"
               placeholder="32G"
-              hint="e.g., 16G, 32G, 100G"
+              hint="e.g. 16G, 32G, 100G"
               icon=""
             />
           </FormSection>

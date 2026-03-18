@@ -7,6 +7,7 @@
 
 import { ref, computed } from 'vue'
 import { proxmoxApi } from '@/services/proxmox'
+import { proxmoxCache } from '@/services/proxmox/cache'
 import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
 import type { VmListItem, LxcConfig, ProxmoxNode, VmConfig } from '@/services/proxmox'
 
@@ -101,8 +102,8 @@ export function useInfrastructureImport() {
       error.value = null
       bridges.value.clear()
 
-      // Fetch VMs — filter out templates (VMID >= 9000 convention)
-      const vmList = await proxmoxApi.vm.list(proxmoxNode.value) as VmListItem[]
+      // Fetch VMs via cache — filter out templates
+      const vmList = await proxmoxCache.fetchVms(proxmoxNode.value) as VmListItem[]
       vms.value = vmList
         .filter((vm) => !vm.isTemplate && vm.status !== 'stopped')
         .map((vm) => ({
@@ -140,18 +141,15 @@ export function useInfrastructureImport() {
     }
   }
 
-  // Cache of fetched VM data to avoid redundant API calls during import
-  let cachedVmList: VmListItem[] | null = null
-
   /**
-   * Fetch detailed config for a VM using cached list data
+   * Fetch detailed config for a VM using shared cache
    */
   async function fetchVmConfig(vmid: number): Promise<Record<string, unknown> | null> {
     try {
-      if (!cachedVmList) {
-        cachedVmList = await proxmoxApi.vm.list(proxmoxNode.value) as VmListItem[]
-      }
-      const vm = cachedVmList.find(v => v.vmid === vmid)
+      const allVms = proxmoxCache.vmCache.value.length > 0
+        ? proxmoxCache.vmCache.value
+        : await proxmoxCache.fetchVms(proxmoxNode.value)
+      const vm = allVms.find(v => v.vmid === vmid)
       if (vm) {
         return {
           vmid: vm.vmid,
@@ -372,6 +370,7 @@ export function useInfrastructureImport() {
    * Refresh resources from Proxmox
    */
   async function refresh(): Promise<void> {
+    proxmoxCache.invalidate()
     await fetchResources()
   }
 
