@@ -146,9 +146,24 @@ async function post<T>(endpoint: string, body?: unknown): Promise<T> {
   })
 }
 
-// Helper for POST with ansible defaults injected
+// Helper for POST with ansible defaults injected (read operations)
 async function query<T>(endpoint: string, params: Record<string, unknown> = {}): Promise<T> {
   return post<T>(endpoint, { ...ANSIBLE_DEFAULTS, ...params })
+}
+
+// Helper for write operations — injects ansible defaults AND checks rc for Ansible failures
+async function command<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  const result = await post<T>(endpoint, { ...ANSIBLE_DEFAULTS, ...body })
+  const data = result as unknown as { rc?: number; log_multiline?: string[] }
+  if (data.rc !== undefined && data.rc !== 0) {
+    const logs = data.log_multiline?.slice(-5).join('\n') || ''
+    throw new ProxmoxApiError(
+      data.rc,
+      `Ansible execution failed (rc=${data.rc})`,
+      logs
+    )
+  }
+  return result
 }
 
 // Helper for DELETE requests
@@ -232,56 +247,56 @@ export const vm = {
    * Create a new VM
    */
   async create(request: VmCreateRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/create', request)
+    return command('/v0/admin/proxmox/vms/vm_id/create', request as unknown as Record<string, unknown>)
   },
 
   /**
    * Clone an existing VM
    */
   async clone(request: VmCloneRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/clone', request)
+    return command('/v0/admin/proxmox/vms/vm_id/clone', request as unknown as Record<string, unknown>)
   },
 
   /**
    * Delete a VM
    */
   async delete(request: VmActionRequest): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/vms/vm_id/delete', request)
+    return del('/v0/admin/proxmox/vms/vm_id/delete', { ...ANSIBLE_DEFAULTS, ...request })
   },
 
   /**
    * Start a VM
    */
   async start(request: VmActionRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/start', request)
+    return command('/v0/admin/proxmox/vms/vm_id/start', request as unknown as Record<string, unknown>)
   },
 
   /**
    * Stop a VM (graceful)
    */
   async stop(request: VmActionRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/stop', request)
+    return command('/v0/admin/proxmox/vms/vm_id/stop', request as unknown as Record<string, unknown>)
   },
 
   /**
    * Force stop a VM
    */
   async stopForce(request: VmActionRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/stop-force', request)
+    return command('/v0/admin/proxmox/vms/vm_id/stop-force', request as unknown as Record<string, unknown>)
   },
 
   /**
    * Pause a VM
    */
   async pause(request: VmActionRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/pause', request)
+    return command('/v0/admin/proxmox/vms/vm_id/pause', request as unknown as Record<string, unknown>)
   },
 
   /**
    * Resume a paused VM
    */
   async resume(request: VmActionRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/resume', request)
+    return command('/v0/admin/proxmox/vms/vm_id/resume', request as unknown as Record<string, unknown>)
   },
 
   /**
@@ -381,7 +396,7 @@ export const network = {
    * Add a network interface to a VM
    */
   async addToVm(request: VmNetworkAddRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/network/vm/add', request)
+    return command('/v0/admin/proxmox/network/vm/add', request as unknown as Record<string, unknown>)
   },
 
   /**
@@ -406,7 +421,7 @@ export const network = {
    * Add a network to a Proxmox node (bridge, bond, etc.)
    */
   async addToNode(request: NodeNetworkAddRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/network/node/add', request)
+    return command('/v0/admin/proxmox/network/node/add', request as unknown as Record<string, unknown>)
   },
 
   /**

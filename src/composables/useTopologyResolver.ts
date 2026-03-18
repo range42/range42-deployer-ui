@@ -488,16 +488,19 @@ export function useTopologyResolver() {
     
     // If template is specified, we clone; otherwise create from ISO
     if (data.template) {
+      // data.template holds the source template VMID (e.g., 9221)
+      // vmId is the auto-assigned ID for the NEW clone target
+      const templateVmId = parseInt(String(data.template), 10) || 0
       return {
         id: generateStepId(),
         type: 'clone_template',
         name: `Clone VM ${data.label}`,
-        description: `Clone from template: ${data.template}`,
+        description: `Clone template ${templateVmId} → VMID ${vmId}`,
         nodeId: node.id,
         status: 'pending',
         payload: {
           proxmox_node: options.proxmoxNode,
-          vm_id: vmId, // Source template ID (needs lookup)
+          vm_id: templateVmId,
           new_vm_id: vmId,
           new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
           full_clone: true,
@@ -571,16 +574,17 @@ export function useTopologyResolver() {
     const data = getNodeConfig<RouterNodeData>(node.data)
 
     // Routers are typically cloned from templates
+    const templateVmId = parseInt(String(data.template), 10) || 0
     return {
       id: generateStepId(),
       type: 'clone_template',
       name: `Deploy ${data.appliance} - ${data.label}`,
-      description: `Deploy ${data.appliance} router/firewall`,
+      description: `Clone template ${templateVmId || data.appliance} → VMID ${vmId}`,
       nodeId: node.id,
       status: 'pending',
       payload: {
         proxmox_node: options.proxmoxNode,
-        template_name: data.template || `${data.appliance}-template`,
+        vm_id: templateVmId,
         new_vm_id: vmId,
         new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
         full_clone: true,
@@ -657,7 +661,7 @@ export function useTopologyResolver() {
   ): DeploymentPlan {
     const canvasNodes = nodes as CanvasNode[]
     const steps: DeploymentStep[] = []
-    let nextVmId = options.startVmId || 100
+    let nextVmId = options.startVmId || 2000
 
     // Sort nodes by deployment priority
     const sortedNodes = [...canvasNodes].sort((a, b) => {
