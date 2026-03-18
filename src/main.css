@@ -6,6 +6,16 @@
 @import '@vue-flow/core/dist/style.css';
 @import '@vue-flow/core/dist/theme-default.css';
 
+/* Muted placeholders */
+::placeholder {
+  color: oklch(var(--bc) / 0.25) !important;
+  opacity: 1;
+}
+
+select option[disabled] {
+  color: oklch(var(--bc) / 0.25);
+}
+
 /* =============================================================================
    Design System - Range42 Deployer UI
    ============================================================================= */

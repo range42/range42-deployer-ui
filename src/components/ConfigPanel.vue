@@ -7,7 +7,7 @@ import FormSection from '@/components/ui/FormSection.vue'
 import FormDivider from '@/components/ui/FormDivider.vue'
 import FormList from '@/components/ui/FormList.vue'
 import { proxmoxApi } from '@/services/proxmox'
-import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
+import { getBaseUrl } from '@/services/proxmox/api'
 
 const { t } = useI18n({ useScope: 'global' })
 
@@ -27,19 +27,25 @@ onMounted(async () => {
   }
 
   // Fetch available templates for VM template selector
-  if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
+  if (props.node?.type === 'vm' && !props.node?.data?.deployed && getBaseUrl()) {
     try {
-      const settingsStore = useProxmoxSettingsStore()
-      const node = settingsStore.defaultNode || 'pve01'
+      // Read node from localStorage (per-project settings store it there)
+      const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
+      const node = stored.defaultNode || 'pve01'
       const vms = await proxmoxApi.vm.list(node)
       availableTemplates.value = vms
         .filter(v => v.vmid >= 9000 && v.status === 'stopped')
-        .map(v => ({
-          value: String(v.vmid),
-          label: `${v.name} (${v.maxmem ? Math.floor(v.maxmem / 1024 / 1024) : '?'}MB, ${v.vmid})`,
-        }))
+        .sort((a, b) => a.vmid - b.vmid)
+        .map(v => {
+          const ram = v.maxmem ? Math.floor(v.maxmem / 1024 / 1024) : 0
+          const ramLabel = ram >= 1024 ? `${(ram / 1024).toFixed(0)}GB` : `${ram}MB`
+          return {
+            value: String(v.vmid),
+            label: `${v.name} — ${ramLabel} RAM`,
+          }
+        })
     } catch (e) {
-      console.warn('Failed to fetch templates:', e)
+      console.warn('[ConfigPanel] Failed to fetch templates:', e)
     }
   }
 
@@ -335,20 +341,20 @@ watch(() => props.node, (newNode) => {
             />
           </FormSection>
 
-          <FormSection title="Network" icon="" variant="bordered" :columns="2">
+          <FormSection title="Network & Details" icon="" variant="bordered" :columns="2">
             <FormField
               v-model="config.ipAddress"
-              label="IP Address"
+              label="IP Address (optional)"
               type="text"
-              placeholder="e.g., 192.168.42.10"
-              hint="Static IP for this VM"
+              placeholder="auto-assign or e.g. 192.168.42.50"
+              hint="Leave empty for DHCP or cloud-init default"
               icon=""
             />
             <FormField
               v-model="config.description"
               label="Description"
               type="textarea"
-              placeholder="VM description..."
+              placeholder="What is this VM for?"
               :rows="2"
               icon=""
             />

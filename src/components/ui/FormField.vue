@@ -165,7 +165,7 @@ const labelClasses = computed(() => [
         @focus="isFocused = true"
         @blur="isFocused = false"
       >
-        <option v-if="placeholder" value="" disabled>{{ placeholder }}</option>
+        <option v-if="placeholder" value="" disabled selected class="text-base-content/30">{{ placeholder }}</option>
         <option 
           v-for="opt in options" 
           :key="typeof opt === 'object' ? opt.value : opt"
