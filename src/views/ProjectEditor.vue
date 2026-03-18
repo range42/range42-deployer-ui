@@ -21,6 +21,7 @@ import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
 import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
 import DeploymentPanel from '../components/DeploymentPanel.vue'
+import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 
 import { useInfraBuilder } from '../composables/useInfraBuilder'
@@ -294,30 +295,71 @@ const closeProxmoxSettings = () => {
 }
 
 // Deployment handlers
+const showReconcileModal = ref(false)
+
 const handleOpenDeploy = () => {
-  // Deploy using project settings (auto-loaded by useDeployment)
+  // Ensure API is configured
+  importApiConfig.configure()
+  if (!importApiConfig.isReady.value) {
+    alert('Please configure Backend API settings first (click ⚙️ → Proxmox Settings)')
+    showProxmoxSettings.value = true
+    return
+  }
+
+  // Show reconciliation modal before deploying
+  showReconcileModal.value = true
+}
+
+const handleReconcileProceed = (toDelete, toImport) => {
+  showReconcileModal.value = false
+
+  // Import kept VMs to canvas
+  if (toImport && toImport.length > 0) {
+    const importNodes = toImport.map((vm, i) => ({
+      id: `imported-vm-${vm.vmid}`,
+      type: 'vm',
+      position: { x: 600, y: 100 + i * 120 },
+      data: {
+        type: 'vm',
+        label: vm.name,
+        vmId: vm.vmid,
+        deployed: true,
+        status: vm.status === 'running' ? 'running' : 'stopped',
+        config: {
+          name: vm.name,
+          vmid: vm.vmid,
+          cores: vm.maxcpu || 1,
+          memory: String(vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 0),
+        },
+      },
+    }))
+    vfAddNodes(JSON.parse(JSON.stringify(importNodes)))
+  }
+
+  // TODO: Add delete steps for toDelete VMs to the deployment plan
+
+  // Now prepare and run deployment
   const result = deployment.deploy(
     liveNodes.value,
     liveEdges.value,
     {
       projectName: currentProject.value?.name,
-      startVmId: 100,
+      startVmId: 2000,
     }
   )
-  
-  // If settings not configured, show settings modal
+
   if (result.needsConfiguration) {
     alert('Please configure Backend API settings first (click ⚙️ → Proxmox Settings)')
     showProxmoxSettings.value = true
     return
   }
-  
+
   if (!result.success) {
     validationErrors.value = result.errors
     alert(`Validation failed:\n${result.errors.map(e => `- ${e.message}`).join('\n')}`)
     return
   }
-  
+
   showDeploymentPanel.value = true
 }
 
@@ -638,6 +680,14 @@ const handleInfrastructureImport = (result) => {
       :proxmox-node="importApiConfig.node.value"
       @close="showImportModal = false"
       @import="handleInfrastructureImport"
+    />
+
+    <DeployReconcileModal
+      v-if="showReconcileModal"
+      :canvas-vm-ids="new Set(liveNodes.value.filter(n => n.data?.vmId).map(n => n.data.vmId))"
+      :proxmox-node="importApiConfig.node.value || 'pve01'"
+      @proceed="handleReconcileProceed"
+      @cancel="showReconcileModal = false"
     />
   </Teleport>
 </template>
