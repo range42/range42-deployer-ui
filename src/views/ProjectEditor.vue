@@ -676,16 +676,16 @@ const handleInfrastructureImport = (result) => {
   <Teleport to="body">
     <InfrastructureImportModal
       v-if="showImportModal"
-      :api-url="importApiConfig.apiUrl.value"
-      :proxmox-node="importApiConfig.node.value"
+      :api-url="importApiConfig.apiUrl"
+      :proxmox-node="importApiConfig.node"
       @close="showImportModal = false"
       @import="handleInfrastructureImport"
     />
 
     <DeployReconcileModal
       v-if="showReconcileModal"
-      :canvas-vm-ids="new Set(liveNodes.value.filter(n => n.data?.vmId).map(n => n.data.vmId))"
-      :proxmox-node="importApiConfig.node.value || 'pve01'"
+      :canvas-vm-ids="new Set((liveNodes || []).filter(n => n.data?.vmId).map(n => n.data.vmId))"
+      :proxmox-node="importApiConfig.node || 'pve01'"
       @proceed="handleReconcileProceed"
       @cancel="showReconcileModal = false"
     />
