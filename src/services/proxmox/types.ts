@@ -76,8 +76,8 @@ export interface VmActionRequest {
 }
 
 export interface VmCloneRequest extends VmActionRequest {
-  new_vm_id: string | number
-  new_vm_name: string
+  vm_new_id: string | number
+  vm_name: string
   full_clone?: boolean
 }
 

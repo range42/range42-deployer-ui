@@ -502,8 +502,8 @@ export function useTopologyResolver() {
         payload: {
           proxmox_node: options.proxmoxNode,
           vm_id: templateVmId,
-          new_vm_id: String(vmId),
-          new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+          vm_new_id: String(vmId),
+          vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
           full_clone: true,
         },
       }
@@ -590,8 +590,8 @@ export function useTopologyResolver() {
       payload: {
         proxmox_node: options.proxmoxNode,
         vm_id: templateVmId,
-        new_vm_id: String(vmId),
-        new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+        vm_new_id: String(vmId),
+        vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
         full_clone: true,
       },
     }
