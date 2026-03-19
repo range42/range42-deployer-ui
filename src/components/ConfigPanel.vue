@@ -42,9 +42,9 @@ async function loadTemplates(force = false) {
       const storages = await proxmoxApi.storage.list(getProxmoxNode())
       if (Array.isArray(storages)) {
         const items = Array.isArray(storages[0]) ? storages[0] : storages
-        availableStorages.value = (items as any[])
-          .filter((s: any) => s.storage_active || s.active)
-          .map((s: any) => ({
+        availableStorages.value = items
+          .filter((s) => s.storage_active || s.active)
+          .map((s) => ({
             value: s.storage_name || s.storage || s.name,
             label: `${s.storage_name || s.storage || s.name} (${s.storage_type || s.type || '?'})`,
           }))
