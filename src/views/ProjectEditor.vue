@@ -338,6 +338,10 @@ const handleReconcileProceed = (toDelete, toImport) => {
 
   // TODO: Add delete steps for toDelete VMs to the deployment plan
 
+  // Read default storage from global settings
+  const storedSettings = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
+  const defaultStorage = storedSettings.defaultStorage || 'local-zfs'
+
   // Now prepare and run deployment
   const result = deployment.deploy(
     liveNodes.value,
@@ -345,6 +349,7 @@ const handleReconcileProceed = (toDelete, toImport) => {
     {
       projectName: currentProject.value?.name,
       startVmId: 2000,
+      defaultStorage,
     }
   )
 

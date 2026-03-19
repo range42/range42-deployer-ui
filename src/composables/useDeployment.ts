@@ -88,6 +88,7 @@ export function useDeployment(projectIdRef?: Ref<string | null | undefined>) {
       projectId?: string
       projectName?: string
       startVmId?: number
+      defaultStorage?: string
     }
   ) {
     isGeneratingPlan.value = true
@@ -95,6 +96,7 @@ export function useDeployment(projectIdRef?: Ref<string | null | undefined>) {
       const plan = topologyResolver.resolve(nodes, edges, {
         proxmoxNode: options.proxmoxNode,
         startVmId: options.startVmId || 2000,
+        defaultStorage: options.defaultStorage,
       })
 
       // Update plan metadata

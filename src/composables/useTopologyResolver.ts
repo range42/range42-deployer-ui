@@ -44,7 +44,8 @@ interface CanvasNode extends Node {
 
 interface ResolverOptions {
   proxmoxNode: string
-  startVmId?: number // Starting VM ID for auto-assignment
+  startVmId?: number       // Starting VM ID for auto-assignment
+  defaultStorage?: string  // Proxmox storage for new VM disks (e.g., 'local-zfs')
 }
 
 interface ValidationError {
@@ -505,6 +506,7 @@ export function useTopologyResolver() {
           vm_new_id: String(vmId),
           vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
           full_clone: true,
+          ...(options.defaultStorage ? { proxmox_dest_vm_storage_name: options.defaultStorage } : {}),
         },
       }
     }
@@ -513,7 +515,7 @@ export function useTopologyResolver() {
     const diskStr = String(data.diskSize || '32G')
     const diskGb = parseInt(diskStr.replace(/[gG]$/, ''), 10) || 32
 
-    const payload: VmCreateRequest = {
+    const payload: VmCreateRequest & Record<string, unknown> = {
       proxmox_node: options.proxmoxNode,
       vm_id: String(vmId),
       vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
@@ -523,6 +525,7 @@ export function useTopologyResolver() {
       vm_memory: data.memory || 1024,
       vm_disk_size: diskGb,
       vm_iso: data.iso,
+      ...(options.defaultStorage ? { proxmox_dest_vm_storage_name: options.defaultStorage } : {}),
     }
 
     return {
@@ -593,6 +596,7 @@ export function useTopologyResolver() {
         vm_new_id: String(vmId),
         vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
         full_clone: true,
+        ...(options.defaultStorage ? { proxmox_dest_vm_storage_name: options.defaultStorage } : {}),
       },
     }
   }

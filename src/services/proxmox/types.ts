@@ -82,9 +82,8 @@ export interface VmCloneRequest extends VmActionRequest {
 }
 
 export interface VmSnapshotRequest extends VmActionRequest {
-  snapshot_name: string
-  description?: string
-  include_ram?: boolean
+  vm_snapshot_name: string
+  vm_snapshot_description?: string
 }
 
 // =============================================================================

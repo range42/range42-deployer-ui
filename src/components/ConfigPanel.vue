@@ -7,6 +7,7 @@ import FormSection from '@/components/ui/FormSection.vue'
 import FormDivider from '@/components/ui/FormDivider.vue'
 import FormList from '@/components/ui/FormList.vue'
 import { getBaseUrl } from '@/services/proxmox/api'
+import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
 
 const { t } = useI18n({ useScope: 'global' })
@@ -19,6 +20,8 @@ const errors = ref([])
 const isLoading = ref(false)
 const loadingTemplates = ref(false)
 const availableTemplates = ref([])
+const availableStorages = ref([])
+const availableIsos = ref([])
 
 const config = ref({})
 
@@ -33,6 +36,20 @@ async function loadTemplates(force = false) {
   try {
     await proxmoxCache.fetchVms(getProxmoxNode(), force)
     availableTemplates.value = proxmoxCache.getTemplateOptions()
+
+    // Also fetch storages
+    try {
+      const storages = await proxmoxApi.storage.list(getProxmoxNode())
+      if (Array.isArray(storages)) {
+        const items = Array.isArray(storages[0]) ? storages[0] : storages
+        availableStorages.value = (items as any[])
+          .filter((s: any) => s.storage_active || s.active)
+          .map((s: any) => ({
+            value: s.storage_name || s.storage || s.name,
+            label: `${s.storage_name || s.storage || s.name} (${s.storage_type || s.type || '?'})`,
+          }))
+      }
+    } catch { /* storage listing optional */ }
   } catch (e) {
     console.warn('[ConfigPanel] Failed to fetch templates:', e)
   } finally {
@@ -370,6 +387,18 @@ watch(() => props.node, (newNode) => {
               type="text"
               placeholder="32G"
               hint="e.g. 16G, 32G, 100G"
+              icon=""
+            />
+          </FormSection>
+
+          <FormSection v-if="availableStorages.length > 0" title="Storage" icon="" variant="bordered" :columns="1">
+            <FormField
+              v-model="config.storage"
+              label="Disk Storage"
+              type="select"
+              :options="availableStorages"
+              placeholder="Use project default"
+              hint="Where to store VM disk (overrides project default)"
               icon=""
             />
           </FormSection>
