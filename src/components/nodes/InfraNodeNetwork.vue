@@ -22,15 +22,6 @@ const statusColor = computed(() => {
   }
 })
 
-const statusRing = computed(() => {
-  switch (props.data?.status) {
-    case 'green': return 'ring-emerald-400/50'
-    case 'orange': return 'ring-amber-400/50'
-    case 'red': return 'ring-red-400/50'
-    default: return 'ring-slate-400/30'
-  }
-})
-
 // Parse CIDR to show network and prefix separately
 const networkInfo = computed(() => {
   const cidr = props.data?.config?.cidr

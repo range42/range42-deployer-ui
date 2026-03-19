@@ -27,7 +27,6 @@ import type {
   SwitchNodeData,
   VmNodeData,
   LxcNodeData,
-  GroupNodeData,
   VmCreateRequest,
   LxcCreateRequest,
   NodeNetworkAddRequest,
@@ -384,31 +383,6 @@ export function useTopologyResolver() {
       errors: allErrors,
       warnings: allWarnings,
     }
-  }
-
-  /**
-   * Find which network segment a node is connected to
-   */
-  function findConnectedSegments(
-    nodeId: string,
-    nodes: CanvasNode[],
-    edges: Edge[]
-  ): CanvasNode[] {
-    const segments: CanvasNode[] = []
-    
-    for (const edge of edges) {
-      const connectedId = edge.source === nodeId ? edge.target : 
-                          edge.target === nodeId ? edge.source : null
-      
-      if (connectedId) {
-        const connectedNode = nodes.find(n => n.id === connectedId)
-        if (connectedNode && connectedNode.data.type === 'network-segment') {
-          segments.push(connectedNode)
-        }
-      }
-    }
-    
-    return segments
   }
 
   /**

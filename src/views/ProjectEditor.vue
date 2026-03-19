@@ -28,7 +28,7 @@ import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
-import { setBaseUrl } from '@/services/proxmox/api'
+// setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
 
@@ -66,7 +66,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, removeNodes, addNodes: vfAddNodes, addEdges: vfAddEdges } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges } = useVueFlow()
 
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
@@ -112,87 +112,36 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
 
 ////
 
+// Bundle composables — only destructure loading/error for global state
+// Individual handlers will be destructured when the action panel UI is built
 const {
-  // useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume,
-  //
-  handleBundleCoreProxmoxConfigureDefault_startVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_stopVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_pauseVmsVuln,
-  handleBundleCoreProxmoxConfigureDefault_resumeVmsVuln,
-  //
-  handleBundleCoreProxmoxConfigureDefault_startVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_stopVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_pauseVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_resumeVmsAdmin,
-  //
-  handleBundleCoreProxmoxConfigureDefault_startVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_stopVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_pauseVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_resumeVmsStudent,
-  //
-  current_action: current_action_startStopPauseResumeDefaultVms,
-  //
   loading: loading_startStopPauseResumeDefaultVms,
   error: error_startStopPauseResumeDefaultVms,
 } = useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume(computed(() => currentProject.value?.id))
 
 const {
-  //
-  // useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms,
-  //
-  handleBundleCoreProxmoxConfigureDefault_deleteVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefault_deleteVmsStudent,
-  handleBundleCoreProxmoxConfigureDefault_deleteVmsVuln,
-  //
-
-  current_action: current_action_deleteDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: loading_deleteDefaultVms,
   error: error_deleteDefaultVms,
 } = useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms(computed(() => currentProject.value?.id))
 
 const {
-  //
-  // useBundleCoreProxmoxConfigureDefaultVms_createTargetVms,
-  //
-  handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsAdmin,
-  handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsVuln,
-  handleBundleCoreProxmoxConfigureDefaultVmsTarget_createVmsStudent,
-  //
-  current_action: createVms_current_action, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: createVms_loading,
   error: error_createDefaultVms,
 } = useBundleCoreProxmoxConfigureDefaultVms_createTargetVms(computed(() => currentProject.value?.id))
 
 const {
-  //
-  // useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms,
-  //
-  handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotAdmin,
-  handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotStudent,
-  handleBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotVuln,
-  //
-  current_action: current_action_snapshotRevertDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: loading_snapshotRevertDefaultVms,
   error: error_snapshotRevertDefaultVms,
 } = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms(computed(() => currentProject.value?.id))
 
 const {
-  //
-  // useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms,
-  //
-  handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotAdmin,
-  handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotStudent,
-  handleBundleCoreProxmoxConfigureDefaultSnapshot_createSnapshotVuln,
-  //
-  current_action: current_action_snapshotCreateDefaultVms, // status variable to block UI during processing and allow us to identify where enable the spinner.
   loading: loading_snapshotCreateDefaultVms,
   error: error_snapshotCreateDefaultVms,
-
 } = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms(computed(() => currentProject.value?.id))
 
 ////
 
-const loading = computed(() => {
+const _loading = computed(() => {
   return loading_startStopPauseResumeDefaultVms.value ||
     loading_deleteDefaultVms.value ||
     createVms_loading.value ||

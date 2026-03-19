@@ -17,11 +17,9 @@ const emit = defineEmits(['close', 'update', 'delete'])
 
 
 const errors = ref([])
-const isLoading = ref(false)
 const loadingTemplates = ref(false)
 const availableTemplates = ref([])
 const availableStorages = ref([])
-const availableIsos = ref([])
 
 const config = ref({})
 
@@ -108,21 +106,6 @@ const isValid = computed(() => {
   return validateConfig()
 })
 
-
-// Add network interface management for routers
-const addInterface = () => {
-  if (!config.value.interfaces) config.value.interfaces = []
-  config.value.interfaces.push({
-    name: `eth${config.value.interfaces.length}`,
-    ip: '',
-    subnet: '',
-    description: ''
-  })
-}
-
-const removeInterface = (index) => {
-  config.value.interfaces.splice(index, 1)
-}
 
 // Add VLAN management for switches
 const addVlan = () => {

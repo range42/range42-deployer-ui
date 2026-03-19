@@ -70,10 +70,6 @@ const inputValue = computed({
   set: (val) => emit('update:modelValue', val)
 })
 
-const hasValue = computed(() => {
-  return props.modelValue !== '' && props.modelValue !== null && props.modelValue !== undefined
-})
-
 const inputClasses = computed(() => {
   const base = props.type === 'textarea' 
     ? 'textarea textarea-bordered' 

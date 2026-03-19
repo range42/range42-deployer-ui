@@ -22,7 +22,7 @@ onMounted(async () => {
     if (!getBaseUrl()) return
     // Unwrap in case a Ref is passed as prop
     const node = typeof props.proxmoxNode === 'string' ? props.proxmoxNode : String(props.proxmoxNode)
-    const vms = await proxmoxCache.fetchVms(node as any)
+    const vms = await proxmoxCache.fetchVms(node as string)
     // Find VMs on Proxmox that are NOT on the canvas and NOT templates
     orphanedVms.value = vms
       .filter(v => !v.isTemplate && !props.canvasVmIds.has(v.vmid))

@@ -19,7 +19,6 @@ import type {
   VmSnapshotRequest,
   // LXC types
   LxcCreateRequest,
-  LxcConfig,
   // Network types
   VmNetworkAddRequest,
   NodeNetworkAddRequest,
@@ -459,7 +458,7 @@ export const network = {
    * List node network interfaces
    */
   async listNodeInterfaces(node: ProxmoxNode): Promise<NodeNetwork[]> {
-    return query('/v0/admin/proxmox/network//node/list', { proxmox_node: node })
+    return query('/v0/admin/proxmox/network/node/list', { proxmox_node: node })
   },
 }
 

@@ -9,7 +9,7 @@ import { ref, computed } from 'vue'
 import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
-import type { VmListItem, LxcConfig, ProxmoxNode, VmConfig } from '@/services/proxmox'
+import type { VmListItem, ProxmoxNode } from '@/services/proxmox'
 
 // =============================================================================
 // Types

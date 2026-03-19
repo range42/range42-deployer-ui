@@ -10,7 +10,7 @@ const emit = defineEmits(['openExport', 'openDeploy', 'openValidate', 'openInven
 const { onDragStart } = useDragAndDrop()
 
 const currentProject = computed(() => props.project)
-const { t } = useI18n({ useScope: 'global' })
+const { t: _t } = useI18n({ useScope: 'global' })
 const selectedLocale = ref(getLocale())
 
 // Collapsible sections
