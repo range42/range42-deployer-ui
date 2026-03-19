@@ -37,7 +37,7 @@ const ramMB = computed(() => {
 <template>
   <div
     class="infra-node"
-    :class="[`status-${statusColor}`, { 'ring-2 ring-primary ring-offset-2': selected }]"
+    :class="[{ 'ring-2 ring-primary ring-offset-2': selected }]"
   >
     <!-- Header -->
     <div class="flex items-center justify-between mb-2">

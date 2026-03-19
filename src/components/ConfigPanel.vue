@@ -186,6 +186,43 @@ const removeDnsZone = (index) => {
   config.value.zones.splice(index, 1)
 }
 
+// VM actions for deployed nodes
+const actionLoading = ref(null)
+
+async function handleVmAction(action) {
+  const vmId = props.node?.data?.vmId || config.value.vmid
+  if (!vmId) return
+
+  const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
+  const node = stored.defaultNode || 'pve01'
+
+  actionLoading.value = action
+  try {
+    const request = { proxmox_node: node, vm_id: String(vmId) }
+    switch (action) {
+      case 'start': await proxmoxApi.vm.start(request); break
+      case 'stop': await proxmoxApi.vm.stop(request); break
+      case 'restart':
+        await proxmoxApi.vm.stop(request)
+        await new Promise(r => setTimeout(r, 3000))
+        await proxmoxApi.vm.start(request)
+        break
+      case 'force-stop': await proxmoxApi.vm.stopForce(request); break
+      case 'delete':
+        if (!confirm(`Delete VM ${config.value.name} (VMID ${vmId}) from Proxmox? This is permanent.`)) return
+        await proxmoxApi.vm.delete(request)
+        emit('delete', props.node.id)
+        return
+    }
+    // Refresh status
+    proxmoxCache.invalidate()
+  } catch (e) {
+    alert(`Action failed: ${e.message || e}`)
+  } finally {
+    actionLoading.value = null
+  }
+}
+
 const handleSave = () => {
   const newStatus = isValid.value ? 'orange' : 'gray'
   emit('update', props.node.id, {
@@ -327,6 +364,42 @@ watch(() => props.node, (newNode) => {
               </div>
               <div class="text-[10px] text-base-content/50 mt-2">Provisioned</div>
             </div>
+          </div>
+
+          <!-- VM Actions -->
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="btn btn-sm btn-success gap-1"
+              :disabled="actionLoading || node.data.status === 'running'"
+              @click="handleVmAction('start')"
+            >
+              <span v-if="actionLoading === 'start'" class="loading loading-spinner loading-xs"></span>
+              <span v-else>▶</span> Start
+            </button>
+            <button
+              class="btn btn-sm btn-warning gap-1"
+              :disabled="actionLoading || node.data.status === 'stopped'"
+              @click="handleVmAction('stop')"
+            >
+              <span v-if="actionLoading === 'stop'" class="loading loading-spinner loading-xs"></span>
+              <span v-else>⏹</span> Stop
+            </button>
+            <button
+              class="btn btn-sm btn-info gap-1"
+              :disabled="actionLoading || node.data.status === 'stopped'"
+              @click="handleVmAction('restart')"
+            >
+              <span v-if="actionLoading === 'restart'" class="loading loading-spinner loading-xs"></span>
+              <span v-else>🔄</span> Restart
+            </button>
+            <button
+              class="btn btn-sm btn-error btn-outline gap-1"
+              :disabled="actionLoading"
+              @click="handleVmAction('delete')"
+            >
+              <span v-if="actionLoading === 'delete'" class="loading loading-spinner loading-xs"></span>
+              <span v-else>🗑️</span> Delete VM
+            </button>
           </div>
         </template>
 
