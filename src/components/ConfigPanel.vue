@@ -171,7 +171,11 @@ const removeDnsZone = (index) => {
 
 const handleSave = () => {
   const newStatus = isValid.value ? 'orange' : 'gray'
-  emit('update', props.node.id, { config: config.value, status: newStatus })
+  emit('update', props.node.id, {
+    config: config.value,
+    status: newStatus,
+    label: config.value.name || props.node.data?.label,
+  })
   emit('close')
 }
 
