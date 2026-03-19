@@ -1,11 +1,11 @@
 /**
  * WebSocket-based live VM status updates.
  *
- * Connects to the backend WebSocket endpoint and receives real-time
- * VM status changes. Updates canvas nodes reactively.
+ * Connects to the backend WebSocket endpoint which handles all
+ * Proxmox authentication server-side. Frontend only needs the backend URL.
  */
 
-import { ref, computed, onUnmounted, type Ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { getBaseUrl } from '@/services/proxmox/api'
 
 interface VmStatus {
@@ -18,13 +18,6 @@ interface VmStatus {
   uptime: number
 }
 
-interface WsMessage {
-  type: 'full' | 'diff'
-  vms?: VmStatus[]
-  changes?: Record<string, VmStatus & { type: 'added' | 'changed' | 'removed' }>
-  error?: string
-}
-
 export function useWebSocketStatus() {
   const vmStatuses = ref<Map<number, VmStatus>>(new Map())
   const isConnected = ref(false)
@@ -32,41 +25,18 @@ export function useWebSocketStatus() {
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  function getWsUrl(): string | null {
+  function connect(node?: string) {
     const baseUrl = getBaseUrl()
-    if (!baseUrl) return null
-
-    // Read Proxmox connection details from localStorage
-    const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
-    const node = stored.defaultNode || 'pve01'
-
-    // Read API token from inventory (stored in localStorage by import flow)
-    // For now, hardcode the connection params — these should come from project settings
-    const inventoryStr = localStorage.getItem('range42_ws_config')
-    let apiHost = '', tokenId = '', tokenSecret = ''
-
-    if (inventoryStr) {
-      try {
-        const inv = JSON.parse(inventoryStr)
-        apiHost = inv.api_host || ''
-        tokenId = inv.token_id || ''
-        tokenSecret = inv.token_secret || ''
-      } catch { /* ignore */ }
-    }
-
-    if (!apiHost || !tokenId || !tokenSecret) return null
-
-    // Convert http(s) URL to ws(s)
-    const wsBase = baseUrl.replace(/^http/, 'ws')
-    return `${wsBase}/ws/vm-status?node=${node}&api_host=${encodeURIComponent(apiHost)}&token_id=${encodeURIComponent(tokenId)}&token_secret=${encodeURIComponent(tokenSecret)}`
-  }
-
-  function connect() {
-    const url = getWsUrl()
-    if (!url) {
-      error.value = 'WebSocket config not set. Set range42_ws_config in localStorage.'
+    if (!baseUrl) {
+      error.value = 'Backend API URL not configured'
       return
     }
+
+    // Convert http(s) to ws(s)
+    const wsBase = baseUrl.replace(/^http/, 'ws')
+    const url = node
+      ? `${wsBase}/ws/vm-status?node=${node}`
+      : `${wsBase}/ws/vm-status`
 
     try {
       ws = new WebSocket(url)
@@ -74,12 +44,11 @@ export function useWebSocketStatus() {
       ws.onopen = () => {
         isConnected.value = true
         error.value = null
-        console.log('[ws] Connected to VM status stream')
       }
 
       ws.onmessage = (event) => {
         try {
-          const msg: WsMessage = JSON.parse(event.data)
+          const msg = JSON.parse(event.data)
 
           if (msg.error) {
             error.value = msg.error
@@ -98,28 +67,27 @@ export function useWebSocketStatus() {
             const updated = new Map(vmStatuses.value)
             for (const [vmidStr, change] of Object.entries(msg.changes)) {
               const vmid = Number(vmidStr)
-              if (change.type === 'removed') {
+              const c = change as VmStatus & { type: string }
+              if (c.type === 'removed') {
                 updated.delete(vmid)
               } else {
-                updated.set(vmid, change)
+                updated.set(vmid, c)
               }
             }
             vmStatuses.value = updated
           }
         } catch (e) {
-          console.warn('[ws] Failed to parse message:', e)
+          console.warn('[ws] Parse error:', e)
         }
       }
 
       ws.onclose = () => {
         isConnected.value = false
-        console.log('[ws] Disconnected, reconnecting in 5s...')
-        reconnectTimer = setTimeout(connect, 5000)
+        reconnectTimer = setTimeout(() => connect(node), 5000)
       }
 
-      ws.onerror = (e) => {
-        error.value = 'WebSocket connection error'
-        console.warn('[ws] Error:', e)
+      ws.onerror = () => {
+        error.value = 'WebSocket error'
       }
     } catch (e) {
       error.value = `WebSocket failed: ${e}`
@@ -132,7 +100,7 @@ export function useWebSocketStatus() {
       reconnectTimer = null
     }
     if (ws) {
-      ws.onclose = null // prevent reconnect
+      ws.onclose = null
       ws.close()
       ws = null
     }
@@ -141,10 +109,6 @@ export function useWebSocketStatus() {
 
   function getVmStatus(vmid: number): VmStatus | undefined {
     return vmStatuses.value.get(vmid)
-  }
-
-  function isVmRunning(vmid: number): boolean {
-    return vmStatuses.value.get(vmid)?.status === 'running'
   }
 
   onUnmounted(disconnect)
@@ -156,7 +120,6 @@ export function useWebSocketStatus() {
     connect,
     disconnect,
     getVmStatus,
-    isVmRunning,
   }
 }
 

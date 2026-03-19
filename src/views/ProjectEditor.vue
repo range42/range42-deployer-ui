@@ -27,6 +27,7 @@ import InfrastructureImportModal from '../components/InfrastructureImportModal.v
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
+import { useWebSocketStatus } from '../composables/useWebSocketStatus'
 import { setBaseUrl } from '@/services/proxmox/api'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useProjectStore } from '../stores/projectStore'
@@ -91,6 +92,23 @@ const deployment = useDeployment(projectId)
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
+// WebSocket live status — updates deployed nodes in real-time
+const wsStatus = useWebSocketStatus()
+
+// Sync WebSocket status changes to canvas nodes
+watch(() => wsStatus.vmStatuses.value, (statuses) => {
+  if (!statuses || statuses.size === 0) return
+  const allNodes = flowGetNodes?.value || nodes.value || []
+  for (const node of allNodes) {
+    if (node.data?.vmId && statuses.has(node.data.vmId)) {
+      const vm = statuses.get(node.data.vmId)
+      const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
+      if (node.data.status !== newStatus) {
+        node.data.status = newStatus
+      }
+    }
+  }
+}, { deep: true })
 
 ////
 
@@ -201,6 +219,14 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
+
+  // Start WebSocket live status if API is configured
+  const apiConfig = useApiConfig(projectId, { autoSync: true })
+  if (apiConfig.isReady.value) {
+    apiConfig.configure()
+    const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
+    wsStatus.connect(stored.defaultNode || 'pve01')
+  }
 })
 
 watch([nodes, edges], () => {

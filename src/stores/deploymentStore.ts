@@ -59,13 +59,28 @@ export const useDeploymentStore = defineStore('deployment', () => {
    * Maps deployment status to node status colors
    */
   function updateNodeStatus(
-    nodeId: string, 
+    nodeId: string,
     status: 'pending' | 'deploying' | 'running' | 'stopped' | 'error'
   ): void {
     if (!currentPlan.value?.projectId) return
-    
+
     const projectStore = useProjectStore()
     projectStore.updateNodeStatus(currentPlan.value.projectId, nodeId, status)
+  }
+
+  function markNodeDeployed(nodeId: string, payload: Record<string, unknown>): void {
+    if (!currentPlan.value?.projectId) return
+
+    const projectStore = useProjectStore()
+    const project = projectStore.getProject(currentPlan.value.projectId)
+    if (!project) return
+
+    const node = project.nodes.find((n: any) => n.id === nodeId)
+    if (!node?.data) return
+
+    node.data.deployed = true
+    node.data.vmId = payload.vm_id ? Number(payload.vm_id) : undefined
+    projectStore.updateProject(currentPlan.value.projectId, { nodes: project.nodes })
   }
 
   // =============================================================================
@@ -194,10 +209,15 @@ export const useDeploymentStore = defineStore('deployment', () => {
       addLog('success', `Completed: ${step.name}`, step.id)
       
       // Update node status based on step type
-      // For start_vm/start_lxc steps, mark as 'running'
-      // For create steps, mark as 'stopped' (not started yet)
-      const finalStatus = ['start_vm', 'start_lxc'].includes(step.type) ? 'running' : 'stopped'
-      updateNodeStatus(step.nodeId, finalStatus)
+      if (['start_vm', 'start_lxc'].includes(step.type)) {
+        // VM is now running — mark as deployed with VMID
+        updateNodeStatus(step.nodeId, 'running')
+        markNodeDeployed(step.nodeId, step.payload)
+      } else if (step.type === 'noop') {
+        // Already deployed — no status change needed
+      } else {
+        updateNodeStatus(step.nodeId, 'stopped')
+      }
       
       return true
 
