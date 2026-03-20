@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useInventoryStore, type ComponentListItem } from '@/stores/inventoryStore'
 import type { RegisteredInventory, InventoryComponent } from '@/services/git'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 // Emits
 const emit = defineEmits<{
@@ -145,12 +146,12 @@ async function changeTab(tab: 'vms' | 'networks' | 'services' | 'scenarios') {
 
 function getTypeIcon(type: string): string {
   switch (type) {
-    case 'vm': return '🖥️'
-    case 'lxc': return '📦'
-    case 'network': return '🌐'
-    case 'service': return '⚙️'
-    case 'scenario': return '🗺️'
-    default: return '📄'
+    case 'vm': return 'monitor'
+    case 'lxc': return 'cube'
+    case 'network': return 'globe'
+    case 'service': return 'gear'
+    case 'scenario': return 'map'
+    default: return 'document'
   }
 }
 
@@ -173,7 +174,7 @@ onMounted(() => {
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b border-base-300">
         <h2 class="text-xl font-bold flex items-center gap-2">
-          <span>📚</span>
+          <AppIcon name="books" class="w-5 h-5" />
           Inventory Browser
         </h2>
         <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
@@ -224,12 +225,12 @@ onMounted(() => {
                   <p class="text-xs text-base-content/60 truncate">{{ repo.id }}</p>
                 </div>
                 <div class="flex gap-1">
-                  <button 
+                  <button
                     class="btn btn-xs btn-ghost"
                     title="Refresh"
                     @click.stop="refreshRepository(repo.id)"
                   >
-                    🔄
+                    <AppIcon name="refresh" class="w-4 h-4" />
                   </button>
                   <button 
                     class="btn btn-xs btn-ghost text-error"
@@ -254,33 +255,33 @@ onMounted(() => {
           <template v-if="selectedRepo">
             <!-- Tabs -->
             <div class="tabs tabs-boxed bg-base-200 mx-4 mt-4">
-              <a 
-                class="tab" 
+              <a
+                class="tab"
                 :class="{ 'tab-active': activeTab === 'vms' }"
                 @click="changeTab('vms')"
               >
-                🖥️ VMs
+                <AppIcon name="monitor" class="w-4 h-4" /> VMs
               </a>
-              <a 
-                class="tab" 
+              <a
+                class="tab"
                 :class="{ 'tab-active': activeTab === 'networks' }"
                 @click="changeTab('networks')"
               >
-                🌐 Networks
+                <AppIcon name="globe" class="w-4 h-4" /> Networks
               </a>
-              <a 
-                class="tab" 
+              <a
+                class="tab"
                 :class="{ 'tab-active': activeTab === 'services' }"
                 @click="changeTab('services')"
               >
-                ⚙️ Services
+                <AppIcon name="gear" class="w-4 h-4" /> Services
               </a>
-              <a 
-                class="tab" 
+              <a
+                class="tab"
                 :class="{ 'tab-active': activeTab === 'scenarios' }"
                 @click="changeTab('scenarios')"
               >
-                🗺️ Scenarios
+                <AppIcon name="map" class="w-4 h-4" /> Scenarios
               </a>
             </div>
 
@@ -304,7 +305,7 @@ onMounted(() => {
                   @dragstart="handleDragStart($event, item)"
                 >
                   <div class="flex items-center gap-2">
-                    <span class="text-lg">{{ getTypeIcon(item.type) }}</span>
+                    <AppIcon :name="getTypeIcon(item.type)" class="w-4 h-4" />
                     <span class="font-medium text-sm truncate">{{ item.name }}</span>
                   </div>
                   <p class="text-xs text-base-content/60 mt-1 truncate">{{ item.id }}</p>
@@ -320,7 +321,7 @@ onMounted(() => {
           <!-- No Repo Selected -->
           <div v-else class="flex-1 flex items-center justify-center text-base-content/60">
             <div class="text-center">
-              <p class="text-4xl mb-4">📚</p>
+              <AppIcon name="books" class="w-10 h-10 mx-auto mb-4" />
               <p>Select an inventory from the sidebar</p>
               <p class="text-sm mt-2">or add a new one</p>
             </div>
@@ -339,7 +340,7 @@ onMounted(() => {
           
           <div class="flex-1 overflow-y-auto p-3 space-y-3">
             <div>
-              <span class="text-3xl">{{ getTypeIcon(selectedComponent.type) }}</span>
+              <AppIcon :name="getTypeIcon(selectedComponent.type)" class="w-4 h-4" />
             </div>
             
             <div>

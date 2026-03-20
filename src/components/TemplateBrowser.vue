@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useProxmoxStorage } from '@/composables/useProxmoxStorage'
 import type { TemplateInfo, IsoInfo } from '@/services/proxmox'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 // Props
 const props = defineProps<{
@@ -112,7 +113,7 @@ onMounted(() => {
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-base-300">
       <h2 class="text-lg font-semibold flex items-center gap-2">
-        <span>📦</span>
+        <AppIcon name="cube" class="w-5 h-5" />
         Template & ISO Browser
       </h2>
       <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
@@ -130,7 +131,7 @@ onMounted(() => {
         </div>
         <button class="btn btn-sm btn-ghost" @click="refresh" :disabled="isLoading">
           <span v-if="isLoading" class="loading loading-spinner loading-xs"></span>
-          <span v-else>🔄</span>
+          <AppIcon v-else name="refresh" class="w-4 h-4" />
         </button>
       </div>
       
@@ -150,7 +151,7 @@ onMounted(() => {
         :class="{ 'tab-active': activeTab === 'templates' }"
         @click="activeTab = 'templates'"
       >
-        📀 Templates ({{ templates.length }})
+        <AppIcon name="disc" class="w-4 h-4" /> Templates ({{ templates.length }})
       </a>
       <a 
         v-if="showIsosTab"
@@ -158,7 +159,7 @@ onMounted(() => {
         :class="{ 'tab-active': activeTab === 'isos' }"
         @click="activeTab = 'isos'"
       >
-        💿 ISOs ({{ isos.length }})
+        <AppIcon name="disc" class="w-4 h-4" /> ISOs ({{ isos.length }})
       </a>
     </div>
 

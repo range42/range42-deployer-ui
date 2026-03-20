@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n/index.js'
 import { useExport } from '../composables/useExport'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 // Accept project, visibility, and live graph overrides
 const props = defineProps(['project', 'visible', 'nodes', 'edges'])
@@ -70,7 +71,7 @@ const handleClose = () => {
       <!-- Header -->
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center space-x-3">
-          <span class="text-3xl">🧭</span>
+          <AppIcon name="compass" class="w-8 h-8" />
           <div>
             <h3 class="text-2xl font-bold">{{ t('export.title') }}</h3>
             <p class="text-sm opacity-70">{{ t('export.subtitle') }}</p>
@@ -88,7 +89,7 @@ const handleClose = () => {
       <!-- Step 1: Info & Generate -->
       <div v-if="currentStep === 1" class="space-y-6">
         <div class="alert alert-info">
-          <div class="text-2xl">📄</div>
+          <AppIcon name="document" class="w-6 h-6" />
           <div>
             <h4 class="font-bold">{{ t('export.info.title') }}</h4>
             <p class="text-sm">{{ t('export.info.desc') }}</p>
@@ -111,7 +112,7 @@ const handleClose = () => {
             @click="handleExport"
             :disabled="!project || incomingNodesCount === 0 || isExporting"
           >
-            🚀 {{ t('export.cta.generate') }}
+            <AppIcon name="rocket" class="w-4 h-4" /> {{ t('export.cta.generate') }}
           </button>
         </div>
       </div>
@@ -177,7 +178,7 @@ const handleClose = () => {
             @click="handleDownload"
             :disabled="!exportData || isExporting"
           >
-            ⬇️ {{ t('export.cta.download') }}
+            <AppIcon name="download" class="w-4 h-4" /> {{ t('export.cta.download') }}
           </button>
         </div>
       </div>

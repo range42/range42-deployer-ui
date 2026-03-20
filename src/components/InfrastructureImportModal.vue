@@ -84,8 +84,8 @@ function getStatusBadge(status: string | undefined) {
 // Load on mount: configure API client from props and fetch
 onMounted(() => {
   if (isConfigured.value) {
-    setBaseUrl(String(props.apiUrl))
-    setNode(String(props.proxmoxNode))
+    setBaseUrl(props.apiUrl)
+    setNode(props.proxmoxNode)
     fetchResources()
   }
 })
@@ -105,7 +105,7 @@ onMounted(() => {
 
       <!-- Not Configured Warning -->
       <div v-if="!isConfigured" class="alert alert-warning mb-4">
-        <span>⚠️ Proxmox connection not configured. Please configure your Proxmox settings first.</span>
+        <span>Proxmox connection not configured. Please configure your Proxmox settings first.</span>
       </div>
 
       <!-- Error Display -->
