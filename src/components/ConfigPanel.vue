@@ -1,9 +1,9 @@
 <script setup>
 import { ref, computed, watch, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
-import AppIcon from '@/components/icons/AppIcon.vue'
 import { ensureNamespaces } from '@/i18n/index.js'
 import FormField from '@/components/ui/FormField.vue'
+import AppIcon from '@/components/icons/AppIcon.vue'
 import FormSection from '@/components/ui/FormSection.vue'
 import FormDivider from '@/components/ui/FormDivider.vue'
 import FormList from '@/components/ui/FormList.vue'
@@ -363,7 +363,7 @@ watch(() => props.node, (newNode) => {
               @click="handleVmAction('start')"
             >
               <span v-if="actionLoading === 'start'" class="loading loading-spinner loading-xs"></span>
-              <span v-else>▶</span> Start
+              <AppIcon v-else name="play" class="w-4 h-4" /> Start
             </button>
             <button
               class="btn btn-sm btn-warning gap-1"
@@ -371,7 +371,7 @@ watch(() => props.node, (newNode) => {
               @click="handleVmAction('stop')"
             >
               <span v-if="actionLoading === 'stop'" class="loading loading-spinner loading-xs"></span>
-              <span v-else>⏹</span> Stop
+              <AppIcon v-else name="stop" class="w-4 h-4" /> Stop
             </button>
             <button
               class="btn btn-sm btn-info gap-1"

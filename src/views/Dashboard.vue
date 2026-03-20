@@ -358,7 +358,7 @@ const formatDate = (date) => {
             @click="openProject(project.id)"
           >
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <span class="text-lg">📐</span>
+              <AppIcon name="ruler" class="w-5 h-5" />
             </div>
             
             <div class="flex-1 min-w-0">

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useInfrastructureImport } from '@/composables/useInfrastructureImport'
 import { setBaseUrl } from '@/services/proxmox/api'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 // Props — receive config from ProjectEditor (per-project settings)
 const props = defineProps<{
@@ -97,7 +98,7 @@ onMounted(() => {
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold flex items-center gap-2">
-          <span>📥</span>
+          <AppIcon name="inbox" class="w-5 h-5" />
           Import Infrastructure
         </h2>
         <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
@@ -122,14 +123,14 @@ onMounted(() => {
             :class="{ 'tab-active': activeTab === 'vms' }"
             @click="activeTab = 'vms'"
           >
-            🖥️ VMs ({{ vms.length }})
+            <AppIcon name="monitor" class="w-4 h-4 inline" /> VMs ({{ vms.length }})
           </a>
           <a 
             class="tab" 
             :class="{ 'tab-active': activeTab === 'lxcs' }"
             @click="activeTab = 'lxcs'"
           >
-            📦 Containers ({{ lxcs.length }})
+            <AppIcon name="cube" class="w-4 h-4 inline" /> Containers ({{ lxcs.length }})
           </a>
         </div>
 
@@ -139,7 +140,7 @@ onMounted(() => {
           <button class="btn btn-sm btn-ghost" @click="deselectAll">Deselect All</button>
           <button class="btn btn-sm btn-ghost" @click="fetchResources" :disabled="isLoading">
             <span v-if="isLoading" class="loading loading-spinner loading-xs"></span>
-            <span v-else>🔄 Refresh</span>
+            <span v-else><AppIcon name="refresh" class="w-4 h-4 inline" /> Refresh</span>
           </button>
           <div class="flex-1"></div>
           <span class="text-sm text-base-content/60 self-center">
