@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import AppIcon from '@/components/icons/AppIcon.vue'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { getBaseUrl } from '@/services/proxmox/api'
 import type { VmListItem } from '@/services/proxmox/types'
@@ -60,7 +61,7 @@ function formatRam(bytes: number) {
   <div class="modal modal-open">
     <div class="modal-box max-w-2xl">
       <h3 class="text-lg font-bold flex items-center gap-2 mb-4">
-        <span>🔄</span> Pre-Deploy Reconciliation
+        <AppIcon name="refresh" class="w-5 h-5" /> Pre-Deploy Reconciliation
       </h3>
 
       <!-- Loading -->
@@ -70,7 +71,7 @@ function formatRam(bytes: number) {
 
       <!-- No orphans — clean deploy -->
       <div v-else-if="!hasOrphans" class="py-6 text-center">
-        <div class="text-4xl mb-3">✅</div>
+        <div class="mb-3 flex justify-center"><AppIcon name="check-circle" class="w-10 h-10" /></div>
         <p class="text-lg font-medium">No conflicts detected</p>
         <p class="text-sm text-base-content/60 mt-1">No existing VMs outside your canvas. Ready to deploy.</p>
       </div>

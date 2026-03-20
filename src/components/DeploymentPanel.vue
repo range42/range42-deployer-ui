@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useDeploymentStore } from '@/stores/deploymentStore'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const emit = defineEmits(['close'])
 
@@ -76,7 +77,7 @@ const handleClose = () => {
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b border-base-300">
         <div>
-          <h2 class="text-xl font-bold">🚀 Deployment</h2>
+          <h2 class="text-xl font-bold"><AppIcon name="rocket" class="w-5 h-5 inline" /> Deployment</h2>
           <p class="text-sm opacity-70">{{ currentPlan?.name || 'No plan loaded' }}</p>
         </div>
         <button class="btn btn-sm btn-circle btn-ghost" @click="handleClose">✕</button>
@@ -121,9 +122,9 @@ const handleClose = () => {
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <span v-if="step.status === 'running'" class="loading loading-spinner loading-xs"></span>
-                  <span v-else-if="step.status === 'completed'">✅</span>
-                  <span v-else-if="step.status === 'failed'">❌</span>
-                  <span v-else-if="step.status === 'skipped'">⏭️</span>
+                  <AppIcon v-else-if="step.status === 'completed'" name="check-circle" class="w-4 h-4" />
+                  <AppIcon v-else-if="step.status === 'failed'" name="x-circle" class="w-4 h-4" />
+                  <AppIcon v-else-if="step.status === 'skipped'" name="skip" class="w-4 h-4" />
                   <span v-else>⏳</span>
                   <span class="font-medium text-sm">{{ step.name }}</span>
                 </div>
@@ -183,7 +184,7 @@ const handleClose = () => {
             class="btn btn-sm btn-outline"
             @click="handleReset"
           >
-            🔄 Reset
+            <AppIcon name="refresh" class="w-4 h-4" /> Reset
           </button>
         </div>
         <div class="flex gap-2">
@@ -192,14 +193,14 @@ const handleClose = () => {
             class="btn btn-sm btn-warning"
             @click="handlePause"
           >
-            ⏸️ Pause
+            <AppIcon name="pause" class="w-4 h-4" /> Pause
           </button>
           <button 
             v-if="isDeploying"
             class="btn btn-sm btn-error"
             @click="handleCancel"
           >
-            ⏹️ Cancel
+            <AppIcon name="stop" class="w-4 h-4" /> Cancel
           </button>
           <button 
             v-if="!isDeploying || isPaused"
@@ -207,7 +208,8 @@ const handleClose = () => {
             :disabled="!currentPlan || currentPlan.status === 'completed'"
             @click="handleStart"
           >
-            {{ isPaused ? '▶️ Resume' : '🚀 Start Deployment' }}
+            <template v-if="isPaused"><AppIcon name="play" class="w-4 h-4" /> Resume</template>
+            <template v-else><AppIcon name="rocket" class="w-4 h-4" /> Start Deployment</template>
           </button>
         </div>
       </div>
