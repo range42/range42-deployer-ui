@@ -66,12 +66,12 @@ export function useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTa
     try {
       // Check if settings are configured
       if (!settings?.isConfigured?.value) {
-        throw new Error('⚙️ Backend API settings not configured. Please configure Backend API URL and Proxmox Node in project settings.')
+        throw new Error('[Settings] Backend API settings not configured. Please configure Backend API URL and Proxmox Node in project settings.')
       }
 
       const node = nodeOverride || proxmoxNode.value
       if (!node) {
-        throw new Error('⚙️ Proxmox node not specified. Please configure in project settings.')
+        throw new Error('[Settings] Proxmox node not specified. Please configure in project settings.')
       }
       
       const current_endpoint = `${endpointBase.value}/create-vms-${target_infrastructure_group}`
