@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AppIcon from '@/components/icons/AppIcon.vue'
 import { ensureNamespaces } from '@/i18n/index.js'
 import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
@@ -23,7 +24,13 @@ const availableStorages = ref([])
 
 const config = ref({})
 
+// Injected from ProjectEditor — per-project API config
+const apiConfig = inject('apiConfig', null)
+
 function getProxmoxNode() {
+  // Use per-project settings from injected apiConfig
+  if (apiConfig?.node?.value) return apiConfig.node.value
+  // Fallback to global settings
   const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
   return stored.defaultNode || 'pve01'
 }
@@ -176,8 +183,7 @@ async function handleVmAction(action) {
   const vmId = props.node?.data?.vmId || config.value.vmid
   if (!vmId) return
 
-  const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
-  const node = stored.defaultNode || 'pve01'
+  const node = getProxmoxNode()
 
   actionLoading.value = action
   try {
@@ -243,7 +249,7 @@ watch(() => props.node, (newNode) => {
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="node.data?.deployed ? 'bg-primary/10' : 'bg-base-200'">
-            <span class="text-xl">{{ node.type === 'vm' ? '🖥️' : node.type === 'lxc' ? '📦' : node.type === 'network-segment' ? '🔗' : node.type === 'router' ? '🔀' : '⚙️' }}</span>
+            <AppIcon :name="node.type === 'vm' ? 'monitor' : node.type === 'lxc' ? 'cube' : node.type === 'network-segment' ? 'link' : node.type === 'router' ? 'router' : 'gear'" class="w-6 h-6" />
           </div>
           <div>
             <h3 class="text-xl font-bold">{{ config.name || node.type.replace('-', ' ') }}</h3>
@@ -373,7 +379,7 @@ watch(() => props.node, (newNode) => {
               @click="handleVmAction('restart')"
             >
               <span v-if="actionLoading === 'restart'" class="loading loading-spinner loading-xs"></span>
-              <span v-else>🔄</span> Restart
+              <AppIcon v-else name="refresh" class="w-4 h-4" /> Restart
             </button>
             <button
               class="btn btn-sm btn-error btn-outline gap-1"
@@ -381,7 +387,7 @@ watch(() => props.node, (newNode) => {
               @click="handleVmAction('delete')"
             >
               <span v-if="actionLoading === 'delete'" class="loading loading-spinner loading-xs"></span>
-              <span v-else>🗑️</span> Delete VM
+              <AppIcon v-else name="trash" class="w-4 h-4" /> Delete VM
             </button>
           </div>
         </template>
@@ -490,11 +496,11 @@ watch(() => props.node, (newNode) => {
               type="select"
               :required="true"
               :options="[
-                { value: 'wan', label: '🌐 WAN - External/Internet facing' },
-                { value: 'dmz', label: '🛡️ DMZ - Demilitarized zone' },
-                { value: 'lan', label: '🏢 LAN - Internal network' },
-                { value: 'management', label: '🔧 Management - Admin/OOB access' },
-                { value: 'custom', label: '⚙️ Custom - User defined' }
+                { value: 'wan', label: 'WAN - External/Internet facing' },
+                { value: 'dmz', label: 'DMZ - Demilitarized zone' },
+                { value: 'lan', label: 'LAN - Internal network' },
+                { value: 'management', label: 'Management - Admin/OOB access' },
+                { value: 'custom', label: 'Custom - User defined' }
               ]"
               hint="Defines the security zone purpose"
               icon=""

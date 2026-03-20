@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps({
   edge: {
@@ -116,7 +117,7 @@ const close = () => {
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h3 class="card-title text-base">
-          🔗 Network Connection
+          <AppIcon name="link" class="w-5 h-5 inline" /> Network Connection
         </h3>
         <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
       </div>

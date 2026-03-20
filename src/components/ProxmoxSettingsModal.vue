@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import AppIcon from '@/components/icons/AppIcon.vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
 import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
@@ -100,9 +101,44 @@ const isFormValid = computed(() => {
   return formBaseUrl.value.trim() !== '' && formDefaultNode.value.trim() !== ''
 })
 
+// Connection test
+const connectionStatus = ref(null) // null | 'testing' | 'success' | 'error'
+const connectionInfo = ref('')
+
+const testConnection = async () => {
+  const url = formBaseUrl.value.trim()
+  if (!url) return
+
+  connectionStatus.value = 'testing'
+  connectionInfo.value = 'Testing connection...'
+
+  try {
+    const resp = await fetch(url + '/docs/openapi.json', { method: 'GET', signal: AbortSignal.timeout(8000) })
+    if (resp.ok) {
+      const data = await resp.json()
+      const routes = Object.keys(data.paths || {}).length
+      connectionStatus.value = 'success'
+      connectionInfo.value = 'Connected — ' + (data.info?.title || 'API') + ' ' + (data.info?.version || '') + ' (' + routes + ' routes)'
+    } else {
+      connectionStatus.value = 'error'
+      connectionInfo.value = 'Server returned HTTP ' + resp.status
+    }
+  } catch (e) {
+    connectionStatus.value = 'error'
+    connectionInfo.value = e.name === 'TimeoutError' ? 'Connection timed out (8s)' : 'Cannot reach server: ' + e.message
+  }
+}
+
 const handleSave = async () => {
   if (!isFormValid.value) {
     saveError.value = 'Both Base URL and Default Node are required'
+    return
+  }
+
+  // Test connection before saving
+  await testConnection()
+  if (connectionStatus.value === 'error') {
+    saveError.value = connectionInfo.value
     return
   }
 
@@ -112,6 +148,13 @@ const handleSave = async () => {
   try {
     const success = updateSettings(formBaseUrl.value.trim(), formDefaultNode.value.trim())
     if (success) {
+      // Sync to global localStorage for components that read defaultStorage/defaultNode
+      localStorage.setItem('range42_proxmox_settings', JSON.stringify({
+        baseUrl: formBaseUrl.value.trim(),
+        defaultNode: formDefaultNode.value.trim(),
+        defaultStorage: 'local-zfs',
+      }))
+
       emit('saved')
       emit('close')
       closeDialog()
@@ -148,7 +191,7 @@ const formatDate = (isoString) => {
 <template>
   <dialog ref="modalRef" class="modal">
     <div class="modal-box max-w-2xl">
-      <h3 class="font-bold text-lg mb-4">⚙️ Proxmox Configuration</h3>
+      <h3 class="font-bold text-lg mb-4"><AppIcon name="gear" class="w-5 h-5 inline" /> Proxmox Configuration</h3>
       
       <!-- Info Alert -->
       <div class="alert alert-info mb-4">
@@ -200,6 +243,24 @@ const formatDate = (isoString) => {
           icon=""
         />
       </FormSection>
+
+      <!-- Connection Test -->
+      <div class="flex items-center gap-2 mb-4">
+        <button
+          class="btn btn-sm btn-outline gap-1"
+          :disabled="!formBaseUrl.trim() || connectionStatus === 'testing'"
+          @click="testConnection"
+        >
+          <span v-if="connectionStatus === 'testing'" class="loading loading-spinner loading-xs"></span>
+          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Test Connection
+        </button>
+        <span v-if="connectionStatus === 'success'" class="text-sm text-success">{{ connectionInfo }}</span>
+        <span v-if="connectionStatus === 'error'" class="text-sm text-error">{{ connectionInfo }}</span>
+        <span v-if="connectionStatus === 'testing'" class="text-sm text-info">{{ connectionInfo }}</span>
+      </div>
 
       <!-- Error Message -->
       <div v-if="saveError" class="alert alert-error mb-4">
