@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
-import AppIcon from '@/components/icons/AppIcon.vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
 import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
@@ -191,7 +190,7 @@ const formatDate = (isoString) => {
 <template>
   <dialog ref="modalRef" class="modal">
     <div class="modal-box max-w-2xl">
-      <h3 class="font-bold text-lg mb-4"><AppIcon name="gear" class="w-5 h-5 inline" /> Proxmox Configuration</h3>
+      <h3 class="font-bold text-lg mb-4">Proxmox Configuration</h3>
       
       <!-- Info Alert -->
       <div class="alert alert-info mb-4">

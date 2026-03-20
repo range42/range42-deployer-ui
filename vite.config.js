@@ -4,16 +4,15 @@ import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
-import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+    // HMR: use the server's actual host so remote browsers can connect
+    hmr: {
+      host: '0.0.0.0',
     },
   },
   optimizeDeps: {
@@ -22,7 +21,6 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    vueDevTools(),
     tailwindcss(),
   ],
   resolve: {
