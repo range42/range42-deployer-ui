@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -119,7 +120,7 @@ const formatDate = (date) => {
           <!-- Logo -->
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <span class="text-xl">🚀</span>
+              <AppIcon name="rocket" class="w-5 h-5" />
             </div>
             <div>
               <h1 class="text-lg font-bold">Range42</h1>
@@ -277,7 +278,7 @@ const formatDate = (date) => {
               <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <span class="text-lg">📐</span>
+                    <AppIcon name="ruler" class="w-5 h-5" />
                   </div>
                   <div>
                     <h4 class="font-semibold line-clamp-1">{{ project.name }}</h4>
@@ -395,7 +396,7 @@ const formatDate = (date) => {
 
         <div v-if="projectStore.projects.length === 0 && !searchQuery" class="text-center py-16">
           <div class="w-20 h-20 rounded-2xl bg-base-200 flex items-center justify-center mx-auto mb-6">
-            <span class="text-4xl">🏗️</span>
+            <AppIcon name="construction" class="w-10 h-10" />
           </div>
           <h3 class="text-xl font-semibold mb-2">No projects yet</h3>
           <p class="text-base-content/60 mb-6 max-w-md mx-auto">

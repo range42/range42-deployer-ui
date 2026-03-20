@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ensureNamespaces, setLocale, getLocale } from '@/i18n/index.js'
 import { SUPPORTED_LOCALES } from '@/i18n/supported.js'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['project'])
 const emit = defineEmits(['openExport', 'openDeploy', 'openValidate', 'openInventory', 'openTemplates', 'openImport'])
@@ -35,26 +36,26 @@ const changeLocale = async () => {
 const infrastructureComponents = [
   {
     category: 'Compute',
-    icon: '💻',
+    icon: 'cpu',
     items: [
-      { type: 'vm', label: 'Virtual Machine', icon: '🖥️', shortcut: 'V' },
-      { type: 'lxc', label: 'Container', icon: '📦', shortcut: 'C' },
+      { type: 'vm', label: 'Virtual Machine', icon: 'monitor', shortcut: 'V' },
+      { type: 'lxc', label: 'Container', icon: 'cube', shortcut: 'C' },
     ]
   },
   {
     category: 'Network',
-    icon: '🌐',
+    icon: 'globe',
     items: [
-      { type: 'network-segment', label: 'Network', icon: '🔗', shortcut: 'N' },
-      { type: 'router', label: 'Router', icon: '🔀', shortcut: 'R' },
-      { type: 'edge-firewall', label: 'Firewall', icon: '🛡️', shortcut: 'F' },
+      { type: 'network-segment', label: 'Network', icon: 'link', shortcut: 'N' },
+      { type: 'router', label: 'Router', icon: 'router', shortcut: 'R' },
+      { type: 'edge-firewall', label: 'Firewall', icon: 'shield', shortcut: 'F' },
     ]
   },
   {
     category: 'Organization',
-    icon: '📁',
+    icon: 'folder',
     items: [
-      { type: 'group', label: 'Group', icon: '📂', shortcut: 'G' },
+      { type: 'group', label: 'Group', icon: 'folder-open', shortcut: 'G' },
     ]
   }
 ]
@@ -76,7 +77,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
     <div class="p-4 border-b border-base-300">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-          <span class="text-lg">🚀</span>
+          <AppIcon name="rocket" class="w-5 h-5" />
         </div>
         <div class="flex-1 min-w-0">
           <h2 class="font-semibold text-sm truncate">{{ currentProject?.name || 'Untitled' }}</h2>
@@ -125,7 +126,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
         <div v-show="expandedSections.components" class="px-3 pb-3 space-y-3">
           <div v-for="category in infrastructureComponents" :key="category.category">
             <div class="flex items-center gap-2 mb-2 px-1">
-              <span class="text-sm">{{ category.icon }}</span>
+              <AppIcon :name="category.icon" class="w-4 h-4" />
               <span class="text-xs font-medium text-base-content/50">{{ category.category }}</span>
             </div>
             
@@ -138,7 +139,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
                 @dragstart="onDragStart($event, component.type)"
               >
                 <div class="w-8 h-8 rounded-lg bg-base-200 flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                  <span class="text-base">{{ component.icon }}</span>
+                  <AppIcon :name="component.icon" class="w-5 h-5" />
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="font-medium text-sm">{{ component.label }}</div>
@@ -169,7 +170,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
         <div v-show="expandedSections.actions" class="px-3 pb-3 space-y-1">
           <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openInventory">
             <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <span class="text-base">📚</span>
+              <AppIcon name="books" class="w-5 h-5" />
             </div>
             <div>
               <div class="font-medium text-sm">Inventory Browser</div>
@@ -179,7 +180,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
           
           <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openTemplates">
             <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <span class="text-base">💿</span>
+              <AppIcon name="disc" class="w-5 h-5" />
             </div>
             <div>
               <div class="font-medium text-sm">Templates & ISOs</div>
@@ -189,7 +190,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
           
           <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openImport">
             <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <span class="text-base">📥</span>
+              <AppIcon name="inbox" class="w-5 h-5" />
             </div>
             <div>
               <div class="font-medium text-sm">Import Infrastructure</div>
@@ -199,7 +200,7 @@ const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
           
           <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openExport">
             <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <span class="text-base">📤</span>
+              <AppIcon name="outbox" class="w-5 h-5" />
             </div>
             <div>
               <div class="font-medium text-sm">Export Topology</div>

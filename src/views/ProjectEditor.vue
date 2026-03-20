@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, computed, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -170,11 +170,9 @@ onMounted(() => {
   loadProjectData(project)
 
   // Start WebSocket live status if API is configured
-  const apiConfig = useApiConfig(projectId, { autoSync: true })
-  if (apiConfig.isReady.value) {
-    apiConfig.configure()
-    const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
-    wsStatus.connect(stored.defaultNode || 'pve01')
+  if (importApiConfig.isReady.value) {
+    importApiConfig.configure()
+    wsStatus.connect(importApiConfig.node.value || 'pve01')
   }
 })
 
@@ -276,7 +274,7 @@ const handleOpenDeploy = () => {
   // Ensure API is configured
   importApiConfig.configure()
   if (!importApiConfig.isReady.value) {
-    alert('Please configure Backend API settings first (click ⚙️ → Proxmox Settings)')
+    alert('Please configure Backend API settings first (click Settings → Proxmox Settings)')
     showProxmoxSettings.value = true
     return
   }
@@ -313,7 +311,7 @@ const handleReconcileProceed = (toDelete, toImport) => {
 
   // TODO: Add delete steps for toDelete VMs to the deployment plan
 
-  // Read default storage from global settings
+  // defaultStorage is a global preference, not per-project connection config
   const storedSettings = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
   const defaultStorage = storedSettings.defaultStorage || 'local-zfs'
 
@@ -329,7 +327,7 @@ const handleReconcileProceed = (toDelete, toImport) => {
   )
 
   if (result.needsConfiguration) {
-    alert('Please configure Backend API settings first (click ⚙️ → Proxmox Settings)')
+    alert('Please configure Backend API settings first (click Settings → Proxmox Settings)')
     showProxmoxSettings.value = true
     return
   }
@@ -347,10 +345,10 @@ const handleOpenValidate = () => {
   const result = deployment.validateTopology(liveNodes.value, liveEdges.value)
   
   if (result.valid) {
-    alert('✅ Topology is valid!\n\nNo errors found.')
+    alert('Topology is valid! No errors found.')
   } else {
-    const errorList = result.errors.map(e => `❌ ${e.message}`).join('\n')
-    const warningList = result.warnings.map(w => `⚠️ ${w.message}`).join('\n')
+    const errorList = result.errors.map(e => `[Error] ${e.message}`).join('\n')
+    const warningList = result.warnings.map(w => `[Warning] ${w.message}`).join('\n')
     alert(`Validation Results:\n\n${errorList}\n\n${warningList || 'No warnings'}`)
   }
 }
@@ -370,6 +368,9 @@ const confirmDeleteProject = () => {
 
 // Import config: resolved from per-project settings at setup level
 const importApiConfig = useApiConfig(projectId, { autoSync: true })
+
+// Provide API config to child components (ConfigPanel, etc.)
+provide('apiConfig', importApiConfig)
 
 const handleOpenImport = () => {
   // Ensure the API client has the correct base URL from per-project settings
@@ -656,8 +657,8 @@ const handleInfrastructureImport = (result) => {
   <Teleport to="body">
     <InfrastructureImportModal
       v-if="showImportModal"
-      :api-url="importApiConfig.apiUrl"
-      :proxmox-node="importApiConfig.node"
+      :api-url="importApiConfig.apiUrl.value"
+      :proxmox-node="importApiConfig.node.value"
       @close="showImportModal = false"
       @import="handleInfrastructureImport"
     />
@@ -665,7 +666,7 @@ const handleInfrastructureImport = (result) => {
     <DeployReconcileModal
       v-if="showReconcileModal"
       :canvas-vm-ids="new Set((liveNodes || []).filter(n => n.data?.vmId).map(n => n.data.vmId))"
-      :proxmox-node="importApiConfig.node || 'pve01'"
+      :proxmox-node="importApiConfig.node.value || 'pve01'"
       @proceed="handleReconcileProceed"
       @cancel="showReconcileModal = false"
     />
