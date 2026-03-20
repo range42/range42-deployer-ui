@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
@@ -43,7 +44,7 @@ const ramMB = computed(() => {
     <div class="flex items-center justify-between mb-2">
       <div class="flex items-center gap-2">
         <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-          <span class="text-lg">🖥️</span>
+          <AppIcon name="monitor" class="w-5 h-5" />
         </div>
         <div>
           <div class="font-semibold text-sm leading-tight">

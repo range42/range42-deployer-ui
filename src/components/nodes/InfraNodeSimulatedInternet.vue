@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { NodeResizer } from '@vue-flow/node-resizer'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
@@ -52,7 +53,7 @@ const statusColor = computed(() => {
     <div class="absolute top-4 left-5 right-5 flex items-center justify-between pointer-events-none z-10">
       <div class="flex items-center space-x-3">
         <div :class="`w-4 h-4 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
-        <span class="text-2xl">🌍</span>
+        <AppIcon name="earth" class="w-7 h-7" />
         <div>
           <div class="text-base font-bold text-indigo-800 dark:text-indigo-200">
             {{ data.config?.name || 'Simulated Internet' }}
@@ -99,7 +100,7 @@ const statusColor = computed(() => {
       class="absolute inset-0 flex items-center justify-center pointer-events-none z-5"
     >
       <div class="text-center opacity-50 mt-8">
-        <div class="text-4xl mb-2">☁️</div>
+        <AppIcon name="cloud" class="w-10 h-10 mx-auto mb-2" />
         <div class="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Fake Internet Services</div>
         <div class="text-xs text-indigo-600/70 dark:text-indigo-400/70">DNS, CDN, Attacker C2...</div>
       </div>

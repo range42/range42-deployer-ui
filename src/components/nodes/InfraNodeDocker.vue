@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
@@ -33,7 +34,7 @@ const statusColor = computed(() => {
     <div class="flex items-center justify-between mb-2">
       <div class="flex items-center space-x-2">
         <div :class="`w-3 h-3 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
-        <span class="text-lg">🐳</span>
+        <AppIcon name="container" class="w-5 h-5" />
       </div>
       <div class="text-xs bg-blue-500/90 text-white px-2 py-0.5 rounded-full font-medium uppercase tracking-wide">
         Docker
