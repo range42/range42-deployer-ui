@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
@@ -17,11 +18,11 @@ const statusColor = computed(() => {
 const applianceIcon = computed(() => {
   const type = props.data.config?.applianceType || 'pfsense'
   switch (type) {
-    case 'pfsense': return '🔥'
-    case 'opnsense': return '🛡️'
-    case 'sophos': return '⚔️'
-    case 'fortigate': return '🏰'
-    default: return '🛡️'
+    case 'pfsense': return 'flame'
+    case 'opnsense': return 'shield'
+    case 'sophos': return 'swords'
+    case 'fortigate': return 'castle'
+    default: return 'shield'
   }
 })
 </script>
@@ -39,7 +40,7 @@ const applianceIcon = computed(() => {
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center space-x-2">
         <div :class="`w-4 h-4 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
-        <span class="text-2xl">{{ applianceIcon }}</span>
+        <AppIcon :name="applianceIcon" class="w-6 h-6" />
       </div>
       <div class="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold uppercase tracking-wider rounded-full shadow">
         Edge FW

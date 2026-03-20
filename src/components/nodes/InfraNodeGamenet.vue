@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { NodeResizer } from '@vue-flow/node-resizer'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
@@ -50,7 +51,7 @@ const statusColor = computed(() => {
     <div class="absolute top-4 left-5 right-5 flex items-center justify-between pointer-events-none z-10">
       <div class="flex items-center space-x-3">
         <div :class="`w-4 h-4 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
-        <span class="text-2xl">🎮</span>
+        <AppIcon name="gamepad" class="w-7 h-7" />
         <div>
           <div class="text-base font-bold text-purple-800 dark:text-purple-200">
             {{ data.config?.name || 'Cyber Range' }}
@@ -85,7 +86,7 @@ const statusColor = computed(() => {
       class="absolute inset-0 flex items-center justify-center pointer-events-none z-5"
     >
       <div class="text-center opacity-50 mt-10">
-        <div class="text-5xl mb-3">🏰</div>
+        <AppIcon name="castle" class="w-12 h-12" />
         <div class="text-sm font-semibold text-purple-700 dark:text-purple-300">Drop infrastructure here</div>
         <div class="text-xs text-purple-600/70 dark:text-purple-400/70 mt-1">Networks, VMs, firewalls...</div>
       </div>

@@ -2,16 +2,17 @@
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { NodeResizer } from '@vue-flow/node-resizer'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
 const segmentTypes = {
-  'management': { color: 'bg-blue-500', icon: '🛠️', label: 'Management' },
-  'production': { color: 'bg-green-500', icon: '🏭', label: 'Production' },
-  'dmz': { color: 'bg-orange-500', icon: '🔶', label: 'DMZ' },
-  'guest': { color: 'bg-purple-500', icon: '👥', label: 'Guest' },
-  'iot': { color: 'bg-cyan-500', icon: '📱', label: 'IoT/OT' },
-  'security': { color: 'bg-red-500', icon: '🔒', label: 'Security' }
+  'management': { color: 'bg-blue-500', icon: 'tools', label: 'Management' },
+  'production': { color: 'bg-green-500', icon: 'factory', label: 'Production' },
+  'dmz': { color: 'bg-orange-500', icon: 'diamond', label: 'DMZ' },
+  'guest': { color: 'bg-purple-500', icon: 'users', label: 'Guest' },
+  'iot': { color: 'bg-cyan-500', icon: 'device', label: 'IoT/OT' },
+  'security': { color: 'bg-red-500', icon: 'lock', label: 'Security' }
 }
 
 const segmentInfo = computed(() => {
@@ -58,7 +59,7 @@ const statusColor = computed(() => {
     <div class="absolute top-3 left-4 right-4 flex items-center justify-between pointer-events-none z-10">
       <div class="flex items-center space-x-3">
         <div :class="`w-4 h-4 rounded-full ${statusColor}`"></div>
-        <span class="text-xl">{{ segmentInfo.icon }}</span>
+        <AppIcon :name="segmentInfo.icon" class="w-5 h-5" />
         <div>
           <div class="text-sm font-medium text-base-content">
             {{ data.config?.name || segmentInfo.label + ' Segment' }}

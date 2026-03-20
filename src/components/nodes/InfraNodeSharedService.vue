@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps(['data', 'selected'])
 
@@ -15,20 +16,20 @@ const statusColor = computed(() => {
 })
 
 const serviceTypes = {
-  'git': { icon: '📚', label: 'Git', color: 'orange' },
-  'gitea': { icon: '🍵', label: 'Gitea', color: 'green' },
-  'gitlab': { icon: '🦊', label: 'GitLab', color: 'orange' },
-  'chat': { icon: '💬', label: 'Chat', color: 'blue' },
-  'mattermost': { icon: '💬', label: 'Mattermost', color: 'blue' },
-  'wiki': { icon: '📖', label: 'Wiki', color: 'teal' },
-  'bookstack': { icon: '📖', label: 'BookStack', color: 'blue' },
-  'auth': { icon: '🔐', label: 'Auth', color: 'red' },
-  'keycloak': { icon: '🔑', label: 'Keycloak', color: 'gray' },
-  'registry': { icon: '📦', label: 'Registry', color: 'cyan' },
-  'harbor': { icon: '⚓', label: 'Harbor', color: 'teal' },
-  'monitoring': { icon: '📊', label: 'Monitoring', color: 'yellow' },
-  'grafana': { icon: '📈', label: 'Grafana', color: 'orange' },
-  'default': { icon: '🔧', label: 'Service', color: 'amber' }
+  'git': { icon: 'books', label: 'Git', color: 'orange' },
+  'gitea': { icon: 'tea', label: 'Gitea', color: 'green' },
+  'gitlab': { icon: 'fox', label: 'GitLab', color: 'orange' },
+  'chat': { icon: 'chat', label: 'Chat', color: 'blue' },
+  'mattermost': { icon: 'chat', label: 'Mattermost', color: 'blue' },
+  'wiki': { icon: 'book', label: 'Wiki', color: 'teal' },
+  'bookstack': { icon: 'book', label: 'BookStack', color: 'blue' },
+  'auth': { icon: 'lock', label: 'Auth', color: 'red' },
+  'keycloak': { icon: 'key', label: 'Keycloak', color: 'gray' },
+  'registry': { icon: 'cube', label: 'Registry', color: 'cyan' },
+  'harbor': { icon: 'anchor', label: 'Harbor', color: 'teal' },
+  'monitoring': { icon: 'chart', label: 'Monitoring', color: 'yellow' },
+  'grafana': { icon: 'trending', label: 'Grafana', color: 'orange' },
+  'default': { icon: 'wrench', label: 'Service', color: 'amber' }
 }
 
 const serviceInfo = computed(() => {
@@ -50,7 +51,7 @@ const serviceInfo = computed(() => {
     <div class="flex items-center justify-between mb-3">
       <div class="flex items-center space-x-2">
         <div :class="`w-3 h-3 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
-        <span class="text-xl">{{ serviceInfo.icon }}</span>
+        <AppIcon :name="serviceInfo.icon" class="w-5 h-5" />
       </div>
       <div class="text-xs bg-amber-500/90 text-white px-2 py-0.5 rounded-full font-medium uppercase tracking-wide">
         Service

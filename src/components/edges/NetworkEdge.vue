@@ -7,6 +7,7 @@
  */
 import { computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@vue-flow/core'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 const props = defineProps({
   id: String,
@@ -114,7 +115,7 @@ const labelClass = computed(() => {
             VLAN {{ connectionInfo.vlanTag }}
           </span>
           <!-- Firewall indicator -->
-          <span v-if="connectionInfo.firewall" class="text-[9px]" title="Firewall enabled">🛡️</span>
+          <AppIcon v-if="connectionInfo.firewall" name="shield" class="w-2.5 h-2.5" title="Firewall enabled" />
         </div>
       </div>
     </div>
