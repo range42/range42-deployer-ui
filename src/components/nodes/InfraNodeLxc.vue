@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import { getTagColor } from '@/constants/tags'
 
 const props = defineProps(['data', 'selected'])
 
@@ -9,6 +10,8 @@ const statusClass = computed(() => {
   const status = props.data?.status || 'gray'
   return `status-${status}`
 })
+const displayTags = computed(() => (props.data?.tags || []).slice(0, 3))
+const overflowCount = computed(() => Math.max(0, (props.data?.tags || []).length - 3))
 </script>
 
 <template>
@@ -30,6 +33,17 @@ const statusClass = computed(() => {
         </div>
       </div>
       <div :class="`status-dot ${data?.status || 'gray'}`"></div>
+    </div>
+
+    <!-- Tags -->
+    <div v-if="displayTags.length" class="flex gap-1 flex-wrap mb-1.5">
+      <span
+        v-for="tag in displayTags"
+        :key="tag"
+        class="px-1.5 py-0 rounded-full text-[9px] font-semibold text-white leading-relaxed"
+        :style="{ backgroundColor: getTagColor(tag).hex }"
+      >{{ tag }}</span>
+      <span v-if="overflowCount > 0" class="text-[9px] text-base-content/40">+{{ overflowCount }}</span>
     </div>
 
     <!-- Specs -->
