@@ -24,6 +24,8 @@ import DeploymentPanel from '../components/DeploymentPanel.vue'
 import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 
+import { useNetworkZones } from '../composables/useNetworkZones'
+import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
@@ -91,6 +93,8 @@ const deployment = useDeployment(projectId)
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
+
+const { zones } = useNetworkZones(liveNodes, liveEdges)
 
 // WebSocket live status — updates deployed nodes in real-time
 const wsStatus = useWebSocketStatus()
@@ -540,6 +544,7 @@ const handleInfrastructureImport = (result) => {
           elevate-edges-on-select 
           class="h-full w-full"
         >
+          <NetworkZoneOverlay :zones="zones" />
           <Background />
           <Controls position="bottom-left" />
           <MiniMap position="bottom-right" />
