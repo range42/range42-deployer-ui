@@ -42,6 +42,14 @@ const overflowCount = computed(() => {
   const tags = props.data?.tags || []
   return Math.max(0, tags.length - 3)
 })
+
+const metrics = computed(() => props.data?.liveMetrics)
+
+function barColor(percent) {
+  if (percent > 80) return '#ef4444'  // red
+  if (percent > 50) return '#f59e0b'  // amber
+  return '#22c55e'                     // green
+}
 </script>
 
 <template>
@@ -97,8 +105,24 @@ const overflowCount = computed(() => {
       <span v-if="overflowCount > 0" class="text-[9px] text-base-content/40">+{{ overflowCount }}</span>
     </div>
 
-    <!-- Specs -->
-    <div class="grid grid-cols-2 gap-1 text-[11px]">
+    <!-- Live metrics (running) or static specs (stopped) -->
+    <div v-if="metrics" class="grid grid-cols-2 gap-1 text-[11px]">
+      <div class="flex items-center gap-1 px-1.5 py-0.5">
+        <span class="text-base-content/40 text-[10px]">CPU</span>
+        <div class="flex-1 h-1 bg-base-content/10 rounded-full overflow-hidden">
+          <div class="h-full rounded-full transition-all duration-500" :style="{ width: metrics.cpu + '%', backgroundColor: barColor(metrics.cpu) }"></div>
+        </div>
+        <span class="text-[9px] font-medium min-w-[28px] text-right">{{ Math.round(metrics.cpu) }}%</span>
+      </div>
+      <div class="flex items-center gap-1 px-1.5 py-0.5">
+        <span class="text-base-content/40 text-[10px]">RAM</span>
+        <div class="flex-1 h-1 bg-base-content/10 rounded-full overflow-hidden">
+          <div class="h-full rounded-full transition-all duration-500" :style="{ width: metrics.memPercent + '%', backgroundColor: barColor(metrics.memPercent) }"></div>
+        </div>
+        <span class="text-[9px] font-medium min-w-[28px] text-right">{{ metrics.memPercent }}%</span>
+      </div>
+    </div>
+    <div v-else class="grid grid-cols-2 gap-1 text-[11px]">
       <div v-if="data.config?.cores" class="flex items-center gap-1 bg-base-200/50 rounded px-1.5 py-0.5">
         <span class="text-base-content/40">CPU</span>
         <span class="font-medium ml-auto">{{ data.config.cores }}c</span>
