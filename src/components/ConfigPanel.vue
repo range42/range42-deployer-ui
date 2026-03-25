@@ -10,6 +10,8 @@ import FormList from '@/components/ui/FormList.vue'
 import { getBaseUrl } from '@/services/proxmox/api'
 import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
+import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
+import { useTagSync } from '@/composables/useTagSync'
 
 const { t } = useI18n({ useScope: 'global' })
 
@@ -176,6 +178,52 @@ const removeDnsZone = (index) => {
   config.value.zones.splice(index, 1)
 }
 
+// Tag editor state
+const tagSync = useTagSync()
+const tagInput = ref('')
+const showTagDropdown = ref(false)
+
+const filteredPredefinedTags = computed(() => {
+  const currentTags = props.node?.data?.tags || []
+  const search = tagInput.value.toLowerCase()
+  return PREDEFINED_TAGS.filter(t =>
+    !currentTags.includes(t.name) &&
+    (search === '' || t.name.includes(search))
+  )
+})
+
+function addTag() {
+  const tag = tagInput.value.trim().toLowerCase()
+  if (!tag || !props.node) return
+  const currentTags = props.node.data.tags || []
+  if (currentTags.includes(tag)) return
+  props.node.data.tags = [...currentTags, tag]
+  tagInput.value = ''
+  showTagDropdown.value = false
+  if (props.node.data.deployed && props.node.data.vmId) {
+    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  }
+}
+
+function addPredefinedTag(tagName) {
+  if (!props.node) return
+  const currentTags = props.node.data.tags || []
+  if (currentTags.includes(tagName)) return
+  props.node.data.tags = [...currentTags, tagName]
+  showTagDropdown.value = false
+  if (props.node.data.deployed && props.node.data.vmId) {
+    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  }
+}
+
+function removeTag(tagToRemove) {
+  if (!props.node) return
+  props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove)
+  if (props.node.data.deployed && props.node.data.vmId) {
+    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  }
+}
+
 // VM actions for deployed nodes
 const actionLoading = ref(null)
 
@@ -272,6 +320,33 @@ watch(() => props.node, (newNode) => {
             icon=""
           />
         </FormSection>
+
+        <!-- Tag Editor (VM and LXC) -->
+        <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2 mb-4">
+          <label class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Tags</label>
+          <div class="flex gap-1.5 flex-wrap min-h-[24px]">
+            <span v-for="tag in (node.data.tags || [])" :key="tag"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              :style="{ backgroundColor: getTagColor(tag).hex }">
+              {{ tag }}
+              <button @click="removeTag(tag)" class="opacity-70 hover:opacity-100 ml-0.5">&times;</button>
+            </span>
+          </div>
+          <div class="relative">
+            <input v-model="tagInput" @keydown.enter.prevent="addTag" @focus="showTagDropdown = true"
+              @blur="setTimeout(() => showTagDropdown = false, 200)" placeholder="Add tag..."
+              class="input input-sm input-bordered w-full" />
+            <div v-if="showTagDropdown && filteredPredefinedTags.length"
+              class="absolute z-10 mt-1 w-full bg-base-200 border border-base-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+              <button v-for="tag in filteredPredefinedTags" :key="tag.name"
+                @mousedown.prevent="addPredefinedTag(tag.name)"
+                class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-300 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: tag.hex }"></span>
+                {{ tag.name }}
+              </button>
+            </div>
+          </div>
+        </div>
 
         <!-- Deployed VM Status View -->
         <template v-if="node.type === 'vm' && node.data?.deployed">
