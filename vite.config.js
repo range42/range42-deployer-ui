@@ -10,9 +10,9 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
-    // HMR: use the server's actual host so remote browsers can connect
+    // HMR: use the actual VM IP so remote browsers can connect
     hmr: {
-      host: '0.0.0.0',
+      host: '192.168.42.123',
     },
   },
   optimizeDeps: {
