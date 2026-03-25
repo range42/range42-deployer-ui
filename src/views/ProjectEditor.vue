@@ -24,6 +24,7 @@ import DeploymentPanel from '../components/DeploymentPanel.vue'
 import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 
+import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder } from '../composables/useInfraBuilder'
@@ -95,6 +96,8 @@ const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.leng
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
 const { zones } = useNetworkZones(liveNodes, liveEdges)
+
+const autoLayout = useAutoLayout()
 
 // WebSocket live status — updates deployed nodes in real-time
 const wsStatus = useWebSocketStatus()
@@ -229,6 +232,40 @@ const manualSave = () => {
     nodes: nodesToSave,
     edges: edgesToSave
   })
+}
+
+function handleAutoLayout() {
+  const currentNodes = liveNodes.value
+  const currentEdges = liveEdges.value
+  if (currentNodes.length === 0) return
+
+  const newPositions = autoLayout.applyLayout(currentNodes, currentEdges)
+
+  // Animate nodes to new positions over 300ms
+  const duration = 300
+  const startTime = performance.now()
+  const startPositions = new Map(currentNodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))
+
+  function animate(now) {
+    const elapsed = now - startTime
+    const t = Math.min(elapsed / duration, 1)
+    const ease = 1 - Math.pow(1 - t, 3)
+
+    for (const node of currentNodes) {
+      const start = startPositions.get(node.id)
+      const target = newPositions.get(node.id)
+      if (start && target) {
+        node.position = {
+          x: start.x + (target.x - start.x) * ease,
+          y: start.y + (target.y - start.y) * ease,
+        }
+      }
+    }
+
+    if (t < 1) requestAnimationFrame(animate)
+  }
+
+  requestAnimationFrame(animate)
 }
 
 const handleNodeClick = (event) => {
@@ -467,6 +504,14 @@ const handleInfrastructureImport = (result) => {
 
         <!-- Right actions -->
         <div class="flex items-center gap-2">
+          <!-- Organize layout button -->
+          <button class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+            </svg>
+            <span class="hidden sm:inline">Organize</span>
+          </button>
+
           <!-- Save button -->
           <button class="btn btn-ghost btn-sm gap-2" @click="manualSave" title="Save (Ctrl+S)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
