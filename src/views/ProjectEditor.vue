@@ -100,11 +100,34 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
   if (!statuses || statuses.size === 0) return
   const allNodes = flowGetNodes?.value || nodes.value || []
   for (const node of allNodes) {
-    if (node.data?.vmId && statuses.has(node.data.vmId)) {
-      const vm = statuses.get(node.data.vmId)
-      const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
-      if (node.data.status !== newStatus) {
-        node.data.status = newStatus
+    const vmId = Number(node.data?.vmId)
+    if (!vmId || !statuses.has(vmId)) continue
+
+    const vm = statuses.get(vmId)
+    const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
+    if (node.data.status !== newStatus) {
+      node.data.status = newStatus
+    }
+
+    // Sync live metrics
+    if (vm.status === 'running') {
+      node.data.liveMetrics = {
+        cpu: vm.cpu,
+        mem: vm.mem,
+        maxmem: vm.maxmem,
+        memPercent: vm.maxmem > 0 ? Math.round((vm.mem / vm.maxmem) * 100) : 0,
+        uptime: vm.uptime,
+      }
+    } else {
+      node.data.liveMetrics = null
+    }
+
+    // Sync tags from WebSocket (semicolon-separated)
+    if (vm.tags) {
+      const wsTags = vm.tags.split(';').filter(Boolean)
+      const currentTags = node.data.tags || []
+      if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
+        node.data.tags = wsTags
       }
     }
   }
@@ -169,12 +192,21 @@ onMounted(() => {
   currentProject.value = project
   loadProjectData(project)
 
-  // Start WebSocket live status if API is configured
-  if (importApiConfig.isReady.value) {
-    importApiConfig.configure()
-    wsStatus.connect(importApiConfig.node.value || 'pve01')
-  }
 })
+
+// Reactively connect WebSocket when API settings become ready
+watch(
+  () => importApiConfig.isReady.value,
+  (ready) => {
+    if (ready) {
+      importApiConfig.configure()
+      wsStatus.connect(importApiConfig.node.value || 'pve01')
+    } else {
+      wsStatus.disconnect()
+    }
+  },
+  { immediate: true }
+)
 
 watch([nodes, edges], () => {
   if (currentProject.value) {
