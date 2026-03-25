@@ -201,20 +201,6 @@ onMounted(() => {
 
 })
 
-// Reactively connect WebSocket when API settings become ready
-watch(
-  () => importApiConfig.isReady.value,
-  (ready) => {
-    if (ready) {
-      importApiConfig.configure()
-      wsStatus.connect(importApiConfig.node.value || 'pve01')
-    } else {
-      wsStatus.disconnect()
-    }
-  },
-  { immediate: true }
-)
-
 watch([nodes, edges], () => {
   if (currentProject.value) {
     projectStore.updateProject(currentProject.value.id, {
@@ -444,6 +430,20 @@ const importApiConfig = useApiConfig(projectId, { autoSync: true })
 
 // Provide API config to child components (ConfigPanel, etc.)
 provide('apiConfig', importApiConfig)
+
+// Reactively connect WebSocket when API settings become ready
+watch(
+  () => importApiConfig.isReady.value,
+  (ready) => {
+    if (ready) {
+      importApiConfig.configure()
+      wsStatus.connect(importApiConfig.node.value || 'pve01')
+    } else {
+      wsStatus.disconnect()
+    }
+  },
+  { immediate: true }
+)
 
 const handleOpenImport = () => {
   // Ensure the API client has the correct base URL from per-project settings
