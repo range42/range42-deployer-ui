@@ -104,11 +104,15 @@ const wsStatus = useWebSocketStatus()
 
 // Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
 watch(() => wsStatus.vmStatuses.value, (statuses) => {
-  if (!statuses || statuses.size === 0) return
+  if (!statuses || statuses.size === 0) { console.log('[ws-sync] No statuses'); return }
   const allNodes = flowGetNodes?.value || nodes.value || []
+  console.log('[ws-sync] Statuses:', statuses.size, 'Canvas nodes:', allNodes.length)
+  let matched = 0
   for (const node of allNodes) {
     const vmId = Number(node.data?.vmId)
-    if (!vmId || !statuses.has(vmId)) continue
+    if (!vmId) { continue }
+    if (!statuses.has(vmId)) { console.log('[ws-sync] No match for vmId:', vmId, 'node.data.vmId:', node.data?.vmId, typeof node.data?.vmId); continue }
+    matched++
 
     const vm = statuses.get(vmId)
     const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
@@ -147,9 +151,11 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
     }
 
     if (needsUpdate) {
+      console.log('[ws-sync] Updating node', node.id, 'vmId:', vmId, 'data:', JSON.stringify(dataUpdate).slice(0, 200))
       updateNodeData(node.id, dataUpdate)
     }
   }
+  if (matched === 0) console.log('[ws-sync] No canvas nodes matched any WS vmIds. Node vmIds:', allNodes.map(n => ({ id: n.id, type: n.type, vmId: n.data?.vmId })).filter(n => n.vmId))
 }, { deep: true })
 
 ////
