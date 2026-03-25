@@ -69,7 +69,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData } = useVueFlow()
 
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
@@ -102,7 +102,7 @@ const autoLayout = useAutoLayout()
 // WebSocket live status — updates deployed nodes in real-time
 const wsStatus = useWebSocketStatus()
 
-// Sync WebSocket status changes to canvas nodes
+// Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
 watch(() => wsStatus.vmStatuses.value, (statuses) => {
   if (!statuses || statuses.size === 0) return
   const allNodes = flowGetNodes?.value || nodes.value || []
@@ -112,21 +112,28 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
 
     const vm = statuses.get(vmId)
     const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
+
+    const dataUpdate = {}
+    let needsUpdate = false
+
     if (node.data.status !== newStatus) {
-      node.data.status = newStatus
+      dataUpdate.status = newStatus
+      needsUpdate = true
     }
 
     // Sync live metrics
     if (vm.status === 'running') {
-      node.data.liveMetrics = {
+      dataUpdate.liveMetrics = {
         cpu: vm.cpu,
         mem: vm.mem,
         maxmem: vm.maxmem,
         memPercent: vm.maxmem > 0 ? Math.round((vm.mem / vm.maxmem) * 100) : 0,
         uptime: vm.uptime,
       }
-    } else {
-      node.data.liveMetrics = null
+      needsUpdate = true
+    } else if (node.data.liveMetrics) {
+      dataUpdate.liveMetrics = null
+      needsUpdate = true
     }
 
     // Sync tags from WebSocket (semicolon-separated)
@@ -134,8 +141,13 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
       const wsTags = vm.tags.split(';').filter(Boolean)
       const currentTags = node.data.tags || []
       if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
-        node.data.tags = wsTags
+        dataUpdate.tags = wsTags
+        needsUpdate = true
       }
+    }
+
+    if (needsUpdate) {
+      updateNodeData(node.id, dataUpdate)
     }
   }
 }, { deep: true })
