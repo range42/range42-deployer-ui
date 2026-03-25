@@ -6,8 +6,9 @@
  * Best practice for network diagrams - shows addressing at a glance.
  */
 import { computed } from 'vue'
-import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@vue-flow/core'
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import { getNetworkColor } from '@/constants/networkColors'
 
 const props = defineProps({
   id: String,
@@ -23,6 +24,20 @@ const props = defineProps({
   markerEnd: String,
   style: Object,
   selected: Boolean,
+})
+
+const { getNode } = useVueFlow()
+
+// Resolve the network segment color from the connected network node
+const networkColor = computed(() => {
+  const sourceNode = getNode(props.source)
+  const targetNode = getNode(props.target)
+  const networkNode = sourceNode?.type === 'network-segment' ? sourceNode
+    : targetNode?.type === 'network-segment' ? targetNode
+    : null
+  if (!networkNode) return getNetworkColor('custom')
+  const segmentType = networkNode.data?.config?.segmentType || 'custom'
+  return getNetworkColor(segmentType)
 })
 
 // Compute the bezier path for the edge
@@ -60,12 +75,14 @@ const displayIp = computed(() => {
   return ip
 })
 
-// Determine label background color based on connection type
-const labelClass = computed(() => {
-  const conn = connectionInfo.value
-  if (conn.vlanTag) return 'bg-amber-100 dark:bg-amber-900/60 border-amber-300 dark:border-amber-700'
-  if (!conn.ipAddress) return 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600'
-  return 'bg-sky-100 dark:bg-sky-900/60 border-sky-300 dark:border-sky-700'
+// Determine label style dynamically from the network segment color
+const labelStyle = computed(() => {
+  const color = networkColor.value
+  return {
+    backgroundColor: color.bg,
+    borderColor: color.border,
+    color: color.label,
+  }
 })
 </script>
 
@@ -77,7 +94,8 @@ const labelClass = computed(() => {
     :style="{
       ...style,
       strokeWidth: selected ? 3 : 2,
-      stroke: selected ? '#3b82f6' : '#64748b',
+      stroke: networkColor.stroke,
+      opacity: selected ? 1 : 0.85,
     }"
   />
   
@@ -91,12 +109,12 @@ const labelClass = computed(() => {
       }"
       class="edge-label-container nodrag nopan"
     >
-      <div 
+      <div
         :class="[
           'edge-label rounded-md border px-2 py-1 shadow-sm transition-all',
-          labelClass,
           { 'ring-2 ring-primary ring-offset-1': selected }
         ]"
+        :style="labelStyle"
       >
         <!-- Interface Name -->
         <div v-if="connectionInfo.interfaceName" class="text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">
