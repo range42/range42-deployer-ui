@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { parseTags, formatTagsForBackend } from '@/constants/tags'
+import { parseTags } from '@/constants/tags'
 import * as proxmoxApi from '@/services/proxmox/api'
 
 export function useTagSync() {

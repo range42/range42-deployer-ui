@@ -197,7 +197,7 @@ function addTag() {
   if (!tag || !props.node) return
   const currentTags = props.node.data.tags || []
   if (currentTags.includes(tag)) return
-  props.node.data.tags = [...currentTags, tag]
+  props.node.data.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive, direct mutation is the established pattern
   tagInput.value = ''
   showTagDropdown.value = false
   if (props.node.data.deployed && props.node.data.vmId) {
@@ -209,7 +209,7 @@ function addPredefinedTag(tagName) {
   if (!props.node) return
   const currentTags = props.node.data.tags || []
   if (currentTags.includes(tagName)) return
-  props.node.data.tags = [...currentTags, tagName]
+  props.node.data.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props
   showTagDropdown.value = false
   if (props.node.data.deployed && props.node.data.vmId) {
     tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
@@ -218,7 +218,7 @@ function addPredefinedTag(tagName) {
 
 function removeTag(tagToRemove) {
   if (!props.node) return
-  props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove)
+  props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props
   if (props.node.data.deployed && props.node.data.vmId) {
     tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
   }
