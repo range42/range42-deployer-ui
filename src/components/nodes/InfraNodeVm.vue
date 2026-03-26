@@ -3,8 +3,14 @@ import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import { getTagColor } from '@/constants/tags'
+import { usePendingChanges } from '@/composables/usePendingChanges'
 
 const props = defineProps(['data', 'selected'])
+
+const nodeDataRef = computed(() => props.data || {})
+const { hasPendingChanges, pendingCount } = usePendingChanges(nodeDataRef)
+
+const emit = defineEmits(['open-apply-dialog'])
 
 // Map status values to color scheme
 const statusColor = computed(() => {
@@ -35,11 +41,15 @@ const ramMB = computed(() => {
   return m ? parseInt(m) : 0
 })
 const displayTags = computed(() => {
-  const tags = props.data?.tags || []
+  const tags = (props.data?.deployed && props.data?.desiredConfig?.tags)
+    ? props.data.desiredConfig.tags
+    : (props.data?.tags || [])
   return tags.slice(0, 3)
 })
 const overflowCount = computed(() => {
-  const tags = props.data?.tags || []
+  const tags = (props.data?.deployed && props.data?.desiredConfig?.tags)
+    ? props.data.desiredConfig.tags
+    : (props.data?.tags || [])
   return Math.max(0, tags.length - 3)
 })
 
@@ -136,5 +146,19 @@ function barColor(percent) {
     <!-- Connection Handles -->
     <Handle type="target" :position="Position.Top" class="!w-3 !h-3 !bg-blue-500 !border-2 !border-blue-600" />
     <Handle type="source" :position="Position.Bottom" class="!w-3 !h-3 !bg-blue-500 !border-2 !border-blue-600" />
+
+    <!-- Pending changes strip -->
+    <div
+      v-if="hasPendingChanges"
+      class="flex items-center justify-between px-2 py-1 mt-1.5 -mx-3 -mb-3 rounded-b-xl bg-warning text-warning-content"
+    >
+      <span class="text-[10px] font-semibold">
+        {{ pendingCount }} pending change{{ pendingCount > 1 ? 's' : '' }}
+      </span>
+      <button
+        class="text-[10px] font-semibold underline hover:no-underline"
+        @click.stop="emit('open-apply-dialog')"
+      >Apply</button>
+    </div>
   </div>
 </template>
