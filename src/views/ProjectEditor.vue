@@ -104,15 +104,12 @@ const wsStatus = useWebSocketStatus()
 
 // Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
 watch(() => wsStatus.vmStatuses.value, (statuses) => {
-  if (!statuses || statuses.size === 0) { console.log('[ws-sync] No statuses'); return }
+  if (!statuses || statuses.size === 0) return
   const allNodes = flowGetNodes?.value || nodes.value || []
-  console.log('[ws-sync] Statuses:', statuses.size, 'Canvas nodes:', allNodes.length)
-  let matched = 0
+
   for (const node of allNodes) {
     const vmId = Number(node.data?.vmId)
-    if (!vmId) { continue }
-    if (!statuses.has(vmId)) { console.log('[ws-sync] No match for vmId:', vmId, 'node.data.vmId:', node.data?.vmId, typeof node.data?.vmId); continue }
-    matched++
+    if (!vmId || !statuses.has(vmId)) continue
 
     const vm = statuses.get(vmId)
     const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
@@ -120,12 +117,13 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
     const dataUpdate = {}
     let needsUpdate = false
 
+    // Runtime status: always sync
     if (node.data.status !== newStatus) {
       dataUpdate.status = newStatus
       needsUpdate = true
     }
 
-    // Sync live metrics
+    // Live metrics: always sync
     if (vm.status === 'running') {
       dataUpdate.liveMetrics = {
         cpu: vm.cpu,
@@ -140,22 +138,49 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
       needsUpdate = true
     }
 
-    // Sync tags from WebSocket (semicolon-separated)
-    if (vm.tags) {
-      const wsTags = vm.tags.split(';').filter(Boolean)
-      const currentTags = node.data.tags || []
-      if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
-        dataUpdate.tags = wsTags
+    // For deployed nodes: update actualConfig (not top-level tags)
+    if (node.data.deployed) {
+      const wsTags = vm.tags ? vm.tags.split(';').filter(Boolean) : []
+      const currentActual = node.data.actualConfig || {}
+
+      const newActual = {
+        ...currentActual,
+        tags: wsTags,
+        name: vm.name,
+      }
+
+      if (JSON.stringify(newActual) !== JSON.stringify(currentActual)) {
+        dataUpdate.actualConfig = newActual
         needsUpdate = true
+      }
+
+      // Initialize desiredConfig on first sync if missing
+      if (!node.data.desiredConfig) {
+        dataUpdate.desiredConfig = {
+          ...newActual,
+          cores: node.data.config?.cores ? Number(node.data.config.cores) : undefined,
+          memory: typeof node.data.config?.memory === 'string'
+            ? parseInt(node.data.config.memory)
+            : node.data.config?.memory,
+        }
+        needsUpdate = true
+      }
+    } else {
+      // Non-deployed nodes: sync tags to top-level (legacy behavior for draft nodes)
+      if (vm.tags) {
+        const wsTags = vm.tags.split(';').filter(Boolean)
+        const currentTags = node.data.tags || []
+        if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
+          dataUpdate.tags = wsTags
+          needsUpdate = true
+        }
       }
     }
 
     if (needsUpdate) {
-      console.log('[ws-sync] Updating node', node.id, 'vmId:', vmId, 'data:', JSON.stringify(dataUpdate).slice(0, 200))
       updateNodeData(node.id, dataUpdate)
     }
   }
-  if (matched === 0) console.log('[ws-sync] No canvas nodes matched any WS vmIds. Node vmIds:', allNodes.map(n => ({ id: n.id, type: n.type, vmId: n.data?.vmId })).filter(n => n.vmId))
 }, { deep: true })
 
 ////
