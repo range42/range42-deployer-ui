@@ -12,10 +12,11 @@ interface VmStatus {
   vmid: number
   name: string
   status: string
-  cpu: number
-  mem: number
-  maxmem: number
-  uptime: number
+  cpu: number       // 0-100 percentage
+  mem: number       // bytes used
+  maxmem: number    // bytes total
+  uptime: number    // seconds
+  tags: string      // semicolon-separated from Proxmox
 }
 
 export function useWebSocketStatus() {

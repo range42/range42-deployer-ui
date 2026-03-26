@@ -263,6 +263,18 @@ export interface BaseNodeData {
   tags?: string[]
 }
 
+export interface LiveMetrics {
+  cpu: number          // 0-100 percentage
+  mem: number          // bytes used
+  maxmem: number       // bytes total
+  memPercent: number   // computed: mem/maxmem * 100
+  uptime: number       // seconds
+  diskRead?: number
+  diskWrite?: number
+  netIn?: number
+  netOut?: number
+}
+
 export interface GroupNodeData extends BaseNodeData {
   type: 'group'
   name: string

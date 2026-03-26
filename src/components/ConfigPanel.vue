@@ -10,6 +10,8 @@ import FormList from '@/components/ui/FormList.vue'
 import { getBaseUrl } from '@/services/proxmox/api'
 import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
+import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
+import { useTagSync } from '@/composables/useTagSync'
 
 const { t } = useI18n({ useScope: 'global' })
 
@@ -176,6 +178,74 @@ const removeDnsZone = (index) => {
   config.value.zones.splice(index, 1)
 }
 
+// Tag editor state
+const tagSync = useTagSync()
+const tagInput = ref('')
+const showTagDropdown = ref(false)
+
+const filteredPredefinedTags = computed(() => {
+  const currentTags = props.node?.data?.tags || []
+  const search = tagInput.value.toLowerCase()
+  return PREDEFINED_TAGS.filter(t =>
+    !currentTags.includes(t.name) &&
+    (search === '' || t.name.includes(search))
+  )
+})
+
+function addTag() {
+  const tag = tagInput.value.trim().toLowerCase()
+  if (!tag || !props.node) return
+  const currentTags = props.node.data.tags || []
+  if (currentTags.includes(tag)) return
+  props.node.data.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive, direct mutation is the established pattern
+  tagInput.value = ''
+  showTagDropdown.value = false
+  if (props.node.data.deployed && props.node.data.vmId) {
+    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  }
+}
+
+function addPredefinedTag(tagName) {
+  if (!props.node) return
+  const currentTags = props.node.data.tags || []
+  if (currentTags.includes(tagName)) return
+  props.node.data.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props
+  showTagDropdown.value = false
+  if (props.node.data.deployed && props.node.data.vmId) {
+    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  }
+}
+
+function removeTag(tagToRemove) {
+  if (!props.node) return
+  props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props
+  if (props.node.data.deployed && props.node.data.vmId) {
+    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  }
+}
+
+// Live metrics formatting helpers
+function formatBytes(bytes) {
+  if (!bytes) return '0 B'
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB'
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(0) + ' MB'
+  return (bytes / 1024).toFixed(0) + ' KB'
+}
+
+function formatUptime(seconds) {
+  if (!seconds) return '--'
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor((seconds % 86400) / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return d > 0 ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`
+}
+
+function metricBarColor(percent) {
+  if (percent > 80) return '#ef4444'
+  if (percent > 50) return '#f59e0b'
+  return '#22c55e'
+}
+
 // VM actions for deployed nodes
 const actionLoading = ref(null)
 
@@ -273,6 +343,33 @@ watch(() => props.node, (newNode) => {
           />
         </FormSection>
 
+        <!-- Tag Editor (VM and LXC) -->
+        <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2 mb-4">
+          <label class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Tags</label>
+          <div class="flex gap-1.5 flex-wrap min-h-[24px]">
+            <span v-for="tag in (node.data.tags || [])" :key="tag"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              :style="{ backgroundColor: getTagColor(tag).hex }">
+              {{ tag }}
+              <button @click="removeTag(tag)" class="opacity-70 hover:opacity-100 ml-0.5">&times;</button>
+            </span>
+          </div>
+          <div class="relative">
+            <input v-model="tagInput" @keydown.enter.prevent="addTag" @focus="showTagDropdown = true"
+              @blur="setTimeout(() => showTagDropdown = false, 200)" placeholder="Add tag..."
+              class="input input-sm input-bordered w-full" />
+            <div v-if="showTagDropdown && filteredPredefinedTags.length"
+              class="absolute z-10 mt-1 w-full bg-base-200 border border-base-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+              <button v-for="tag in filteredPredefinedTags" :key="tag.name"
+                @mousedown.prevent="addPredefinedTag(tag.name)"
+                class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-300 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: tag.hex }"></span>
+                {{ tag.name }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Deployed VM Status View -->
         <template v-if="node.type === 'vm' && node.data?.deployed">
           <!-- Status Banner -->
@@ -315,7 +412,7 @@ watch(() => props.node, (newNode) => {
                 </tr>
                 <tr>
                   <td class="text-base-content/50">Uptime</td>
-                  <td>{{ config.uptime ? Math.floor(config.uptime / 3600) + 'h ' + Math.floor((config.uptime % 3600) / 60) + 'm' : '—' }}</td>
+                  <td>{{ formatUptime(node.data.liveMetrics?.uptime || config.uptime) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -324,34 +421,49 @@ watch(() => props.node, (newNode) => {
           <!-- Resource Cards -->
           <div class="grid grid-cols-3 gap-3">
             <!-- CPU -->
-            <div class="rounded-lg border border-base-300 p-3">
-              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">CPU</div>
-              <div class="text-xl font-bold">{{ config.cores }}<span class="text-sm font-normal text-base-content/40 ml-1">cores</span></div>
-              <progress class="progress progress-primary w-full mt-2 h-1.5" :value="Math.round((config.cpuUsage || 0) * 100)" max="100"></progress>
-              <div class="text-[10px] text-base-content/50 mt-0.5">{{ Math.round((config.cpuUsage || 0) * 100) }}% utilization</div>
+            <div class="bg-base-200 rounded-lg p-3">
+              <div class="text-[10px] uppercase tracking-wider text-base-content/40 mb-1">CPU Usage</div>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold" :style="{ color: metricBarColor(node.data.liveMetrics?.cpu || 0) }">
+                  {{ Math.round(node.data.liveMetrics?.cpu || 0) }}%
+                </span>
+                <span class="text-xs text-base-content/40">of {{ node.data.config?.cores || config.cores || '?' }} cores</span>
+              </div>
+              <div class="h-1.5 bg-base-content/10 rounded-full mt-2 overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-500"
+                  :style="{ width: (node.data.liveMetrics?.cpu || 0) + '%', backgroundColor: metricBarColor(node.data.liveMetrics?.cpu || 0) }">
+                </div>
+              </div>
             </div>
 
             <!-- RAM -->
-            <div class="rounded-lg border border-base-300 p-3">
-              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">Memory</div>
-              <div class="text-xl font-bold">
-                {{ parseInt(config.memory) >= 1024 ? (parseInt(config.memory) / 1024).toFixed(1) : config.memory }}
-                <span class="text-sm font-normal text-base-content/40 ml-1">{{ parseInt(config.memory) >= 1024 ? 'GB' : 'MB' }}</span>
+            <div class="bg-base-200 rounded-lg p-3">
+              <div class="text-[10px] uppercase tracking-wider text-base-content/40 mb-1">Memory</div>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold" :style="{ color: metricBarColor(node.data.liveMetrics?.memPercent || 0) }">
+                  {{ Math.round(node.data.liveMetrics?.memPercent || 0) }}%
+                </span>
+                <span class="text-xs text-base-content/40">
+                  {{ formatBytes(node.data.liveMetrics?.mem) }} / {{ formatBytes(node.data.liveMetrics?.maxmem) }}
+                </span>
               </div>
-              <progress class="progress progress-secondary w-full mt-2 h-1.5" :value="config.memUsed || 0" :max="parseInt(config.memory) || 1"></progress>
-              <div class="text-[10px] text-base-content/50 mt-0.5">
-                {{ config.memUsed ? (config.memUsed >= 1024 ? (config.memUsed / 1024).toFixed(1) + ' GB' : config.memUsed + ' MB') : '0' }} used
+              <div class="h-1.5 bg-base-content/10 rounded-full mt-2 overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-500"
+                  :style="{ width: (node.data.liveMetrics?.memPercent || 0) + '%', backgroundColor: metricBarColor(node.data.liveMetrics?.memPercent || 0) }">
+                </div>
               </div>
             </div>
 
             <!-- Disk -->
-            <div class="rounded-lg border border-base-300 p-3">
-              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">Disk</div>
-              <div class="text-xl font-bold">
-                {{ config.diskMax ? (config.diskMax / 1024 / 1024 / 1024).toFixed(0) : '—' }}
-                <span class="text-sm font-normal text-base-content/40 ml-1">GB</span>
+            <div class="bg-base-200 rounded-lg p-3">
+              <div class="text-[10px] uppercase tracking-wider text-base-content/40 mb-1">Disk</div>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold">
+                  {{ config.diskMax ? (config.diskMax / 1024 / 1024 / 1024).toFixed(0) : '—' }}
+                </span>
+                <span class="text-xs text-base-content/40">GB provisioned</span>
               </div>
-              <div class="text-[10px] text-base-content/50 mt-2">Provisioned</div>
+              <div class="text-[10px] text-base-content/40 mt-2">Static allocation</div>
             </div>
           </div>
 

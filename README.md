@@ -82,6 +82,17 @@ The application uses **localStorage** to store and manage local project data dir
 
 ## Getting Started
 
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The UI is available at `http://localhost:3000` (configurable via `UI_PORT` in `.env`).
+
+Configure the backend API URL in the settings modal once the app is running.
+
 ### Development
 
 ```bash

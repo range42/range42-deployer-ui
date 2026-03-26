@@ -24,6 +24,9 @@ import DeploymentPanel from '../components/DeploymentPanel.vue'
 import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 
+import { useAutoLayout } from '../composables/useAutoLayout'
+import { useNetworkZones } from '../composables/useNetworkZones'
+import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
@@ -66,7 +69,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData } = useVueFlow()
 
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
@@ -92,22 +95,67 @@ const deployment = useDeployment(projectId)
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
+const { zones } = useNetworkZones(liveNodes, liveEdges)
+
+const autoLayout = useAutoLayout()
+
 // WebSocket live status — updates deployed nodes in real-time
 const wsStatus = useWebSocketStatus()
 
-// Sync WebSocket status changes to canvas nodes
+// Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
 watch(() => wsStatus.vmStatuses.value, (statuses) => {
-  if (!statuses || statuses.size === 0) return
+  if (!statuses || statuses.size === 0) { console.log('[ws-sync] No statuses'); return }
   const allNodes = flowGetNodes?.value || nodes.value || []
+  console.log('[ws-sync] Statuses:', statuses.size, 'Canvas nodes:', allNodes.length)
+  let matched = 0
   for (const node of allNodes) {
-    if (node.data?.vmId && statuses.has(node.data.vmId)) {
-      const vm = statuses.get(node.data.vmId)
-      const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
-      if (node.data.status !== newStatus) {
-        node.data.status = newStatus
+    const vmId = Number(node.data?.vmId)
+    if (!vmId) { continue }
+    if (!statuses.has(vmId)) { console.log('[ws-sync] No match for vmId:', vmId, 'node.data.vmId:', node.data?.vmId, typeof node.data?.vmId); continue }
+    matched++
+
+    const vm = statuses.get(vmId)
+    const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
+
+    const dataUpdate = {}
+    let needsUpdate = false
+
+    if (node.data.status !== newStatus) {
+      dataUpdate.status = newStatus
+      needsUpdate = true
+    }
+
+    // Sync live metrics
+    if (vm.status === 'running') {
+      dataUpdate.liveMetrics = {
+        cpu: vm.cpu,
+        mem: vm.mem,
+        maxmem: vm.maxmem,
+        memPercent: vm.maxmem > 0 ? Math.round((vm.mem / vm.maxmem) * 100) : 0,
+        uptime: vm.uptime,
+      }
+      needsUpdate = true
+    } else if (node.data.liveMetrics) {
+      dataUpdate.liveMetrics = null
+      needsUpdate = true
+    }
+
+    // Sync tags from WebSocket (semicolon-separated)
+    if (vm.tags) {
+      const wsTags = vm.tags.split(';').filter(Boolean)
+      const currentTags = node.data.tags || []
+      if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
+        dataUpdate.tags = wsTags
+        needsUpdate = true
       }
     }
+
+    if (needsUpdate) {
+      console.log('[ws-sync] Updating node', node.id, 'vmId:', vmId, 'data:', JSON.stringify(dataUpdate).slice(0, 200))
+      updateNodeData(node.id, dataUpdate)
+    }
   }
+  if (matched === 0) console.log('[ws-sync] No canvas nodes matched any WS vmIds. Node vmIds:', allNodes.map(n => ({ id: n.id, type: n.type, vmId: n.data?.vmId })).filter(n => n.vmId))
 }, { deep: true })
 
 ////
@@ -169,11 +217,6 @@ onMounted(() => {
   currentProject.value = project
   loadProjectData(project)
 
-  // Start WebSocket live status if API is configured
-  if (importApiConfig.isReady.value) {
-    importApiConfig.configure()
-    wsStatus.connect(importApiConfig.node.value || 'pve01')
-  }
 })
 
 watch([nodes, edges], () => {
@@ -193,6 +236,40 @@ const manualSave = () => {
     nodes: nodesToSave,
     edges: edgesToSave
   })
+}
+
+function handleAutoLayout() {
+  const currentNodes = liveNodes.value
+  const currentEdges = liveEdges.value
+  if (currentNodes.length === 0) return
+
+  const newPositions = autoLayout.applyLayout(currentNodes, currentEdges)
+
+  // Animate nodes to new positions over 300ms
+  const duration = 300
+  const startTime = performance.now()
+  const startPositions = new Map(currentNodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))
+
+  function animate(now) {
+    const elapsed = now - startTime
+    const t = Math.min(elapsed / duration, 1)
+    const ease = 1 - Math.pow(1 - t, 3)
+
+    for (const node of currentNodes) {
+      const start = startPositions.get(node.id)
+      const target = newPositions.get(node.id)
+      if (start && target) {
+        node.position = {
+          x: start.x + (target.x - start.x) * ease,
+          y: start.y + (target.y - start.y) * ease,
+        }
+      }
+    }
+
+    if (t < 1) requestAnimationFrame(animate)
+  }
+
+  requestAnimationFrame(animate)
 }
 
 const handleNodeClick = (event) => {
@@ -372,6 +449,20 @@ const importApiConfig = useApiConfig(projectId, { autoSync: true })
 // Provide API config to child components (ConfigPanel, etc.)
 provide('apiConfig', importApiConfig)
 
+// Reactively connect WebSocket when API settings become ready
+watch(
+  () => importApiConfig.isReady.value,
+  (ready) => {
+    if (ready) {
+      importApiConfig.configure()
+      wsStatus.connect(importApiConfig.node.value || 'pve01')
+    } else {
+      wsStatus.disconnect()
+    }
+  },
+  { immediate: true }
+)
+
 const handleOpenImport = () => {
   // Ensure the API client has the correct base URL from per-project settings
   importApiConfig.configure()
@@ -431,6 +522,14 @@ const handleInfrastructureImport = (result) => {
 
         <!-- Right actions -->
         <div class="flex items-center gap-2">
+          <!-- Organize layout button -->
+          <button class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+            </svg>
+            <span class="hidden sm:inline">Organize</span>
+          </button>
+
           <!-- Save button -->
           <button class="btn btn-ghost btn-sm gap-2" @click="manualSave" title="Save (Ctrl+S)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -508,6 +607,7 @@ const handleInfrastructureImport = (result) => {
           elevate-edges-on-select 
           class="h-full w-full"
         >
+          <NetworkZoneOverlay :zones="zones" />
           <Background />
           <Controls position="bottom-left" />
           <MiniMap position="bottom-right" />

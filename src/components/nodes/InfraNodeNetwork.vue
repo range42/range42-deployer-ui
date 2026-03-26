@@ -8,9 +8,27 @@
  * Visual design inspired by network diagrams - looks like a network cloud/switch.
  */
 import { computed } from 'vue'
-import { Handle, Position } from '@vue-flow/core'
+import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { getNetworkColor } from '@/constants/networkColors'
 
-const props = defineProps(['data', 'selected', 'connectable'])
+const props = defineProps(['id', 'data', 'selected', 'connectable'])
+
+const { getEdges, getNode } = useVueFlow()
+
+const segmentColor = computed(() => {
+  return getNetworkColor(props.data?.config?.segmentType || 'custom')
+})
+
+const connectedDevices = computed(() => {
+  const nodeId = props.id
+  return getEdges.value
+    .filter(e => e.source === nodeId || e.target === nodeId)
+    .map(e => {
+      const otherId = e.source === nodeId ? e.target : e.source
+      return getNode(otherId)
+    })
+    .filter(Boolean)
+})
 
 const statusColor = computed(() => {
   switch (props.data?.status) {
@@ -53,10 +71,13 @@ const segmentTypeColor = computed(() => {
     }"
   >
     <!-- Main Card -->
-    <div class="relative bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 dark:from-sky-950/60 dark:via-blue-950/50 dark:to-indigo-950/40 rounded-xl border-2 border-sky-200 dark:border-sky-800 overflow-hidden min-w-[220px]">
+    <div
+      class="relative bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 dark:from-sky-950/60 dark:via-blue-950/50 dark:to-indigo-950/40 rounded-xl border-2 overflow-hidden min-w-[220px]"
+      :style="{ borderColor: segmentColor.stroke }"
+    >
       
       <!-- Top accent bar with network pattern -->
-      <div class="h-2 bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 relative overflow-hidden">
+      <div class="h-2 relative overflow-hidden" :style="{ backgroundColor: segmentColor.stroke }">
         <div class="absolute inset-0 opacity-30">
           <svg class="w-full h-full" viewBox="0 0 100 8" preserveAspectRatio="none">
             <pattern id="netPattern" patternUnits="userSpaceOnUse" width="20" height="8">
@@ -86,7 +107,8 @@ const segmentTypeColor = computed(() => {
 
             <!-- Name & Type -->
             <div class="min-w-0 flex-1">
-              <div class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
+              <div class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5">
+                <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: segmentColor.stroke }"></span>
                 {{ data.config?.name || data.label || 'Network Segment' }}
               </div>
               <div class="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide">
@@ -111,12 +133,9 @@ const segmentTypeColor = computed(() => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             <span class="text-xs font-mono font-semibold text-slate-700 dark:text-slate-200">
-              {{ data.config?.bridge || 'vmbr0' }}
+              {{ data.config?.bridge || 'vmbr0' }}<span v-if="data.config?.vlan" class="text-amber-600 dark:text-amber-400">:{{ data.config.vlan }}</span>
             </span>
-          </div>
-          <div v-if="data.config?.vlan" class="flex items-center gap-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-md px-2 py-1.5">
-            <span class="text-[10px] font-medium">VLAN</span>
-            <span class="text-xs font-mono font-bold">{{ data.config.vlan }}</span>
+            <span v-if="data.config?.vlan" class="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 rounded px-1 py-0.5 ml-auto">VLAN</span>
           </div>
         </div>
 
@@ -154,8 +173,16 @@ const segmentTypeColor = computed(() => {
         </div>
       </div>
 
+      <!-- Connected devices footer -->
+      <div class="px-4 pb-2 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        <span class="font-medium">{{ connectedDevices.length }} device{{ connectedDevices.length !== 1 ? 's' : '' }} connected</span>
+      </div>
+
       <!-- Bottom connection indicator bar -->
-      <div class="h-1 bg-gradient-to-r from-transparent via-sky-300 dark:via-sky-600 to-transparent"></div>
+      <div class="h-1" :style="{ background: `linear-gradient(to right, transparent, ${segmentColor.stroke}80, transparent)` }"></div>
     </div>
 
     <!-- Connection Handles - Multiple on each side for many connections -->
