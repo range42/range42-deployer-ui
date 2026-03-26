@@ -1,0 +1,6 @@
+services:
+  ui:
+    build: .
+    ports:
+      - "${UI_PORT:-3000}:80"
+    restart: unless-stopped
