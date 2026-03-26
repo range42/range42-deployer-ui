@@ -12,6 +12,8 @@ import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
 import { useTagSync } from '@/composables/useTagSync'
+import { usePendingChanges } from '@/composables/usePendingChanges'
+import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
 
 const { t } = useI18n({ useScope: 'global' })
 
@@ -195,32 +197,49 @@ const filteredPredefinedTags = computed(() => {
 function addTag() {
   const tag = tagInput.value.trim().toLowerCase()
   if (!tag || !props.node) return
-  const currentTags = props.node.data.tags || []
-  if (currentTags.includes(tag)) return
-  props.node.data.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive, direct mutation is the established pattern
+
+  if (props.node.data.deployed && props.node.data.desiredConfig) {
+    const currentTags = props.node.data.desiredConfig.tags || []
+    if (currentTags.includes(tag)) return
+    props.node.data.desiredConfig.tags = [...currentTags, tag]
+    if (props.node.data.vmId) {
+      tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
+    }
+  } else {
+    const currentTags = props.node.data.tags || []
+    if (currentTags.includes(tag)) return
+    props.node.data.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props
+  }
   tagInput.value = ''
   showTagDropdown.value = false
-  if (props.node.data.deployed && props.node.data.vmId) {
-    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
-  }
 }
 
 function addPredefinedTag(tagName) {
   if (!props.node) return
-  const currentTags = props.node.data.tags || []
-  if (currentTags.includes(tagName)) return
-  props.node.data.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props
-  showTagDropdown.value = false
-  if (props.node.data.deployed && props.node.data.vmId) {
-    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  if (props.node.data.deployed && props.node.data.desiredConfig) {
+    const currentTags = props.node.data.desiredConfig.tags || []
+    if (currentTags.includes(tagName)) return
+    props.node.data.desiredConfig.tags = [...currentTags, tagName]
+    if (props.node.data.vmId) {
+      tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
+    }
+  } else {
+    const currentTags = props.node.data.tags || []
+    if (currentTags.includes(tagName)) return
+    props.node.data.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props
   }
+  showTagDropdown.value = false
 }
 
 function removeTag(tagToRemove) {
   if (!props.node) return
-  props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props
-  if (props.node.data.deployed && props.node.data.vmId) {
-    tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.tags)
+  if (props.node.data.deployed && props.node.data.desiredConfig) {
+    props.node.data.desiredConfig.tags = (props.node.data.desiredConfig.tags || []).filter(t => t !== tagToRemove)
+    if (props.node.data.vmId) {
+      tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
+    }
+  } else {
+    props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props
   }
 }
 
@@ -310,6 +329,20 @@ watch(() => props.node, (newNode) => {
     config.value = { ...newNode.data.config }
   }
 }, { immediate: true })
+
+const nodeDataRef = computed(() => props.node?.data || {})
+const {
+  pendingChanges,
+  hasPendingChanges,
+  pendingCount,
+  liveChanges,
+  restartChanges,
+  revertField,
+  revertAll,
+  updateDesired,
+} = usePendingChanges(nodeDataRef)
+
+const showApplyDialog = ref(false)
 </script>
 
 <template>
@@ -372,135 +405,133 @@ watch(() => props.node, (newNode) => {
 
         <!-- Deployed VM Status View -->
         <template v-if="node.type === 'vm' && node.data?.deployed">
-          <!-- Status Banner -->
-          <div class="flex items-center gap-3 px-4 py-3 rounded-lg border"
-            :class="node.data.status === 'running'
-              ? 'bg-success/5 border-success/20 text-success'
-              : node.data.status === 'stopped'
-                ? 'bg-base-200 border-base-300 text-base-content/50'
-                : 'bg-warning/5 border-warning/20 text-warning'"
-          >
-            <div class="w-2.5 h-2.5 rounded-full shrink-0"
-              :class="node.data.status === 'running'
-                ? 'bg-success shadow-[0_0_8px_theme(colors.success)]'
-                : node.data.status === 'stopped'
-                  ? 'bg-base-content/20'
-                  : 'bg-warning animate-pulse'"
+          <!-- Editable Config Fields -->
+          <div class="space-y-3">
+            <!-- Name -->
+            <div class="form-control">
+              <label class="label py-0.5">
+                <span class="label-text text-xs">Name</span>
+                <button
+                  v-if="node.data.desiredConfig?.name !== node.data.actualConfig?.name"
+                  class="btn btn-ghost btn-xs text-warning"
+                  title="Revert to actual"
+                  @click="revertField('name')"
+                >&#x21A9;</button>
+              </label>
+              <input
+                type="text"
+                class="input input-sm input-bordered w-full"
+                :class="{ 'border-warning': node.data.desiredConfig?.name !== node.data.actualConfig?.name }"
+                :value="node.data.desiredConfig?.name || ''"
+                @input="updateDesired('name', $event.target.value)"
+              />
+            </div>
+
+            <!-- CPU Cores -->
+            <div class="form-control">
+              <label class="label py-0.5">
+                <span class="label-text text-xs">CPU Cores</span>
+                <button
+                  v-if="node.data.desiredConfig?.cores !== node.data.actualConfig?.cores"
+                  class="btn btn-ghost btn-xs text-warning"
+                  title="Revert to actual"
+                  @click="revertField('cores')"
+                >&#x21A9;</button>
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="128"
+                class="input input-sm input-bordered w-full"
+                :class="{ 'border-warning': node.data.desiredConfig?.cores !== node.data.actualConfig?.cores }"
+                :value="node.data.desiredConfig?.cores || 1"
+                @input="updateDesired('cores', Number($event.target.value))"
+              />
+            </div>
+
+            <!-- Memory -->
+            <div class="form-control">
+              <label class="label py-0.5">
+                <span class="label-text text-xs">Memory (MB)</span>
+                <button
+                  v-if="node.data.desiredConfig?.memory !== node.data.actualConfig?.memory"
+                  class="btn btn-ghost btn-xs text-warning"
+                  title="Revert to actual"
+                  @click="revertField('memory')"
+                >&#x21A9;</button>
+              </label>
+              <input
+                type="number"
+                min="128"
+                step="256"
+                class="input input-sm input-bordered w-full"
+                :class="{ 'border-warning': node.data.desiredConfig?.memory !== node.data.actualConfig?.memory }"
+                :value="node.data.desiredConfig?.memory || 0"
+                @input="updateDesired('memory', Number($event.target.value))"
+              />
+            </div>
+
+            <!-- Description -->
+            <div class="form-control">
+              <label class="label py-0.5">
+                <span class="label-text text-xs">Description</span>
+                <button
+                  v-if="(node.data.desiredConfig?.description || '') !== (node.data.actualConfig?.description || '')"
+                  class="btn btn-ghost btn-xs text-warning"
+                  title="Revert to actual"
+                  @click="revertField('description')"
+                >&#x21A9;</button>
+              </label>
+              <textarea
+                class="textarea textarea-sm textarea-bordered w-full"
+                :class="{ 'border-warning': (node.data.desiredConfig?.description || '') !== (node.data.actualConfig?.description || '') }"
+                rows="2"
+                :value="node.data.desiredConfig?.description || ''"
+                @input="updateDesired('description', $event.target.value)"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Live Status Section -->
+          <div class="divider text-xs text-base-content/40 my-2">Live Status</div>
+
+          <div class="flex items-center gap-2 mb-2">
+            <div
+              class="w-2.5 h-2.5 rounded-full"
+              :class="{
+                'bg-success': node.data.status === 'running',
+                'bg-error': node.data.status === 'error',
+                'bg-warning': node.data.status === 'paused',
+                'bg-base-content/30': node.data.status === 'stopped',
+              }"
             ></div>
-            <span class="font-semibold text-sm uppercase tracking-wider">{{ node.data.status }}</span>
-            <div class="ml-auto flex items-center gap-2">
-              <span class="badge badge-sm badge-outline">VMID {{ config.vmid }}</span>
-              <span v-if="config.proxmoxNode" class="badge badge-sm badge-ghost">{{ config.proxmoxNode }}</span>
-            </div>
+            <span class="text-sm font-medium capitalize">{{ node.data.status }}</span>
+            <span v-if="node.data.vmId" class="text-xs text-base-content/50 ml-auto">VMID {{ node.data.vmId }}</span>
           </div>
 
-          <!-- Info Table -->
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <tbody>
-                <tr>
-                  <td class="text-base-content/50 w-32">Hostname</td>
-                  <td class="font-medium">{{ config.name }}</td>
-                </tr>
-                <tr>
-                  <td class="text-base-content/50">VMID</td>
-                  <td class="font-mono">{{ config.vmid }}</td>
-                </tr>
-                <tr>
-                  <td class="text-base-content/50">Node</td>
-                  <td>{{ config.proxmoxNode || '—' }}</td>
-                </tr>
-                <tr>
-                  <td class="text-base-content/50">Uptime</td>
-                  <td>{{ formatUptime(node.data.liveMetrics?.uptime || config.uptime) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Resource Cards -->
-          <div class="grid grid-cols-3 gap-3">
-            <!-- CPU -->
-            <div class="bg-base-200 rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-base-content/40 mb-1">CPU Usage</div>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold" :style="{ color: metricBarColor(node.data.liveMetrics?.cpu || 0) }">
-                  {{ Math.round(node.data.liveMetrics?.cpu || 0) }}%
-                </span>
-                <span class="text-xs text-base-content/40">of {{ node.data.config?.cores || config.cores || '?' }} cores</span>
-              </div>
-              <div class="h-1.5 bg-base-content/10 rounded-full mt-2 overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-500"
-                  :style="{ width: (node.data.liveMetrics?.cpu || 0) + '%', backgroundColor: metricBarColor(node.data.liveMetrics?.cpu || 0) }">
-                </div>
-              </div>
+          <div v-if="node.data.liveMetrics" class="grid grid-cols-2 gap-2 mb-3">
+            <div class="bg-base-200/50 rounded-lg p-2">
+              <div class="text-[10px] text-base-content/50">CPU</div>
+              <div class="text-sm font-bold">{{ Math.round(node.data.liveMetrics.cpu) }}%</div>
             </div>
-
-            <!-- RAM -->
-            <div class="bg-base-200 rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-base-content/40 mb-1">Memory</div>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold" :style="{ color: metricBarColor(node.data.liveMetrics?.memPercent || 0) }">
-                  {{ Math.round(node.data.liveMetrics?.memPercent || 0) }}%
-                </span>
-                <span class="text-xs text-base-content/40">
-                  {{ formatBytes(node.data.liveMetrics?.mem) }} / {{ formatBytes(node.data.liveMetrics?.maxmem) }}
-                </span>
-              </div>
-              <div class="h-1.5 bg-base-content/10 rounded-full mt-2 overflow-hidden">
-                <div class="h-full rounded-full transition-all duration-500"
-                  :style="{ width: (node.data.liveMetrics?.memPercent || 0) + '%', backgroundColor: metricBarColor(node.data.liveMetrics?.memPercent || 0) }">
-                </div>
-              </div>
-            </div>
-
-            <!-- Disk -->
-            <div class="bg-base-200 rounded-lg p-3">
-              <div class="text-[10px] uppercase tracking-wider text-base-content/40 mb-1">Disk</div>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold">
-                  {{ config.diskMax ? (config.diskMax / 1024 / 1024 / 1024).toFixed(0) : '—' }}
-                </span>
-                <span class="text-xs text-base-content/40">GB provisioned</span>
-              </div>
-              <div class="text-[10px] text-base-content/40 mt-2">Static allocation</div>
+            <div class="bg-base-200/50 rounded-lg p-2">
+              <div class="text-[10px] text-base-content/50">RAM</div>
+              <div class="text-sm font-bold">{{ node.data.liveMetrics.memPercent }}%</div>
             </div>
           </div>
 
           <!-- VM Actions -->
-          <div class="flex flex-wrap gap-2">
-            <button
-              class="btn btn-sm btn-success gap-1"
-              :disabled="actionLoading || node.data.status === 'running'"
-              @click="handleVmAction('start')"
-            >
-              <span v-if="actionLoading === 'start'" class="loading loading-spinner loading-xs"></span>
-              <AppIcon v-else name="play" class="w-4 h-4" /> Start
-            </button>
-            <button
-              class="btn btn-sm btn-warning gap-1"
-              :disabled="actionLoading || node.data.status === 'stopped'"
-              @click="handleVmAction('stop')"
-            >
-              <span v-if="actionLoading === 'stop'" class="loading loading-spinner loading-xs"></span>
-              <AppIcon v-else name="stop" class="w-4 h-4" /> Stop
-            </button>
-            <button
-              class="btn btn-sm btn-info gap-1"
-              :disabled="actionLoading || node.data.status === 'stopped'"
-              @click="handleVmAction('restart')"
-            >
-              <span v-if="actionLoading === 'restart'" class="loading loading-spinner loading-xs"></span>
-              <AppIcon v-else name="refresh" class="w-4 h-4" /> Restart
-            </button>
-            <button
-              class="btn btn-sm btn-error btn-outline gap-1"
-              :disabled="actionLoading"
-              @click="handleVmAction('delete')"
-            >
-              <span v-if="actionLoading === 'delete'" class="loading loading-spinner loading-xs"></span>
-              <AppIcon v-else name="trash" class="w-4 h-4" /> Delete VM
-            </button>
+          <div class="flex gap-1 mb-3">
+            <button class="btn btn-xs btn-success flex-1" @click="$emit('vm-action', node, 'start')">Start</button>
+            <button class="btn btn-xs btn-warning flex-1" @click="$emit('vm-action', node, 'stop')">Stop</button>
+            <button class="btn btn-xs btn-info flex-1" @click="$emit('vm-action', node, 'pause')">Pause</button>
+          </div>
+
+          <!-- Pending Changes Actions -->
+          <div v-if="hasPendingChanges" class="flex items-center justify-between pt-2 border-t border-base-300">
+            <button class="btn btn-xs btn-ghost" @click="revertAll">Discard All</button>
+            <div class="text-[10px] text-base-content/50">{{ pendingCount }} change{{ pendingCount > 1 ? 's' : '' }}</div>
+            <button class="btn btn-xs btn-warning" @click="showApplyDialog = true">Apply</button>
           </div>
         </template>
 
@@ -1549,4 +1580,12 @@ watch(() => props.node, (newNode) => {
       </div>
     </div>
   </div>
+
+  <ApplyChangesDialog
+    v-if="showApplyDialog"
+    :node="node"
+    :pending-changes="pendingChanges"
+    @close="showApplyDialog = false"
+    @applied="showApplyDialog = false"
+  />
 </template>
