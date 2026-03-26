@@ -80,6 +80,18 @@ export const useDeploymentStore = defineStore('deployment', () => {
 
     node.data.deployed = true
     node.data.vmId = payload.vm_id ? Number(payload.vm_id) : undefined
+
+    // Initialize desired/actual config from the deployment config
+    const initialConfig = {
+      name: node.data.config?.name,
+      cores: node.data.config?.cores ? Number(node.data.config.cores) : undefined,
+      memory: node.data.config?.memory ? Number(node.data.config.memory) : undefined,
+      tags: node.data.tags ? [...node.data.tags] : [],
+      description: node.data.config?.description,
+    }
+    node.data.desiredConfig = { ...initialConfig }
+    node.data.actualConfig = { ...initialConfig }
+
     projectStore.updateProject(currentPlan.value.projectId, { nodes: project.nodes })
   }
 
