@@ -13,6 +13,7 @@ interface VmStatus {
   name: string
   status: string
   cpu: number       // 0-100 percentage
+  cores: number     // vCPU count
   mem: number       // bytes used
   maxmem: number    // bytes total
   uptime: number    // seconds

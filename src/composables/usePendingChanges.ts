@@ -2,7 +2,7 @@ import { computed, type Ref } from 'vue'
 import { getChangeCategory, getChangeLabel } from '@/constants/changeCategories'
 import type { PendingChange } from '@/services/proxmox/types'
 
-const DIFFABLE_FIELDS = ['name', 'cores', 'memory', 'tags', 'description']
+const DIFFABLE_FIELDS = ['name', 'cores', 'memory', 'tags']
 
 function arraysEqual(a: unknown[], b: unknown[]): boolean {
   if (a.length !== b.length) return false
@@ -63,13 +63,17 @@ export function usePendingChanges(nodeData: Ref<Record<string, unknown>>) {
 
   function revertAll(): void {
     const actual = nodeData.value.actualConfig as Record<string, unknown>
+    const desired = nodeData.value.desiredConfig as Record<string, unknown>
     if (!actual) return
     const reverted: Record<string, unknown> = {}
     for (const field of DIFFABLE_FIELDS) {
-      if (actual[field] !== undefined) {
-        reverted[field] = Array.isArray(actual[field])
-          ? [...(actual[field] as unknown[])]
-          : actual[field]
+      // Use actual value; fall back to current desired to avoid dropping fields
+      // that the WebSocket doesn't provide (e.g. cores, memory, description)
+      const source = actual[field] !== undefined ? actual : desired
+      if (source && source[field] !== undefined) {
+        reverted[field] = Array.isArray(source[field])
+          ? [...(source[field] as unknown[])]
+          : source[field]
       }
     }
     nodeData.value.desiredConfig = reverted

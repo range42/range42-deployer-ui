@@ -147,6 +147,8 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
         ...currentActual,
         tags: wsTags,
         name: vm.name,
+        cores: vm.cores || currentActual.cores,
+        memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : currentActual.memory,
       }
 
       if (JSON.stringify(newActual) !== JSON.stringify(currentActual)) {

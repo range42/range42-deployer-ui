@@ -201,7 +201,7 @@ function addTag() {
   if (props.node.data.deployed && props.node.data.desiredConfig) {
     const currentTags = props.node.data.desiredConfig.tags || []
     if (currentTags.includes(tag)) return
-    props.node.data.desiredConfig.tags = [...currentTags, tag]
+    props.node.data.desiredConfig.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
     if (props.node.data.vmId) {
       tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
     }
@@ -219,7 +219,7 @@ function addPredefinedTag(tagName) {
   if (props.node.data.deployed && props.node.data.desiredConfig) {
     const currentTags = props.node.data.desiredConfig.tags || []
     if (currentTags.includes(tagName)) return
-    props.node.data.desiredConfig.tags = [...currentTags, tagName]
+    props.node.data.desiredConfig.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
     if (props.node.data.vmId) {
       tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
     }
@@ -234,7 +234,7 @@ function addPredefinedTag(tagName) {
 function removeTag(tagToRemove) {
   if (!props.node) return
   if (props.node.data.deployed && props.node.data.desiredConfig) {
-    props.node.data.desiredConfig.tags = (props.node.data.desiredConfig.tags || []).filter(t => t !== tagToRemove)
+    props.node.data.desiredConfig.tags = (props.node.data.desiredConfig.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
     if (props.node.data.vmId) {
       tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
     }
@@ -243,27 +243,6 @@ function removeTag(tagToRemove) {
   }
 }
 
-// Live metrics formatting helpers
-function formatBytes(bytes) {
-  if (!bytes) return '0 B'
-  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB'
-  if (bytes >= 1048576) return (bytes / 1048576).toFixed(0) + ' MB'
-  return (bytes / 1024).toFixed(0) + ' KB'
-}
-
-function formatUptime(seconds) {
-  if (!seconds) return '--'
-  const d = Math.floor(seconds / 86400)
-  const h = Math.floor((seconds % 86400) / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  return d > 0 ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`
-}
-
-function metricBarColor(percent) {
-  if (percent > 80) return '#ef4444'
-  if (percent > 50) return '#f59e0b'
-  return '#22c55e'
-}
 
 // VM actions for deployed nodes
 const actionLoading = ref(null)
@@ -335,8 +314,6 @@ const {
   pendingChanges,
   hasPendingChanges,
   pendingCount,
-  liveChanges,
-  restartChanges,
   revertField,
   revertAll,
   updateDesired,
@@ -522,9 +499,9 @@ const showApplyDialog = ref(false)
 
           <!-- VM Actions -->
           <div class="flex gap-1 mb-3">
-            <button class="btn btn-xs btn-success flex-1" @click="$emit('vm-action', node, 'start')">Start</button>
-            <button class="btn btn-xs btn-warning flex-1" @click="$emit('vm-action', node, 'stop')">Stop</button>
-            <button class="btn btn-xs btn-info flex-1" @click="$emit('vm-action', node, 'pause')">Pause</button>
+            <button class="btn btn-xs btn-success flex-1" :disabled="actionLoading" @click="handleVmAction('start')">Start</button>
+            <button class="btn btn-xs btn-warning flex-1" :disabled="actionLoading" @click="handleVmAction('stop')">Stop</button>
+            <button class="btn btn-xs btn-info flex-1" :disabled="actionLoading" @click="handleVmAction('pause')">Pause</button>
           </div>
 
           <!-- Pending Changes Actions -->

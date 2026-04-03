@@ -105,7 +105,7 @@ async function handleApply() {
       for (const [key, value] of Object.entries(desired)) {
         newActual[key] = Array.isArray(value) ? [...value] : value
       }
-      props.node.data.actualConfig = newActual
+      props.node.data.actualConfig = newActual // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive, direct mutation is the established pattern
     }
 
     emit('applied')

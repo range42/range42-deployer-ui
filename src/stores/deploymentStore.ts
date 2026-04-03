@@ -83,11 +83,11 @@ export const useDeploymentStore = defineStore('deployment', () => {
 
     // Initialize desired/actual config from the deployment config
     const initialConfig = {
-      name: node.data.config?.name,
-      cores: node.data.config?.cores ? Number(node.data.config.cores) : undefined,
-      memory: node.data.config?.memory ? Number(node.data.config.memory) : undefined,
+      name: node.data.config?.name || '',
+      cores: node.data.config?.cores ? Number(node.data.config.cores) : 1,
+      memory: node.data.config?.memory ? Number(node.data.config.memory) : 0,
       tags: node.data.tags ? [...node.data.tags] : [],
-      description: node.data.config?.description,
+      description: node.data.config?.description || '',
     }
     node.data.desiredConfig = { ...initialConfig }
     node.data.actualConfig = { ...initialConfig }

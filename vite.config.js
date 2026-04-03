@@ -14,6 +14,21 @@ export default defineConfig({
     hmr: {
       host: '192.168.42.123',
     },
+    // Proxy API requests so the browser only needs to reach the UI VM
+    proxy: {
+      '/v0': {
+        target: 'http://192.168.42.121:8000',
+        changeOrigin: true,
+      },
+      '/docs': {
+        target: 'http://192.168.42.121:8000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://192.168.42.121:8000',
+        ws: true,
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['@sqlite.org/sqlite-wasm'],

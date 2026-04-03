@@ -150,13 +150,13 @@ function barColor(percent) {
     <!-- Pending changes strip -->
     <div
       v-if="hasPendingChanges"
-      class="flex items-center justify-between px-2 py-1 mt-1.5 -mx-3 -mb-3 rounded-b-xl bg-warning text-warning-content"
+      class="flex items-center justify-between px-2 py-0.5 mt-1.5 -mx-3 -mb-3 rounded-b-xl bg-amber-500/15 border-t border-amber-500/25"
     >
-      <span class="text-[10px] font-semibold">
-        {{ pendingCount }} pending change{{ pendingCount > 1 ? 's' : '' }}
+      <span class="text-[9px] font-medium text-amber-600 dark:text-amber-400">
+        {{ pendingCount }} unsaved
       </span>
       <button
-        class="text-[10px] font-semibold underline hover:no-underline"
+        class="text-[9px] font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
         @click.stop="emit('open-apply-dialog')"
       >Apply</button>
     </div>
