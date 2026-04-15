@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useInventoryStore, type ComponentListItem } from '@/stores/inventoryStore'
 import type { RegisteredInventory, InventoryComponent } from '@/services/git'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
 
 // Emits
 const emit = defineEmits<{
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 
 // Store
 const inventoryStore = useInventoryStore()
+const { confirm } = useConfirmDialog()
 
 // Local state
 const newRepoUrl = ref('')
@@ -50,8 +52,14 @@ async function addRepository() {
   }
 }
 
-function removeRepository(repoId: string) {
-  if (confirm('Remove this inventory repository?')) {
+async function removeRepository(repoId: string) {
+  const ok = await confirm({
+    title: 'Remove Repository',
+    message: 'Remove this inventory repository?',
+    confirmText: 'Remove',
+    confirmClass: 'btn-error',
+  })
+  if (ok) {
     inventoryStore.removeRepository(repoId)
     if (selectedRepo.value?.id === repoId) {
       selectedRepo.value = null

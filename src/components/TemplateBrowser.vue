@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useProxmoxStorage } from '@/composables/useProxmoxStorage'
+import { setBaseUrl } from '@/services/proxmox/api'
 import type { TemplateInfo, IsoInfo } from '@/services/proxmox'
 import AppIcon from '@/components/icons/AppIcon.vue'
 
@@ -8,6 +9,8 @@ import AppIcon from '@/components/icons/AppIcon.vue'
 const props = defineProps<{
   mode?: 'template' | 'iso' | 'both'
   showDownload?: boolean
+  apiUrl?: string
+  proxmoxNode?: string
 }>()
 
 // Emits
@@ -17,7 +20,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-// Composable
+// Composable — pass per-project settings if available
 const {
   templates,
   isos,
@@ -28,11 +31,23 @@ const {
   groupedTemplates,
   templateStorages: _templateStorages,
   isoStorages: _isoStorages,
+  isConfigured,
   loadAll,
   refresh,
   downloadIso,
   formatSize,
+  setConfig,
 } = useProxmoxStorage()
+
+onMounted(() => {
+  if (props.apiUrl && props.proxmoxNode) {
+    setBaseUrl(props.apiUrl)
+    setConfig(props.apiUrl, props.proxmoxNode)
+  }
+  if (isConfigured.value) {
+    loadAll()
+  }
+})
 
 // Local state
 const activeTab = ref<'templates' | 'isos'>(props.mode === 'iso' ? 'isos' : 'templates')
@@ -109,7 +124,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="template-browser bg-base-100 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+  <div class="modal modal-open">
+  <div class="template-browser modal-box max-w-4xl w-full max-h-[80vh] flex flex-col p-0">
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-base-300">
       <h2 class="text-lg font-semibold flex items-center gap-2">
@@ -262,8 +278,10 @@ onMounted(() => {
 
     <!-- Footer -->
     <div class="p-4 border-t border-base-300 flex justify-end gap-2">
-      <button class="btn btn-sm btn-ghost" @click="close">Cancel</button>
+      <button class="btn btn-sm btn-ghost" @click="close">Close</button>
     </div>
+  </div>
+  <div class="modal-backdrop bg-black/50" @click="close"></div>
   </div>
 </template>
 

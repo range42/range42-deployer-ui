@@ -4,10 +4,14 @@ import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { useInventoryStore } from '../stores/inventoryStore'
 import { getGitHubProvider } from '../services/git/github'
+import { useConfirmDialog } from '../composables/useConfirmDialog'
+import { useToast } from '../composables/useToast'
 
 const router = useRouter()
 const projectStore = useProjectStore()
 const inventoryStore = useInventoryStore()
+const { confirm } = useConfirmDialog()
+const { showToast } = useToast()
 
 const settings = ref({
   theme: 'light',
@@ -102,8 +106,14 @@ async function addRepo() {
   }
 }
 
-function removeRepo(repoId) {
-  if (confirm('Remove this inventory repository?')) {
+async function removeRepo(repoId) {
+  const ok = await confirm({
+    title: 'Remove Repository',
+    message: 'Remove this inventory repository?',
+    confirmText: 'Remove',
+    confirmClass: 'btn-error',
+  })
+  if (ok) {
     inventoryStore.removeRepository(repoId)
   }
 }
@@ -120,11 +130,17 @@ const goBack = () => {
   router.push('/')
 }
 
-const clearAllData = () => {
-  if (confirm('This will delete all projects and settings. Are you sure?')) {
+const clearAllData = async () => {
+  const ok = await confirm({
+    title: 'Clear All Data',
+    message: 'This will delete all projects and settings. Are you sure?',
+    confirmText: 'Clear All',
+    confirmClass: 'btn-error',
+  })
+  if (ok) {
     projectStore.clearAllData()
     localStorage.clear()
-    alert('All data cleared successfully')
+    showToast('All data cleared successfully', 'success')
   }
 }
 </script>

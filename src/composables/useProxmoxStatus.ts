@@ -239,7 +239,6 @@ export function useProxmoxStatus(
       fetchAllStatuses()
     }, intervalMs)
 
-    console.log(`[useProxmoxStatus] Started polling every ${intervalMs}ms`)
   }
 
   /**
@@ -251,7 +250,6 @@ export function useProxmoxStatus(
       pollingIntervalId = null
     }
     isPolling.value = false
-    console.log('[useProxmoxStatus] Stopped polling')
   }
 
   /**

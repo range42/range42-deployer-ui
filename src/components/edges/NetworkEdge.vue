@@ -26,12 +26,12 @@ const props = defineProps({
   selected: Boolean,
 })
 
-const { getNode } = useVueFlow()
+const { findNode } = useVueFlow()
 
 // Resolve the network segment color from the connected network node
 const networkColor = computed(() => {
-  const sourceNode = getNode(props.source)
-  const targetNode = getNode(props.target)
+  const sourceNode = findNode(props.source)
+  const targetNode = findNode(props.target)
   const networkNode = sourceNode?.type === 'network-segment' ? sourceNode
     : targetNode?.type === 'network-segment' ? targetNode
     : null
