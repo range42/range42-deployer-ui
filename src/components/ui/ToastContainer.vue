@@ -1,7 +1,7 @@
 <script setup>
 import { useToast } from '@/composables/useToast'
 
-const { toasts, removeToast } = useToast()
+const { toasts, removeToast, pauseToast, resumeToast } = useToast()
 
 const alertClass = (type) => {
   switch (type) {
@@ -14,13 +14,20 @@ const alertClass = (type) => {
 </script>
 
 <template>
-  <div class="toast toast-end toast-bottom z-[200]">
+  <div
+    class="toast toast-end toast-bottom z-[200]"
+    role="status"
+    aria-live="polite"
+    aria-atomic="false"
+  >
     <div
       v-for="toast in toasts"
       :key="toast.id"
-      class="alert shadow-lg max-w-sm cursor-pointer"
+      class="alert shadow-lg max-w-sm cursor-pointer toast-item"
       :class="alertClass(toast.type)"
       @click="removeToast(toast.id)"
+      @mouseenter="pauseToast(toast.id)"
+      @mouseleave="resumeToast(toast.id)"
     >
       <!-- Success icon -->
       <svg v-if="toast.type === 'success'" class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -42,3 +49,12 @@ const alertClass = (type) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: reduce) {
+  .toast-item {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+</style>
