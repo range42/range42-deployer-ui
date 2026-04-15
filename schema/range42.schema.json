@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://range42.dev/schemas/range42.schema.json",
+  "title": "Range42 Scenario Schema v1",
+  "description": "Canonical schema for catalog entries, project overlays, deployment records, event logs, preflight records, proxmox hosts, attachments, replication, env, and flags.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/CatalogEntry" },
+    { "$ref": "#/$defs/ProjectOverlay" },
+    { "$ref": "#/$defs/DeploymentRecord" },
+    { "$ref": "#/$defs/EventLogEntry" },
+    { "$ref": "#/$defs/PreflightRecord" },
+    { "$ref": "#/$defs/ProxmoxHost" }
+  ],
+  "$defs": {
+    "SchemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+
+    "Replication": {
+      "type": "object",
+      "properties": {
+        "scope": { "enum": ["shared", "per_team"] },
+        "id_offset": {
+          "type": "object",
+          "properties": {
+            "vmid": { "type": "integer", "minimum": 0 },
+            "ip": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["scope"],
+      "additionalProperties": false
+    },
+
+    "AttachmentSource": {
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["catalog_role", "catalog_container", "inline_yaml", "file_upload", "external_git"] },
+        "ref": { "type": "string" },
+        "sha": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "content_ref": { "type": "string" }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+
+    "Attachment": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "$ref": "#/$defs/AttachmentSource" },
+        "title": { "type": "string" },
+        "stage": { "type": "string" },
+        "order_in_stage": { "type": "integer", "minimum": 0 },
+        "scope": { "enum": ["node", "group_inherited"] },
+        "vars": { "type": "object", "additionalProperties": true },
+        "ansible_primitive": { "enum": ["task", "handler", "block"] },
+        "handler_namespace": { "type": "string" },
+        "target_node": { "type": "string" }
+      },
+      "required": ["source", "stage"],
+      "additionalProperties": false
+    },
+
+    "EnvVar": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "scope": { "enum": ["shared", "per_team"] },
+        "secret": { "type": "boolean", "default": false },
+        "required": { "type": "boolean", "default": false },
+        "default": {}
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+
+    "Flag": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "scope": { "enum": ["shared", "per_team"] },
+        "value_template": { "type": "string" },
+        "points": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["id", "scope"],
+      "additionalProperties": false
+    },
+
+    "NetworkAttachment": {
+      "type": "object",
+      "properties": {
+        "node_ref": { "type": "string" },
+        "ip": { "type": "string" },
+        "ip_template": { "type": "string" },
+        "dhcp": { "type": "boolean" }
+      },
+      "required": ["node_ref"],
+      "additionalProperties": false
+    },
+
+    "Node": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["vm", "lxc", "docker", "network", "router", "firewall", "skin", "group"] },
+        "replication": { "$ref": "#/$defs/Replication" },
+        "host_ref": { "type": "string" },
+        "config": { "type": "object", "additionalProperties": true },
+        "networks": { "type": "array", "items": { "$ref": "#/$defs/NetworkAttachment" } },
+        "attachments": { "type": "array", "items": { "$ref": "#/$defs/Attachment" } },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/Node" } }
+      },
+      "required": ["id", "kind"],
+      "additionalProperties": false
+    },
+
+    "Execution": {
+      "type": "object",
+      "properties": {
+        "stages": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+
+    "CatalogEntry": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "kind": { "enum": ["lab", "gamenet", "component"] },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "author": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
+        "env": { "type": "array", "items": { "$ref": "#/$defs/EnvVar" } },
+        "flags": { "type": "array", "items": { "$ref": "#/$defs/Flag" } },
+        "defaults": { "type": "object", "additionalProperties": true },
+        "execution": { "$ref": "#/$defs/Execution" }
+      },
+      "required": ["schema_version", "kind", "name"],
+      "additionalProperties": false
+    },
+
+    "ProjectOverlay": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/SchemaVersion" },
+        "source_url": { "type": "string", "format": "uri" },
+        "source_sha": { "type": "string" },
+        "source_entry": { "type": "string" },
+        "param_overrides": { "type": "object", "additionalProperties": true },
+        "nodes_added": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
+        "nodes_removed": { "type": "array", "items": { "type": "string" } },
+        "nodes_patched": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "patch": { "type": "object", "additionalProperties": true }
+            },
+            "required": ["id", "patch"],
+            "additionalProperties": false
+          }
+        },
+        "attachments_added": { "type": "array", "items": { "$ref": "#/$defs/Attachment" } },
+        "execution_override": { "$ref": "#/$defs/Execution" }
+      },
+      "required": ["schema_version", "source_url", "source_sha"],
+      "additionalProperties": false
+    },
+
+    "Attempt": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "scope": { "type": "string" },
+        "team_id": { "type": "integer", "minimum": 0 },
+        "state": { "enum": ["pending", "deploying", "succeeded", "partial", "failed", "cancelled", "unknown"] },
+        "sub_reason": {
+          "enum": [
+            "host_unreachable", "task_timeout", "preflight_block", "vault_rekey_blocked",
+            "auth_failed", "resource_overcommit", "image_pull_failed", "protected_vmid_collision"
+          ]
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "rc": { "type": "integer" },
+        "event_cursor_tip": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["id", "scope", "state"],
+      "additionalProperties": false
+    },
+
+    "DeploymentRecord": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "codename": { "type": "string" },
+        "scenario_label": { "type": "string" },
+        "project_id": { "type": "string" },
+        "target_host_id": { "type": "string" },
+        "catalog_sha": { "type": "string" },
+        "project_sha": { "type": "string" },
+        "effective_doc_hash": { "type": "string" },
+        "team_count": { "type": "integer", "minimum": 1 },
+        "state": {
+          "enum": [
+            "pending", "preflight_running", "preflight_review",
+            "deploying", "succeeded", "partial", "failed", "cancelled", "unknown"
+          ]
+        },
+        "current_attempt_id": { "type": "string" },
+        "workspace_path": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "attempts": { "type": "array", "items": { "$ref": "#/$defs/Attempt" } }
+      },
+      "required": ["id", "codename", "project_id", "target_host_id", "team_count", "state", "workspace_path"],
+      "additionalProperties": false
+    },
+
+    "EventLogEntry": {
+      "type": "object",
+      "properties": {
+        "event_seq": { "type": "integer", "minimum": 0 },
+        "attempt_id": { "type": "string" },
+        "deployment_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "deployer_ts": { "type": "string", "format": "date-time" },
+        "proxmox_ts": { "type": "string", "format": "date-time" },
+        "stage": { "type": "string" },
+        "substate": { "type": "string" },
+        "team_id": { "type": "integer", "minimum": 0 },
+        "node_id": { "type": "string" },
+        "event_type": {
+          "enum": [
+            "state_transition", "phase_transition",
+            "task_start", "task_end", "host_unreachable",
+            "log_line", "redaction", "heartbeat",
+            "attempt_start", "attempt_end", "proxmox_task", "preflight_check"
+          ]
+        },
+        "payload": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["event_seq", "attempt_id", "ts", "event_type"],
+      "additionalProperties": false
+    },
+
+    "PreflightCheck": {
+      "type": "object",
+      "properties": {
+        "check": { "type": "string" },
+        "result": { "enum": ["pass", "warn", "block"] },
+        "detail": { "type": "string" },
+        "field_path": { "type": "string" }
+      },
+      "required": ["check", "result"],
+      "additionalProperties": false
+    },
+
+    "PreflightRecord": {
+      "type": "object",
+      "properties": {
+        "deployment_id": { "type": "string" },
+        "attempt_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/PreflightCheck" } },
+        "result": { "enum": ["pass", "warn", "block"] }
+      },
+      "required": ["deployment_id", "attempt_id", "ts", "checks", "result"],
+      "additionalProperties": false
+    },
+
+    "ProxmoxHostHealth": {
+      "type": "object",
+      "properties": {
+        "status": { "enum": ["ok", "degraded", "unreachable"] },
+        "rtt_ms": { "type": "integer", "minimum": 0 },
+        "sdn_available": { "type": "boolean" },
+        "at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["status", "at"],
+      "additionalProperties": false
+    },
+
+    "ProxmoxHost": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "api_url": { "type": "string", "format": "uri" },
+        "node_name": { "type": "string" },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "kind": { "enum": ["api_token"] },
+            "token_id_ref": { "type": "string" }
+          },
+          "required": ["kind", "token_id_ref"],
+          "additionalProperties": false
+        },
+        "token_scope": { "type": "string" },
+        "default_bridge": { "type": "string" },
+        "protected_vmids_override": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 },
+            "minItems": 2, "maxItems": 2
+          }
+        },
+        "added_at": { "type": "string", "format": "date-time" },
+        "last_health_check": { "$ref": "#/$defs/ProxmoxHostHealth" }
+      },
+      "required": ["id", "name", "api_url", "node_name", "auth"],
+      "additionalProperties": false
+    }
+  }
+}
