@@ -12,8 +12,12 @@ import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
 import { useTagSync } from '@/composables/useTagSync'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n({ useScope: 'global' })
+const { confirm } = useConfirmDialog()
+const { showToast } = useToast()
 
 const props = defineProps(['node'])
 const emit = defineEmits(['close', 'update', 'delete'])
@@ -267,16 +271,23 @@ async function handleVmAction(action) {
         await proxmoxApi.vm.start(request)
         break
       case 'force-stop': await proxmoxApi.vm.stopForce(request); break
-      case 'delete':
-        if (!confirm(`Delete VM ${config.value.name} (VMID ${vmId}) from Proxmox? This is permanent.`)) return
+      case 'delete': {
+        const ok = await confirm({
+          title: 'Delete VM',
+          message: `Delete VM ${config.value.name} (VMID ${vmId}) from Proxmox? This is permanent.`,
+          confirmText: 'Delete',
+          confirmClass: 'btn-error',
+        })
+        if (!ok) return
         await proxmoxApi.vm.delete(request)
         emit('delete', props.node.id)
         return
+      }
     }
     // Refresh status
     proxmoxCache.invalidate()
   } catch (e) {
-    alert(`Action failed: ${e.message || e}`)
+    showToast(`Action failed: ${e.message || e}`, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -292,8 +303,14 @@ const handleSave = () => {
   emit('close')
 }
 
-const handleDelete = () => {
-  if (confirm(`Are you sure you want to delete "${config.value.name || props.node.type}"?`)) {
+const handleDelete = async () => {
+  const ok = await confirm({
+    title: 'Delete Node',
+    message: `Are you sure you want to delete "${config.value.name || props.node.type}"?`,
+    confirmText: 'Delete',
+    confirmClass: 'btn-error',
+  })
+  if (ok) {
     emit('delete', props.node.id)
     emit('close')
   }

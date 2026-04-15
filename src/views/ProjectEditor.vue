@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed, provide } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -23,6 +23,7 @@ import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
 import DeploymentPanel from '../components/DeploymentPanel.vue'
 import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
+import TemplateBrowser from '../components/TemplateBrowser.vue'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -33,6 +34,7 @@ import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
+import { useToast } from '../composables/useToast'
 import { useProjectStore } from '../stores/projectStore'
 
 
@@ -71,6 +73,7 @@ const {
 
 const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData } = useVueFlow()
 
+const { showToast } = useToast()
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
@@ -104,15 +107,12 @@ const wsStatus = useWebSocketStatus()
 
 // Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
 watch(() => wsStatus.vmStatuses.value, (statuses) => {
-  if (!statuses || statuses.size === 0) { console.log('[ws-sync] No statuses'); return }
+  if (!statuses || statuses.size === 0) return
   const allNodes = flowGetNodes?.value || nodes.value || []
-  console.log('[ws-sync] Statuses:', statuses.size, 'Canvas nodes:', allNodes.length)
-  let matched = 0
+
   for (const node of allNodes) {
     const vmId = Number(node.data?.vmId)
-    if (!vmId) { continue }
-    if (!statuses.has(vmId)) { console.log('[ws-sync] No match for vmId:', vmId, 'node.data.vmId:', node.data?.vmId, typeof node.data?.vmId); continue }
-    matched++
+    if (!vmId || !statuses.has(vmId)) continue
 
     const vm = statuses.get(vmId)
     const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
@@ -151,11 +151,9 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
     }
 
     if (needsUpdate) {
-      console.log('[ws-sync] Updating node', node.id, 'vmId:', vmId, 'data:', JSON.stringify(dataUpdate).slice(0, 200))
       updateNodeData(node.id, dataUpdate)
     }
   }
-  if (matched === 0) console.log('[ws-sync] No canvas nodes matched any WS vmIds. Node vmIds:', allNodes.map(n => ({ id: n.id, type: n.type, vmId: n.data?.vmId })).filter(n => n.vmId))
 }, { deep: true })
 
 ////
@@ -238,7 +236,15 @@ const manualSave = () => {
   })
 }
 
+let layoutAnimationId = null
+
 function handleAutoLayout() {
+  // Cancel any in-flight animation before starting a new one
+  if (layoutAnimationId !== null) {
+    cancelAnimationFrame(layoutAnimationId)
+    layoutAnimationId = null
+  }
+
   const currentNodes = liveNodes.value
   const currentEdges = liveEdges.value
   if (currentNodes.length === 0) return
@@ -266,11 +272,22 @@ function handleAutoLayout() {
       }
     }
 
-    if (t < 1) requestAnimationFrame(animate)
+    if (t < 1) {
+      layoutAnimationId = requestAnimationFrame(animate)
+    } else {
+      layoutAnimationId = null
+    }
   }
 
-  requestAnimationFrame(animate)
+  layoutAnimationId = requestAnimationFrame(animate)
 }
+
+onUnmounted(() => {
+  if (layoutAnimationId !== null) {
+    cancelAnimationFrame(layoutAnimationId)
+    layoutAnimationId = null
+  }
+})
 
 const handleNodeClick = (event) => {
   onNodeClick(event)
@@ -351,7 +368,7 @@ const handleOpenDeploy = () => {
   // Ensure API is configured
   importApiConfig.configure()
   if (!importApiConfig.isReady.value) {
-    alert('Please configure Backend API settings first (click Settings → Proxmox Settings)')
+    showToast('Please configure Backend API settings first', 'warning')
     showProxmoxSettings.value = true
     return
   }
@@ -386,11 +403,16 @@ const handleReconcileProceed = (toDelete, toImport) => {
     vfAddNodes(JSON.parse(JSON.stringify(importNodes)))
   }
 
-  // TODO: Add delete steps for toDelete VMs to the deployment plan
+  // Warn about VMs marked for deletion (not yet automated)
+  if (toDelete && toDelete.length > 0) {
+    const vmNames = toDelete.map(vm => `${vm.name} (${vm.vmid})`).join(', ')
+    showToast(`${toDelete.length} VM(s) marked for deletion must be removed manually: ${vmNames}`, 'warning', 8000)
+  }
 
-  // defaultStorage is a global preference, not per-project connection config
+  // Global preferences (not per-project connection config)
   const storedSettings = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
   const defaultStorage = storedSettings.defaultStorage || 'local-zfs'
+  const startVmId = parseInt(storedSettings.startVmId, 10) || 2000
 
   // Now prepare and run deployment
   const result = deployment.deploy(
@@ -398,20 +420,22 @@ const handleReconcileProceed = (toDelete, toImport) => {
     liveEdges.value,
     {
       projectName: currentProject.value?.name,
-      startVmId: 2000,
+      startVmId,
       defaultStorage,
     }
   )
 
   if (result.needsConfiguration) {
-    alert('Please configure Backend API settings first (click Settings → Proxmox Settings)')
+    showToast('Please configure Backend API settings first', 'warning')
     showProxmoxSettings.value = true
     return
   }
 
   if (!result.success) {
     validationErrors.value = result.errors
-    alert(`Validation failed:\n${result.errors.map(e => `- ${e.message}`).join('\n')}`)
+    const errorSummary = result.errors.slice(0, 3).map(e => e.message).join('; ')
+    const suffix = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : ''
+    showToast(`Validation failed: ${errorSummary}${suffix}`, 'error', 6000)
     return
   }
 
@@ -422,11 +446,11 @@ const handleOpenValidate = () => {
   const result = deployment.validateTopology(liveNodes.value, liveEdges.value)
   
   if (result.valid) {
-    alert('Topology is valid! No errors found.')
+    showToast('Topology is valid! No errors found.', 'success')
   } else {
-    const errorList = result.errors.map(e => `[Error] ${e.message}`).join('\n')
-    const warningList = result.warnings.map(w => `[Warning] ${w.message}`).join('\n')
-    alert(`Validation Results:\n\n${errorList}\n\n${warningList || 'No warnings'}`)
+    const errorSummary = result.errors.slice(0, 3).map(e => e.message).join('; ')
+    const suffix = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : ''
+    showToast(`Validation: ${errorSummary}${suffix}`, 'error', 6000)
   }
 }
 
@@ -481,6 +505,7 @@ const handleInfrastructureImport = (result) => {
 </script>
 
 <template>
+  <div>
   <div class="h-screen bg-base-100 flex" v-if="currentProject">
     <!-- Sidebar -->
     <Sidebar 
@@ -753,8 +778,15 @@ const handleInfrastructureImport = (result) => {
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
 
-  <!-- Import modal — teleported to body so it's not constrained by the flex layout -->
+  <!-- Modals teleported to body so they're not constrained by the flex layout -->
   <Teleport to="body">
+    <TemplateBrowser
+      v-if="showTemplateBrowser"
+      :api-url="importApiConfig.apiUrl.value"
+      :proxmox-node="importApiConfig.node.value"
+      @close="showTemplateBrowser = false"
+    />
+
     <InfrastructureImportModal
       v-if="showImportModal"
       :api-url="importApiConfig.apiUrl.value"
@@ -771,4 +803,5 @@ const handleInfrastructureImport = (result) => {
       @cancel="showReconcileModal = false"
     />
   </Teleport>
+  </div>
 </template>
