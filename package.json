@@ -13,7 +13,8 @@
     "test:unit": "vitest",
     "lint": "eslint . --fix",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "bundle-schema": "bash tools/bundle-refs.sh"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
@@ -31,6 +32,7 @@
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
+    "@apidevtools/json-schema-ref-parser": "^11.9.3",
     "@eslint/js": "^9.31.0",
     "@playwright/test": "^1.47.2",
     "@vitejs/plugin-vue": "^6.0.1",
