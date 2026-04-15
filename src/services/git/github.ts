@@ -13,6 +13,7 @@ import type {
   GitBranch,
   GitPullRequest,
 } from './types'
+import { encodeContentBase64, decodeContentBase64 } from './encoding'
 import {
   GitProviderError,
   GitAuthError,
@@ -257,9 +258,9 @@ export class GitHubProvider implements GitProvider {
       encoding: string
     }>(`/repos/${owner}/${repo}/contents/${path}?ref=${ref}`)
     
-    // GitHub returns base64 encoded content
+    // GitHub returns base64-encoded content; decode as UTF-8.
     if (data.encoding === 'base64') {
-      return atob(data.content.replace(/\n/g, ''))
+      return decodeContentBase64(data.content)
     }
     
     return data.content
@@ -333,7 +334,7 @@ export class GitHubProvider implements GitProvider {
       method: 'PUT',
       body: JSON.stringify({
         message,
-        content: btoa(content),  // Base64 encode
+        content: encodeContentBase64(content),  // UTF-8-safe base64 encode
         branch,
         sha,
       }),
