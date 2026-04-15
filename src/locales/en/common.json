@@ -4,6 +4,8 @@
   "save": "Save",
   "back": "Back",
   "export": "Export",
-  "settings": "Settings"
+  "settings": "Settings",
+  "close": "Close",
+  "add": "Add",
+  "remove": "Remove"
 }
-
