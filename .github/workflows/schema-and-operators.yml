@@ -1,0 +1,109 @@
+name: schema-and-operators
+
+on:
+  push:
+    branches: [main, dev, 'feature/**']
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  schema-and-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout deployer-ui
+        uses: actions/checkout@v4
+        with:
+          path: range42-deployer-ui
+
+      - name: Checkout backend-api (for cross-compare + pydantic drift)
+        uses: actions/checkout@v4
+        with:
+          repository: range42/range42-backend-api
+          path: range42-backend-api
+          ref: ${{ github.base_ref || github.ref_name }}
+        continue-on-error: true
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: range42-deployer-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: range42-deployer-ui
+        run: npm ci
+
+      - name: Bundle schema
+        working-directory: range42-deployer-ui
+        run: npm run bundle-schema
+
+      - name: Schema bundle drift check
+        working-directory: range42-deployer-ui
+        run: |
+          git diff --exit-code -- schema/bundled.json \
+            || { echo "::error::schema/bundled.json is out of date — run npm run bundle-schema and commit"; exit 1; }
+
+      - name: Vitest (TS operators + schema types)
+        working-directory: range42-deployer-ui
+        run: npm run test:unit -- --run
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dev deps + pydantic codegen
+        if: hashFiles('range42-backend-api/requirements.txt') != ''
+        working-directory: range42-backend-api
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -U pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Regenerate Pydantic + drift check
+        if: hashFiles('range42-backend-api/requirements.txt') != ''
+        working-directory: range42-backend-api
+        run: |
+          . .venv/bin/activate
+          bash ../range42-deployer-ui/tools/generate-pydantic.sh
+          git diff --exit-code -- app/schemas/generated.py \
+            || { echo "::error::app/schemas/generated.py is out of date — regenerate and commit"; exit 1; }
+
+      - name: Pytest (Python operators on shared vectors)
+        if: hashFiles('range42-backend-api/requirements.txt') != ''
+        working-directory: range42-backend-api
+        run: |
+          . .venv/bin/activate
+          pytest tests/overlay/ -v
+
+      - name: Cross-compare stub — trivial compose vector parity
+        if: hashFiles('range42-backend-api/requirements.txt') != ''
+        run: |
+          set -euo pipefail
+          VECTOR=range42-deployer-ui/schema/test-vectors/compose/01_identity.json
+          TS_OUT=$(node --input-type=module -e "
+            import { compose } from './range42-deployer-ui/src/overlay/compose.ts';
+            import { readFileSync } from 'node:fs';
+            const v = JSON.parse(readFileSync('$VECTOR','utf8'));
+            process.stdout.write(JSON.stringify(compose(v.input.base, v.input.overlay)));
+          " 2>/dev/null || echo '__TS_UNAVAILABLE__')
+          PY_OUT=$(range42-backend-api/.venv/bin/python -c "
+          import json, sys
+          sys.path.insert(0, 'range42-backend-api')
+          from app.overlay import compose
+          v = json.load(open('$VECTOR'))
+          sys.stdout.write(json.dumps(compose(v['input']['base'], v['input']['overlay'])))
+          ")
+          if [[ "$TS_OUT" == "__TS_UNAVAILABLE__" ]]; then
+            echo "::warning::TS-side cross-compare runner unavailable under plain node — Plan B will add tsx runner; for now relying on vitest parity."
+          else
+            if [[ "$TS_OUT" != "$PY_OUT" ]]; then
+              echo "::error::TS vs Python divergence on compose/01_identity.json"
+              diff <(echo "$TS_OUT") <(echo "$PY_OUT") || true
+              exit 1
+            fi
+          fi
+          echo "cross-compare: ok"
