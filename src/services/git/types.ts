@@ -289,3 +289,62 @@ export class GitRateLimitError extends GitProviderError {
     this.name = 'GitRateLimitError'
   }
 }
+
+// =============================================================================
+// GitProviderV1 — Spec §4 refined interface
+// =============================================================================
+//
+// This is the simpler v1 interface used by the ProjectRepoAdapter and the
+// GitLab/Gitea adapters (C1.8, C1.9). The legacy GitProvider above remains
+// in place for the GitHub adapter and the inventory store — the adapter
+// factory in `./index.ts` bridges the two worlds during migration.
+//
+
+export type GitProviderV1Kind = 'github' | 'gitlab' | 'gitea' | 'generic'
+
+export interface RepoRef {
+  owner: string
+  repo: string
+  default_branch: string
+}
+
+export interface GitProviderV1 {
+  id: GitProviderV1Kind
+  listRepos(opts: { owner?: string }): Promise<RepoRef[]>
+  getFile(opts: {
+    owner: string
+    repo: string
+    path: string
+    ref?: string
+  }): Promise<{ content: string; sha: string }>
+  putFile(opts: {
+    owner: string
+    repo: string
+    path: string
+    content: string
+    sha?: string
+    message: string
+    branch?: string
+  }): Promise<{ sha: string }>
+  createBranch(opts: {
+    owner: string
+    repo: string
+    from: string
+    name: string
+  }): Promise<void>
+  createPullRequest(opts: {
+    owner: string
+    repo: string
+    from: string
+    to: string
+    title: string
+    body?: string
+  }): Promise<{ url: string; number: number }>
+  listTree(opts: {
+    owner: string
+    repo: string
+    ref?: string
+    path?: string
+  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>>
+  health(): Promise<{ ok: boolean; rtt_ms: number }>
+}
