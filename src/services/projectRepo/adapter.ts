@@ -54,6 +54,28 @@ function lockPath(projectPath: string): string {
   return `${projectPath.replace(/\/+$/, '')}/.lock`
 }
 
+interface SharedWorkerLike {
+  port: { postMessage(data: unknown): void }
+}
+
+let _worker: SharedWorkerLike | null = null
+function heartbeatWorker(): SharedWorkerLike | null {
+  if (_worker) return _worker
+  if (typeof SharedWorker === 'undefined') return null
+  try {
+    // Vite will resolve the `*.worker.ts` path with `{ worker: { format: 'es' } }`.
+    const w = new SharedWorker(
+      new URL('./heartbeat.worker.ts', import.meta.url),
+      { type: 'module', name: 'range42-heartbeat' },
+    )
+    w.port.start()
+    _worker = { port: w.port }
+    return _worker
+  } catch {
+    return null
+  }
+}
+
 class RepoAdapter implements ProjectRepoAdapter {
   private provider: GitProviderV1
   private owner: string
@@ -64,6 +86,7 @@ class RepoAdapter implements ProjectRepoAdapter {
   private browserInstanceId: string
   private orphanCbs: Array<(draftId: string) => void> = []
   private shaCache = new Map<string, string>()
+  private heartbeatStarted = false
 
   constructor(opts: AdapterConstructorOpts) {
     this.provider = opts.provider
@@ -177,7 +200,22 @@ class RepoAdapter implements ProjectRepoAdapter {
       heartbeat_at: nowIso(),
     }
     await this.writeLock(info)
+    this.startHeartbeatWorker(projectId)
     return info
+  }
+
+  private startHeartbeatWorker(projectId: string): void {
+    if (this.heartbeatStarted) return
+    const w = heartbeatWorker()
+    if (!w) return
+    // Endpoint: front-end calls the provider's putFile; the SharedWorker
+    // talks to the backend `/v1/projects/:id/heartbeat` shim (spec §4).
+    w.port.postMessage({
+      cmd: 'start',
+      projectId,
+      endpoint: `/v1/projects/${encodeURIComponent(projectId)}/heartbeat`,
+    })
+    this.heartbeatStarted = true
   }
 
   async heartbeat(projectId: string): Promise<void> {
