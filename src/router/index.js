@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Dashboard from '../views/Dashboard.vue'
+import Home from '../views/Home.vue'
 import ProjectEditor from '../views/ProjectEditor.vue'
 import Settings from '../views/Settings.vue'
 import CatalogList from '../views/CatalogList.vue'
@@ -12,7 +12,7 @@ import Sources from '../views/Sources.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    { path: '/', name: 'dashboard', component: Dashboard, meta: { title: 'Dashboard' } },
+    { path: '/', name: 'home', component: Home, meta: { title: 'Home' } },
     { path: '/catalog', name: 'catalog', component: CatalogList, meta: { title: 'Catalog' } },
     {
       path: '/catalog/:source/:entry',

@@ -1,0 +1,21 @@
+{
+  "welcome": "Bienvenue sur Range42",
+  "welcome_sub": "Quelques étapes pour commencer à construire vos scénarios de cyber range.",
+  "checklist": {
+    "done": "Terminé",
+    "pending": "En attente",
+    "go": "Aller",
+    "add_source": {
+      "title": "Ajouter une source Git",
+      "desc": "Enregistrez une instance GitHub, GitLab ou Gitea pour que Range42 charge les entrées de catalogue."
+    },
+    "add_proxmox": {
+      "title": "Ajouter un hôte Proxmox",
+      "desc": "Pointez Range42 vers un endpoint API Proxmox pour pouvoir déployer vos scénarios."
+    },
+    "browse_catalog": {
+      "title": "Parcourir le catalogue",
+      "desc": "Choisissez un scénario, un composant ou un lab pour démarrer un projet."
+    }
+  }
+}
