@@ -1,8 +1,22 @@
 <script setup>
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { computed } from 'vue';
+import { useHotkeys } from '@/composables/useHotkeys';
 
 const route = useRoute();
+const router = useRouter();
+
+// Rail shortcuts per spec §5. `n` routes to the Projects dashboard where the
+// user clicks "New project" — creating a draft requires picking a source +
+// strategy and therefore can't be a fire-and-forget hotkey.
+useHotkeys([
+  { key: 'v', handler: () => router.push('/catalog') },
+  { key: 'c', handler: () => router.push('/catalog') },
+  { key: 'n', handler: () => router.push('/') },
+  { key: 'r', handler: () => router.push('/deployments') },
+  { key: 'f', handler: () => router.push('/sources') },
+  { key: 'g', handler: () => router.push('/settings') },
+]);
 
 // Auto-collapse rail on /project/:id and /deployments/:id (spec §5)
 const collapsed = computed(() => {
