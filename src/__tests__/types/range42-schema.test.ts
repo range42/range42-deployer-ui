@@ -15,6 +15,25 @@ import type {
   SchemaVersion,
 } from '@/types/range42-schema';
 
+// Compile-time barrel assertion: referencing each imported type here ensures
+// it remains exported from '@/types/range42-schema'. The tuple is never
+// instantiated at runtime — it exists purely to pin the public type surface.
+type _BarrelCheck = [
+  Attachment, AttachmentSource, AnsiblePrimitive, AttachmentScope,
+  Replication, ReplicationScope, NetworkAttachment,
+  Node, NodeKind, Execution,
+  EnvVar, Flag,
+  CatalogEntry, CatalogKind,
+  ProjectOverlay, NodePatch,
+  Attempt, AttemptState, AttemptSubReason,
+  DeploymentRecord, DeploymentState,
+  EventLogEntry, EventType,
+  PreflightCheck, PreflightRecord, PreflightResult,
+  ProxmoxHost, ProxmoxHostAuth, ProxmoxHostHealth,
+  Range42Document,
+  SchemaVersion,
+];
+
 describe('range42-schema types', () => {
   it('CatalogEntry — lab minimal fixture from spec §21.1', () => {
     const e: CatalogEntry = {
