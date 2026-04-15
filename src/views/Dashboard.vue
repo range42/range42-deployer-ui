@@ -253,8 +253,10 @@ const formatDate = (date) => {
         <!-- Grid View -->
         <div v-if="viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           <!-- Create New Card -->
-          <div
-            class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px]"
+          <button
+            type="button"
+            class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px] bg-transparent w-full"
+            aria-label="New project"
             @click="showCreateModal = true"
           >
             <div class="w-14 h-14 rounded-2xl bg-base-200 group-hover:bg-primary/20 flex items-center justify-center mb-4 transition-colors">
@@ -264,14 +266,19 @@ const formatDate = (date) => {
             </div>
             <h4 class="font-semibold mb-1">New Project</h4>
             <p class="text-sm text-base-content/50">Start from scratch</p>
-          </div>
+          </button>
 
           <!-- Project Cards -->
           <div
             v-for="project in filteredProjects"
             :key="project.id"
             class="card bg-base-100 border border-base-300 card-hover cursor-pointer group"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open project ${project.name}`"
             @click="openProject(project.id)"
+            @keydown.enter.prevent="openProject(project.id)"
+            @keydown.space.prevent="openProject(project.id)"
           >
             <div class="card-body p-5">
               <!-- Header -->
@@ -355,7 +362,12 @@ const formatDate = (date) => {
             v-for="project in filteredProjects"
             :key="project.id"
             class="flex items-center gap-4 p-4 rounded-xl border border-base-300 hover:border-primary/30 hover:bg-base-200/50 cursor-pointer transition-all group"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open project ${project.name}`"
             @click="openProject(project.id)"
+            @keydown.enter.prevent="openProject(project.id)"
+            @keydown.space.prevent="openProject(project.id)"
           >
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <AppIcon name="ruler" class="w-5 h-5" />
