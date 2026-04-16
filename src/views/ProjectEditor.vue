@@ -44,7 +44,7 @@ import { useNetworkZones } from '../composables/useNetworkZones'
 import { useCanvasLiveStatus } from '../composables/useCanvasLiveStatus'
 import { useDeploymentStore } from '../stores/deploymentStore.ts'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
-import { useInfraBuilder, computeDockerTetherEdges } from '../composables/useInfraBuilder'
+import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
@@ -536,6 +536,70 @@ const closeConfigPanel = () => {
   selectedNode.value = null
 }
 
+/**
+ * Keyboard navigation on the canvas (Plan C §C5.3):
+ *  - Arrow keys move selection to the nearest node in that cardinal direction.
+ *  - Enter opens the ConfigPanel for the currently-selected node.
+ *  - Tab is intentionally NOT consumed so native handle-focus cycling still
+ *    works inside VueFlow.
+ * The handler only reacts when the canvas wrapper (or one of its children
+ * that isn't an editable control) is the active element — preventing
+ * interference with mouse interactions and form inputs.
+ */
+// Mobile sidebar drawer state (Plan C §C5.3 — a11y wiring for <lg screens).
+// Focus management: when the drawer opens we move focus inside it; Escape
+// closes. aria-expanded on the toggle reflects open state.
+const mobileSidebarOpen = ref(false)
+const mobileSidebarRef = ref(null)
+function toggleMobileSidebar() {
+  mobileSidebarOpen.value = !mobileSidebarOpen.value
+  if (mobileSidebarOpen.value) {
+    // Focus the drawer container so Tab cycles inside and Escape is captured
+    setTimeout(() => mobileSidebarRef.value?.focus?.(), 0)
+  }
+}
+function closeMobileSidebar() {
+  mobileSidebarOpen.value = false
+}
+function handleMobileSidebarKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMobileSidebar()
+  }
+}
+
+const ARROW_DIRS = {
+  ArrowRight: 'right',
+  ArrowLeft: 'left',
+  ArrowDown: 'down',
+  ArrowUp: 'up',
+}
+
+const handleCanvasKeydown = (event) => {
+  const target = event.target
+  if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable)) {
+    return
+  }
+
+  if (event.key === 'Enter') {
+    if (selectedNode.value) {
+      showConfigPanel.value = true
+      event.preventDefault()
+    }
+    return
+  }
+
+  const dir = ARROW_DIRS[event.key]
+  if (!dir) return
+
+  const allNodes = flowGetNodes.value || nodes.value || []
+  const next = nextKeyboardSelection(allNodes, selectedNode.value?.id || null, dir)
+  if (next) {
+    selectedNode.value = next
+    event.preventDefault()
+  }
+}
+
 // Edge handlers for network connection configuration
 const handleEdgeClick = (event) => {
   onEdgeClick(event)
@@ -883,9 +947,9 @@ const handleInfrastructureImport = (result) => {
 <template>
   <div>
   <div class="h-screen bg-base-100 flex" v-if="currentProject">
-    <!-- Sidebar -->
-    <Sidebar 
-      :project="currentProject" 
+    <!-- Sidebar (desktop ≥lg) -->
+    <Sidebar
+      :project="currentProject"
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
@@ -895,17 +959,55 @@ const handleInfrastructureImport = (result) => {
       class="hidden lg:flex shrink-0"
     />
 
+    <!-- Mobile drawer (<lg). Focus moves into the drawer on open; Escape closes. -->
+    <div
+      v-if="mobileSidebarOpen"
+      id="mobile-drawer"
+      class="fixed inset-0 z-50 lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Navigation drawer"
+      data-testid="mobile-drawer"
+      @keydown="handleMobileSidebarKeydown"
+    >
+      <div class="absolute inset-0 bg-black/50" @click="closeMobileSidebar" />
+      <div
+        ref="mobileSidebarRef"
+        tabindex="-1"
+        class="absolute left-0 top-0 h-full w-72 bg-base-100 shadow-xl flex focus:outline-none"
+      >
+        <Sidebar
+          :project="currentProject"
+          class="w-full"
+          @openExport="showExportModal = true; closeMobileSidebar()"
+          @openDeploy="(p) => { handleOpenDeploy(p); closeMobileSidebar() }"
+          @openValidate="handleOpenValidate(); closeMobileSidebar()"
+          @openInventory="router.push('/catalog'); closeMobileSidebar()"
+          @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
+          @openImport="handleOpenImport(); closeMobileSidebar()"
+        />
+      </div>
+    </div>
+
     <!-- Main Content -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Top Bar -->
       <header class="h-14 px-4 flex items-center justify-between border-b border-base-300 bg-base-100 shrink-0">
         <div class="flex items-center gap-3">
           <!-- Mobile menu toggle -->
-          <label for="mobile-drawer" class="btn btn-ghost btn-sm btn-square lg:hidden">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm btn-square lg:hidden"
+            :aria-expanded="mobileSidebarOpen ? 'true' : 'false'"
+            aria-controls="mobile-drawer"
+            aria-label="Toggle navigation"
+            data-testid="mobile-drawer-toggle"
+            @click="toggleMobileSidebar"
+          >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
             </svg>
-          </label>
+          </button>
           
           <!-- Back button -->
           <button class="btn btn-ghost btn-sm gap-2" @click="goBack">
@@ -1008,11 +1110,16 @@ const handleInfrastructureImport = (result) => {
       <!-- VueFlow Canvas (v-show keeps state across tab switches) -->
       <div
         v-show="tab === 'canvas'"
-        class="flex-1 relative transition-colors duration-200"
+        class="flex-1 relative transition-colors duration-200 focus:outline-none"
         :class="{ 'bg-primary/5 ring-2 ring-primary/20 ring-inset': isDragOver }"
+        tabindex="0"
+        role="application"
+        aria-label="Infrastructure canvas"
+        data-testid="canvas-wrapper"
         @drop="handleDrop"
         @dragover="handleDragOver"
         @dragleave="handleDragLeave"
+        @keydown="handleCanvasKeydown"
       >
         <VueFlow
           :nodes="nodes"

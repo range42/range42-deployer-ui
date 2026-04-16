@@ -205,6 +205,65 @@ export function findNearestDockerHost(allNodes, position) {
   return best
 }
 
+/**
+ * Find the nearest node in a given cardinal direction from `fromId` using
+ * position-based distance (canvas-layout). Pure — safe to unit-test.
+ *
+ * Plan C §C5.3: arrow keys navigate between nodes; Enter opens the config
+ * panel; Tab cycles through handles (handled at the VueFlow layer via
+ * tabindex on handles — not in this helper).
+ *
+ * The "direction filter" uses the dominant axis: a candidate counts as
+ * `right` if it is strictly to the right AND its horizontal displacement
+ * dominates its vertical displacement. This matches how users perceive
+ * arrow navigation on 2D canvases.
+ */
+export function findNearestNodeInDirection(allNodes, fromId, direction) {
+  const list = Array.isArray(allNodes) ? allNodes : []
+  const from = list.find((n) => n.id === fromId)
+  if (!from || !from.position) return null
+  const fx = from.position.x
+  const fy = from.position.y
+
+  let best = null
+  let bestDist = Infinity
+
+  for (const n of list) {
+    if (n.id === fromId || !n.position) continue
+    const dx = n.position.x - fx
+    const dy = n.position.y - fy
+
+    let inDirection = false
+    if (direction === 'right') inDirection = dx > 0 && Math.abs(dx) > Math.abs(dy)
+    else if (direction === 'left') inDirection = dx < 0 && Math.abs(dx) > Math.abs(dy)
+    else if (direction === 'down') inDirection = dy > 0 && Math.abs(dy) >= Math.abs(dx)
+    else if (direction === 'up') inDirection = dy < 0 && Math.abs(dy) >= Math.abs(dx)
+
+    if (!inDirection) continue
+
+    const dist = Math.hypot(dx, dy)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = n
+    }
+  }
+  return best
+}
+
+/**
+ * Compute the next keyboard selection given current selection id + direction.
+ * - With no current selection, returns the first node.
+ * - With a current selection but no neighbour in direction, returns the
+ *   current selection unchanged (so the UI noops rather than losing focus).
+ */
+export function nextKeyboardSelection(allNodes, currentId, direction) {
+  const list = Array.isArray(allNodes) ? allNodes : []
+  if (list.length === 0) return null
+  if (!currentId || !list.some((n) => n.id === currentId)) return list[0]
+  const found = findNearestNodeInDirection(list, currentId, direction)
+  return found || list.find((n) => n.id === currentId) || list[0]
+}
+
 export function useInfraBuilder() {
   const { updateNodeData, getNodes } = useVueFlow()
 
