@@ -26,6 +26,7 @@ import FileTree from './FileTree.vue'
 import TwoPaneEditor from './TwoPaneEditor.vue'
 import AttachmentManager from './AttachmentManager.vue'
 import { readForkHeaderSha } from './fileTree'
+import { parseYamlDoc, hasAnchorsOrAliases } from '@/services/yaml'
 
 const props = defineProps({
   overlayFs: { type: Object, required: true },
@@ -129,8 +130,19 @@ const driftInfo = computed(() => {
   return { upstreamSha: baseSha.value }
 })
 
-// YAML anchor warning lands in C3.8 (see `@/services/yaml`).
-const yamlWarning = ref(null)
+// YAML anchor warning (C3.8). `hasAnchorsOrAliases` is synchronous, so the
+// warning renders on the same tick as the parse.
+const yamlWarning = computed(() => {
+  const p = (selectedPath.value || '').toLowerCase()
+  if (!(p.endsWith('.yaml') || p.endsWith('.yml'))) return null
+  if (!overlayContent.value) return null
+  try {
+    const doc = parseYamlDoc(overlayContent.value)
+    return hasAnchorsOrAliases(doc) ? { anchors: true } : null
+  } catch {
+    return null
+  }
+})
 </script>
 
 <template>
