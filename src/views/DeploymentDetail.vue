@@ -15,6 +15,8 @@ import { useDeploymentStore } from '@/stores/deploymentStore.ts'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
+import SnapshotCreateModal from '@/components/SnapshotCreateModal.vue'
+import RollbackModal from '@/components/RollbackModal.vue'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
@@ -106,6 +108,65 @@ function teamWithQueueStatus(team) {
   }
   return team
 }
+
+// Plan C §C4.10 — Snapshots + Rollback
+const showSnapshotModal = ref(false)
+const showRollbackModal = ref(false)
+const snapshotTeamId = ref(null)
+// Map teamId → snapshots[]; fetched lazily when the rollback modal opens.
+const teamSnapshots = ref({})
+
+function onOpenSnapshot(payload) {
+  snapshotTeamId.value = payload?.teamId || null
+  if (!snapshotTeamId.value) return
+  showSnapshotModal.value = true
+}
+
+async function fetchTeamSnapshots(id, teamId) {
+  try {
+    const url = `/v1/deployments/${encodeURIComponent(id)}/snapshots?team_id=${encodeURIComponent(teamId)}`
+    const res = await fetch(url, { credentials: 'same-origin' })
+    if (!res.ok) {
+      teamSnapshots.value = { ...teamSnapshots.value, [teamId]: [] }
+      return
+    }
+    const body = await res.json().catch(() => ({}))
+    const list = Array.isArray(body) ? body : (body?.snapshots || [])
+    teamSnapshots.value = { ...teamSnapshots.value, [teamId]: list }
+  } catch {
+    teamSnapshots.value = { ...teamSnapshots.value, [teamId]: [] }
+  }
+}
+
+async function onOpenRollback(payload) {
+  const id = payload?.teamId
+  if (!id) return
+  snapshotTeamId.value = id
+  await fetchTeamSnapshots(String(route.params.id), id)
+  showRollbackModal.value = true
+}
+
+function onSnapshotCreated() {
+  if (snapshotTeamId.value) {
+    // Force refresh next time the rollback modal opens.
+    const copy = { ...teamSnapshots.value }
+    delete copy[snapshotTeamId.value]
+    teamSnapshots.value = copy
+  }
+  showSnapshotModal.value = false
+}
+
+function onRolledBack(payload) {
+  showRollbackModal.value = false
+  if (payload?.partial) {
+    showToast(t('deployment.rollback.partial'), 'warning')
+  }
+}
+
+const rollbackSnapshots = computed(() => {
+  if (!snapshotTeamId.value) return []
+  return teamSnapshots.value[snapshotTeamId.value] || []
+})
 
 const activeTab = computed({
   get() {
@@ -268,6 +329,25 @@ onBeforeUnmount(() => {
       @queued="onResetQueued"
     />
 
+    <!-- Plan C §C4.10 — Snapshot + Rollback -->
+    <SnapshotCreateModal
+      v-if="showSnapshotModal && snapshotTeamId"
+      :visible="showSnapshotModal"
+      :deployment-id="String(route.params.id)"
+      :team-id="snapshotTeamId"
+      @close="showSnapshotModal = false"
+      @created="onSnapshotCreated"
+    />
+    <RollbackModal
+      v-if="showRollbackModal && snapshotTeamId"
+      :visible="showRollbackModal"
+      :deployment-id="String(route.params.id)"
+      :team-id="snapshotTeamId"
+      :snapshots="rollbackSnapshots"
+      @close="showRollbackModal = false"
+      @rolled-back="onRolledBack"
+    />
+
     <progress class="progress progress-primary w-full mb-4" :value="aggregateProgress" max="100"></progress>
 
     <!-- Tabs -->
@@ -351,6 +431,8 @@ onBeforeUnmount(() => {
           :team="teamWithQueueStatus(team)"
           @open-logs="onOpenTeamLogs"
           @reset="onOpenReset"
+          @snapshot="onOpenSnapshot"
+          @rollback="onOpenRollback"
         />
       </div>
     </section>
