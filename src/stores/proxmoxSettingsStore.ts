@@ -17,6 +17,7 @@ import { defineStore } from 'pinia'
 // =============================================================================
 
 const STORAGE_KEY = 'range42_proxmox_settings'
+const HOSTS_STORAGE_KEY = 'range42_proxmox_hosts'
 
 const DEFAULT_SETTINGS = {
   baseUrl: '',
@@ -40,6 +41,28 @@ export interface ProxmoxSettings {
   verifySSL: boolean
 }
 
+/**
+ * Plan C §18.4 / §C5.4 — `proxmox_host` record. Each entry is a
+ * registered Proxmox API endpoint with its own credentials and optional
+ * health snapshot from the last `/v1/proxmox/hosts/{id}/health` probe.
+ */
+export interface ProxmoxHost {
+  id: string
+  name: string
+  base_url: string
+  default_node: string
+  api_token_id?: string
+  api_token_secret?: string
+  verify_ssl: boolean
+  health?: {
+    status: 'ok' | 'degraded' | 'down' | 'unknown'
+    rtt_ms?: number
+    checked_at?: string
+    error?: string
+    aggregate_storage_gb?: number
+  }
+}
+
 // =============================================================================
 // Store
 // =============================================================================
@@ -58,8 +81,22 @@ export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
     return { ...DEFAULT_SETTINGS }
   }
 
+  const loadHosts = (): ProxmoxHost[] => {
+    try {
+      const stored = localStorage.getItem(HOSTS_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) return parsed as ProxmoxHost[]
+      }
+    } catch (e) {
+      console.warn('[ProxmoxSettings] Failed to load hosts:', e)
+    }
+    return []
+  }
+
   // State
   const settings = ref<ProxmoxSettings>(loadSettings())
+  const hosts = ref<ProxmoxHost[]>(loadHosts())
 
   // Computed getters for individual settings
   const baseUrl = computed(() => settings.value.baseUrl)
@@ -80,6 +117,14 @@ export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings))
     } catch (e) {
       console.warn('[ProxmoxSettings] Failed to save settings:', e)
+    }
+  }, { deep: true })
+
+  watch(hosts, (next) => {
+    try {
+      localStorage.setItem(HOSTS_STORAGE_KEY, JSON.stringify(next))
+    } catch (e) {
+      console.warn('[ProxmoxSettings] Failed to save hosts:', e)
     }
   }, { deep: true })
 
@@ -114,9 +159,51 @@ export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
     settings.value = { ...DEFAULT_SETTINGS }
   }
 
+  // -------------------------------------------------------------------------
+  // Proxmox hosts (Plan C §18.4) — multi-host registry for Settings page
+  // -------------------------------------------------------------------------
+
+  function addHost(host: Omit<ProxmoxHost, 'id'> & { id?: string }): ProxmoxHost {
+    if (!host.name || !host.base_url) {
+      throw new Error('Host requires name and base_url')
+    }
+    const id =
+      host.id ||
+      `pxh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    if (hosts.value.some((h) => h.id === id)) {
+      throw new Error(`Host with id ${id} already exists`)
+    }
+    const entry: ProxmoxHost = {
+      id,
+      name: host.name,
+      base_url: host.base_url,
+      default_node: host.default_node || 'pve',
+      api_token_id: host.api_token_id,
+      api_token_secret: host.api_token_secret,
+      verify_ssl: host.verify_ssl !== false,
+    }
+    hosts.value.push(entry)
+    return entry
+  }
+
+  function removeHost(id: string) {
+    const idx = hosts.value.findIndex((h) => h.id === id)
+    if (idx >= 0) hosts.value.splice(idx, 1)
+  }
+
+  function updateHostHealth(id: string, health: ProxmoxHost['health']) {
+    const h = hosts.value.find((h) => h.id === id)
+    if (h) h.health = health ? { ...health } : undefined
+  }
+
+  function getHost(id: string) {
+    return hosts.value.find((h) => h.id === id)
+  }
+
   return {
     // State
     settings,
+    hosts,
 
     // Computed
     baseUrl,
@@ -135,6 +222,10 @@ export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
     setApiToken,
     resetToDefaults,
     clearSettings,
+    addHost,
+    removeHost,
+    updateHostHealth,
+    getHost,
   }
 })
 

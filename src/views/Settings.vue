@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { useProxmoxSettingsStore } from '../stores/proxmoxSettingsStore.ts'
+import { useUserStore, validateDisplayName, validateColor } from '../stores/userStore.ts'
 import { getGitHubProvider } from '../services/git/github'
 import { useConfirmDialog } from '../composables/useConfirmDialog'
 import { useToast } from '../composables/useToast'
@@ -10,6 +12,8 @@ import { useToast } from '../composables/useToast'
 const router = useRouter()
 const projectStore = useProjectStore()
 const inventoryStore = useInventoryStore()
+const proxmoxStore = useProxmoxSettingsStore()
+const userStore = useUserStore()
 const { confirm } = useConfirmDialog()
 const { showToast } = useToast()
 
@@ -19,6 +23,133 @@ const settings = ref({
   gridSize: 20,
   snapToGrid: true
 })
+
+// ===========================================================================
+// User identity (Plan C §C5.4) — display_name + color for .lock + commits
+// ===========================================================================
+
+const userForm = ref({
+  display_name: userStore.settings.display_name || '',
+  color: userStore.settings.color || '#3b82f6',
+})
+const userNameError = ref('')
+const userColorError = ref('')
+const userSavedAt = ref('')
+
+function saveUserIdentity() {
+  userNameError.value = validateDisplayName(userForm.value.display_name) || ''
+  userColorError.value = validateColor(userForm.value.color) || ''
+  if (userNameError.value || userColorError.value) return
+  userStore.setDisplayName(userForm.value.display_name)
+  userStore.setColor(userForm.value.color)
+  userSavedAt.value = new Date().toLocaleTimeString()
+  showToast('User identity saved', 'success')
+}
+
+// ===========================================================================
+// Proxmox hosts (Plan C §C5.4 + §18.4)
+// ===========================================================================
+
+const proxmoxHosts = computed(() => proxmoxStore.hosts)
+const showAddHost = ref(false)
+const newHost = ref({
+  name: '',
+  base_url: '',
+  default_node: 'pve',
+  api_token_id: '',
+  api_token_secret: '',
+  verify_ssl: true,
+})
+const addHostError = ref('')
+const testingHostId = ref('')
+
+function openAddHost() {
+  showAddHost.value = true
+  addHostError.value = ''
+  newHost.value = {
+    name: '',
+    base_url: '',
+    default_node: 'pve',
+    api_token_id: '',
+    api_token_secret: '',
+    verify_ssl: true,
+  }
+}
+
+function submitAddHost() {
+  addHostError.value = ''
+  try {
+    proxmoxStore.addHost({ ...newHost.value })
+    showAddHost.value = false
+    showToast('Proxmox host added', 'success')
+  } catch (e) {
+    addHostError.value = e?.message || String(e)
+  }
+}
+
+async function removeHost(id) {
+  const ok = await confirm({
+    title: 'Remove Proxmox host',
+    message: 'Remove this Proxmox host from your settings?',
+    confirmText: 'Remove',
+    confirmClass: 'btn-error',
+  })
+  if (ok) proxmoxStore.removeHost(id)
+}
+
+async function testHost(id) {
+  const host = proxmoxStore.getHost(id)
+  if (!host) return
+  testingHostId.value = id
+  proxmoxStore.updateHostHealth(id, { status: 'unknown', checked_at: new Date().toISOString() })
+  const started = Date.now()
+  try {
+    // Lightweight reachability probe — backend /v1/proxmox/hosts/{id}/health
+    // isn't guaranteed to exist yet, so fall back to a simple HEAD on the base
+    // URL. A real health call will be wired in C4.x.
+    await fetch(host.base_url, { method: 'HEAD', mode: 'no-cors' })
+    proxmoxStore.updateHostHealth(id, {
+      status: 'ok',
+      rtt_ms: Date.now() - started,
+      checked_at: new Date().toISOString(),
+    })
+  } catch (e) {
+    proxmoxStore.updateHostHealth(id, {
+      status: 'down',
+      checked_at: new Date().toISOString(),
+      error: e?.message || String(e),
+    })
+  } finally {
+    testingHostId.value = ''
+  }
+}
+
+// ===========================================================================
+// Snapshot retention defaults (Plan C §C5.4)
+// ===========================================================================
+
+const RETENTION_KEY = 'range42_snapshot_retention'
+const retention = ref({
+  keep_count: 5,
+  keep_days: 7,
+})
+
+function loadRetention() {
+  try {
+    const raw = localStorage.getItem(RETENTION_KEY)
+    if (raw) retention.value = { ...retention.value, ...JSON.parse(raw) }
+  } catch {
+    /* ignore */
+  }
+}
+function saveRetention() {
+  const kc = Math.max(0, Number(retention.value.keep_count) || 0)
+  const kd = Math.max(0, Number(retention.value.keep_days) || 0)
+  retention.value.keep_count = kc
+  retention.value.keep_days = kd
+  localStorage.setItem(RETENTION_KEY, JSON.stringify(retention.value))
+  showToast('Snapshot retention saved', 'success')
+}
 
 // ===========================================================================
 // GitHub Authentication
@@ -33,6 +164,7 @@ const showTokenInput = ref(false)
 
 // Check if we have a stored token on mount
 onMounted(async () => {
+  loadRetention()
   const storedToken = githubProvider.getToken()
   if (storedToken) {
     githubToken.value = storedToken
@@ -173,6 +305,219 @@ const clearAllData = async () => {
               <option value="dark">Dark</option>
               <option value="cupcake">Cupcake</option>
             </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- User Identity (Plan C §C5.4) -->
+      <div id="user-identity" class="card bg-base-100 shadow-md mb-6" data-testid="settings-user-identity">
+        <div class="card-body">
+          <h2 class="card-title">User identity</h2>
+          <p class="text-sm text-base-content/60 mb-2">
+            Used on <code class="font-mono">.lock</code> stamps and commit metadata so collaborators can
+            see who is editing a project.
+          </p>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Display name</span>
+            </label>
+            <input
+              v-model="userForm.display_name"
+              type="text"
+              class="input input-bordered"
+              placeholder="e.g. alice-bob"
+              data-testid="user-display-name"
+              @blur="userNameError = validateDisplayName(userForm.display_name) || ''"
+            />
+            <label v-if="userNameError" class="label">
+              <span class="label-text-alt text-error">{{ userNameError }}</span>
+            </label>
+          </div>
+
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Color</span>
+            </label>
+            <div class="flex items-center gap-3">
+              <input
+                v-model="userForm.color"
+                type="color"
+                class="w-14 h-10 rounded border border-base-300 cursor-pointer"
+                data-testid="user-color"
+              />
+              <input
+                v-model="userForm.color"
+                type="text"
+                class="input input-bordered font-mono flex-1"
+                placeholder="#3b82f6"
+              />
+            </div>
+            <label v-if="userColorError" class="label">
+              <span class="label-text-alt text-error">{{ userColorError }}</span>
+            </label>
+          </div>
+
+          <div class="mt-4 flex items-center gap-2">
+            <button class="btn btn-primary" type="button" @click="saveUserIdentity">Save identity</button>
+            <span v-if="userSavedAt" class="text-xs text-base-content/50">saved at {{ userSavedAt }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Proxmox hosts (Plan C §C5.4 + §18.4) -->
+      <div id="proxmox-hosts" class="card bg-base-100 shadow-md mb-6" data-testid="settings-proxmox-hosts">
+        <div class="card-body">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="card-title">Proxmox hosts</h2>
+            <button class="btn btn-primary btn-sm" type="button" @click="openAddHost">Add host</button>
+          </div>
+          <p class="text-sm text-base-content/60 mb-3">
+            Register the Proxmox endpoints that deployments target. Each host gets its own credentials
+            and health snapshot.
+          </p>
+
+          <div v-if="proxmoxHosts.length" class="space-y-3">
+            <div
+              v-for="host in proxmoxHosts"
+              :key="host.id"
+              class="flex items-center gap-4 p-4 rounded-xl border border-base-300"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold">{{ host.name }}</div>
+                <div class="text-xs text-base-content/60 truncate">{{ host.base_url }}</div>
+                <div class="mt-1 flex items-center gap-2 text-xs">
+                  <span class="badge badge-xs badge-outline">node: {{ host.default_node }}</span>
+                  <span
+                    v-if="host.health?.status"
+                    class="badge badge-xs"
+                    :class="{
+                      'badge-success': host.health.status === 'ok',
+                      'badge-warning': host.health.status === 'degraded',
+                      'badge-error': host.health.status === 'down',
+                      'badge-ghost': host.health.status === 'unknown',
+                    }"
+                  >
+                    {{ host.health.status }}
+                    <span v-if="host.health.rtt_ms != null"> — {{ host.health.rtt_ms }}ms</span>
+                  </span>
+                  <span v-if="host.health?.aggregate_storage_gb != null" class="text-base-content/50">
+                    {{ host.health.aggregate_storage_gb }} GB storage
+                  </span>
+                </div>
+              </div>
+              <button
+                class="btn btn-ghost btn-sm"
+                type="button"
+                :disabled="testingHostId === host.id"
+                @click="testHost(host.id)"
+              >
+                {{ testingHostId === host.id ? 'Testing…' : 'Test' }}
+              </button>
+              <button
+                class="btn btn-ghost btn-sm text-error"
+                type="button"
+                @click="removeHost(host.id)"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+          <div v-else class="text-center py-6 text-base-content/50">
+            No Proxmox hosts configured. Add one to enable deployments.
+          </div>
+
+          <!-- Add host modal -->
+          <div v-if="showAddHost" class="modal modal-open" role="dialog" aria-modal="true">
+            <div class="modal-box max-w-lg">
+              <h3 class="text-lg font-bold mb-4">Add Proxmox host</h3>
+              <div class="space-y-3">
+                <div class="form-control">
+                  <label class="label"><span class="label-text">Name</span></label>
+                  <input v-model="newHost.name" type="text" class="input input-bordered" placeholder="pve01" />
+                </div>
+                <div class="form-control">
+                  <label class="label"><span class="label-text">Base URL</span></label>
+                  <input v-model="newHost.base_url" type="text" class="input input-bordered" placeholder="https://pve01.example.com:8006" />
+                </div>
+                <div class="form-control">
+                  <label class="label"><span class="label-text">Default node</span></label>
+                  <input v-model="newHost.default_node" type="text" class="input input-bordered" placeholder="pve" />
+                </div>
+                <div class="form-control">
+                  <label class="label"><span class="label-text">API token id</span></label>
+                  <input v-model="newHost.api_token_id" type="text" class="input input-bordered" placeholder="user@pam!token" />
+                </div>
+                <div class="form-control">
+                  <label class="label"><span class="label-text">API token secret</span></label>
+                  <input v-model="newHost.api_token_secret" type="password" class="input input-bordered" />
+                </div>
+                <label class="cursor-pointer label justify-start gap-2">
+                  <input v-model="newHost.verify_ssl" type="checkbox" class="toggle toggle-primary" />
+                  <span class="label-text">Verify SSL</span>
+                </label>
+                <div v-if="addHostError" class="alert alert-error">
+                  <span>{{ addHostError }}</span>
+                </div>
+              </div>
+              <div class="modal-action">
+                <button class="btn btn-ghost" type="button" @click="showAddHost = false">Cancel</button>
+                <button class="btn btn-primary" type="button" @click="submitAddHost">Add</button>
+              </div>
+            </div>
+            <div class="modal-backdrop" @click="showAddHost = false"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Snapshot retention (Plan C §C5.4) -->
+      <div id="snapshot-retention" class="card bg-base-100 shadow-md mb-6" data-testid="settings-snapshot-retention">
+        <div class="card-body">
+          <h2 class="card-title">Snapshot retention</h2>
+          <p class="text-sm text-base-content/60 mb-3">
+            Defaults for new deployments: keep at least <strong>last N snapshots</strong> and any
+            snapshot taken in the <strong>last D days</strong>. Per-deployment overrides live on the
+            deployment page.
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Keep last N snapshots</span></label>
+              <input
+                v-model.number="retention.keep_count"
+                type="number"
+                min="0"
+                class="input input-bordered"
+                data-testid="retention-keep-count"
+              />
+            </div>
+            <div class="form-control">
+              <label class="label"><span class="label-text">Keep last D days</span></label>
+              <input
+                v-model.number="retention.keep_days"
+                type="number"
+                min="0"
+                class="input input-bordered"
+                data-testid="retention-keep-days"
+              />
+            </div>
+          </div>
+          <div class="mt-3">
+            <button class="btn btn-primary btn-sm" type="button" @click="saveRetention">
+              Save retention
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Git sources link (Plan C §C5.4) -->
+      <div class="card bg-base-100 shadow-md mb-6" data-testid="settings-git-sources">
+        <div class="card-body">
+          <h2 class="card-title">Git sources</h2>
+          <p class="text-sm text-base-content/60">
+            Manage the Git providers and repositories the deployer reads catalogs and writes projects to.
+          </p>
+          <div class="mt-3">
+            <router-link to="/sources" class="btn btn-outline btn-sm">Manage Git sources</router-link>
           </div>
         </div>
       </div>
