@@ -14,7 +14,7 @@ import InfraNodeLxc from '../components/nodes/InfraNodeLxc.vue'
 import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
 import InfraNodeEdgeFirewall from '../components/nodes/InfraNodeEdgeFirewall.vue'
-import InfraNodeGroup from '../components/nodes/InfraNodeGroup.vue'
+import GroupNode from '../components/nodes/GroupNode.vue'
 import NetworkEdge from '../components/edges/NetworkEdge.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
@@ -638,7 +638,12 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Organization -->
           <template #node-group="props">
-            <InfraNodeGroup v-bind="props" />
+            <GroupNode
+              v-bind="props"
+              @update:kind="(kind) => updateNodeStatus(props.id, { kind })"
+              @update:scope="(kind) => updateNodeStatus(props.id, { kind })"
+              @update:expanded="(open) => updateNodeStatus(props.id, { _expanded_preview: open })"
+            />
           </template>
 
           <!-- Compute -->
