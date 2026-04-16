@@ -33,6 +33,7 @@ import HistoryTab from '../components/project/HistoryTab.vue'
 import VariablesTab from '../components/project/VariablesTab.vue'
 import { createMemoryFs } from '../services/projectRepo/memoryFs'
 import { ensureNamespaces } from '../i18n'
+import { useCanvasHistory } from '../composables/useCanvasHistory'
 import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
 import { useHotkeys } from '../composables/useHotkeys'
@@ -298,14 +299,73 @@ onMounted(() => {
   ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'common'])
 })
 
-watch([nodes, edges], () => {
-  if (currentProject.value) {
+// Canvas undo ring-buffer (C3.11). We snapshot on every node/edge mutation
+// so Ctrl-Z / Ctrl-Shift-Z can walk back through the history. Snapshots
+// are deep-cloned so future mutations don't retroactively alter old
+// entries.
+const canvasHistory = useCanvasHistory()
+function cloneSnapshot() {
+  return JSON.parse(JSON.stringify({
+    nodes: nodes.value || [],
+    edges: edges.value || [],
+  }))
+}
+
+// Debounced autosave (C3.11). 500ms debounce avoids flooding localStorage
+// on every canvas nudge. When the project is wired to a git-backed
+// ProjectRepoAdapter, the autosave body will also call adapter.autosave.
+let autosaveTimer = null
+function scheduleAutosave() {
+  if (!currentProject.value) return
+  if (autosaveTimer !== null) clearTimeout(autosaveTimer)
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = null
+    if (!currentProject.value) return
     projectStore.updateProject(currentProject.value.id, {
       nodes: nodes.value,
-      edges: edges.value
+      edges: edges.value,
     })
-  }
+  }, 500)
+}
+
+watch([nodes, edges], () => {
+  if (!currentProject.value) return
+  canvasHistory.push(cloneSnapshot())
+  scheduleAutosave()
 }, { deep: true })
+
+// Undo / redo hotkeys — only fired while the canvas tab is active so we
+// don't hijack CodeMirror's built-in undo on the Config tab.
+useHotkeys([
+  {
+    key: 'z',
+    when: () => tab.value === 'canvas',
+    handler: (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.shiftKey) {
+        const next = canvasHistory.redo()
+        if (next) applyCanvasSnapshot(next)
+      } else {
+        const next = canvasHistory.undo()
+        if (next) applyCanvasSnapshot(next)
+      }
+    },
+  },
+])
+
+function applyCanvasSnapshot(snapshot) {
+  // Applying a snapshot writes back via loadProjectData so selection +
+  // VueFlow state stay in sync with the restored graph.
+  loadProjectData({
+    ...currentProject.value,
+    nodes: snapshot.nodes,
+    edges: snapshot.edges,
+  })
+}
+
+onUnmounted(() => {
+  if (autosaveTimer !== null) clearTimeout(autosaveTimer)
+})
 
 const manualSave = () => {
   if (!currentProject.value) return
