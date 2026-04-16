@@ -30,6 +30,7 @@ import ProblemsPanel from '../components/project/ProblemsPanel.vue'
 import CommandPalette from '../components/project/CommandPalette.vue'
 import ConfigTab from '../components/project/ConfigTab.vue'
 import HistoryTab from '../components/project/HistoryTab.vue'
+import VariablesTab from '../components/project/VariablesTab.vue'
 import { createMemoryFs } from '../services/projectRepo/memoryFs'
 import { ensureNamespaces } from '../i18n'
 import { getProvider as getV1Provider, getGitProvider } from '../services/git'
@@ -294,7 +295,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'historyTab', 'common'])
+  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'common'])
 })
 
 watch([nodes, edges], () => {
@@ -644,6 +645,21 @@ const historyProvider = computed(() => {
   }
 })
 
+// VariablesTab wiring (C3.10). The effective env[] comes from the catalog
+// base doc embedded in the project (`project.baseDoc`) — missing today for
+// legacy projects, so we fall back to an empty list. Overrides are
+// persisted on `project.overlay.param_overrides.env`.
+const variablesBase = computed(() => currentProject.value?.baseDoc || { env: [] })
+const variablesOverlay = computed(() => currentProject.value?.overlay || {})
+
+function handleOverlayUpdate(nextOverlay) {
+  if (!currentProject.value) return
+  currentProject.value.overlay = nextOverlay
+  projectStore.updateProject(currentProject.value.id, {
+    overlay: nextOverlay,
+  })
+}
+
 const historyLocator = computed(() => {
   const src = currentProject.value?.gitSource
   if (!src?.owner || !src?.repo) return null
@@ -936,11 +952,14 @@ const handleInfrastructureImport = (result) => {
         />
       </div>
 
-      <!-- Variables tab placeholder -->
-      <div v-show="tab === 'variables'" class="flex-1 overflow-y-auto p-4" data-testid="tab-variables">
-        <div class="alert alert-info text-sm">
-          Variables tab — layered vars editor lands in a later phase.
-        </div>
+      <!-- Variables tab (C3.10) -->
+      <div v-show="tab === 'variables'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-variables">
+        <VariablesTab
+          v-if="currentProject"
+          :base="variablesBase"
+          :overlay="variablesOverlay"
+          @update:overlay="handleOverlayUpdate"
+        />
       </div>
 
       <!-- History tab (C3.9) -->
