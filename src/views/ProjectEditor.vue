@@ -41,6 +41,8 @@ import { useHotkeys } from '../composables/useHotkeys'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
+import { useCanvasLiveStatus } from '../composables/useCanvasLiveStatus'
+import { useDeploymentStore } from '../stores/deploymentStore.ts'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder, computeDockerTetherEdges } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
@@ -188,6 +190,87 @@ const { zones } = useNetworkZones(liveNodes, liveEdges)
 
 const autoLayout = useAutoLayout()
 
+// Plan C §C4.7 — Canvas live status from SSE stream.
+// Finds the active (non-terminal) deployment for this project, subscribes
+// to its SSE stream, and mirrors per-node status into VueFlow node data.
+const deploymentStore = useDeploymentStore()
+const activeDeploymentId = ref(null)
+const TERMINAL_STATES_CANVAS = new Set(['deployed', 'failed', 'cancelled', 'torn_down'])
+
+async function refreshActiveDeployment() {
+  const pid = projectId.value
+  if (!pid) return
+  try {
+    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
+    if (!res.ok) return
+    const body = await res.json()
+    const items = Array.isArray(body) ? body : (body?.deployments || [])
+    const active = items.find(d => d.project_id === pid && !TERMINAL_STATES_CANVAS.has(d.state))
+    if (active?.id !== activeDeploymentId.value) {
+      if (activeDeploymentId.value) deploymentStore.unsubscribe(activeDeploymentId.value)
+      activeDeploymentId.value = active?.id || null
+      if (activeDeploymentId.value) deploymentStore.subscribe(activeDeploymentId.value)
+    }
+  } catch {
+    // Backend unavailable — silently skip; canvas falls back to WS status.
+  }
+}
+
+const liveRecord = computed(() => {
+  const id = activeDeploymentId.value
+  if (!id) return null
+  return deploymentStore.deployments[id] || null
+})
+
+// Resolve an event ident to a canvas node id.
+// Order: explicit node_id match > host match > vmId numeric match.
+function resolveCanvasNodeId(ident) {
+  const all = flowGetNodes?.value || nodes.value || []
+  if (ident?.node_id) {
+    const byId = all.find(n => n.id === ident.node_id)
+    if (byId) return byId.id
+    const byCfgName = all.find(n => n.data?.config?.name === ident.node_id)
+    if (byCfgName) return byCfgName.id
+  }
+  if (ident?.host) {
+    const byHost = all.find(n => n.data?.config?.name === ident.host || n.data?.label === ident.host)
+    if (byHost) return byHost.id
+  }
+  if (ident?.vm_id != null) {
+    const vmIdNum = Number(ident.vm_id)
+    const byVmId = all.find(n => Number(n.data?.vmId) === vmIdNum || Number(n.data?.config?.vmid) === vmIdNum)
+    if (byVmId) return byVmId.id
+  }
+  return null
+}
+
+const { statuses: canvasLiveStatuses } = useCanvasLiveStatus(liveRecord, resolveCanvasNodeId)
+
+// Translate the status palette used by the canvas composable to VueFlow node
+// data.status used by infrastructure node components (keeps parity with the
+// existing gray/orange/green/red/blue palette).
+const CANVAS_COLOR_TO_NODE_STATUS = {
+  gray: 'pending',
+  blue: 'deploying',
+  green: 'running',
+  red: 'error',
+  orange: 'warn',
+}
+
+watch(canvasLiveStatuses, (map) => {
+  if (!map || map.size === 0) return
+  const all = flowGetNodes?.value || nodes.value || []
+  for (const node of all) {
+    const colour = map.get(node.id)
+    if (!colour) continue
+    const next = CANVAS_COLOR_TO_NODE_STATUS[colour]
+    if (!next) continue
+    if (node.data?.status !== next) {
+      updateNodeData(node.id, { status: next })
+    }
+  }
+}, { deep: true })
+
 // WebSocket live status — updates deployed nodes in real-time
 const wsStatus = useWebSocketStatus()
 
@@ -301,6 +384,15 @@ onMounted(() => {
   currentProject.value = project
   loadProjectData(project)
   ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'common'])
+  // Plan C §C4.7 — attach live SSE to canvas when an active deployment exists.
+  refreshActiveDeployment()
+})
+
+onUnmounted(() => {
+  if (activeDeploymentId.value) {
+    deploymentStore.unsubscribe(activeDeploymentId.value)
+    activeDeploymentId.value = null
+  }
 })
 
 // Canvas undo ring-buffer (C3.11). We snapshot on every node/edge mutation
@@ -1115,6 +1207,7 @@ const handleInfrastructureImport = (result) => {
       :existing-codenames="existingCodenames"
       :gamenet="!!currentProject?.gamenet"
       @close="showDeployForm = false"
+      @created="refreshActiveDeployment"
     />
 
     <!-- Delete Project Confirmation Modal -->
