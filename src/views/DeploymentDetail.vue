@@ -14,6 +14,8 @@ import { ensureNamespaces } from '@/i18n'
 import { useDeploymentStore } from '@/stores/deploymentStore.ts'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
+import ResetTeamModal from '@/components/ResetTeamModal.vue'
+import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -52,6 +54,58 @@ const defaultTab = computed(() => {
   if (teamCount.value > 1 && TEAMS_DEFAULT_STATES.has(effectiveState.value)) return 'teams'
   return 'overview'
 })
+
+// Plan C §C4.9 — per-team reset + queued-behind-in-flight semantics.
+const showResetModal = ref(false)
+const resetTeamId = ref(null)
+const queuedResets = ref(new Set())
+const { showToast } = useToast()
+
+const IN_FLIGHT_STATES = new Set(['deploying', 'running_attempt'])
+const inFlight = computed(() => IN_FLIGHT_STATES.has(effectiveState.value))
+
+function onOpenReset(payload) {
+  resetTeamId.value = payload?.teamId || null
+  if (!resetTeamId.value) return
+  showResetModal.value = true
+}
+
+function onResetDone() {
+  if (resetTeamId.value) {
+    queuedResets.value.delete(resetTeamId.value)
+    queuedResets.value = new Set(queuedResets.value)
+  }
+  resetTeamId.value = null
+}
+
+function onResetQueued(payload) {
+  const id = payload?.teamId
+  if (!id) return
+  queuedResets.value.add(id)
+  queuedResets.value = new Set(queuedResets.value)
+  showToast(t('deployment.reset.queuedToast', { id }), 'info')
+  resetTeamId.value = null
+}
+
+// When the in-flight attempt transitions to failed or cancelled, prompt the
+// user to run queued resets.
+watch(effectiveState, (state, prev) => {
+  if (!prev) return
+  const wasInFlight = IN_FLIGHT_STATES.has(prev)
+  const becameTerminal = state === 'failed' || state === 'cancelled'
+  if (wasInFlight && becameTerminal && queuedResets.value.size > 0) {
+    for (const id of queuedResets.value) {
+      showToast(t('deployment.reset.runNowToast', { id }), 'warning', 10000)
+    }
+  }
+})
+
+function teamWithQueueStatus(team) {
+  if (queuedResets.value.has(team.id)) {
+    return { ...team, queued_reset: true }
+  }
+  return team
+}
 
 const activeTab = computed({
   get() {
@@ -202,6 +256,18 @@ onBeforeUnmount(() => {
       @close="showTeardown = false"
     />
 
+    <!-- Plan C §C4.9 — Per-team reset modal -->
+    <ResetTeamModal
+      v-if="showResetModal && resetTeamId"
+      :visible="showResetModal"
+      :deployment-id="String(route.params.id)"
+      :team-id="resetTeamId"
+      :in-flight="inFlight"
+      @close="showResetModal = false"
+      @reset="onResetDone"
+      @queued="onResetQueued"
+    />
+
     <progress class="progress progress-primary w-full mb-4" :value="aggregateProgress" max="100"></progress>
 
     <!-- Tabs -->
@@ -282,8 +348,9 @@ onBeforeUnmount(() => {
         <TeamCard
           v-for="team in teamList"
           :key="team.id"
-          :team="team"
+          :team="teamWithQueueStatus(team)"
           @open-logs="onOpenTeamLogs"
+          @reset="onOpenReset"
         />
       </div>
     </section>
