@@ -1,10 +1,25 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router';
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useHotkeys } from '@/composables/useHotkeys';
+import MigrationWizard from '@/components/MigrationWizard.vue';
+import LegacyStorageBanner from '@/components/LegacyStorageBanner.vue';
+import {
+  detectLegacyProjects,
+  isMigrationComplete,
+} from '@/services/projectRepo/migration.ts';
 
 const route = useRoute();
 const router = useRouter();
+
+// Migration wizard: auto-open on first v1 load when legacy data exists and
+// migration hasn't been completed yet (Plan C §C5.1).
+const showMigrationWizard = ref(false);
+onMounted(() => {
+  if (isMigrationComplete()) return;
+  if (detectLegacyProjects().length === 0) return;
+  showMigrationWizard.value = true;
+});
 
 // Rail shortcuts per spec §5. `n` routes to the Projects dashboard where the
 // user clicks "New project" — creating a draft requires picking a source +
@@ -57,6 +72,7 @@ const navItems = [
     </nav>
 
     <div class="flex-1 flex flex-col min-w-0">
+      <LegacyStorageBanner />
       <div class="breadcrumb-strip h-6 px-3 text-xs text-base-content/70 border-b border-base-300 flex items-center">
         <span>{{ route.meta?.title ?? 'Range42' }}</span>
       </div>
@@ -64,6 +80,11 @@ const navItems = [
         <router-view />
       </main>
     </div>
+    <MigrationWizard
+      v-if="showMigrationWizard"
+      @close="showMigrationWizard = false"
+      @completed="showMigrationWizard = false"
+    />
   </div>
 </template>
 
