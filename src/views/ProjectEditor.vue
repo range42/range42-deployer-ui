@@ -15,7 +15,9 @@ import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
 import InfraNodeEdgeFirewall from '../components/nodes/InfraNodeEdgeFirewall.vue'
 import GroupNode from '../components/nodes/GroupNode.vue'
+import DockerNode from '../components/nodes/DockerNode.vue'
 import NetworkEdge from '../components/edges/NetworkEdge.vue'
+import DockerTetherEdge from '../components/edges/DockerTetherEdge.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
@@ -28,7 +30,7 @@ import TemplateBrowser from '../components/TemplateBrowser.vue'
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
-import { useInfraBuilder } from '../composables/useInfraBuilder'
+import { useInfraBuilder, computeDockerTetherEdges } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
@@ -96,6 +98,11 @@ const deployment = useDeployment(projectId)
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
+
+// Docker containment tethers are derived from docker.data.host_ref — they are
+// rendered alongside user-authored edges but never persisted.
+const dockerTetherEdges = computed(() => computeDockerTetherEdges(liveNodes.value))
+const renderedEdges = computed(() => [...(edges.value || []), ...dockerTetherEdges.value])
 
 const { zones } = useNetworkZones(liveNodes, liveEdges)
 
@@ -619,9 +626,9 @@ const handleInfrastructureImport = (result) => {
         @dragover="handleDragOver" 
         @dragleave="handleDragLeave"
       >
-        <VueFlow 
-          :nodes="nodes" 
-          :edges="edges" 
+        <VueFlow
+          :nodes="nodes"
+          :edges="renderedEdges"
           @connect="onConnect" 
           @node-click="handleNodeClick"
           @edge-click="handleEdgeClick" 
@@ -655,6 +662,10 @@ const handleInfrastructureImport = (result) => {
             <InfraNodeLxc v-bind="props" />
           </template>
 
+          <template #node-docker="props">
+            <DockerNode v-bind="props" />
+          </template>
+
           <!-- Network -->
           <template #node-network-segment="props">
             <InfraNodeNetwork v-bind="props" />
@@ -671,6 +682,11 @@ const handleInfrastructureImport = (result) => {
           <!-- Custom Edge for network connections -->
           <template #edge-network="props">
             <NetworkEdge v-bind="props" />
+          </template>
+
+          <!-- Dashed containment tether: Docker -> VM/LXC host -->
+          <template #edge-docker-tether="props">
+            <DockerTetherEdge v-bind="props" />
           </template>
         </VueFlow>
 

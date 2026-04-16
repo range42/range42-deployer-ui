@@ -5,10 +5,85 @@ import { useVueFlow, applyNodeChanges, applyEdgeChanges, addEdge } from '@vue-fl
 const COMPUTE_TYPES = ['vm', 'lxc', 'edge-firewall', 'router']
 // Node types that represent networks
 const NETWORK_TYPES = ['network-segment']
+// Docker must tether to one of these host types (spec §7 — container layer)
+const DOCKER_HOST_TYPES = ['vm', 'lxc']
+
+/**
+ * Validate that a Docker node has a reachable vm|lxc host_ref.
+ * Returns an object { ok, code, message } (code is stable, message is human).
+ * Pure — nodes may be passed directly (array of VueFlow nodes).
+ */
+export function validateDockerNode(dockerNode, allNodes) {
+  const ref = dockerNode?.data?.host_ref || dockerNode?.data?.config?.host_ref
+  if (!ref) {
+    return { ok: false, code: 'docker.host_ref.missing', message: 'Docker container has no host_ref' }
+  }
+  const host = (allNodes || []).find((n) => n.id === ref)
+  if (!host) {
+    return { ok: false, code: 'docker.host_ref.unresolved', message: `host_ref '${ref}' does not exist` }
+  }
+  if (!DOCKER_HOST_TYPES.includes(host.type)) {
+    return {
+      ok: false,
+      code: 'docker.host_ref.invalid_type',
+      message: `host_ref '${ref}' is a ${host.type}; must be vm or lxc`,
+    }
+  }
+  return { ok: true, code: null, message: null }
+}
+
+/**
+ * Given a set of nodes, compute derived dashed containment edges from every
+ * Docker node to its host (when valid). The edge id is deterministic so
+ * consumers can merge with their own edges without duplicates.
+ */
+export function computeDockerTetherEdges(allNodes) {
+  const edges = []
+  for (const n of allNodes || []) {
+    if (n.type !== 'docker') continue
+    const ref = n.data?.host_ref || n.data?.config?.host_ref
+    if (!ref) continue
+    const host = (allNodes || []).find((h) => h.id === ref)
+    if (!host || !DOCKER_HOST_TYPES.includes(host.type)) continue
+    edges.push({
+      id: `docker-tether-${n.id}-${host.id}`,
+      source: n.id,
+      target: host.id,
+      type: 'docker-tether',
+      selectable: false,
+      data: { synthetic: true, kind: 'docker_tether' },
+    })
+  }
+  return edges
+}
+
+/**
+ * Pick the nearest VM/LXC to a given position (Euclidean).
+ * Used when a Docker node is dropped without an explicit host_ref.
+ * Returns a host node or null.
+ */
+export function findNearestDockerHost(allNodes, position) {
+  if (!position) return null
+  let best = null
+  let bestDist = Infinity
+  for (const n of allNodes || []) {
+    if (!DOCKER_HOST_TYPES.includes(n.type)) continue
+    const nx = n.position?.x ?? 0
+    const ny = n.position?.y ?? 0
+    const dx = nx - position.x
+    const dy = ny - position.y
+    const d2 = dx * dx + dy * dy
+    if (d2 < bestDist) {
+      bestDist = d2
+      best = n
+    }
+  }
+  return best
+}
 
 export function useInfraBuilder() {
   const { updateNodeData, getNodes } = useVueFlow()
-  
+
   const nodes = ref([])
   const edges = ref([])
   const selectedNode = ref(null)
@@ -22,18 +97,18 @@ export function useInfraBuilder() {
     const allNodes = getNodes.value || nodes.value
     const sourceNode = allNodes.find(n => n.id === connection.source)
     const targetNode = allNodes.find(n => n.id === connection.target)
-    
+
     // Determine if this is a compute-to-network connection
     const isComputeToNetwork = (
       (COMPUTE_TYPES.includes(sourceNode?.type) && NETWORK_TYPES.includes(targetNode?.type)) ||
       (NETWORK_TYPES.includes(sourceNode?.type) && COMPUTE_TYPES.includes(targetNode?.type))
     )
-    
+
     // Count existing connections to determine interface index
-    const existingConnections = edges.value.filter(e => 
+    const existingConnections = edges.value.filter(e =>
       e.source === connection.source || e.target === connection.source
     ).length
-    
+
     // Create edge with connection data
     const edgeWithData = {
       ...connection,
@@ -57,7 +132,7 @@ export function useInfraBuilder() {
         useDhcp: true,
       } : {}
     }
-    
+
     edges.value = addEdge(edgeWithData, edges.value)
   }
 
@@ -89,7 +164,7 @@ export function useInfraBuilder() {
       }
       return edge
     })
-    
+
     // Update selected edge if it's the one being modified
     if (selectedEdge.value?.id === edgeId) {
       selectedEdge.value = edges.value.find(e => e.id === edgeId)
@@ -109,7 +184,7 @@ export function useInfraBuilder() {
 
   const updateNodeStatus = (nodeId, updates) => {
     updateNodeData(nodeId, updates)
-    
+
     if (selectedNode.value && selectedNode.value.id === nodeId) {
       selectedNode.value = {
         ...selectedNode.value,
@@ -127,13 +202,13 @@ export function useInfraBuilder() {
     } else {
       nodes.value = []
     }
-    
+
     if (project && project.edges) {
       edges.value = project.edges
     } else {
       edges.value = []
     }
-    
+
     selectedNode.value = null
   }
 
@@ -162,6 +237,10 @@ export function useInfraBuilder() {
     closeEdgeConfig,
     loadProjectData,
     onNodesChange: handleNodesChange,
-    onEdgesChange: handleEdgesChange
+    onEdgesChange: handleEdgesChange,
+    // validators + derived data (exported for Problems panel / tests)
+    validateDockerNode,
+    computeDockerTetherEdges,
+    findNearestDockerHost,
   }
 }

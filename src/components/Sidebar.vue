@@ -43,6 +43,7 @@ const infrastructureComponents = [
     items: [
       { type: 'vm', label: 'Virtual Machine', icon: 'monitor', shortcut: 'V' },
       { type: 'lxc', label: 'Container', icon: 'cube', shortcut: 'C' },
+      { type: 'docker', label: 'Docker', icon: 'container', shortcut: 'D' },
     ]
   },
   {
