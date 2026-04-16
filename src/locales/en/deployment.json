@@ -87,6 +87,84 @@
       "openTerminal": "Open terminal"
     }
   },
+  "deploy": {
+    "title": "Deploy",
+    "submit": "Deploy",
+    "submitting": "Deploying…",
+    "fields": {
+      "codename": "Codename",
+      "codenamePlaceholder": "short-unique-name",
+      "scenario": "Scenario label",
+      "scenarioPlaceholder": "e.g. demo_lab",
+      "host": "Target Proxmox host",
+      "hostPlaceholder": "Select a host",
+      "teamCount": "Team count",
+      "vault": "Vault password"
+    },
+    "err": {
+      "codenameRequired": "Codename is required.",
+      "codenameShape": "Lowercase letters, digits, dashes only; 3–32 characters.",
+      "codenameTaken": "This codename is already used by another local deployment.",
+      "scenarioRequired": "Scenario label is required.",
+      "hostRequired": "Choose a target Proxmox host.",
+      "teamCountNaN": "Team count must be a number.",
+      "teamCountMin": "Team count must be at least 1.",
+      "vaultRequired": "Vault password is required."
+    },
+    "shaPin": {
+      "heading": "SHA pin",
+      "catalog": "Catalog SHA",
+      "project": "Project SHA",
+      "ack": "I confirm deploying with these exact revisions."
+    },
+    "preflight": {
+      "heading": "Preflight",
+      "run": "Run preflight",
+      "running": "Running…",
+      "blocking": "Preflight reported blocking issues. Fix them before deploying.",
+      "acknowledge": "Acknowledge preflight warnings."
+    }
+  },
+  "teardown": {
+    "title": "Teardown deployment",
+    "confirmLabel": "Type the codename to confirm: {codename}",
+    "inputPlaceholder": "Type the codename here",
+    "mismatch": "Entered value does not match the codename.",
+    "cancel": "Cancel",
+    "destroy": "Destroy deployment",
+    "destroying": "Destroying…",
+    "error": "Teardown failed."
+  },
+  "reset": {
+    "title": "Reset team {id}",
+    "body": "This will re-run the team provisioning for team {id}.",
+    "queuedNotice": "A deployment is in flight — this reset will be queued to run afterwards.",
+    "cancel": "Cancel",
+    "confirm": "Reset",
+    "confirmQueue": "Queue reset",
+    "queuedToast": "Reset queued for team {id}.",
+    "runNowToast": "Queued reset for team {id} — run now?",
+    "runNow": "Run now",
+    "dismiss": "Dismiss"
+  },
+  "snapshot": {
+    "title": "Create snapshot — team {id}",
+    "name": "Snapshot name",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "Cancel",
+    "create": "Create",
+    "error": "Failed to create snapshot."
+  },
+  "rollback": {
+    "title": "Rollback team {id}",
+    "chooseSnapshot": "Choose a snapshot",
+    "noSnapshots": "This team has no snapshots yet.",
+    "cancel": "Cancel",
+    "confirm": "Rollback",
+    "missingHeader": "Required snapshots are missing on some VMs:",
+    "partial": "Rollback only VMs with valid snapshots",
+    "error": "Rollback failed."
+  },
   "preflight": {
     "title": "Preflight record",
     "subtitle": "Immutable snapshot of the checks run for this deployment.",

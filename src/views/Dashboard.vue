@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import DeployForm from '@/components/project/DeployForm.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -14,6 +15,31 @@ const searchQuery = ref('')
 const viewMode = ref('grid') // 'grid' | 'list'
 const importFileInput = ref(null)
 const importError = ref('')
+
+// Plan C §C4.6 — quick-deploy from dashboard.
+const quickDeployTarget = ref(null)
+const quickDeployCodenames = ref([])
+
+async function openQuickDeploy(project, event) {
+  if (event) { event.stopPropagation(); event.preventDefault() }
+  try {
+    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
+    if (res.ok) {
+      const body = await res.json()
+      const items = Array.isArray(body) ? body : (body?.deployments || [])
+      quickDeployCodenames.value = items.map(d => d.codename).filter(Boolean)
+    } else {
+      quickDeployCodenames.value = []
+    }
+  } catch {
+    quickDeployCodenames.value = []
+  }
+  quickDeployTarget.value = project
+}
+
+function closeQuickDeploy() {
+  quickDeployTarget.value = null
+}
 
 onMounted(() => {
   projectStore.loadProjects()
@@ -313,6 +339,17 @@ const formatDate = (date) => {
                         Duplicate
                       </button>
                     </li>
+                    <li>
+                      <button
+                        type="button"
+                        class="gap-2 w-full text-left"
+                        data-testid="dashboard-quick-deploy"
+                        @click.stop="openQuickDeploy(project, $event)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                        Deploy…
+                      </button>
+                    </li>
                     <div class="divider my-1"></div>
                     <li>
                       <button type="button" class="gap-2 w-full text-left text-error" @click.stop="deleteProject(project.id, $event)">
@@ -491,6 +528,19 @@ const formatDate = (date) => {
     </div>
     <div class="modal-backdrop" @click="cancelDelete"></div>
   </div>
+
+  <!-- Plan C §C4.6 — Quick-deploy DeployForm -->
+  <DeployForm
+    v-if="quickDeployTarget"
+    :visible="!!quickDeployTarget"
+    :project-id="quickDeployTarget.id"
+    :project-name="quickDeployTarget.name"
+    :catalog-sha="quickDeployTarget?.catalog_sha || quickDeployTarget?.pinned_catalog_sha || ''"
+    :project-sha="quickDeployTarget?.head_sha || quickDeployTarget?.project_sha || ''"
+    :existing-codenames="quickDeployCodenames"
+    :gamenet="!!quickDeployTarget?.gamenet"
+    @close="closeQuickDeploy"
+  />
 </template>
 
 <style scoped>

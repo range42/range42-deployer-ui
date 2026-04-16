@@ -87,6 +87,84 @@
       "openTerminal": "Ouvrir le terminal"
     }
   },
+  "deploy": {
+    "title": "Déployer",
+    "submit": "Déployer",
+    "submitting": "Déploiement…",
+    "fields": {
+      "codename": "Nom de code",
+      "codenamePlaceholder": "nom-court-unique",
+      "scenario": "Libellé du scénario",
+      "scenarioPlaceholder": "ex. demo_lab",
+      "host": "Hôte Proxmox cible",
+      "hostPlaceholder": "Sélectionner un hôte",
+      "teamCount": "Nombre d'équipes",
+      "vault": "Mot de passe Vault"
+    },
+    "err": {
+      "codenameRequired": "Le nom de code est obligatoire.",
+      "codenameShape": "Lettres minuscules, chiffres, tirets uniquement ; 3 à 32 caractères.",
+      "codenameTaken": "Ce nom de code est déjà utilisé par un autre déploiement local.",
+      "scenarioRequired": "Le libellé du scénario est obligatoire.",
+      "hostRequired": "Choisissez un hôte Proxmox cible.",
+      "teamCountNaN": "Le nombre d'équipes doit être un nombre.",
+      "teamCountMin": "Le nombre d'équipes doit être au moins 1.",
+      "vaultRequired": "Le mot de passe Vault est obligatoire."
+    },
+    "shaPin": {
+      "heading": "Épinglage SHA",
+      "catalog": "SHA du catalogue",
+      "project": "SHA du projet",
+      "ack": "Je confirme le déploiement avec exactement ces révisions."
+    },
+    "preflight": {
+      "heading": "Préalable",
+      "run": "Lancer le préalable",
+      "running": "En cours…",
+      "blocking": "Le préalable a signalé des problèmes bloquants. Corrigez-les avant de déployer.",
+      "acknowledge": "Accepter les avertissements préalables."
+    }
+  },
+  "teardown": {
+    "title": "Démanteler le déploiement",
+    "confirmLabel": "Saisissez le nom de code pour confirmer : {codename}",
+    "inputPlaceholder": "Saisissez ici le nom de code",
+    "mismatch": "La valeur saisie ne correspond pas au nom de code.",
+    "cancel": "Annuler",
+    "destroy": "Détruire le déploiement",
+    "destroying": "Destruction…",
+    "error": "Échec du démantèlement."
+  },
+  "reset": {
+    "title": "Réinitialiser l'équipe {id}",
+    "body": "Cela relancera le provisionnement de l'équipe {id}.",
+    "queuedNotice": "Un déploiement est en cours — cette réinitialisation sera mise en file.",
+    "cancel": "Annuler",
+    "confirm": "Réinitialiser",
+    "confirmQueue": "Mettre en file",
+    "queuedToast": "Réinitialisation mise en file pour l'équipe {id}.",
+    "runNowToast": "Réinitialisation en file pour l'équipe {id} — lancer maintenant ?",
+    "runNow": "Lancer",
+    "dismiss": "Ignorer"
+  },
+  "snapshot": {
+    "title": "Créer un snapshot — équipe {id}",
+    "name": "Nom du snapshot",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "error": "Échec de création du snapshot."
+  },
+  "rollback": {
+    "title": "Restaurer l'équipe {id}",
+    "chooseSnapshot": "Choisir un snapshot",
+    "noSnapshots": "Cette équipe n'a encore aucun snapshot.",
+    "cancel": "Annuler",
+    "confirm": "Restaurer",
+    "missingHeader": "Des snapshots requis sont manquants sur certaines VMs :",
+    "partial": "Restaurer uniquement les VMs avec snapshots valides",
+    "error": "Échec de la restauration."
+  },
   "preflight": {
     "title": "Rapport préalable",
     "subtitle": "Instantané immuable des vérifications pour ce déploiement.",

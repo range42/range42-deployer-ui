@@ -31,6 +31,7 @@ import CommandPalette from '../components/project/CommandPalette.vue'
 import ConfigTab from '../components/project/ConfigTab.vue'
 import HistoryTab from '../components/project/HistoryTab.vue'
 import VariablesTab from '../components/project/VariablesTab.vue'
+import DeployForm from '../components/project/DeployForm.vue'
 import { createMemoryFs } from '../services/projectRepo/memoryFs'
 import { ensureNamespaces } from '../i18n'
 import { useCanvasHistory } from '../composables/useCanvasHistory'
@@ -94,6 +95,9 @@ const showConfigPanel = ref(false)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
 const showDeploymentPanel = ref(false)
+// Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
+const showDeployForm = ref(false)
+const existingCodenames = ref([])
 const showTemplateBrowser = ref(false)
 const showImportModal = ref(false)
 const showDeleteProjectModal = ref(false)
@@ -505,16 +509,32 @@ const closeProxmoxSettings = () => {
 // Deployment handlers
 const showReconcileModal = ref(false)
 
-const handleOpenDeploy = () => {
-  // Ensure API is configured
+const handleOpenDeploy = async () => {
+  // Fetch known codenames from the backend deployments index so the
+  // DeployForm can flag local collisions client-instant.
+  try {
+    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
+    if (res.ok) {
+      const body = await res.json()
+      const items = Array.isArray(body) ? body : (body?.deployments || [])
+      existingCodenames.value = items.map(d => d.codename).filter(Boolean)
+    }
+  } catch {
+    existingCodenames.value = []
+  }
+  showDeployForm.value = true
+}
+
+// Legacy canvas-reconcile path preserved for imported Proxmox VMs.
+// Kept for future re-wiring alongside the new DeployForm when canvas drift
+// detection lands (§C3.x). Prefixed with _ to satisfy linter until re-used.
+const _handleOpenLegacyDeploy = () => {
   importApiConfig.configure()
   if (!importApiConfig.isReady.value) {
     showToast('Please configure Backend API settings first', 'warning')
     showProxmoxSettings.value = true
     return
   }
-
-  // Show reconciliation modal before deploying
   showReconcileModal.value = true
 }
 
@@ -1082,6 +1102,19 @@ const handleInfrastructureImport = (result) => {
     <DeploymentPanel
       v-if="showDeploymentPanel"
       @close="closeDeploymentPanel"
+    />
+
+    <!-- Plan C §C4.6 — DeployForm with inline preflight + SHA-pin -->
+    <DeployForm
+      v-if="showDeployForm && currentProject"
+      :visible="showDeployForm"
+      :project-id="currentProject.id"
+      :project-name="currentProject.name"
+      :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
+      :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
+      :existing-codenames="existingCodenames"
+      :gamenet="!!currentProject?.gamenet"
+      @close="showDeployForm = false"
     />
 
     <!-- Delete Project Confirmation Modal -->
