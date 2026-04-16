@@ -33,6 +33,91 @@ export function getTeamScopeAncestorId(node, allNodes) {
 }
 
 /**
+ * Compute the effective attachments for each node: direct attachments on the
+ * node itself PLUS any attachments with `scope: 'group_inherited'` defined on
+ * a group ancestor (team_scope or topology_group). Inherited attachments are
+ * flagged with `inherited: true` and `inherited_from: <groupId>` so the UI
+ * can distinguish them from the node's own attachments without persisting
+ * duplicate records.
+ *
+ * Pure function — callers pass the full nodes list + a flat attachments list:
+ *   attachments: [{ id, node_id, scope?: 'node' | 'group_inherited', ... }]
+ *
+ * Returns: Map<nodeId, Attachment[]>
+ */
+export function computeEffectiveAttachments(allNodes, attachments) {
+  const byId = new Map((allNodes || []).map((n) => [n.id, n]))
+  const byNode = new Map()
+  for (const n of allNodes || []) byNode.set(n.id, [])
+
+  // 1) Direct attachments go on their owning node unchanged.
+  const groupInherited = []
+  for (const a of attachments || []) {
+    if (!a?.node_id) continue
+    if (a.scope === 'group_inherited') {
+      groupInherited.push(a)
+      continue
+    }
+    if (!byNode.has(a.node_id)) byNode.set(a.node_id, [])
+    byNode.get(a.node_id).push({ ...a, inherited: false })
+  }
+
+  // 2) Inherited attachments: each group_inherited attachment on a group node
+  //    propagates to all descendant nodes (leaf + nested groups) as a copy.
+  for (const a of groupInherited) {
+    const group = byId.get(a.node_id)
+    if (!group) continue
+    // Also attach to the group itself so Config tab shows it on the group row.
+    if (!byNode.has(group.id)) byNode.set(group.id, [])
+    byNode.get(group.id).push({ ...a, inherited: false })
+
+    // BFS over descendants
+    const queue = []
+    for (const n of allNodes || []) {
+      if (n.parentNode === group.id || n.parent === group.id) queue.push(n)
+    }
+    const seen = new Set()
+    while (queue.length) {
+      const n = queue.shift()
+      if (seen.has(n.id)) continue
+      seen.add(n.id)
+      if (!byNode.has(n.id)) byNode.set(n.id, [])
+      byNode.get(n.id).push({ ...a, inherited: true, inherited_from: group.id })
+      for (const child of allNodes || []) {
+        if (child.parentNode === n.id || child.parent === n.id) queue.push(child)
+      }
+    }
+  }
+
+  return byNode
+}
+
+/**
+ * Apply a bulk edit to a list of attachments. Supports:
+ *   { setStage?: string, setOrder?: number, addVars?: Record<string,string>, setScope?: 'node'|'group_inherited', delete?: true }
+ * When `delete: true`, selected attachments are removed entirely.
+ * Otherwise, fields are shallow-merged; `addVars` merges into each attachment's `vars` map.
+ * Pure — returns a new attachments array.
+ */
+export function applyBulkAttachmentEdit(attachments, selectedIds, edit) {
+  const selected = new Set(selectedIds || [])
+  if (edit?.delete) {
+    return (attachments || []).filter((a) => !selected.has(a.id))
+  }
+  return (attachments || []).map((a) => {
+    if (!selected.has(a.id)) return a
+    const next = { ...a }
+    if (edit?.setStage !== undefined) next.stage = edit.setStage
+    if (edit?.setOrder !== undefined) next.order = Number(edit.setOrder) || 0
+    if (edit?.setScope !== undefined) next.scope = edit.setScope
+    if (edit?.addVars) {
+      next.vars = { ...(a.vars || {}), ...edit.addVars }
+    }
+    return next
+  })
+}
+
+/**
  * Infer a default edge replication_intent from its endpoints.
  * - both ends live in the same team_scope  → 'mesh'
  * - exactly one end is inside a team_scope → 'fan_out'
@@ -292,5 +377,7 @@ export function useInfraBuilder() {
     findNearestDockerHost,
     inferReplicationIntent,
     getTeamScopeAncestorId,
+    computeEffectiveAttachments,
+    applyBulkAttachmentEdit,
   }
 }
