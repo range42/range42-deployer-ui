@@ -9,6 +9,45 @@ const NETWORK_TYPES = ['network-segment']
 const DOCKER_HOST_TYPES = ['vm', 'lxc']
 
 /**
+ * Return the team_scope group id (if any) that contains the given node.
+ * Nodes may declare parentage via VueFlow's `parentNode` (preferred) or
+ * `parent` (legacy). Walks up through plain `topology_group` ancestors but
+ * stops at the nearest `team_scope`.
+ * Pure — `allNodes` is a flat array; O(depth).
+ */
+export function getTeamScopeAncestorId(node, allNodes) {
+  if (!node || !allNodes?.length) return null
+  const byId = new Map(allNodes.map((n) => [n.id, n]))
+  let curId = node.parentNode || node.parent || null
+  const seen = new Set()
+  while (curId && !seen.has(curId)) {
+    seen.add(curId)
+    const parent = byId.get(curId)
+    if (!parent) return null
+    if (parent.type === 'group' && parent.data?.kind === 'team_scope') {
+      return parent.id
+    }
+    curId = parent.parentNode || parent.parent || null
+  }
+  return null
+}
+
+/**
+ * Infer a default edge replication_intent from its endpoints.
+ * - both ends live in the same team_scope  → 'mesh'
+ * - exactly one end is inside a team_scope → 'fan_out'
+ * - neither end is in a team_scope         → 'pair_scoped'
+ * Pure — callers supply full node list for ancestry lookup.
+ */
+export function inferReplicationIntent(sourceNode, targetNode, allNodes) {
+  const srcScope = getTeamScopeAncestorId(sourceNode, allNodes)
+  const tgtScope = getTeamScopeAncestorId(targetNode, allNodes)
+  if (srcScope && tgtScope && srcScope === tgtScope) return 'mesh'
+  if (srcScope || tgtScope) return 'fan_out'
+  return 'pair_scoped'
+}
+
+/**
  * Validate that a Docker node has a reachable vm|lxc host_ref.
  * Returns an object { ok, code, message } (code is stable, message is human).
  * Pure — nodes may be passed directly (array of VueFlow nodes).
@@ -109,6 +148,9 @@ export function useInfraBuilder() {
       e.source === connection.source || e.target === connection.source
     ).length
 
+    // Infer default replication intent from the team_scope ancestry of endpoints (Plan C §6).
+    const replicationIntent = inferReplicationIntent(sourceNode, targetNode, allNodes)
+
     // Create edge with connection data
     const edgeWithData = {
       ...connection,
@@ -128,9 +170,12 @@ export function useInfraBuilder() {
           rate: null,
           isGateway: false,
         },
+        replication_intent: replicationIntent,
         // UI helper
         useDhcp: true,
-      } : {}
+      } : {
+        replication_intent: replicationIntent,
+      }
     }
 
     edges.value = addEdge(edgeWithData, edges.value)
@@ -151,7 +196,7 @@ export function useInfraBuilder() {
   const updateEdgeData = (edgeId, updates) => {
     edges.value = edges.value.map(edge => {
       if (edge.id === edgeId) {
-        // Merge connection data properly
+        // Merge connection data properly; replication_intent lives at data root
         const newData = {
           ...edge.data,
           ...updates,
@@ -159,6 +204,9 @@ export function useInfraBuilder() {
             ...(edge.data?.connection || {}),
             ...(updates.connection || {})
           }
+        }
+        if (updates.replication_intent) {
+          newData.replication_intent = updates.replication_intent
         }
         return { ...edge, data: newData }
       }
@@ -242,5 +290,7 @@ export function useInfraBuilder() {
     validateDockerNode,
     computeDockerTetherEdges,
     findNearestDockerHost,
+    inferReplicationIntent,
+    getTeamScopeAncestorId,
   }
 }

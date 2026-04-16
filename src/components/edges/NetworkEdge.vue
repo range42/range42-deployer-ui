@@ -26,7 +26,7 @@ const props = defineProps({
   selected: Boolean,
 })
 
-const { findNode } = useVueFlow()
+const { findNode, getNodes } = useVueFlow()
 
 // Resolve the network segment color from the connected network node
 const networkColor = computed(() => {
@@ -38,6 +38,48 @@ const networkColor = computed(() => {
   if (!networkNode) return getNetworkColor('custom')
   const segmentType = networkNode.data?.config?.segmentType || 'custom'
   return getNetworkColor(segmentType)
+})
+
+// Replication intent: read from edge.data.replication_intent; badge only renders
+// for fan_out | mesh. For fan_out we show the N from the nearest team_scope group.
+const replicationIntent = computed(() => props.data?.replication_intent || null)
+
+const replicationCount = computed(() => {
+  if (!replicationIntent.value || replicationIntent.value === 'pair_scoped') return 0
+  const allNodes = getNodes?.value || []
+  // Walk parent chain to find nearest team_scope group for either endpoint
+  const findScope = (nodeId) => {
+    const byId = new Map(allNodes.map((n) => [n.id, n]))
+    let curId = byId.get(nodeId)?.parentNode || byId.get(nodeId)?.parent || null
+    const seen = new Set()
+    while (curId && !seen.has(curId)) {
+      seen.add(curId)
+      const p = byId.get(curId)
+      if (!p) return null
+      if (p.type === 'group' && p.data?.kind === 'team_scope') return p
+      curId = p.parentNode || p.parent || null
+    }
+    return null
+  }
+  const srcScope = findScope(props.source)
+  const tgtScope = findScope(props.target)
+  const scope = srcScope || tgtScope
+  if (!scope) return 0
+  const n = Number(scope.data?.team_count ?? scope.data?.defaults?.team_count ?? 1)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1
+})
+
+const replicationBadge = computed(() => {
+  if (!replicationIntent.value) return null
+  if (replicationIntent.value === 'pair_scoped') return null
+  return {
+    intent: replicationIntent.value,
+    count: replicationCount.value,
+    label: `×${replicationCount.value || 'N'}`,
+    title: replicationIntent.value === 'fan_out'
+      ? `Fan-out: replicated ×${replicationCount.value || 'N'} per team`
+      : `Mesh: both endpoints live in the same team_scope (×${replicationCount.value || 'N'})`,
+  }
 })
 
 // Compute the bezier path for the edge
@@ -135,6 +177,22 @@ const labelStyle = computed(() => {
           <!-- Firewall indicator -->
           <AppIcon v-if="connectionInfo.firewall" name="shield" class="w-2.5 h-2.5" title="Firewall enabled" />
         </div>
+      </div>
+
+      <!-- Replication intent badge — rendered near midpoint for fan_out / mesh -->
+      <div
+        v-if="replicationBadge"
+        class="replication-badge mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold shadow"
+        :class="{
+          'bg-indigo-600 text-white': replicationBadge.intent === 'fan_out',
+          'bg-violet-600 text-white': replicationBadge.intent === 'mesh',
+        }"
+        :data-testid="`replication-badge-${id}`"
+        :data-intent="replicationBadge.intent"
+        :title="replicationBadge.title"
+      >
+        <span>{{ replicationBadge.intent === 'fan_out' ? 'fan-out' : 'mesh' }}</span>
+        <span class="font-mono">{{ replicationBadge.label }}</span>
       </div>
     </div>
   </EdgeLabelRenderer>
