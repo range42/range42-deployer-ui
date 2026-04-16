@@ -1,14 +1,15 @@
+/**
+ * Root Playwright config. Delegates testDir to `./e2e` so the default
+ * `npx playwright test` invocation (and the `npm run test:e2e` script)
+ * both discover the E2E flows added in Plan C §C6.
+ */
 import { defineConfig, devices } from '@playwright/test'
 
-// Align the dev server port with Playwright's expected base URL so both
-// webServer lifecycle and page.goto('/') hit the same origin. Use 5173 by
-// default (Vite's historic dev port) — override via PLAYWRIGHT_TEST_BASE_URL
-// and VITE_DEV_PORT if the host has a conflict.
 const PORT = Number.parseInt(process.env.VITE_DEV_PORT || '5173', 10)
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || `http://localhost:${PORT}`
 
 export default defineConfig({
-  testDir: './',
+  testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -25,8 +26,6 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       VITE_DEV_PORT: String(PORT),
-      // Point /v1/* proxy at the mock when provided; tests rely on
-      // page.route interception, so the actual URL rarely matters.
       VITE_API_URL: process.env.VITE_API_URL || `http://localhost:${PORT}`,
     },
   },
