@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useDeploymentStore } from '@/stores/deploymentStore.ts'
 import TeamCard from '@/components/ui/TeamCard.vue'
+import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,6 +25,7 @@ const loading = ref(true)
 const loadError = ref(null)
 const logFilter = ref('')
 const teamFilter = ref(null)
+const showTeardown = ref(false)
 
 const VALID_TABS = ['overview', 'teams', 'logs']
 const TEAMS_DEFAULT_STATES = new Set(['deploying', 'deployed', 'partial'])
@@ -180,8 +182,25 @@ onBeforeUnmount(() => {
         <button type="button" class="btn btn-sm btn-ghost" @click="cancelDeployment">
           {{ t('deployment.detail.cancel') }}
         </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-error btn-outline"
+          data-testid="detail-teardown-open"
+          @click="showTeardown = true"
+        >
+          {{ t('deployment.detail.teardown') }}
+        </button>
       </div>
     </header>
+
+    <!-- Plan C §C4.8 — Teardown confirm-phrase modal -->
+    <TeardownConfirmModal
+      v-if="showTeardown"
+      :visible="showTeardown"
+      :deployment-id="String(route.params.id)"
+      :codename="meta?.codename || String(route.params.id)"
+      @close="showTeardown = false"
+    />
 
     <progress class="progress progress-primary w-full mb-4" :value="aggregateProgress" max="100"></progress>
 
