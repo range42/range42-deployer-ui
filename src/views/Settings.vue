@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { useInventoryStore } from '../stores/inventoryStore'
-import { useProxmoxSettingsStore } from '../stores/proxmoxSettingsStore.ts'
+import { useBackendApiStore } from '../stores/backendApiStore.ts'
 import { useUserStore, validateDisplayName, validateColor } from '../stores/userStore.ts'
 import { getGitHubProvider } from '../services/git/github'
 import { useConfirmDialog } from '../composables/useConfirmDialog'
@@ -12,7 +12,7 @@ import { useToast } from '../composables/useToast'
 const router = useRouter()
 const projectStore = useProjectStore()
 const inventoryStore = useInventoryStore()
-const proxmoxStore = useProxmoxSettingsStore()
+const backendApi = useBackendApiStore()
 const userStore = useUserStore()
 const { confirm } = useConfirmDialog()
 const { showToast } = useToast()
@@ -47,92 +47,62 @@ function saveUserIdentity() {
 }
 
 // ===========================================================================
-// Proxmox hosts (Plan C §C5.4 + §18.4)
+// Backend API connection — the UI talks to exactly one backend-api at a time.
+// Proxmox hosts are configured on the backend itself (env/config), not here;
+// the UI reads `/v1/proxmox/hosts` read-only from the configured backend.
 // ===========================================================================
 
-const proxmoxHosts = computed(() => proxmoxStore.hosts)
-const showAddHost = ref(false)
-const newHost = ref({
-  name: '',
-  base_url: '',
-  default_node: 'pve',
-  api_token_id: '',
-  api_token_secret: '',
-  verify_ssl: true,
+const backendForm = ref({
+  url: backendApi.url,
+  token: backendApi.token || '',
 })
-const addHostError = ref('')
-const testingHostId = ref('')
+const backendError = ref('')
+const backendTesting = ref(false)
+const backendHealth = computed(() => backendApi.health)
 
-function openAddHost() {
-  showAddHost.value = true
-  addHostError.value = ''
-  newHost.value = {
-    name: '',
-    base_url: '',
-    default_node: 'pve',
-    api_token_id: '',
-    api_token_secret: '',
-    verify_ssl: true,
+function saveBackend() {
+  backendError.value = ''
+  const url = backendForm.value.url.trim()
+  if (!/^https?:\/\//.test(url)) {
+    backendError.value = 'Backend URL must start with http:// or https://'
+    return
   }
+  backendApi.setUrl(url)
+  backendApi.setToken(backendForm.value.token.trim() || undefined)
+  showToast('Backend API saved', 'success')
 }
 
-function submitAddHost() {
-  addHostError.value = ''
+async function testBackend() {
+  backendError.value = ''
+  backendTesting.value = true
   try {
-    proxmoxStore.addHost({ ...newHost.value })
-    showAddHost.value = false
-    showToast('Proxmox host added', 'success')
+    // Apply the form values first so the probe hits what the user sees.
+    backendApi.setUrl(backendForm.value.url.trim())
+    backendApi.setToken(backendForm.value.token.trim() || undefined)
+    const result = await backendApi.testConnection()
+    if (result.status === 'ok') showToast(`Backend OK (${result.rtt_ms} ms)`, 'success')
+    else if (result.status === 'degraded') showToast('Backend reachable but not ready', 'warning')
+    else showToast('Backend unreachable', 'error')
   } catch (e) {
-    addHostError.value = e?.message || String(e)
-  }
-}
-
-async function removeHost(id) {
-  const ok = await confirm({
-    title: 'Remove Proxmox host',
-    message: 'Remove this Proxmox host from your settings?',
-    confirmText: 'Remove',
-    confirmClass: 'btn-error',
-  })
-  if (ok) proxmoxStore.removeHost(id)
-}
-
-async function testHost(id) {
-  const host = proxmoxStore.getHost(id)
-  if (!host) return
-  testingHostId.value = id
-  proxmoxStore.updateHostHealth(id, { status: 'unknown', checked_at: new Date().toISOString() })
-  const started = Date.now()
-  try {
-    // Lightweight reachability probe — backend /v1/proxmox/hosts/{id}/health
-    // isn't guaranteed to exist yet, so fall back to a simple HEAD on the base
-    // URL. A real health call will be wired in C4.x.
-    await fetch(host.base_url, { method: 'HEAD', mode: 'no-cors' })
-    proxmoxStore.updateHostHealth(id, {
-      status: 'ok',
-      rtt_ms: Date.now() - started,
-      checked_at: new Date().toISOString(),
-    })
-  } catch (e) {
-    proxmoxStore.updateHostHealth(id, {
-      status: 'down',
-      checked_at: new Date().toISOString(),
-      error: e?.message || String(e),
-    })
+    backendError.value = e?.message || String(e)
   } finally {
-    testingHostId.value = ''
+    backendTesting.value = false
   }
 }
 
 // ===========================================================================
-// Snapshot retention defaults (Plan C §C5.4)
+// Snapshot retention (user-set here, enforced by the backend)
+//
+// The UI stores the user's preferred defaults and POSTs them to the backend's
+// `/v1/admin/retention` so the backend enforces them on the snapshot pipeline.
+// LocalStorage is a fallback mirror while offline / while the backend is
+// unreachable; the backend is authoritative once it's online.
 // ===========================================================================
 
 const RETENTION_KEY = 'range42_snapshot_retention'
-const retention = ref({
-  keep_count: 5,
-  keep_days: 7,
-})
+const retention = ref({ keep_count: 5, keep_days: 7 })
+const retentionSaving = ref(false)
+const retentionStatus = ref('') // 'local-only' | 'synced' | 'error'
 
 function loadRetention() {
   try {
@@ -142,13 +112,34 @@ function loadRetention() {
     /* ignore */
   }
 }
-function saveRetention() {
+
+async function saveRetention() {
   const kc = Math.max(0, Number(retention.value.keep_count) || 0)
   const kd = Math.max(0, Number(retention.value.keep_days) || 0)
   retention.value.keep_count = kc
   retention.value.keep_days = kd
   localStorage.setItem(RETENTION_KEY, JSON.stringify(retention.value))
-  showToast('Snapshot retention saved', 'success')
+  retentionSaving.value = true
+  retentionStatus.value = ''
+  try {
+    const res = await fetch(`${backendApi.url}/v1/admin/retention`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...backendApi.authHeaders() },
+      body: JSON.stringify(retention.value),
+    })
+    if (res.ok) {
+      retentionStatus.value = 'synced'
+      showToast('Snapshot retention saved + synced to backend', 'success')
+    } else {
+      retentionStatus.value = 'local-only'
+      showToast(`Saved locally — backend refused (HTTP ${res.status})`, 'warning')
+    }
+  } catch {
+    retentionStatus.value = 'local-only'
+    showToast('Saved locally — backend unreachable', 'warning')
+  } finally {
+    retentionSaving.value = false
+  }
 }
 
 // ===========================================================================
@@ -365,107 +356,83 @@ const clearAllData = async () => {
         </div>
       </div>
 
-      <!-- Proxmox hosts (Plan C §C5.4 + §18.4) -->
-      <div id="proxmox-hosts" class="card bg-base-100 shadow-md mb-6" data-testid="settings-proxmox-hosts">
+      <!-- Backend API connection — the UI's only conduit to the platform.
+           Proxmox hosts are owned by the backend itself (env/config). -->
+      <div id="backend-api" class="card bg-base-100 shadow-md mb-6" data-testid="settings-backend-api">
         <div class="card-body">
           <div class="flex items-center justify-between mb-2">
-            <h2 class="card-title">Proxmox hosts</h2>
-            <button class="btn btn-primary btn-sm" type="button" @click="openAddHost">Add host</button>
+            <h2 class="card-title">Backend API</h2>
+            <span
+              v-if="backendHealth?.status"
+              class="badge"
+              :class="{
+                'badge-success': backendHealth.status === 'ok',
+                'badge-warning': backendHealth.status === 'degraded',
+                'badge-error': backendHealth.status === 'unreachable',
+              }"
+            >
+              {{ backendHealth.status }}
+              <span v-if="backendHealth.rtt_ms != null"> — {{ backendHealth.rtt_ms }}ms</span>
+            </span>
           </div>
-          <p class="text-sm text-base-content/60 mb-3">
-            Register the Proxmox endpoints that deployments target. Each host gets its own credentials
-            and health snapshot.
+          <p class="text-sm text-base-content/60 mb-4">
+            The backend API is the component that connects to Proxmox hypervisors. This UI
+            talks to exactly one backend at a time. Proxmox host credentials and routing are
+            configured <em>on the backend</em>, not here.
           </p>
 
-          <div v-if="proxmoxHosts.length" class="space-y-3">
-            <div
-              v-for="host in proxmoxHosts"
-              :key="host.id"
-              class="flex items-center gap-4 p-4 rounded-xl border border-base-300"
-            >
-              <div class="flex-1 min-w-0">
-                <div class="font-semibold">{{ host.name }}</div>
-                <div class="text-xs text-base-content/60 truncate">{{ host.base_url }}</div>
-                <div class="mt-1 flex items-center gap-2 text-xs">
-                  <span class="badge badge-xs badge-outline">node: {{ host.default_node }}</span>
-                  <span
-                    v-if="host.health?.status"
-                    class="badge badge-xs"
-                    :class="{
-                      'badge-success': host.health.status === 'ok',
-                      'badge-warning': host.health.status === 'degraded',
-                      'badge-error': host.health.status === 'down',
-                      'badge-ghost': host.health.status === 'unknown',
-                    }"
-                  >
-                    {{ host.health.status }}
-                    <span v-if="host.health.rtt_ms != null"> — {{ host.health.rtt_ms }}ms</span>
-                  </span>
-                  <span v-if="host.health?.aggregate_storage_gb != null" class="text-base-content/50">
-                    {{ host.health.aggregate_storage_gb }} GB storage
-                  </span>
-                </div>
-              </div>
-              <button
-                class="btn btn-ghost btn-sm"
-                type="button"
-                :disabled="testingHostId === host.id"
-                @click="testHost(host.id)"
-              >
-                {{ testingHostId === host.id ? 'Testing…' : 'Test' }}
-              </button>
-              <button
-                class="btn btn-ghost btn-sm text-error"
-                type="button"
-                @click="removeHost(host.id)"
-              >
-                Remove
-              </button>
+          <div class="space-y-3">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Backend URL</span></label>
+              <input
+                v-model="backendForm.url"
+                type="url"
+                class="input input-bordered"
+                placeholder="http://192.168.142.121:8000"
+                data-testid="backend-url"
+              />
             </div>
-          </div>
-          <div v-else class="text-center py-6 text-base-content/50">
-            No Proxmox hosts configured. Add one to enable deployments.
+            <div class="form-control">
+              <label class="label">
+                <span class="label-text">Bearer token (optional, Kong-gated)</span>
+              </label>
+              <input
+                v-model="backendForm.token"
+                type="password"
+                class="input input-bordered"
+                placeholder="leave empty for unauthenticated"
+                autocomplete="new-password"
+                data-testid="backend-token"
+              />
+            </div>
+            <div v-if="backendError" class="alert alert-error">
+              <span>{{ backendError }}</span>
+            </div>
+            <div
+              v-if="backendHealth?.checks"
+              class="text-xs text-base-content/60 space-y-1"
+              data-testid="backend-checks"
+            >
+              <div v-for="(v, k) in backendHealth.checks" :key="k">
+                <span :class="v.ok ? 'text-success' : 'text-error'">●</span>
+                <span class="ml-1 font-mono">{{ k }}</span>
+                <span v-if="!v.ok" class="ml-2 text-error">not ready</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Add host modal -->
-          <div v-if="showAddHost" class="modal modal-open" role="dialog" aria-modal="true">
-            <div class="modal-box max-w-lg">
-              <h3 class="text-lg font-bold mb-4">Add Proxmox host</h3>
-              <div class="space-y-3">
-                <div class="form-control">
-                  <label class="label"><span class="label-text">Name</span></label>
-                  <input v-model="newHost.name" type="text" class="input input-bordered" placeholder="pve01" />
-                </div>
-                <div class="form-control">
-                  <label class="label"><span class="label-text">Base URL</span></label>
-                  <input v-model="newHost.base_url" type="text" class="input input-bordered" placeholder="https://pve01.example.com:8006" />
-                </div>
-                <div class="form-control">
-                  <label class="label"><span class="label-text">Default node</span></label>
-                  <input v-model="newHost.default_node" type="text" class="input input-bordered" placeholder="pve" />
-                </div>
-                <div class="form-control">
-                  <label class="label"><span class="label-text">API token id</span></label>
-                  <input v-model="newHost.api_token_id" type="text" class="input input-bordered" placeholder="user@pam!token" />
-                </div>
-                <div class="form-control">
-                  <label class="label"><span class="label-text">API token secret</span></label>
-                  <input v-model="newHost.api_token_secret" type="password" class="input input-bordered" />
-                </div>
-                <label class="cursor-pointer label justify-start gap-2">
-                  <input v-model="newHost.verify_ssl" type="checkbox" class="toggle toggle-primary" />
-                  <span class="label-text">Verify SSL</span>
-                </label>
-                <div v-if="addHostError" class="alert alert-error">
-                  <span>{{ addHostError }}</span>
-                </div>
-              </div>
-              <div class="modal-action">
-                <button class="btn btn-ghost" type="button" @click="showAddHost = false">Cancel</button>
-                <button class="btn btn-primary" type="button" @click="submitAddHost">Add</button>
-              </div>
-            </div>
-            <div class="modal-backdrop" @click="showAddHost = false"></div>
+          <div class="mt-4 flex gap-2">
+            <button class="btn btn-primary btn-sm" type="button" @click="saveBackend">
+              Save
+            </button>
+            <button
+              class="btn btn-ghost btn-sm"
+              type="button"
+              :disabled="backendTesting"
+              @click="testBackend"
+            >
+              {{ backendTesting ? 'Testing…' : 'Test connection' }}
+            </button>
           </div>
         </div>
       </div>
@@ -501,10 +468,25 @@ const clearAllData = async () => {
               />
             </div>
           </div>
-          <div class="mt-3">
-            <button class="btn btn-primary btn-sm" type="button" @click="saveRetention">
-              Save retention
+          <div class="mt-3 flex items-center gap-3">
+            <button
+              class="btn btn-primary btn-sm"
+              type="button"
+              :disabled="retentionSaving"
+              @click="saveRetention"
+            >
+              {{ retentionSaving ? 'Saving…' : 'Save retention' }}
             </button>
+            <span
+              v-if="retentionStatus === 'synced'"
+              class="text-xs text-success"
+              data-testid="retention-status-synced"
+            >Synced to backend</span>
+            <span
+              v-else-if="retentionStatus === 'local-only'"
+              class="text-xs text-warning"
+              data-testid="retention-status-local"
+            >Local only — backend unreachable</span>
           </div>
         </div>
       </div>
