@@ -2,6 +2,8 @@
   "list": {
     "title": "デプロイメント",
     "subtitle": "進行中と過去のデプロイメント（プロジェクト別）。",
+    "active": "進行中",
+    "past": "過去",
     "activeHeading": "進行中",
     "pastHeading": "過去",
     "noActive": "進行中のデプロイはありません。",
@@ -28,6 +30,10 @@
     "cancel": "デプロイをキャンセル",
     "pause": "一時停止",
     "teardown": "撤去…",
+    "overview": "概要",
+    "teams": "チーム",
+    "logs": "ログ",
+    "preflight": "事前チェック",
     "preflightLink": "事前チェックを表示",
     "tabs": {
       "overview": "概要",
@@ -70,6 +76,11 @@
     "openLogs": "このチームのログを開く",
     "noLogsYet": "ログはまだありません。",
     "queued": "待機",
+    "reset": "チームをリセット",
+    "snapshot": "スナップショット",
+    "rollback": "ロールバック",
+    "copy_ssh": "SSHコマンドをコピー",
+    "open_terminal": "ターミナルを開く",
     "snapshotCount": "スナップショット {n} 件",
     "status": {
       "pending": "待機",
@@ -194,5 +205,24 @@
     "loadFailed": "事前チェック記録の読み込みに失敗しました。",
     "notFound": "事前チェック記録が見つかりません。",
     "loading": "事前チェック記録を読み込み中…"
+  },
+  "states": {
+    "pending": "待機",
+    "preflight_running": "事前チェック実行中",
+    "preflight_review": "事前チェック確認",
+    "deploying": "デプロイ中",
+    "completed": "完了",
+    "partial": "一部",
+    "failed": "失敗",
+    "cancelled": "キャンセル",
+    "unknown": "不明"
+  },
+  "phases": {
+    "network": "ネットワーク",
+    "router": "ルーター",
+    "vm": "VM",
+    "install": "インストール",
+    "configure": "構成",
+    "validate": "検証"
   }
 }

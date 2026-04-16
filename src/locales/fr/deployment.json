@@ -2,6 +2,8 @@
   "list": {
     "title": "Déploiements",
     "subtitle": "Déploiements actifs et historique, groupés par projet.",
+    "active": "Actifs",
+    "past": "Passés",
     "activeHeading": "Actifs",
     "pastHeading": "Passés",
     "noActive": "Aucun déploiement actif.",
@@ -28,6 +30,10 @@
     "cancel": "Annuler le déploiement",
     "pause": "Pause",
     "teardown": "Démanteler…",
+    "overview": "Vue d'ensemble",
+    "teams": "Équipes",
+    "logs": "Logs",
+    "preflight": "Préalable",
     "preflightLink": "Voir le rapport préalable",
     "tabs": {
       "overview": "Vue d'ensemble",
@@ -70,6 +76,11 @@
     "openLogs": "Ouvrir les logs de cette équipe",
     "noLogsYet": "Aucun log.",
     "queued": "en file",
+    "reset": "Réinitialiser l'équipe",
+    "snapshot": "Snapshot",
+    "rollback": "Restaurer",
+    "copy_ssh": "Copier la commande SSH",
+    "open_terminal": "Ouvrir le terminal",
     "snapshotCount": "{n} snapshot | {n} snapshots",
     "status": {
       "pending": "en attente",
@@ -194,5 +205,24 @@
     "loadFailed": "Échec du chargement du rapport.",
     "notFound": "Rapport introuvable.",
     "loading": "Chargement du rapport préalable…"
+  },
+  "states": {
+    "pending": "en attente",
+    "preflight_running": "préalable en cours",
+    "preflight_review": "revue du préalable",
+    "deploying": "déploiement",
+    "completed": "terminé",
+    "partial": "partiel",
+    "failed": "en échec",
+    "cancelled": "annulé",
+    "unknown": "inconnu"
+  },
+  "phases": {
+    "network": "réseau",
+    "router": "routeur",
+    "vm": "vm",
+    "install": "installation",
+    "configure": "configuration",
+    "validate": "validation"
   }
 }

@@ -1,0 +1,34 @@
+{
+  "tabs": {
+    "canvas": "Canevas",
+    "config": "Configuration",
+    "variables": "Variables",
+    "history": "Historique",
+    "settings": "Paramètres",
+    "import": "Importer"
+  },
+  "problems": {
+    "title": "Problèmes",
+    "none": "Aucun problème détecté.",
+    "open": "Ouvrir le problème"
+  },
+  "palette": {
+    "placeholder": "Rechercher des nœuds…",
+    "empty": "Aucun nœud ne correspond à votre recherche."
+  },
+  "fork_to_override": {
+    "action": "Forker pour surcharger",
+    "hint": "Forkez cette entrée de catalogue dans votre propre source pour la personnaliser."
+  },
+  "drift": {
+    "banner": "Ce projet a divergé de sa source amont.",
+    "view": "Voir les divergences",
+    "rebase": "Rebaser sur l'amont"
+  },
+  "save": {
+    "success": "Projet enregistré.",
+    "pr_opened": "Pull request ouverte",
+    "conflict": "Enregistrement bloqué par un conflit — ouvrez la PR pour résoudre.",
+    "offline": "Hors ligne — vos modifications sont mises en file localement."
+  }
+}

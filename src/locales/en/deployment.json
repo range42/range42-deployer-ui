@@ -2,6 +2,8 @@
   "list": {
     "title": "Deployments",
     "subtitle": "Active deployments and history, grouped by project.",
+    "active": "Active",
+    "past": "Past",
     "activeHeading": "Active",
     "pastHeading": "Past",
     "noActive": "No active deployments.",
@@ -28,6 +30,10 @@
     "cancel": "Cancel deployment",
     "pause": "Pause",
     "teardown": "Teardown…",
+    "overview": "Overview",
+    "teams": "Teams",
+    "logs": "Logs",
+    "preflight": "Preflight",
     "preflightLink": "View preflight record",
     "tabs": {
       "overview": "Overview",
@@ -70,6 +76,11 @@
     "openLogs": "Open logs for this team",
     "noLogsYet": "No logs yet.",
     "queued": "queued",
+    "reset": "Reset team",
+    "snapshot": "Snapshot",
+    "rollback": "Rollback",
+    "copy_ssh": "Copy SSH command",
+    "open_terminal": "Open terminal",
     "snapshotCount": "{n} snapshot | {n} snapshots",
     "status": {
       "pending": "pending",
@@ -194,5 +205,24 @@
     "loadFailed": "Failed to load preflight record.",
     "notFound": "Preflight record not found.",
     "loading": "Loading preflight record…"
+  },
+  "states": {
+    "pending": "pending",
+    "preflight_running": "preflight running",
+    "preflight_review": "preflight review",
+    "deploying": "deploying",
+    "completed": "completed",
+    "partial": "partial",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "unknown": "unknown"
+  },
+  "phases": {
+    "network": "network",
+    "router": "router",
+    "vm": "vm",
+    "install": "install",
+    "configure": "configure",
+    "validate": "validate"
   }
 }
