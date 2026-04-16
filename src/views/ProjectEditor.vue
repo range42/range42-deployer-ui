@@ -81,7 +81,6 @@ const showConfigPanel = ref(false)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
 const showDeploymentPanel = ref(false)
-const showInventoryBrowser = ref(false)
 const showTemplateBrowser = ref(false)
 const showImportModal = ref(false)
 const showDeleteProjectModal = ref(false)
@@ -513,7 +512,7 @@ const handleInfrastructureImport = (result) => {
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
-      @openInventory="showInventoryBrowser = true"
+      @openInventory="router.push('/catalog')"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
       class="hidden lg:flex shrink-0"
