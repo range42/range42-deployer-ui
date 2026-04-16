@@ -9,7 +9,7 @@
  * adapter simpler than GitLab's.
  */
 
-import type { GitProviderV1, RepoRef } from './types'
+import type { GitProviderV1, RepoRef, CommitRef } from './types'
 import { encodeContentBase64, decodeContentBase64 } from './encoding'
 
 export interface GiteaProviderOpts {
@@ -207,6 +207,39 @@ export class GiteaProvider implements GitProviderV1 {
       path: it.path,
       type: it.type === 'tree' ? 'tree' : 'blob',
       sha: it.sha,
+    }))
+  }
+
+  async listCommits(opts: {
+    owner: string
+    repo: string
+    path?: string
+    ref?: string
+    perPage?: number
+  }): Promise<CommitRef[]> {
+    const params = new URLSearchParams()
+    if (opts.ref) params.set('sha', opts.ref)
+    if (opts.path) params.set('path', opts.path)
+    params.set('limit', String(opts.perPage ?? 50))
+    const url = this.url(
+      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(
+        opts.repo,
+      )}/commits?${params.toString()}`,
+    )
+    const items = await this.json<
+      Array<{
+        sha: string
+        commit: {
+          message: string
+          author: { name: string; date: string }
+        }
+      }>
+    >(url, { headers: this.headers() })
+    return items.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message,
+      author: c.commit.author.name,
+      date: c.commit.author.date,
     }))
   }
 

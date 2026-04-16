@@ -29,8 +29,10 @@ import TemplateBrowser from '../components/TemplateBrowser.vue'
 import ProblemsPanel from '../components/project/ProblemsPanel.vue'
 import CommandPalette from '../components/project/CommandPalette.vue'
 import ConfigTab from '../components/project/ConfigTab.vue'
+import HistoryTab from '../components/project/HistoryTab.vue'
 import { createMemoryFs } from '../services/projectRepo/memoryFs'
 import { ensureNamespaces } from '../i18n'
+import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
 import { useHotkeys } from '../composables/useHotkeys'
 
@@ -292,7 +294,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'common'])
+  ensureNamespaces(['configTab', 'historyTab', 'common'])
 })
 
 watch([nodes, edges], () => {
@@ -613,6 +615,46 @@ function handleAttachmentsUpdate(next) {
   })
 }
 
+// HistoryTab wiring (C3.9). When the project is linked to a git source
+// (`project.gitSource = { provider, owner, repo, path, ref }`), we return
+// a live provider + locator. Otherwise the tab shows an empty-state hint.
+const historyProvider = computed(() => {
+  const src = currentProject.value?.gitSource
+  if (!src?.provider) return null
+  try {
+    if (src.provider === 'github') {
+      // GitHub uses the legacy provider interface; it also exposes
+      // `listCommits` + `getFile` — adapt the call shape here so
+      // HistoryTab can talk to it via the same surface as GitLab/Gitea.
+      const gh = getGitProvider('github')
+      return {
+        listCommits: (opts) => gh.listCommits(opts),
+        getFile: async (opts) => {
+          const content = await gh.getFile(opts.owner, opts.repo, opts.path, opts.ref)
+          return { content, sha: '' }
+        },
+      }
+    }
+    return getV1Provider(src.provider, {
+      baseUrl: src.baseUrl,
+      token: src.token ?? null,
+    })
+  } catch {
+    return null
+  }
+})
+
+const historyLocator = computed(() => {
+  const src = currentProject.value?.gitSource
+  if (!src?.owner || !src?.repo) return null
+  return {
+    owner: src.owner,
+    repo: src.repo,
+    path: src.path || 'range42.yaml',
+    ref: src.ref || 'main',
+  }
+})
+
 // Import config: resolved from per-project settings at setup level
 const importApiConfig = useApiConfig(projectId, { autoSync: true })
 
@@ -901,10 +943,15 @@ const handleInfrastructureImport = (result) => {
         </div>
       </div>
 
-      <!-- History tab placeholder -->
-      <div v-show="tab === 'history'" class="flex-1 overflow-y-auto p-4" data-testid="tab-history">
-        <div class="alert alert-info text-sm">
-          History tab — deployment + change history lands in a later phase.
+      <!-- History tab (C3.9) -->
+      <div v-show="tab === 'history'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-history">
+        <HistoryTab
+          v-if="historyProvider && historyLocator"
+          :provider="historyProvider"
+          :locator="historyLocator"
+        />
+        <div v-else class="p-4 text-sm text-base-content/60">
+          {{ $t ? $t('historyTab.noSource') : 'Link this project to a git source to see its history.' }}
         </div>
       </div>
 

@@ -346,5 +346,23 @@ export interface GitProviderV1 {
     ref?: string
     path?: string
   }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>>
+  listCommits(opts: {
+    owner: string
+    repo: string
+    path?: string
+    ref?: string
+    perPage?: number
+  }): Promise<CommitRef[]>
   health(): Promise<{ ok: boolean; rtt_ms: number }>
+}
+
+/**
+ * Canonical cross-provider commit shape used by the History tab (C3.9).
+ * `sha` is the full 40-char hash; UI code shortens as needed.
+ */
+export interface CommitRef {
+  sha: string
+  message: string
+  author: string
+  date: string
 }

@@ -167,6 +167,39 @@ describe('GiteaProvider', () => {
     ]);
   });
 
+  it('listCommits: GETs /repos/:owner/:repo/commits with path+sha and maps to CommitRef', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) =>
+          url.startsWith('https://gitea.com/api/v1/repos/acme/lab/commits?'),
+        response: (url) => {
+          const u = new URL(url);
+          expect(u.searchParams.get('sha')).toBe('main');
+          expect(u.searchParams.get('path')).toBe('overlay.yaml');
+          return jsonResponse([
+            {
+              sha: 'sha-a',
+              commit: {
+                message: 'first',
+                author: { name: 'Alice', date: '2026-04-01T00:00:00Z' },
+              },
+            },
+          ]);
+        },
+      },
+    ]);
+    const p = new GiteaProvider({ baseUrl: 'https://gitea.com', token: 't', fetchImpl });
+    const commits = await p.listCommits({
+      owner: 'acme',
+      repo: 'lab',
+      path: 'overlay.yaml',
+      ref: 'main',
+    });
+    expect(commits).toEqual([
+      { sha: 'sha-a', message: 'first', author: 'Alice', date: '2026-04-01T00:00:00Z' },
+    ]);
+  });
+
   it('health: returns ok + rtt from /version', async () => {
     fetchImpl = makeFetch([
       {

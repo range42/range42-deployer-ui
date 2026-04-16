@@ -7,7 +7,7 @@
  * Docs: https://docs.gitlab.com/ee/api/
  */
 
-import type { GitProviderV1, RepoRef } from './types'
+import type { GitProviderV1, RepoRef, CommitRef } from './types'
 import { encodeContentBase64, decodeContentBase64 } from './encoding'
 
 export interface GitLabProviderOpts {
@@ -219,6 +219,35 @@ export class GitLabProvider implements GitProviderV1 {
       path: it.path,
       type: it.type === 'tree' ? 'tree' : 'blob',
       sha: it.id,
+    }))
+  }
+
+  async listCommits(opts: {
+    owner: string
+    repo: string
+    path?: string
+    ref?: string
+    perPage?: number
+  }): Promise<CommitRef[]> {
+    const pid = this.projectId(opts.owner, opts.repo)
+    const params = new URLSearchParams()
+    if (opts.ref) params.set('ref_name', opts.ref)
+    if (opts.path) params.set('path', opts.path)
+    params.set('per_page', String(opts.perPage ?? 50))
+    const url = this.url(`/projects/${pid}/repository/commits?${params.toString()}`)
+    const items = await this.json<
+      Array<{
+        id: string
+        message: string
+        author_name: string
+        authored_date: string
+      }>
+    >(url, { headers: this.headers() })
+    return items.map((c) => ({
+      sha: c.id,
+      message: c.message,
+      author: c.author_name,
+      date: c.authored_date,
     }))
   }
 

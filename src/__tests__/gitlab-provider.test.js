@@ -177,6 +177,47 @@ describe('GitLabProvider', () => {
     ]);
   });
 
+  it('listCommits: GETs /projects/:id/repository/commits with path+ref_name and maps to CommitRef', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) =>
+          url.startsWith(
+            'https://gitlab.com/api/v4/projects/acme%2Flab/repository/commits?',
+          ),
+        response: (url) => {
+          const u = new URL(url);
+          expect(u.searchParams.get('ref_name')).toBe('main');
+          expect(u.searchParams.get('path')).toBe('overlay.yaml');
+          return jsonResponse([
+            {
+              id: 'abc123',
+              message: 'initial',
+              author_name: 'Alice',
+              authored_date: '2026-04-01T10:00:00Z',
+            },
+            {
+              id: 'def456',
+              message: 'tweak',
+              author_name: 'Bob',
+              authored_date: '2026-04-02T10:00:00Z',
+            },
+          ]);
+        },
+      },
+    ]);
+    const p = new GitLabProvider({ token: 't', fetchImpl });
+    const commits = await p.listCommits({
+      owner: 'acme',
+      repo: 'lab',
+      path: 'overlay.yaml',
+      ref: 'main',
+    });
+    expect(commits).toEqual([
+      { sha: 'abc123', message: 'initial', author: 'Alice', date: '2026-04-01T10:00:00Z' },
+      { sha: 'def456', message: 'tweak', author: 'Bob', date: '2026-04-02T10:00:00Z' },
+    ]);
+  });
+
   it('health: returns ok + rtt from /version', async () => {
     fetchImpl = makeFetch([
       {

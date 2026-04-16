@@ -496,9 +496,43 @@ export class GitHubProvider implements GitProvider {
   }
   
   // ===========================================================================
+  // Commits (History tab, C3.9)
+  // ===========================================================================
+
+  async listCommits(opts: {
+    owner: string
+    repo: string
+    path?: string
+    ref?: string
+    perPage?: number
+  }): Promise<import('./types').CommitRef[]> {
+    const params = new URLSearchParams()
+    if (opts.ref) params.set('sha', opts.ref)
+    if (opts.path) params.set('path', opts.path)
+    params.set('per_page', String(opts.perPage ?? 50))
+    const data = await this.request<
+      Array<{
+        sha: string
+        commit: {
+          message: string
+          author: { name: string; date: string }
+        }
+      }>
+    >(
+      `/repos/${opts.owner}/${opts.repo}/commits?${params.toString()}`,
+    )
+    return data.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message,
+      author: c.commit.author.name,
+      date: c.commit.author.date,
+    }))
+  }
+
+  // ===========================================================================
   // Logout
   // ===========================================================================
-  
+
   logout(): void {
     this.token = null
     this.cachedUser = null
