@@ -1,0 +1,119 @@
+{
+  "list": {
+    "title": "Deployments",
+    "subtitle": "Active deployments and history, grouped by project.",
+    "activeHeading": "Active",
+    "pastHeading": "Past",
+    "noActive": "No active deployments.",
+    "noPast": "No past deployments yet.",
+    "emptyAll": "No deployments yet. Launch one from a project.",
+    "filters": {
+      "failedOnly": "Failed only",
+      "inProgressOnly": "In-progress only",
+      "clear": "Clear filters"
+    },
+    "row": {
+      "codename": "Codename",
+      "scenario": "Scenario",
+      "state": "State",
+      "started": "Started",
+      "attempts": "Attempts",
+      "open": "Open",
+      "attemptCount": "{n} attempt | {n} attempts",
+      "noProject": "(no project)"
+    }
+  },
+  "detail": {
+    "back": "Back to deployments",
+    "cancel": "Cancel deployment",
+    "pause": "Pause",
+    "teardown": "Teardown…",
+    "preflightLink": "View preflight record",
+    "tabs": {
+      "overview": "Overview",
+      "teams": "Teams",
+      "logs": "Logs"
+    },
+    "overview": {
+      "stateChainHeading": "State machine",
+      "phaseHeading": "Current phase",
+      "attemptHeading": "Current attempt",
+      "lastHeartbeat": "Last heartbeat",
+      "noAttempts": "No attempts recorded yet.",
+      "connection": {
+        "label": "Stream",
+        "idle": "idle",
+        "connecting": "connecting",
+        "open": "live",
+        "retrying": "retrying",
+        "closed": "closed",
+        "exhausted": "disconnected"
+      }
+    },
+    "teams": {
+      "heading": "Teams",
+      "empty": "No teams yet — they appear as the deployment progresses."
+    },
+    "logs": {
+      "heading": "Logs",
+      "filterPlaceholder": "Filter…",
+      "download": "Download events.jsonl",
+      "empty": "No log lines received yet.",
+      "teamFilter": "Showing logs for team {id}",
+      "clearTeamFilter": "Clear team filter"
+    },
+    "notFound": "Deployment not found."
+  },
+  "team": {
+    "ariaLabel": "Team {id}",
+    "menuLabel": "Team actions",
+    "openLogs": "Open logs for this team",
+    "noLogsYet": "No logs yet.",
+    "queued": "queued",
+    "snapshotCount": "{n} snapshot | {n} snapshots",
+    "status": {
+      "pending": "pending",
+      "deploying": "deploying",
+      "deployed": "deployed",
+      "failed": "failed",
+      "partial": "partial",
+      "unknown": "unknown"
+    },
+    "actions": {
+      "reset": "Reset team",
+      "snapshot": "Snapshot",
+      "rollback": "Rollback",
+      "copySsh": "Copy SSH command",
+      "openTerminal": "Open terminal"
+    }
+  },
+  "preflight": {
+    "title": "Preflight record",
+    "subtitle": "Immutable snapshot of the checks run for this deployment.",
+    "copyLink": "Copy shareable link",
+    "linkCopied": "Link copied",
+    "empty": "This preflight record has no checks.",
+    "generatedAt": "Generated",
+    "attempt": "Attempt",
+    "summary": {
+      "ok": "All checks passed",
+      "warn": "Non-blocking warnings",
+      "block": "Blocking issues found"
+    },
+    "result": {
+      "pass": "pass",
+      "warn": "warn",
+      "block": "block"
+    },
+    "category": {
+      "resources": "Resources",
+      "vmids": "VMIDs",
+      "ips": "IPs",
+      "sdn": "SDN",
+      "git": "Git sources",
+      "secrets": "Secrets"
+    },
+    "loadFailed": "Failed to load preflight record.",
+    "notFound": "Preflight record not found."
+  }
+}

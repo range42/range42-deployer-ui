@@ -1,0 +1,119 @@
+{
+  "list": {
+    "title": "Déploiements",
+    "subtitle": "Déploiements actifs et historique, groupés par projet.",
+    "activeHeading": "Actifs",
+    "pastHeading": "Passés",
+    "noActive": "Aucun déploiement actif.",
+    "noPast": "Aucun déploiement passé pour l'instant.",
+    "emptyAll": "Aucun déploiement pour l'instant. Lancez-en un depuis un projet.",
+    "filters": {
+      "failedOnly": "Échecs uniquement",
+      "inProgressOnly": "En cours uniquement",
+      "clear": "Effacer les filtres"
+    },
+    "row": {
+      "codename": "Nom de code",
+      "scenario": "Scénario",
+      "state": "État",
+      "started": "Lancé",
+      "attempts": "Tentatives",
+      "open": "Ouvrir",
+      "attemptCount": "{n} tentative | {n} tentatives",
+      "noProject": "(sans projet)"
+    }
+  },
+  "detail": {
+    "back": "Retour aux déploiements",
+    "cancel": "Annuler le déploiement",
+    "pause": "Pause",
+    "teardown": "Démanteler…",
+    "preflightLink": "Voir le rapport préalable",
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "teams": "Équipes",
+      "logs": "Logs"
+    },
+    "overview": {
+      "stateChainHeading": "Machine à états",
+      "phaseHeading": "Phase actuelle",
+      "attemptHeading": "Tentative en cours",
+      "lastHeartbeat": "Dernier battement",
+      "noAttempts": "Aucune tentative enregistrée.",
+      "connection": {
+        "label": "Flux",
+        "idle": "inactif",
+        "connecting": "connexion…",
+        "open": "en direct",
+        "retrying": "nouvelle tentative",
+        "closed": "fermé",
+        "exhausted": "déconnecté"
+      }
+    },
+    "teams": {
+      "heading": "Équipes",
+      "empty": "Aucune équipe pour l'instant — elles apparaissent au fil du déploiement."
+    },
+    "logs": {
+      "heading": "Logs",
+      "filterPlaceholder": "Filtrer…",
+      "download": "Télécharger events.jsonl",
+      "empty": "Aucune ligne de log reçue pour l'instant.",
+      "teamFilter": "Affichage des logs de l'équipe {id}",
+      "clearTeamFilter": "Retirer le filtre d'équipe"
+    },
+    "notFound": "Déploiement introuvable."
+  },
+  "team": {
+    "ariaLabel": "Équipe {id}",
+    "menuLabel": "Actions de l'équipe",
+    "openLogs": "Ouvrir les logs de cette équipe",
+    "noLogsYet": "Aucun log.",
+    "queued": "en file",
+    "snapshotCount": "{n} snapshot | {n} snapshots",
+    "status": {
+      "pending": "en attente",
+      "deploying": "déploiement",
+      "deployed": "déployée",
+      "failed": "en échec",
+      "partial": "partielle",
+      "unknown": "inconnu"
+    },
+    "actions": {
+      "reset": "Réinitialiser l'équipe",
+      "snapshot": "Snapshot",
+      "rollback": "Restaurer",
+      "copySsh": "Copier la commande SSH",
+      "openTerminal": "Ouvrir le terminal"
+    }
+  },
+  "preflight": {
+    "title": "Rapport préalable",
+    "subtitle": "Instantané immuable des vérifications pour ce déploiement.",
+    "copyLink": "Copier le lien partageable",
+    "linkCopied": "Lien copié",
+    "empty": "Ce rapport ne contient aucune vérification.",
+    "generatedAt": "Généré",
+    "attempt": "Tentative",
+    "summary": {
+      "ok": "Toutes les vérifications sont passées",
+      "warn": "Avertissements non bloquants",
+      "block": "Problèmes bloquants détectés"
+    },
+    "result": {
+      "pass": "ok",
+      "warn": "avert.",
+      "block": "bloqué"
+    },
+    "category": {
+      "resources": "Ressources",
+      "vmids": "VMIDs",
+      "ips": "IP",
+      "sdn": "SDN",
+      "git": "Sources Git",
+      "secrets": "Secrets"
+    },
+    "loadFailed": "Échec du chargement du rapport.",
+    "notFound": "Rapport introuvable."
+  }
+}

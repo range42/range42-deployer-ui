@@ -1,0 +1,119 @@
+{
+  "list": {
+    "title": "デプロイメント",
+    "subtitle": "進行中と過去のデプロイメント（プロジェクト別）。",
+    "activeHeading": "進行中",
+    "pastHeading": "過去",
+    "noActive": "進行中のデプロイはありません。",
+    "noPast": "過去のデプロイはまだありません。",
+    "emptyAll": "まだデプロイはありません。プロジェクトから開始してください。",
+    "filters": {
+      "failedOnly": "失敗のみ",
+      "inProgressOnly": "進行中のみ",
+      "clear": "フィルタを解除"
+    },
+    "row": {
+      "codename": "コードネーム",
+      "scenario": "シナリオ",
+      "state": "状態",
+      "started": "開始",
+      "attempts": "試行",
+      "open": "開く",
+      "attemptCount": "{n} 回の試行",
+      "noProject": "（プロジェクトなし）"
+    }
+  },
+  "detail": {
+    "back": "デプロイ一覧へ戻る",
+    "cancel": "デプロイをキャンセル",
+    "pause": "一時停止",
+    "teardown": "撤去…",
+    "preflightLink": "事前チェックを表示",
+    "tabs": {
+      "overview": "概要",
+      "teams": "チーム",
+      "logs": "ログ"
+    },
+    "overview": {
+      "stateChainHeading": "ステートマシン",
+      "phaseHeading": "現在のフェーズ",
+      "attemptHeading": "現在の試行",
+      "lastHeartbeat": "最新ハートビート",
+      "noAttempts": "試行の記録はまだありません。",
+      "connection": {
+        "label": "ストリーム",
+        "idle": "待機",
+        "connecting": "接続中",
+        "open": "ライブ",
+        "retrying": "再接続中",
+        "closed": "終了",
+        "exhausted": "切断"
+      }
+    },
+    "teams": {
+      "heading": "チーム",
+      "empty": "チームはまだ作成されていません。"
+    },
+    "logs": {
+      "heading": "ログ",
+      "filterPlaceholder": "フィルタ…",
+      "download": "events.jsonl をダウンロード",
+      "empty": "ログはまだ受信されていません。",
+      "teamFilter": "チーム {id} のログを表示中",
+      "clearTeamFilter": "チームフィルタを解除"
+    },
+    "notFound": "デプロイが見つかりません。"
+  },
+  "team": {
+    "ariaLabel": "チーム {id}",
+    "menuLabel": "チームの操作",
+    "openLogs": "このチームのログを開く",
+    "noLogsYet": "ログはまだありません。",
+    "queued": "待機",
+    "snapshotCount": "スナップショット {n} 件",
+    "status": {
+      "pending": "待機",
+      "deploying": "デプロイ中",
+      "deployed": "デプロイ済",
+      "failed": "失敗",
+      "partial": "一部",
+      "unknown": "不明"
+    },
+    "actions": {
+      "reset": "チームをリセット",
+      "snapshot": "スナップショット",
+      "rollback": "ロールバック",
+      "copySsh": "SSHコマンドをコピー",
+      "openTerminal": "ターミナルを開く"
+    }
+  },
+  "preflight": {
+    "title": "事前チェック記録",
+    "subtitle": "このデプロイに対する実施済みチェックの固定スナップショット。",
+    "copyLink": "共有リンクをコピー",
+    "linkCopied": "リンクをコピーしました",
+    "empty": "このレコードにはチェックがありません。",
+    "generatedAt": "生成",
+    "attempt": "試行",
+    "summary": {
+      "ok": "すべてのチェックに合格",
+      "warn": "非ブロッキングの警告",
+      "block": "ブロッキングの問題あり"
+    },
+    "result": {
+      "pass": "合格",
+      "warn": "警告",
+      "block": "ブロック"
+    },
+    "category": {
+      "resources": "リソース",
+      "vmids": "VMID",
+      "ips": "IP",
+      "sdn": "SDN",
+      "git": "Git ソース",
+      "secrets": "シークレット"
+    },
+    "loadFailed": "事前チェック記録の読み込みに失敗しました。",
+    "notFound": "事前チェック記録が見つかりません。"
+  }
+}
