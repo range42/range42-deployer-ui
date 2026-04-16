@@ -26,6 +26,10 @@ import DeploymentPanel from '../components/DeploymentPanel.vue'
 import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 import TemplateBrowser from '../components/TemplateBrowser.vue'
+import ProblemsPanel from '../components/project/ProblemsPanel.vue'
+import CommandPalette from '../components/project/CommandPalette.vue'
+import { useProblems } from '../composables/useProblems'
+import { useHotkeys } from '../composables/useHotkeys'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -103,6 +107,71 @@ const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.leng
 // rendered alongside user-authored edges but never persisted.
 const dockerTetherEdges = computed(() => computeDockerTetherEdges(liveNodes.value))
 const renderedEdges = computed(() => [...(edges.value || []), ...dockerTetherEdges.value])
+
+// Problems panel — reactive over the live canvas graph.
+const attachmentsRef = computed(() => currentProject.value?.attachments || [])
+const { problems: problemList } = useProblems(liveNodes, liveEdges, attachmentsRef)
+const showProblemsPanel = ref(true)
+
+// Command palette (Ctrl/Cmd-P).
+const showCommandPalette = ref(false)
+const paletteItems = computed(() => {
+  const items = []
+  for (const n of liveNodes.value || []) {
+    items.push({
+      id: `node:${n.id}`,
+      kind: 'node',
+      label: n.data?.config?.name || n.data?.label || n.id,
+      subtitle: `${n.type} · ${n.id}`,
+      jumpTo: { kind: 'node', id: n.id },
+    })
+  }
+  for (const a of attachmentsRef.value || []) {
+    items.push({
+      id: `attachment:${a.id}`,
+      kind: 'attachment',
+      label: a.name || a.id,
+      subtitle: a.file_path || a.path || '',
+      jumpTo: { kind: 'attachment', id: a.id },
+    })
+  }
+  for (const f of (currentProject.value?.files || [])) {
+    items.push({
+      id: `file:${f.path}`,
+      kind: 'file',
+      label: (f.path || '').split('/').pop() || f.path,
+      subtitle: f.path,
+      jumpTo: { kind: 'file', id: f.path },
+    })
+  }
+  return items
+})
+
+useHotkeys([
+  {
+    key: 'p',
+    when: () => true,
+    handler: (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      showCommandPalette.value = !showCommandPalette.value
+    },
+  },
+])
+
+function handleJumpTo(descriptor) {
+  if (!descriptor) return
+  if (descriptor.kind === 'node') {
+    const n = (liveNodes.value || []).find((x) => x.id === descriptor.id)
+    if (n) {
+      selectedNode.value = n
+      showConfigPanel.value = true
+    }
+  } else if (descriptor.kind === 'edge') {
+    const e = (liveEdges.value || []).find((x) => x.id === descriptor.id)
+    if (e) selectedEdge.value = e
+  }
+  // attachment / file jumps will be wired when the Config tab lands (C3.7).
+}
 
 const { zones } = useNetworkZones(liveNodes, liveEdges)
 
@@ -712,6 +781,15 @@ const handleInfrastructureImport = (result) => {
           </div>
         </div>
       </div>
+
+      <!-- Problems panel — docked below canvas, reactive over validation state -->
+      <ProblemsPanel
+        v-if="showProblemsPanel"
+        :problems="problemList"
+        class="shrink-0"
+        @jumpTo="handleJumpTo"
+        @close="showProblemsPanel = false"
+      />
     </div>
 
     <!-- Config Panel -->
@@ -821,6 +899,15 @@ const handleInfrastructureImport = (result) => {
       :proxmox-node="importApiConfig.node.value || 'pve01'"
       @proceed="handleReconcileProceed"
       @cancel="showReconcileModal = false"
+    />
+
+    <!-- Command palette (Ctrl/Cmd-P) — body-teleported by the component itself -->
+    <CommandPalette
+      :open="showCommandPalette"
+      :items="paletteItems"
+      @update:open="showCommandPalette = $event"
+      @close="showCommandPalette = false"
+      @jumpTo="handleJumpTo"
     />
   </Teleport>
   </div>
