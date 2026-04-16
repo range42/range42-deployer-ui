@@ -114,6 +114,7 @@
       "secrets": "Secrets"
     },
     "loadFailed": "Échec du chargement du rapport.",
-    "notFound": "Rapport introuvable."
+    "notFound": "Rapport introuvable.",
+    "loading": "Chargement du rapport préalable…"
   }
 }

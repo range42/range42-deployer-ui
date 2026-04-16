@@ -114,6 +114,7 @@
       "secrets": "Secrets"
     },
     "loadFailed": "Failed to load preflight record.",
-    "notFound": "Preflight record not found."
+    "notFound": "Preflight record not found.",
+    "loading": "Loading preflight record…"
   }
 }
