@@ -542,6 +542,36 @@ const confirmDeleteProject = () => {
   }
 }
 
+// ------------------------------------------------------------
+// Tab shell (Plan C C3.6)
+// ------------------------------------------------------------
+// Tabs are local state driven by the URL query (?tab=…). Switching tabs is a
+// router.replace — cheap, preserves history — and canvas / config panes use
+// v-show so viewport, selection, undo buffers, and CodeMirror state survive
+// cross-tab navigation.
+const TABS = ['canvas', 'config', 'variables', 'history', 'settings']
+const tab = computed(() => {
+  const q = route.query.tab
+  const v = Array.isArray(q) ? q[0] : q
+  return TABS.includes(String(v)) ? String(v) : 'canvas'
+})
+
+function setTab(next) {
+  if (!TABS.includes(next)) return
+  if (route.query.tab === next) return
+  router.replace({ query: { ...route.query, tab: next } })
+}
+
+// Provide project state + a thin adapter to descendant tab panels (variables,
+// history, settings panels land in later phases — giving them a stable
+// provide/inject contract now keeps the contract self-documenting).
+provide('projectAdapter', {
+  getProject: () => currentProject.value,
+  getNodes: () => liveNodes.value,
+  getEdges: () => liveEdges.value,
+  setTab,
+})
+
 // Import config: resolved from per-project settings at setup level
 const importApiConfig = useApiConfig(projectId, { autoSync: true })
 
@@ -687,12 +717,30 @@ const handleInfrastructureImport = (result) => {
       </header>
 
 
-      <!-- VueFlow Canvas -->
-      <div 
-        class="flex-1 relative transition-colors duration-200" 
+      <!-- Tab strip -->
+      <div role="tablist" class="tabs tabs-lift px-3 pt-1 border-b border-base-300" data-testid="project-tabs">
+        <button
+          v-for="t in ['canvas', 'config', 'variables', 'history', 'settings']"
+          :key="t"
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': tab === t }"
+          :aria-selected="tab === t"
+          :data-testid="`project-tab-${t}`"
+          @click="setTab(t)"
+        >
+          {{ t }}
+        </button>
+      </div>
+
+      <!-- VueFlow Canvas (v-show keeps state across tab switches) -->
+      <div
+        v-show="tab === 'canvas'"
+        class="flex-1 relative transition-colors duration-200"
         :class="{ 'bg-primary/5 ring-2 ring-primary/20 ring-inset': isDragOver }"
-        @drop="handleDrop" 
-        @dragover="handleDragOver" 
+        @drop="handleDrop"
+        @dragover="handleDragOver"
         @dragleave="handleDragLeave"
       >
         <VueFlow
@@ -785,16 +833,49 @@ const handleInfrastructureImport = (result) => {
       <!-- Problems panel — docked below canvas, reactive over validation state -->
       <ProblemsPanel
         v-if="showProblemsPanel"
+        v-show="tab === 'canvas'"
         :problems="problemList"
         class="shrink-0"
         @jumpTo="handleJumpTo"
         @close="showProblemsPanel = false"
       />
+
+      <!-- Config tab placeholder (C3.7 will bring FileTree + TwoPaneEditor) -->
+      <div v-show="tab === 'config'" class="flex-1 overflow-y-auto p-4" data-testid="tab-config">
+        <div class="alert alert-info text-sm">
+          Config tab (file tree + two-pane editor) lands in C3.7. Attachments manager below is wired and persists via the project adapter.
+        </div>
+        <div class="mt-4">
+          <!-- AttachmentManager consumes the project adapter in later phases;
+               wiring is deferred until the attachments data path is defined. -->
+        </div>
+      </div>
+
+      <!-- Variables tab placeholder -->
+      <div v-show="tab === 'variables'" class="flex-1 overflow-y-auto p-4" data-testid="tab-variables">
+        <div class="alert alert-info text-sm">
+          Variables tab — layered vars editor lands in a later phase.
+        </div>
+      </div>
+
+      <!-- History tab placeholder -->
+      <div v-show="tab === 'history'" class="flex-1 overflow-y-auto p-4" data-testid="tab-history">
+        <div class="alert alert-info text-sm">
+          History tab — deployment + change history lands in a later phase.
+        </div>
+      </div>
+
+      <!-- Settings tab placeholder -->
+      <div v-show="tab === 'settings'" class="flex-1 overflow-y-auto p-4" data-testid="tab-settings">
+        <div class="alert alert-info text-sm">
+          Settings tab — per-project settings live here in a later phase.
+        </div>
+      </div>
     </div>
 
-    <!-- Config Panel -->
+    <!-- Config Panel (node config — only on canvas tab) -->
     <ConfigPanel
-      v-if="selectedNode && showConfigPanel"
+      v-if="selectedNode && showConfigPanel && tab === 'canvas'"
       :node="selectedNode"
       @close="closeConfigPanel"
       @update="updateNodeStatus"
