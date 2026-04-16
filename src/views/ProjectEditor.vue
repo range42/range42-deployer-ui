@@ -28,6 +28,9 @@ import InfrastructureImportModal from '../components/InfrastructureImportModal.v
 import TemplateBrowser from '../components/TemplateBrowser.vue'
 import ProblemsPanel from '../components/project/ProblemsPanel.vue'
 import CommandPalette from '../components/project/CommandPalette.vue'
+import ConfigTab from '../components/project/ConfigTab.vue'
+import { createMemoryFs } from '../services/projectRepo/memoryFs'
+import { ensureNamespaces } from '../i18n'
 import { useProblems } from '../composables/useProblems'
 import { useHotkeys } from '../composables/useHotkeys'
 
@@ -289,7 +292,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-
+  ensureNamespaces(['configTab', 'common'])
 })
 
 watch([nodes, edges], () => {
@@ -572,6 +575,44 @@ provide('projectAdapter', {
   setTab,
 })
 
+// ------------------------------------------------------------
+// Config tab file-system wiring (C3.7)
+// ------------------------------------------------------------
+// Two in-memory VirtualFs stores: one for the project's local overlay
+// (persisted alongside project.files), and an empty base for now (the
+// base filesystem will be wired to the catalog source in a later task).
+// Using refs so FileTree picks up changes reactively on putFile.
+const overlayFiles = computed(() => currentProject.value?.files || {})
+const baseFiles = ref({})
+
+const configOverlayFs = computed(() =>
+  createMemoryFs({
+    files: overlayFiles.value || {},
+    onChange: (files) => {
+      if (!currentProject.value) return
+      currentProject.value.files = { ...files }
+      projectStore.updateProject(currentProject.value.id, {
+        files: currentProject.value.files,
+      })
+    },
+  }),
+)
+const configBaseFs = computed(() => createMemoryFs({ files: baseFiles.value }))
+
+function handleConfigSave() {
+  // onChange in memoryFs already persists; this hook exists so future git-
+  // backed adapters can trigger an autosave/commit here without touching
+  // the child component contract.
+}
+
+function handleAttachmentsUpdate(next) {
+  if (!currentProject.value) return
+  currentProject.value.attachments = next
+  projectStore.updateProject(currentProject.value.id, {
+    attachments: next,
+  })
+}
+
 // Import config: resolved from per-project settings at setup level
 const importApiConfig = useApiConfig(projectId, { autoSync: true })
 
@@ -840,15 +881,17 @@ const handleInfrastructureImport = (result) => {
         @close="showProblemsPanel = false"
       />
 
-      <!-- Config tab placeholder (C3.7 will bring FileTree + TwoPaneEditor) -->
-      <div v-show="tab === 'config'" class="flex-1 overflow-y-auto p-4" data-testid="tab-config">
-        <div class="alert alert-info text-sm">
-          Config tab (file tree + two-pane editor) lands in C3.7. Attachments manager below is wired and persists via the project adapter.
-        </div>
-        <div class="mt-4">
-          <!-- AttachmentManager consumes the project adapter in later phases;
-               wiring is deferred until the attachments data path is defined. -->
-        </div>
+      <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->
+      <div v-show="tab === 'config'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
+        <ConfigTab
+          v-if="currentProject"
+          :overlay-fs="configOverlayFs"
+          :base-fs="configBaseFs"
+          :attachments="attachmentsRef"
+          :nodes="liveNodes"
+          @update:attachments="handleAttachmentsUpdate"
+          @save="handleConfigSave"
+        />
       </div>
 
       <!-- Variables tab placeholder -->
