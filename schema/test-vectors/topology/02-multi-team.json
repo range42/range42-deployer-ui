@@ -16,9 +16,10 @@
     {
       "id": "wazuh",
       "kind": "vm",
+      "role": "admin",
       "replication": { "scope": "shared" },
       "template_vmid": 9001,
-      "config": { "role": "admin", "cores": 2, "memory": 2048 },
+      "config": { "cores": 2, "memory": 2048 },
       "attachments": [
         {
           "source": { "kind": "catalog_role", "ref": "software.install.wazuh" },
@@ -30,9 +31,10 @@
     {
       "id": "trainee",
       "kind": "vm",
+      "role": "team",
       "replication": { "scope": "per_team" },
       "template_vmid": 9020,
-      "config": { "role": "team", "cores": 2, "memory": 2048 },
+      "config": { "cores": 2, "memory": 2048 },
       "attachments": []
     }
   ]

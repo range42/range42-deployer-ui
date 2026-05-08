@@ -105,6 +105,11 @@
       "properties": {
         "id": { "type": "string" },
         "kind": { "enum": ["vm", "lxc", "docker", "network", "router", "firewall", "skin", "group"] },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "team", "trainee", "shared"],
+          "description": "Node role for inventory grouping (admin → r42_admin, team/trainee → r42_blank_group)"
+        },
         "replication": { "$ref": "#/$defs/Replication" },
         "host_ref": { "type": "string" },
         "config": { "type": "object", "additionalProperties": true },

@@ -8,9 +8,10 @@
     {
       "id": "host-01",
       "kind": "vm",
+      "role": "admin",
       "replication": { "scope": "shared" },
       "template_vmid": 9001,
-      "config": { "role": "admin", "cores": 1, "memory": 1024 },
+      "config": { "cores": 1, "memory": 1024 },
       "attachments": []
     }
   ]

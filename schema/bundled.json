@@ -231,6 +231,16 @@
             "group"
           ]
         },
+        "role": {
+          "type": "string",
+          "enum": [
+            "admin",
+            "team",
+            "trainee",
+            "shared"
+          ],
+          "description": "Node role for inventory grouping (admin → r42_admin, team/trainee → r42_blank_group)"
+        },
         "replication": {
           "$ref": "#/$defs/Replication"
         },
