@@ -284,7 +284,7 @@ export class GitNotFoundError extends GitProviderError {
 }
 
 export class GitRateLimitError extends GitProviderError {
-  constructor(provider: GitProviderName, resetAt?: Date) {
+  constructor(provider: GitProviderName, public readonly resetAt?: Date) {
     super(`Rate limit exceeded${resetAt ? `, resets at ${resetAt.toISOString()}` : ''}`, provider, 429)
     this.name = 'GitRateLimitError'
   }
