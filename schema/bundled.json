@@ -258,6 +258,29 @@
           "items": {
             "$ref": "#/$defs/Node"
           }
+        },
+        "cidr_template": {
+          "type": "string",
+          "description": "CIDR with {{ bridge_base + team_id }} placeholder (network kind only)"
+        },
+        "bridge_template": {
+          "type": "string",
+          "description": "Bridge name template, e.g., vmbr{{ bridge_base + team_id }} (network kind only)"
+        },
+        "vlan_tag": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 4094,
+          "description": "Optional VLAN tag for the bridge (network kind only)"
+        },
+        "template_vmid": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 999999999,
+          "description": "Range42-managed template VMID to clone from; v1 limitation: image must be a Proxmox template (vm/lxc kinds)"
         }
       },
       "required": [
@@ -330,6 +353,25 @@
         },
         "execution": {
           "$ref": "#/$defs/Execution"
+        },
+        "naming_prefix": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+          "description": "Hostname prefix; falls back to scenario_label when absent"
+        },
+        "bridge_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4093,
+          "default": 140,
+          "description": "Per-team bridge index base; team N uses vmbr{bridge_base + N}"
+        },
+        "preflight_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Declarative list of named preflight checks (e.g., 'proxmox.connectivity', 'template.ubuntu-noble.available')"
         }
       },
       "required": [
@@ -399,6 +441,25 @@
         },
         "execution_override": {
           "$ref": "#/$defs/Execution"
+        },
+        "naming_prefix": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+          "description": "Hostname prefix override; falls back to scenario_label or the catalog naming_prefix when absent"
+        },
+        "bridge_base": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4093,
+          "default": 140,
+          "description": "Per-team bridge index base override; team N uses vmbr{bridge_base + N}"
+        },
+        "preflight_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Declarative list of named preflight checks; replaces the catalog list when present"
         }
       },
       "required": [
