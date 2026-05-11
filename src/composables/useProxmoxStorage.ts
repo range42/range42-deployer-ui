@@ -7,7 +7,7 @@
  * - Storage pool information
  */
 
-import { ref, computed, type Ref } from 'vue'
+import { ref, computed } from 'vue'
 import { proxmoxApi, type IsoInfo, type TemplateInfo } from '@/services/proxmox'
 import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
 

@@ -44,7 +44,7 @@ export interface ProxmoxSettings {
 // Store
 // =============================================================================
 
-export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
+export const useProxmoxSettingsStore = defineStore('proxmoxSettingsV1', () => {
   // Load from localStorage
   const loadSettings = (): ProxmoxSettings => {
     try {

@@ -5,6 +5,8 @@ import { ensureNamespaces, setLocale, getLocale } from '@/i18n/index.js'
 import { SUPPORTED_LOCALES } from '@/i18n/supported.js'
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 
+defineOptions({ name: 'AppSidebar' })
+
 const props = defineProps(['project'])
 const emit = defineEmits(['openExport', 'openDeploy', 'openValidate', 'openInventory', 'openTemplates', 'openImport'])
 const { onDragStart } = useDragAndDrop()

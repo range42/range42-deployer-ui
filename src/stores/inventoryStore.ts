@@ -12,7 +12,6 @@ import {
   parseRepoUrl,
   detectProviderFromUrl,
   type GitProvider,
-  type GitProviderName,
   type RegisteredInventory,
   type InventoryManifest,
   type InventoryComponent,
