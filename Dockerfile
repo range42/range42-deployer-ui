@@ -1,5 +1,5 @@
 # ---------- Stage 1: builder ----------
-FROM node:22-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS builder
 
 # Optional: pin the range42-deployer CLI to a specific version (e.g. --build-arg DEPLOYER_CLI_VERSION=1.2.3)
 ARG DEPLOYER_CLI_VERSION
