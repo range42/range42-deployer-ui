@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 
+defineOptions({ name: 'AppDashboard' })
+
 const router = useRouter()
 const projectStore = useProjectStore()
 
@@ -52,15 +54,6 @@ const confirmDelete = () => {
 
 const cancelDelete = () => {
   pendingDeleteId.value = null
-}
-
-const duplicateProject = (project, event) => {
-  event.stopPropagation()
-  const newProject = projectStore.createProject(`${project.name} (Copy)`)
-  projectStore.updateProject(newProject.id, {
-    nodes: project.nodes || [],
-    edges: project.edges || []
-  })
 }
 
 const getProjectStats = (project) => {

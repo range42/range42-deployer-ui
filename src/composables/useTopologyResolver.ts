@@ -26,7 +26,6 @@ import type {
   SwitchNodeData,
   VmNodeData,
   LxcNodeData,
-  GroupNodeData,
   VmCreateRequest,
   LxcCreateRequest,
   NodeNetworkAddRequest,
@@ -395,7 +394,7 @@ export function useTopologyResolver() {
   /**
    * Find which network segment a node is connected to
    */
-  function findConnectedSegments(
+  function _findConnectedSegments(
     nodeId: string,
     nodes: CanvasNode[],
     edges: Edge[]

@@ -3,6 +3,8 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 
+defineOptions({ name: 'AppSettings' })
+
 const router = useRouter()
 const projectStore = useProjectStore()
 
