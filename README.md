@@ -1,94 +1,106 @@
 
-# Table of Contents
+# range42-deployer-ui
 
-- [Project Overview](#Project-Overview)
-- [Repository Content](#Repository-Content)
-- [Getting Started](#Getting-Started)
-- [Contributing](#Contributing)
-- [License](#License)
+A web interface to visually design infrastructure topologies and trigger deployments against a live Proxmox cluster.
+Part of the [range42](https://github.com/range42/range42) cyber range platform.
 
 ---
 
-# Project Overview
+## How it works
 
-**RANGE42** is a modular cyber range platform designed for real-world readiness.
-We build, deploy, and document offensive, defensive, and hybrid cyber training environments using reproducible, infrastructure-as-code methodologies.
+The deployer UI is the operator's cockpit for the range42 platform. Users build infrastructure topologies on a node-based canvas — each node is a typed component (VM, LXC container, network segment, router, firewall, group). Once a topology is configured, the UI dispatches a step-by-step deployment plan to the [range42-backend-api](https://github.com/range42/range42-backend-api), which executes Ansible playbooks from the [range42-playbooks](https://github.com/range42/range42-playbooks) repository against the target Proxmox cluster.
 
-## What we build
-
-- Proxmox-based cyber ranges with dynamic catalog 
-- Ansible roles for automated deployments (Wazuh, Kong, Docker, etc.)
-- Private APIs for range orchestration and telemetry
-- Developer and testing toolkits and JSON transformers for automation pipelines
-- ...
-
-## Repository Overview
-
-- **RANGE42 deployer UI** : A web interface to visually design infrastructure schemas and trigger deployments.
-- **RANGE42 deployer backend API** : Orchestrates deployments by executing playbooks and bundles from the catalog.
-- **RANGE42 catalog** : A collection of Ansible roles and Docker/Docker Compose stacks, forming deployable bundles.
-- **RANGE42 playbooks** : Centralized playbooks that can be invoked by the backend or CLI.
-- **RANGE42 proxmox role** : An Ansible role for controlling Proxmox nodes via the Proxmox API.
-- **RANGE42 devkit** : Helper scripts for testing, debugging, and development workflows.
-- **RANGE42 kong API gateway** : A network service in front of the backend API, handling authentication, ACLs, and access control policies.
-- **RANGE42 swagger API spec** : OpenAPI/Swagger JSON definition of the backend API.
+```
+Operator browser
+    │
+    ▼
+range42-deployer-ui   ──── reads/writes ────►  GitHub inventory repos
+    │
+    │  REST (via range42-backend-api)
+    ▼
+range42-backend-api  ──── invokes ────►  range42-playbooks  ──── controls ────►  Proxmox
+                      ◄─── Kong API gateway (auth / ACL / rate-limiting) ──────────┘
+```
 
 ---
-
-### Putting it all together
-
-These repositories provide a modular and extensible platform to design, manage and deploy infrastructures automatically  either from the UI (coming soon) or from the CLI through the playbooks repository.
-
-# Repository Content
-
-**range42-deployer-ui** is a web application designed to visually orchestrate and manage infrastructure through an intuitive interface powered by **VueFlow**. The primary goal of this project is to enable users to build, configure, and deploy complex infrastructure systems using a node-based visual editor.
-
-## Node-Based Infrastructure Design
-
-Users interact with a canvas where each node represents a component of the infrastructure (e.g., networks, VMs, Docker containers). Each node's behavior and configuration depend on its type:
-
-* **Settings**: Nodes require user input to define parameters essential for backend deployment.
-* **Status Indicators**: Each node is marked with a colored status indicator:
-
-  * **Gray**: Incomplete / missing required configuration.
-  * **Orange**: Ready to deploy.
-  * **Red**: Deployment error or misconfiguration.
-  * **Green**: Successfully deployed.
-
-## UI/UX Principles
-
-* Built using **VueFlow** for seamless node manipulation and interactions.
-* Leverages **DaisyUI** for styling and component consistency.
-* Adheres to **UI/UX best practices**, focusing on clarity, responsiveness, and accessibility.
-
-## Data Management
-
-The application uses **localStorage** to store and manage local project data directly in the browser, ensuring quick access and offline capabilities. Future versions will integrate SQLite WASM for more robust data persistence.
-
-## Project Structure & Data Scope
-
-* Each **Project** corresponds to a VueFlow workspace and is stored as a JSON object.
-* Projects include all configuration data needed to build and deploy infrastructure.
-* A **shared inventory system** exists across all projects, containing pre-made, pre-configured components (like base Docker images, VM templates, or network presets) for reuse and standardization.
 
 ## Key Features
 
-* Visual drag-and-drop interface to define and manage infrastructure.
-* Per-node configuration system with validation.
-* Deployment tracking and feedback via status indicators.
-* Persistent local storage using localStorage.
-* Project isolation with shared global data for reusability.
-* Sidebar navigation with responsive design.
+### Visual topology editor
+
+- Drag-and-drop canvas powered by **VueFlow**.
+- Node types: `vm`, `lxc`, `network-segment`, `router`, `edge-firewall`, `group`, `switch`, `dns`, `dhcp`, `load-balancer`, `vuln-target`, `gamenet`, and more.
+- Per-node configuration panels with live validation.
+- Node status indicators updated in real time from Proxmox polling:
+  - **Gray** — incomplete / missing required config.
+  - **Orange** — ready to deploy.
+  - **Green** — deployed and running.
+  - **Red** — deployment error or misconfiguration.
+- Topology validation before deployment with detailed error reporting.
+
+### Deployment engine
+
+- Sequential step-by-step plan execution: `create_bridge` → `create_vm` → `clone_template` → `create_lxc` → `configure_network` → `add_firewall_rule` → `start_vm` → `start_lxc`.
+- Pause mid-deployment (completes the current step first).
+- Cancel via `AbortController`.
+- Resume from the last completed step.
+- Retry or skip individual failed steps without restarting.
+- Real-time log stream with `info`, `success`, `warning`, `error` levels.
+
+### Infrastructure import
+
+Import live Proxmox resources directly onto the canvas: connect to a Proxmox node, browse running VMs and LXC containers with their real-time status (running / stopped / paused), select one or many, and add them as configured nodes.
+
+### Template & ISO browser
+
+Browse Proxmox storage pools for LXC templates and ISO images, filter by name, and trigger ISO downloads by URL — all from within the project editor.
+
+### Git-backed inventory
+
+The inventory system connects to external GitHub repositories as component catalogs. Each registered inventory repo exposes a `manifest.json` with typed components (`vms/`, `networks/`, `services/`, `scenarios/`). The UI can read from read-only repos or, with a GitHub token, write new components, delete entries, or fork a read-only catalog to a personal namespace.
+
+### VM lifecycle management
+
+Per-node runtime controls for start, stop, pause, resume, snapshot creation, snapshot revert, and delete — scoped per role category (admin, student, vuln).
+
+### Project management dashboard
+
+Grid/list view toggle, project search and filter, per-project node stats (total, running, ready, error), project duplication, and confirmed-delete flow.
+
+---
+
+## Tech stack
+
+| Layer | Library |
+|---|---|
+| UI framework | Vue 3 |
+| Canvas | VueFlow |
+| Styling | Tailwind CSS v4 + DaisyUI |
+| State | Pinia |
+| Router | Vue Router |
+| i18n | vue-i18n |
+| Build | Vite |
+| Unit tests | Vitest + @vue/test-utils |
+| E2E tests | Playwright |
+| Storage (WIP) | @sqlite.org/sqlite-wasm (OPFS) |
+
+---
 
 ## Getting Started
 
-### Development
+### Prerequisites
+
+- Node.js `^20.19.0` or `>=22.12.0`
+- A running [range42-backend-api](https://github.com/range42/range42-backend-api) instance reachable from the browser
+- A Proxmox node registered in the backend API
+
+### Install and run
 
 ```bash
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (default: http://localhost:5173)
 npm run dev
 
 # Build for production
@@ -98,26 +110,88 @@ npm run build
 npm run preview
 ```
 
-## Internationalization (i18n)
+### Connect to the backend
 
-- The app uses `vue-i18n` with per-page/component JSON files under `src/locales/<lang>/...`.
-- Default and fallback locale is English (`en`). French (`fr`) is provided as a proof of concept.
-- Language can be switched at runtime from the sidebar language selector.
+On first launch, open **Settings → Proxmox** (or the settings icon in the sidebar) and enter the backend API URL and Proxmox node name. These settings are stored per-project as browser cookies (`range42.settings.<projectId>`, 30-day TTL).
 
-Development notes:
-- i18n runtime is initialized in `src/i18n/index.js` with secure lazy-loading via `import.meta.glob`.
-- Supported locales are defined in `src/i18n/supported.js`.
-- When adding a new page/component, create a JSON file under each locale using the same filename.
-- Avoid using `v-html` for translated strings; keep translations as plain text.
+---
 
-Docs: see `docs/i18n-plan.md` for structure, conventions, and acceptance tests.
+## Project structure
 
+```
+src/
+├── components/
+│   ├── nodes/              # VueFlow custom node types
+│   ├── ConfigPanel.vue     # Per-node configuration panel
+│   ├── DeploymentPanel.vue # Step-by-step deployment UI
+│   ├── InfrastructureImportModal.vue
+│   ├── TemplateBrowser.vue
+│   ├── InventoryBrowser.vue
+│   └── ...
+├── composables/
+│   ├── useDeployment.ts    # Deployment engine (pause/cancel/resume/retry/skip)
+│   ├── useProxmoxStatus.ts # Real-time Proxmox polling
+│   ├── useProxmoxStorage.ts
+│   ├── useInfrastructureImport.ts
+│   ├── useTopologyResolver.ts
+│   └── runnerCalls/        # Typed step executors per node category
+├── services/
+│   ├── proxmox/api.ts      # Full Proxmox API client (VM/LXC/network/firewall/storage/snapshots)
+│   └── git/                # GitHub provider for inventory read/write
+├── stores/
+│   ├── deploymentStore.ts
+│   ├── inventoryStore.ts   # Git-backed multi-repo catalog
+│   └── proxmoxSettingsStore.ts
+├── views/
+│   ├── Dashboard.vue       # Project management hub
+│   ├── ProjectEditor.vue   # Canvas + topology editor
+│   └── Settings.vue        # App settings (theme, grid, storage)
+├── i18n/                   # vue-i18n setup and locale loader
+└── locales/                # en / fr / jp translation files
+```
+
+---
+
+## Data and storage
+
+| Data | Storage |
+|---|---|
+| Project topology (nodes + edges) | `localStorage` |
+| Per-project backend settings | Browser cookie (`range42.settings.<projectId>`, 30-day TTL) |
+| Inventory repo list | `localStorage` |
+| SQLite WASM (OPFS) | Dependency installed, browser-local DB integration in progress |
+
+---
+
+## Internationalization
+
+Supported locales: **English** (`en`), **Français** (`fr`), **日本語** (`jp`).
+
+Language can be switched at runtime from the sidebar. Translations live in `src/locales/<locale>/<namespace>.json` and are lazy-loaded per view/component.
+
+See [docs/i18n-guide.md](docs/i18n-guide.md) for conventions, namespace structure, and how to add a new language.
+
+---
+
+## Testing
+
+```bash
+# Unit tests (Vitest)
+npm run test:unit
+
+# End-to-end tests (Playwright)
+npm run test:e2e
+
+# Lint
+npm run lint
+```
+
+---
 
 ## Contributing
 
-To be defined.
+Work in progress. See the [range42](https://github.com/range42/range42) root repo for platform-wide contribution context.
 
 ## License
 
-- GPL-3.0 license
-
+GPL-3.0 — see [LICENSE](LICENSE).
