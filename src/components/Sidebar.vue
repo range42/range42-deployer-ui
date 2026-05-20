@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'AppSidebar' })
+
 // Global hotkey bindings (V/C/N/R/F/G) live in AppShell.vue via useHotkeys —
 // intentionally NOT duplicated here to avoid double-firing when both
 // components are mounted. (Task C1.13 a11y sweep.)

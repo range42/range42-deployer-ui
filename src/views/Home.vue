@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'HomeView' })
+
 import { computed, onMounted } from 'vue'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
