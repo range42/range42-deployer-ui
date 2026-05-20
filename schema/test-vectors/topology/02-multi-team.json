@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "kind": "gamenet",
+  "name": "Multi-team topology (per-team net + shared SOC + per-team trainee)",
+  "naming_prefix": "mt",
+  "bridge_base": 140,
+  "preflight_checks": ["proxmox.connectivity"],
+  "nodes": [
+    {
+      "id": "team-net",
+      "kind": "network",
+      "replication": { "scope": "per_team" },
+      "cidr_template": "192.168.{{ bridge_base + team_id }}.0/24",
+      "bridge_template": "vmbr{{ bridge_base + team_id }}"
+    },
+    {
+      "id": "wazuh",
+      "kind": "vm",
+      "role": "admin",
+      "replication": { "scope": "shared" },
+      "template_vmid": 9001,
+      "config": { "cores": 2, "memory": 2048 },
+      "attachments": [
+        {
+          "source": { "kind": "catalog_role", "ref": "software.install.wazuh" },
+          "stage": "install",
+          "vars": {}
+        }
+      ]
+    },
+    {
+      "id": "trainee",
+      "kind": "vm",
+      "role": "team",
+      "replication": { "scope": "per_team" },
+      "template_vmid": 9020,
+      "config": { "cores": 2, "memory": 2048 },
+      "attachments": []
+    }
+  ]
+}

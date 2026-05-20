@@ -424,9 +424,8 @@ export const lxc = {
   /**
    * Create a new LXC container
    */
-  async create(request: LxcCreateRequest): Promise<ApiResponse> {
-    // TODO: Implement when backend route is added
-    return post('/v0/admin/proxmox/lxc/create', request)
+  async create(_request: LxcCreateRequest): Promise<ApiResponse> {
+    throw new ProxmoxApiError(501, 'LXC container creation is not yet supported by the backend API. This feature requires the /v0/admin/proxmox/lxc/create endpoint to be implemented.')
   },
 
   /**

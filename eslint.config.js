@@ -27,13 +27,22 @@ export default defineConfig([
 
   {
     rules: {
-      'vue/multi-word-component-names': 'off',
+      'vue/multi-word-component-names': 'error',
       'vue/block-lang': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
       }],
+    },
+  },
+
+  {
+    files: ['vite.config.*', 'vitest.config.*', 'eslint.config.*'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 

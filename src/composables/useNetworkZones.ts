@@ -16,8 +16,14 @@ const PADDING = 40
 export function useNetworkZones(
   nodes: Ref<any[]>,
   edges: Ref<any[]>,
+  // Optional reactive trigger (e.g. bumped on VueFlow's `nodes-initialized`
+  // event). Reading it inside the computed forces geometry to recompute once
+  // node dimensions have been measured, so first-paint zones are not clipped.
+  measureTick?: Ref<number>,
 ) {
   const zones = computed<ZoneOverlay[]>(() => {
+    // Establish a reactive dependency on the measurement trigger.
+    void measureTick?.value
     const networkNodes = nodes.value.filter(n => n.type === 'network-segment')
     const result: ZoneOverlay[] = []
 
@@ -34,14 +40,27 @@ export function useNetworkZones(
       const allNodes = [netNode, ...connectedNodes]
 
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      let measured = 0
       for (const n of allNodes) {
-        const w = n.dimensions?.width || 200
-        const h = n.dimensions?.height || 80
-        minX = Math.min(minX, n.position.x)
-        minY = Math.min(minY, n.position.y)
-        maxX = Math.max(maxX, n.position.x + w)
-        maxY = Math.max(maxY, n.position.y + h)
+        // Skip nodes VueFlow has not measured yet — a hardcoded fallback size
+        // clips the zone on first paint. Geometry recomputes once the
+        // `nodes-initialized` event fires and dimensions become available.
+        const w = n.dimensions?.width
+        const h = n.dimensions?.height
+        if (!w || !h) continue
+        // Use the absolute (computedPosition) coordinates so nodes nested in a
+        // topology_group / team_scope group — whose `position` is parent-RELATIVE —
+        // are placed correctly. Mirrors useDragAndDrop.js which reads computedPosition.
+        const pos = n.computedPosition ?? n.position
+        minX = Math.min(minX, pos.x)
+        minY = Math.min(minY, pos.y)
+        maxX = Math.max(maxX, pos.x + w)
+        maxY = Math.max(maxY, pos.y + h)
+        measured++
       }
+
+      // Nothing measured yet — emit no box rather than a clipped one.
+      if (measured === 0) continue
 
       const segmentType = netNode.data?.config?.segmentType || 'custom'
       const cidr = netNode.data?.config?.cidr || ''
@@ -56,6 +75,10 @@ export function useNetworkZones(
         label: `${segmentType.toUpperCase()} Zone${cidr ? ' \u00b7 ' + cidr : ''}`,
       })
     }
+
+    // Paint largest zones first so smaller / nested boxes (and their labels)
+    // are not buried underneath an overlapping larger zone.
+    result.sort((a, b) => (b.width * b.height) - (a.width * a.height))
 
     return result
   })

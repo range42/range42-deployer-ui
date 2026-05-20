@@ -114,6 +114,11 @@ export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
     settings.value = { ...DEFAULT_SETTINGS }
   }
 
+  // Note: Proxmox host CRUD was previously here (Plan C §C5.4) but was
+  // removed — the backend owns Proxmox host configuration. The UI reads
+  // `/v1/proxmox/hosts` from the configured backend for pickers but never
+  // writes. See `backendApiStore.ts` for the UI-side connection config.
+
   return {
     // State
     settings,

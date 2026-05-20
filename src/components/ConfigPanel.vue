@@ -14,8 +14,12 @@ import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
 import { useTagSync } from '@/composables/useTagSync'
 import { usePendingChanges } from '@/composables/usePendingChanges'
 import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n({ useScope: 'global' })
+const { confirm } = useConfirmDialog()
+const { showToast } = useToast()
 
 const props = defineProps(['node'])
 const emit = defineEmits(['close', 'update', 'delete'])
@@ -79,6 +83,11 @@ watch(() => config.value.template, (newTemplate) => {
 onMounted(async () => {
   if (props.node?.data?.config) {
     config.value = { ...props.node.data.config }
+  }
+  // For group nodes, hydrate kind/team_count from data (spec §6)
+  if (props.node?.type === 'group') {
+    config.value.kind = props.node.data?.kind || 'topology_group'
+    config.value.team_count = Number(props.node.data?.team_count ?? config.value.team_count ?? 1)
   }
 
   if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
@@ -265,16 +274,23 @@ async function handleVmAction(action) {
         await proxmoxApi.vm.start(request)
         break
       case 'force-stop': await proxmoxApi.vm.stopForce(request); break
-      case 'delete':
-        if (!confirm(`Delete VM ${config.value.name} (VMID ${vmId}) from Proxmox? This is permanent.`)) return
+      case 'delete': {
+        const ok = await confirm({
+          title: 'Delete VM',
+          message: `Delete VM ${config.value.name} (VMID ${vmId}) from Proxmox? This is permanent.`,
+          confirmText: 'Delete',
+          confirmClass: 'btn-error',
+        })
+        if (!ok) return
         await proxmoxApi.vm.delete(request)
         emit('delete', props.node.id)
         return
+      }
     }
     // Refresh status
     proxmoxCache.invalidate()
   } catch (e) {
-    alert(`Action failed: ${e.message || e}`)
+    showToast(`Action failed: ${e.message || e}`, 'error')
   } finally {
     actionLoading.value = null
   }
@@ -282,16 +298,30 @@ async function handleVmAction(action) {
 
 const handleSave = () => {
   const newStatus = isValid.value ? 'orange' : 'gray'
-  emit('update', props.node.id, {
+  const payload = {
     config: config.value,
     status: newStatus,
     label: config.value.name || props.node.data?.label,
-  })
+  }
+  // Lift group kind/team_count out of config onto data so GroupNode.vue reads them
+  if (props.node?.type === 'group') {
+    if (config.value.kind) payload.kind = config.value.kind
+    if (config.value.team_count !== undefined && config.value.team_count !== null) {
+      payload.team_count = Number(config.value.team_count) || 1
+    }
+  }
+  emit('update', props.node.id, payload)
   emit('close')
 }
 
-const handleDelete = () => {
-  if (confirm(`Are you sure you want to delete "${config.value.name || props.node.type}"?`)) {
+const handleDelete = async () => {
+  const ok = await confirm({
+    title: 'Delete Node',
+    message: `Are you sure you want to delete "${config.value.name || props.node.type}"?`,
+    confirmText: 'Delete',
+    confirmClass: 'btn-error',
+  })
+  if (ok) {
     emit('delete', props.node.id)
     emit('close')
   }
@@ -306,6 +336,10 @@ const handleBackdropClick = (event) => {
 watch(() => props.node, (newNode) => {
   if (newNode) {
     config.value = { ...newNode.data.config }
+    if (newNode.type === 'group') {
+      config.value.kind = newNode.data?.kind || 'topology_group'
+      config.value.team_count = Number(newNode.data?.team_count ?? config.value.team_count ?? 1)
+    }
   }
 }, { immediate: true })
 
@@ -1237,7 +1271,33 @@ const showApplyDialog = ref(false)
             </svg>
             <span>Groups organize related infrastructure components together.</span>
           </div>
-          
+
+          <!-- Group kind (topology_group | team_scope) -->
+          <FormSection variant="bordered" :columns="1" title="Group kind">
+            <FormField
+              v-model="config.kind"
+              label="Kind"
+              type="select"
+              :options="[
+                { value: 'topology_group', label: 'Topology group (static)' },
+                { value: 'team_scope', label: 'Team scope (replicated per team)' },
+              ]"
+              hint="team_scope replicates its contents N times at deploy."
+              icon=""
+            />
+            <FormField
+              v-if="config.kind === 'team_scope'"
+              v-model.number="config.team_count"
+              label="Team count"
+              type="number"
+              :min="1"
+              :max="64"
+              placeholder="e.g., 4"
+              hint="Number of teams to replicate this scope for at deploy."
+              icon=""
+            />
+          </FormSection>
+
           <FormSection variant="bordered" :columns="2">
             <FormField
               v-model="config.prefix"

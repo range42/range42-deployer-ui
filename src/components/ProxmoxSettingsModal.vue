@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
 import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
 
 const DEFAULT_API_URL = DEFAULT_BACKEND_API_URL
 
@@ -19,6 +20,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved'])
 
+const { confirm } = useConfirmDialog()
 const modalRef = ref(null)
 
 const {
@@ -168,8 +170,14 @@ const handleSave = async () => {
   }
 }
 
-const handleReset = () => {
-  if (confirm('Are you sure you want to reset Proxmox settings for this project?')) {
+const handleReset = async () => {
+  const ok = await confirm({
+    title: 'Reset Settings',
+    message: 'Are you sure you want to reset Proxmox settings for this project?',
+    confirmText: 'Reset',
+    confirmClass: 'btn-warning',
+  })
+  if (ok) {
     resetSettings()
     populateForm()
   }

@@ -1,0 +1,42 @@
+{
+  "name": "overlay appends a shared SOC node",
+  "operator": "compose",
+  "edge": true,
+  "input": {
+    "base": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "CCDC-style 6-team lab",
+      "nodes": [
+        { "id": "net-shared", "kind": "network",
+          "replication": { "scope": "shared" },
+          "config": { "bridge": "vmbr142", "vlan": 142, "cidr": "192.168.142.0/24" } }
+      ]
+    },
+    "overlay": {
+      "schema_version": "1.0",
+      "source_url": "https://github.com/range42/catalog-main",
+      "source_sha": "f4a9c2e",
+      "nodes_added": [
+        { "id": "soc", "kind": "vm",
+          "replication": { "scope": "shared" },
+          "config": { "name": "soc-analyst", "cores": 2, "memory": 4096 },
+          "networks": [{ "node_ref": "net-shared", "ip": "192.168.142.60" }] }
+      ]
+    }
+  },
+  "expected": {
+    "schema_version": "1.0",
+    "kind": "gamenet",
+    "name": "CCDC-style 6-team lab",
+    "nodes": [
+      { "id": "net-shared", "kind": "network",
+        "replication": { "scope": "shared" },
+        "config": { "bridge": "vmbr142", "vlan": 142, "cidr": "192.168.142.0/24" } },
+      { "id": "soc", "kind": "vm",
+        "replication": { "scope": "shared" },
+        "config": { "name": "soc-analyst", "cores": 2, "memory": 4096 },
+        "networks": [{ "node_ref": "net-shared", "ip": "192.168.142.60" }] }
+    ]
+  }
+}

@@ -1,5 +1,11 @@
+<script setup>
+import AppShell from '@/components/AppShell.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import ToastContainer from '@/components/ui/ToastContainer.vue'
+</script>
+
 <template>
-  <div class="h-screen bg-base-100">
-    <RouterView />
-  </div>
+  <AppShell />
+  <ConfirmDialog />
+  <ToastContainer />
 </template>

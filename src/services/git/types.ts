@@ -284,8 +284,90 @@ export class GitNotFoundError extends GitProviderError {
 }
 
 export class GitRateLimitError extends GitProviderError {
-  constructor(provider: GitProviderName, resetAt?: Date) {
+  constructor(provider: GitProviderName, public readonly resetAt?: Date) {
     super(`Rate limit exceeded${resetAt ? `, resets at ${resetAt.toISOString()}` : ''}`, provider, 429)
     this.name = 'GitRateLimitError'
   }
+}
+
+// =============================================================================
+// GitProviderV1 — Spec §4 refined interface
+// =============================================================================
+//
+// This is the simpler v1 interface used by the ProjectRepoAdapter and the
+// GitLab/Gitea adapters (C1.8, C1.9). The legacy GitProvider above remains
+// in place for the GitHub adapter and the inventory store — the adapter
+// factory in `./index.ts` bridges the two worlds during migration.
+//
+
+export type GitProviderV1Kind = 'github' | 'gitlab' | 'gitea' | 'generic'
+
+export interface RepoRef {
+  owner: string
+  repo: string
+  default_branch: string
+}
+
+export interface GitProviderV1 {
+  id: GitProviderV1Kind
+  listRepos(opts: { owner?: string }): Promise<RepoRef[]>
+  getFile(opts: {
+    owner: string
+    repo: string
+    path: string
+    ref?: string
+  }): Promise<{ content: string; sha: string }>
+  putFile(opts: {
+    owner: string
+    repo: string
+    path: string
+    content: string
+    sha?: string
+    message: string
+    branch?: string
+  }): Promise<{ sha: string }>
+  createBranch(opts: {
+    owner: string
+    repo: string
+    from: string
+    name: string
+  }): Promise<void>
+  createPullRequest(opts: {
+    owner: string
+    repo: string
+    from: string
+    to: string
+    title: string
+    body?: string
+  }): Promise<{ url: string; number: number }>
+  listTree(opts: {
+    owner: string
+    repo: string
+    ref?: string
+    path?: string
+  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>>
+  listCommits(opts: {
+    owner: string
+    repo: string
+    path?: string
+    ref?: string
+    perPage?: number
+  }): Promise<CommitRef[]>
+  // Check write/push permission on a repo. Mirrors the legacy GitProvider
+  // signature (positional owner/repo, Promise<boolean>, never throws) so the
+  // inventory store can call `provider.canWrite(owner, repo)` uniformly across
+  // GitHub (legacy) and GitLab/Gitea (v1) providers.
+  canWrite(owner: string, repo: string): Promise<boolean>
+  health(): Promise<{ ok: boolean; rtt_ms: number }>
+}
+
+/**
+ * Canonical cross-provider commit shape used by the History tab (C3.9).
+ * `sha` is the full 40-char hash; UI code shortens as needed.
+ */
+export interface CommitRef {
+  sha: string
+  message: string
+  author: string
+  date: string
 }

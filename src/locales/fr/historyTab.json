@@ -1,0 +1,12 @@
+{
+  "title": "Historique",
+  "refresh": "Rafraîchir",
+  "sha": "SHA",
+  "message": "Message",
+  "author": "Auteur",
+  "date": "Date",
+  "empty": "Aucun commit trouvé pour ce chemin.",
+  "noSource": "Liez ce projet à une source git pour voir son historique.",
+  "before": "Avant",
+  "after": "Après"
+}

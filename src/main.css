@@ -495,3 +495,22 @@ html {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
+
+/* ----------------------------------------------------------------------------
+ * Reduced-motion floor (spec §7 a11y).
+ *
+ * Global opt-out: when the user signals `prefers-reduced-motion: reduce`,
+ * disable animations + transitions. Individual components can still
+ * implement richer motion — this is the safety net.
+ * ----------------------------------------------------------------------------
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
