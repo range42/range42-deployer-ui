@@ -10,12 +10,16 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 export default defineConfig(({ mode }) => ({
   server: {
     host: '0.0.0.0',
-    port: 3000,
-    // HMR host for remote browser access — set HMR_HOST env var if needed
-    ...(process.env.HMR_HOST ? { hmr: { host: process.env.HMR_HOST } } : {}),
-  },
-  optimizeDeps: {
-    exclude: ['@sqlite.org/sqlite-wasm'],
+    port: parseInt(process.env.VITE_DEV_PORT || '3000', 10),
+    hmr: process.env.VITE_HMR_HOST
+      ? { host: process.env.VITE_HMR_HOST }
+      : undefined,
+    proxy: process.env.VITE_API_URL
+      ? {
+          '/v0': { target: process.env.VITE_API_URL, changeOrigin: true },
+          '/ws': { target: process.env.VITE_API_URL.replace(/^http/, 'ws'), ws: true },
+        }
+      : undefined,
   },
   plugins: [
     vue(),
@@ -27,5 +31,8 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
+  },
+  worker: {
+    format: 'es',
   },
 }))

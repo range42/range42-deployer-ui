@@ -1,0 +1,21 @@
+{
+  "welcome": "Range42へようこそ",
+  "welcome_sub": "サイバーレンジ シナリオの構築を始めるには、いくつかのステップを完了してください。",
+  "checklist": {
+    "done": "完了",
+    "pending": "未完了",
+    "go": "進む",
+    "add_source": {
+      "title": "Gitソースを追加",
+      "desc": "GitHub、GitLab、またはGiteaインスタンスを登録して、Range42がカタログエントリを読み込めるようにします。"
+    },
+    "add_proxmox": {
+      "title": "Proxmoxホストを追加",
+      "desc": "Range42がシナリオをデプロイできるよう、Proxmox APIエンドポイントを指定します。"
+    },
+    "browse_catalog": {
+      "title": "カタログを閲覧",
+      "desc": "シナリオ、コンポーネント、またはラボを選択して新しいプロジェクトを開始します。"
+    }
+  }
+}

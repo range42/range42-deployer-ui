@@ -1,0 +1,34 @@
+{
+  "tabs": {
+    "canvas": "Canvas",
+    "config": "Config",
+    "variables": "Variables",
+    "history": "History",
+    "settings": "Settings",
+    "import": "Import"
+  },
+  "problems": {
+    "title": "Problems",
+    "none": "No problems detected.",
+    "open": "Open problem"
+  },
+  "palette": {
+    "placeholder": "Search nodes…",
+    "empty": "No nodes match your search."
+  },
+  "fork_to_override": {
+    "action": "Fork to override",
+    "hint": "Fork this catalog entry into your own source to customise it."
+  },
+  "drift": {
+    "banner": "This project has drifted from its upstream source.",
+    "view": "View drift details",
+    "rebase": "Rebase onto upstream"
+  },
+  "save": {
+    "success": "Project saved.",
+    "pr_opened": "Pull request opened",
+    "conflict": "Save blocked by a conflict — open the PR to resolve.",
+    "offline": "Offline — your changes are queued locally."
+  }
+}

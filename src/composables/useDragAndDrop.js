@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
+import { findNearestDockerHost } from './useInfraBuilder'
 
 const state = {
   draggedType: ref(null),
@@ -121,6 +122,16 @@ export function useDragAndDrop() {
       },
     }
 
+    // Docker node: auto-assign the nearest vm|lxc as host_ref on drop.
+    // If none exists, leave host_ref empty — the Problems panel will surface it
+    // and the GroupNode/DockerNode red dot makes the issue visible.
+    if (draggedType.value === 'docker') {
+      const nearestHost = findNearestDockerHost(getNodes.value || [], position)
+      if (nearestHost) {
+        baseNode.data.host_ref = nearestHost.id
+      }
+    }
+
     let newNode
     const isContainerType = containerTypes.includes(draggedType.value)
     
@@ -235,6 +246,18 @@ export function useDragAndDrop() {
           name: '',
           description: '',
           applianceType: 'pfsense',  // pfsense, opnsense
+        },
+      },
+      // Docker container (must tether to a vm|lxc host via host_ref)
+      docker: {
+        label: 'Docker Container',
+        defaultConfig: {
+          name: '',
+          description: '',
+          image: '',
+          ports: [],
+          env: {},
+          host_ref: '',      // authoritative host id — mirrored to data.host_ref
         },
       },
       // VLAN-aware switch for network segmentation

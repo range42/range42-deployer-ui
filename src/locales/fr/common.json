@@ -4,6 +4,8 @@
   "save": "Enregistrer",
   "back": "Retour",
   "export": "Exporter",
-  "settings": "Paramètres"
+  "settings": "Paramètres",
+  "close": "Fermer",
+  "add": "Ajouter",
+  "remove": "Supprimer"
 }
-

@@ -1,0 +1,228 @@
+{
+  "list": {
+    "title": "Deployments",
+    "subtitle": "Active deployments and history, grouped by project.",
+    "active": "Active",
+    "past": "Past",
+    "activeHeading": "Active",
+    "pastHeading": "Past",
+    "noActive": "No active deployments.",
+    "noPast": "No past deployments yet.",
+    "emptyAll": "No deployments yet. Launch one from a project.",
+    "filters": {
+      "failedOnly": "Failed only",
+      "inProgressOnly": "In-progress only",
+      "clear": "Clear filters"
+    },
+    "row": {
+      "codename": "Codename",
+      "scenario": "Scenario",
+      "state": "State",
+      "started": "Started",
+      "attempts": "Attempts",
+      "open": "Open",
+      "attemptCount": "{n} attempt | {n} attempts",
+      "noProject": "(no project)"
+    }
+  },
+  "detail": {
+    "back": "Back to deployments",
+    "cancel": "Cancel deployment",
+    "pause": "Pause",
+    "teardown": "Teardown…",
+    "overview": "Overview",
+    "teams": "Teams",
+    "logs": "Logs",
+    "preflight": "Preflight",
+    "preflightLink": "View preflight record",
+    "tabs": {
+      "overview": "Overview",
+      "teams": "Teams",
+      "logs": "Logs"
+    },
+    "overview": {
+      "stateChainHeading": "State machine",
+      "phaseHeading": "Current phase",
+      "attemptHeading": "Current attempt",
+      "lastHeartbeat": "Last heartbeat",
+      "noAttempts": "No attempts recorded yet.",
+      "connection": {
+        "label": "Stream",
+        "idle": "idle",
+        "connecting": "connecting",
+        "open": "live",
+        "retrying": "retrying",
+        "closed": "closed",
+        "exhausted": "disconnected"
+      }
+    },
+    "teams": {
+      "heading": "Teams",
+      "empty": "No teams yet — they appear as the deployment progresses."
+    },
+    "logs": {
+      "heading": "Logs",
+      "filterPlaceholder": "Filter…",
+      "download": "Download events.jsonl",
+      "empty": "No log lines received yet.",
+      "teamFilter": "Showing logs for team {id}",
+      "clearTeamFilter": "Clear team filter"
+    },
+    "notFound": "Deployment not found."
+  },
+  "team": {
+    "ariaLabel": "Team {id}",
+    "menuLabel": "Team actions",
+    "openLogs": "Open logs for this team",
+    "noLogsYet": "No logs yet.",
+    "queued": "queued",
+    "reset": "Reset team",
+    "snapshot": "Snapshot",
+    "rollback": "Rollback",
+    "copy_ssh": "Copy SSH command",
+    "open_terminal": "Open terminal",
+    "snapshotCount": "{n} snapshot | {n} snapshots",
+    "status": {
+      "pending": "pending",
+      "deploying": "deploying",
+      "deployed": "deployed",
+      "failed": "failed",
+      "partial": "partial",
+      "unknown": "unknown"
+    },
+    "actions": {
+      "reset": "Reset team",
+      "snapshot": "Snapshot",
+      "rollback": "Rollback",
+      "copySsh": "Copy SSH command",
+      "openTerminal": "Open terminal"
+    }
+  },
+  "deploy": {
+    "title": "Deploy",
+    "submit": "Deploy",
+    "submitting": "Deploying…",
+    "fields": {
+      "codename": "Codename",
+      "codenamePlaceholder": "short-unique-name",
+      "scenario": "Scenario label",
+      "scenarioPlaceholder": "e.g. demo_lab",
+      "host": "Target Proxmox host",
+      "hostPlaceholder": "Select a host",
+      "teamCount": "Team count",
+      "vault": "Vault password"
+    },
+    "err": {
+      "codenameRequired": "Codename is required.",
+      "codenameShape": "Lowercase letters, digits, dashes only; 3–32 characters.",
+      "codenameTaken": "This codename is already used by another local deployment.",
+      "scenarioRequired": "Scenario label is required.",
+      "hostRequired": "Choose a target Proxmox host.",
+      "teamCountNaN": "Team count must be a number.",
+      "teamCountMin": "Team count must be at least 1.",
+      "vaultRequired": "Vault password is required."
+    },
+    "shaPin": {
+      "heading": "SHA pin",
+      "catalog": "Catalog SHA",
+      "project": "Project SHA",
+      "ack": "I confirm deploying with these exact revisions."
+    },
+    "preflight": {
+      "heading": "Preflight",
+      "run": "Run preflight",
+      "running": "Running…",
+      "blocking": "Preflight reported blocking issues. Fix them before deploying.",
+      "acknowledge": "Acknowledge preflight warnings."
+    }
+  },
+  "teardown": {
+    "title": "Teardown deployment",
+    "confirmLabel": "Type the codename to confirm: {codename}",
+    "inputPlaceholder": "Type the codename here",
+    "mismatch": "Entered value does not match the codename.",
+    "cancel": "Cancel",
+    "destroy": "Destroy deployment",
+    "destroying": "Destroying…",
+    "error": "Teardown failed."
+  },
+  "reset": {
+    "title": "Reset team {id}",
+    "body": "This will re-run the team provisioning for team {id}.",
+    "queuedNotice": "A deployment is in flight — this reset will be queued to run afterwards.",
+    "cancel": "Cancel",
+    "confirm": "Reset",
+    "confirmQueue": "Queue reset",
+    "queuedToast": "Reset queued for team {id}.",
+    "runNowToast": "Queued reset for team {id} — run now?",
+    "runNow": "Run now",
+    "dismiss": "Dismiss"
+  },
+  "snapshot": {
+    "title": "Create snapshot — team {id}",
+    "name": "Snapshot name",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "Cancel",
+    "create": "Create",
+    "error": "Failed to create snapshot."
+  },
+  "rollback": {
+    "title": "Rollback team {id}",
+    "chooseSnapshot": "Choose a snapshot",
+    "noSnapshots": "This team has no snapshots yet.",
+    "cancel": "Cancel",
+    "confirm": "Rollback",
+    "missingHeader": "Required snapshots are missing on some VMs:",
+    "partial": "Rollback only VMs with valid snapshots",
+    "error": "Rollback failed."
+  },
+  "preflight": {
+    "title": "Preflight record",
+    "subtitle": "Immutable snapshot of the checks run for this deployment.",
+    "copyLink": "Copy shareable link",
+    "linkCopied": "Link copied",
+    "empty": "This preflight record has no checks.",
+    "generatedAt": "Generated",
+    "attempt": "Attempt",
+    "summary": {
+      "ok": "All checks passed",
+      "warn": "Non-blocking warnings",
+      "block": "Blocking issues found"
+    },
+    "result": {
+      "pass": "pass",
+      "warn": "warn",
+      "block": "block"
+    },
+    "category": {
+      "resources": "Resources",
+      "vmids": "VMIDs",
+      "ips": "IPs",
+      "sdn": "SDN",
+      "git": "Git sources",
+      "secrets": "Secrets"
+    },
+    "loadFailed": "Failed to load preflight record.",
+    "notFound": "Preflight record not found.",
+    "loading": "Loading preflight record…"
+  },
+  "states": {
+    "pending": "pending",
+    "preflight_running": "preflight running",
+    "preflight_review": "preflight review",
+    "deploying": "deploying",
+    "completed": "completed",
+    "partial": "partial",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "unknown": "unknown"
+  },
+  "phases": {
+    "network": "network",
+    "router": "router",
+    "vm": "vm",
+    "install": "install",
+    "configure": "configure",
+    "validate": "validate"
+  }
+}

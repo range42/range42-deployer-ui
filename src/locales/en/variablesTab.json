@@ -1,0 +1,14 @@
+{
+  "title": "Variables",
+  "subtitle": "Environment variables declared by the project (base ⊕ overlay)",
+  "name": "Name",
+  "scope": "Scope",
+  "required": "Required",
+  "secret": "Secret",
+  "default": "Default",
+  "override": "Override (overlay only)",
+  "empty": "No env variables declared by this project.",
+  "requiredHint": "Required",
+  "revealSecret": "Toggle secret visibility",
+  "clearOverride": "Clear override"
+}

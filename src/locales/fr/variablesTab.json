@@ -1,0 +1,14 @@
+{
+  "title": "Variables",
+  "subtitle": "Variables d'environnement déclarées par le projet (base ⊕ calque)",
+  "name": "Nom",
+  "scope": "Portée",
+  "required": "Obligatoire",
+  "secret": "Secret",
+  "default": "Valeur par défaut",
+  "override": "Remplacement (calque seulement)",
+  "empty": "Aucune variable d'environnement déclarée par ce projet.",
+  "requiredHint": "Obligatoire",
+  "revealSecret": "Afficher/masquer le secret",
+  "clearOverride": "Effacer le remplacement"
+}

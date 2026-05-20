@@ -1,0 +1,24 @@
+{
+  "name": "log_line without secrets passes untouched",
+  "operator": "redaction",
+  "input": {
+    "event": {
+      "event_seq": 1,
+      "attempt_id": "att-1",
+      "ts": "2026-04-14T13:47:00Z",
+      "event_type": "log_line",
+      "payload": { "stream": "stdout", "text": "TASK [ping] ok: [host-a]" }
+    },
+    "layers": ["config_denylist", "vault_tagged"]
+  },
+  "expected": {
+    "event": {
+      "event_seq": 1,
+      "attempt_id": "att-1",
+      "ts": "2026-04-14T13:47:00Z",
+      "event_type": "log_line",
+      "payload": { "stream": "stdout", "text": "TASK [ping] ok: [host-a]" }
+    },
+    "redactions": []
+  }
+}

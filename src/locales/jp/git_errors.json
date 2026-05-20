@@ -1,0 +1,11 @@
+{
+  "credentials_expired": "Git 認証情報の期限が切れました。設定で再認証してください。",
+  "sso_required": "GitHub 組織がこのトークンに SSO 認可を要求しています。",
+  "insufficient_scope": "書き込み権限がありません。リポジトリをフォークするか、アクセスを依頼してください。",
+  "repo_not_found": "リポジトリが見つかりません。ソースを更新するか再接続してください。",
+  "branch_protected": "ブランチが保護されています — PR モードに切り替えます。",
+  "silent_fork_exists": "",
+  "rate_limited": "レート制限です。{retryAfterSec} 秒後に再試行してください。",
+  "network_unreachable": "Git プロバイダーに接続できません。ネットワークを確認してください。",
+  "unknown": "Git 操作に失敗しました。コンソールを確認してください。"
+}

@@ -1,0 +1,14 @@
+{
+  "title": "変数",
+  "subtitle": "プロジェクトが宣言する環境変数 (ベース ⊕ オーバーレイ)",
+  "name": "名前",
+  "scope": "スコープ",
+  "required": "必須",
+  "secret": "機密",
+  "default": "デフォルト",
+  "override": "オーバーライド (オーバーレイのみ)",
+  "empty": "このプロジェクトには env 変数が宣言されていません。",
+  "requiredHint": "必須",
+  "revealSecret": "機密の表示切替",
+  "clearOverride": "オーバーライドをクリア"
+}
