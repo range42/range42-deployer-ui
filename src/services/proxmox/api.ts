@@ -323,10 +323,54 @@ export const vm = {
    * Set VM tags
    */
   async setTags(node: ProxmoxNode, vmId: number, tags: string[]): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/config/set-tags', {
+    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_tag', {
       proxmox_node: node,
-      vm_id: vmId,
-      tags: tags.join(','),
+      vm_id: String(vmId),
+      vm_tag_name: tags.join(','),
+    })
+  },
+
+  /**
+   * Set VM name
+   */
+  async setName(node: ProxmoxNode, vmId: number, name: string): Promise<ApiResponse> {
+    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_name', {
+      proxmox_node: node,
+      vm_id: String(vmId),
+      vm_name: name,
+    })
+  },
+
+  /**
+   * Set VM description
+   */
+  async setDescription(node: ProxmoxNode, vmId: number, description: string): Promise<ApiResponse> {
+    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_description', {
+      proxmox_node: node,
+      vm_id: String(vmId),
+      vm_description: description,
+    })
+  },
+
+  /**
+   * Set VM CPU cores
+   */
+  async setCpu(node: ProxmoxNode, vmId: number, cores: number): Promise<ApiResponse> {
+    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_cpu', {
+      proxmox_node: node,
+      vm_id: String(vmId),
+      vm_cores: cores,
+    })
+  },
+
+  /**
+   * Set VM memory (MB)
+   */
+  async setMemory(node: ProxmoxNode, vmId: number, memory: number): Promise<ApiResponse> {
+    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_memory', {
+      proxmox_node: node,
+      vm_id: String(vmId),
+      vm_memory: memory,
     })
   },
 }

@@ -314,6 +314,17 @@ export function useInfrastructureImport() {
 
         // Create node
         const nodeId = `imported-${resource.type}-${resource.vmid}`
+        // Look up tags from the cached VM list
+        const cachedVm = proxmoxCache.vmCache.value.find(v => v.vmid === resource.vmid)
+        const vmTags = cachedVm?.tags ? cachedVm.tags.split(';').filter(Boolean) : []
+
+        const initialConfig = {
+          name: resource.name,
+          cores: config.cores || 1,
+          memory: typeof config.memory === 'string' ? parseInt(config.memory) : (config.memory || 0),
+          tags: vmTags,
+          description: '',
+        }
         result.nodes.push({
           id: nodeId,
           type: resource.type,
@@ -335,7 +346,9 @@ export function useInfrastructureImport() {
               cpuUsage: config.cpuUsage || 0,
               uptime: config.uptime || 0,
               proxmoxNode: config.node || '',
-            }
+            },
+            desiredConfig: { ...initialConfig },
+            actualConfig: { ...initialConfig },
           }
         })
 

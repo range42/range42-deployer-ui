@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, provide } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, provide, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -87,7 +87,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized, findNode } = useVueFlow()
 
 // Bumped when VueFlow finishes measuring node dimensions, so the network-zone
 // overlay recomputes its geometry off real (not fallback) sizes on first paint.
@@ -99,6 +99,7 @@ const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
+const configPanelRef = ref(null)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
 const showDeploymentPanel = ref(false)
@@ -294,12 +295,13 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
     const dataUpdate = {}
     let needsUpdate = false
 
+    // Runtime status: always sync
     if (node.data.status !== newStatus) {
       dataUpdate.status = newStatus
       needsUpdate = true
     }
 
-    // Sync live metrics
+    // Live metrics: always sync
     if (vm.status === 'running') {
       dataUpdate.liveMetrics = {
         cpu: vm.cpu,
@@ -314,13 +316,44 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
       needsUpdate = true
     }
 
-    // Sync tags from WebSocket (semicolon-separated)
-    if (vm.tags) {
-      const wsTags = vm.tags.split(';').filter(Boolean)
-      const currentTags = node.data.tags || []
-      if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
-        dataUpdate.tags = wsTags
+    // For deployed nodes: update actualConfig (not top-level tags)
+    if (node.data.deployed) {
+      const wsTags = vm.tags ? vm.tags.split(';').filter(Boolean) : []
+      const currentActual = node.data.actualConfig || {}
+
+      const newActual = {
+        ...currentActual,
+        tags: wsTags,
+        name: vm.name,
+        cores: vm.cores || currentActual.cores,
+        memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : currentActual.memory,
+      }
+
+      if (JSON.stringify(newActual) !== JSON.stringify(currentActual)) {
+        dataUpdate.actualConfig = newActual
         needsUpdate = true
+      }
+
+      // Initialize desiredConfig on first sync if missing
+      if (!node.data.desiredConfig) {
+        dataUpdate.desiredConfig = {
+          ...newActual,
+          cores: node.data.config?.cores ? Number(node.data.config.cores) : undefined,
+          memory: typeof node.data.config?.memory === 'string'
+            ? parseInt(node.data.config.memory)
+            : node.data.config?.memory,
+        }
+        needsUpdate = true
+      }
+    } else {
+      // Non-deployed nodes: sync tags to top-level (legacy behavior for draft nodes)
+      if (vm.tags) {
+        const wsTags = vm.tags.split(';').filter(Boolean)
+        const currentTags = node.data.tags || []
+        if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
+          dataUpdate.tags = wsTags
+          needsUpdate = true
+        }
       }
     }
 
@@ -539,6 +572,15 @@ const handleNodeClick = (event) => {
 const closeConfigPanel = () => {
   showConfigPanel.value = false
   selectedNode.value = null
+}
+
+// Node-card "Apply" strip → open that node's ConfigPanel and surface the apply dialog.
+const onNodeApply = (slotProps) => {
+  const n = findNode(slotProps.id)
+  if (!n) return
+  selectedNode.value = n
+  showConfigPanel.value = true
+  nextTick(() => configPanelRef.value?.openApplyDialog?.())
 }
 
 /**
@@ -1155,7 +1197,7 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Compute -->
           <template #node-vm="props">
-            <InfraNodeVm v-bind="props" />
+            <InfraNodeVm v-bind="props" @open-apply-dialog="onNodeApply(props)" />
           </template>
 
           <template #node-lxc="props">
@@ -1268,6 +1310,7 @@ const handleInfrastructureImport = (result) => {
 
     <!-- Config Panel (node config — only on canvas tab) -->
     <ConfigPanel
+      ref="configPanelRef"
       v-if="selectedNode && showConfigPanel && tab === 'canvas'"
       :node="selectedNode"
       @close="closeConfigPanel"

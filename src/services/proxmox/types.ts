@@ -263,6 +263,30 @@ export interface BaseNodeData {
   tags?: string[]
 }
 
+export interface VmDesiredConfig {
+  name?: string
+  cores?: number
+  memory?: number
+  tags?: string[]
+  description?: string
+}
+
+export interface VmActualConfig {
+  name?: string
+  cores?: number
+  memory?: number
+  tags?: string[]
+  description?: string
+}
+
+export interface PendingChange {
+  field: string
+  label: string
+  desired: unknown
+  actual: unknown
+  category: 'live' | 'restart' | 'redeploy'
+}
+
 export interface LiveMetrics {
   cpu: number          // 0-100 percentage
   mem: number          // bytes used
