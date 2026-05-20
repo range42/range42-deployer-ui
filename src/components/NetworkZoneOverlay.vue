@@ -9,9 +9,15 @@ const { viewport } = useVueFlow()
 </script>
 
 <template>
+  <!--
+    `vue-flow__container` matches the Background convention (absolute, full-size).
+    z-index: 3 sits explicitly ABOVE the background grid (default stacking within
+    .vue-flow, z-index 0) and BELOW the node/edge viewport (.vue-flow__viewport,
+    z-index 4) — so zones always paint behind nodes and in front of the grid.
+  -->
   <svg
-    class="vue-flow__zone-overlay"
-    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;"
+    class="vue-flow__container vue-flow__zone-overlay"
+    style="z-index: 3; pointer-events: none; overflow: visible;"
   >
     <g :transform="`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`">
       <g v-for="zone in zones" :key="zone.id">

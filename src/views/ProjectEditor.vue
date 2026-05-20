@@ -87,7 +87,12 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized } = useVueFlow()
+
+// Bumped when VueFlow finishes measuring node dimensions, so the network-zone
+// overlay recomputes its geometry off real (not fallback) sizes on first paint.
+const measureTick = ref(0)
+onNodesInitialized(() => { measureTick.value++ })
 
 const { showToast } = useToast()
 const dragAndDropComposable = useDragAndDrop()
@@ -186,7 +191,7 @@ function handleJumpTo(descriptor) {
   // attachment / file jumps will be wired when the Config tab lands (C3.7).
 }
 
-const { zones } = useNetworkZones(liveNodes, liveEdges)
+const { zones } = useNetworkZones(liveNodes, liveEdges, measureTick)
 
 const autoLayout = useAutoLayout()
 
