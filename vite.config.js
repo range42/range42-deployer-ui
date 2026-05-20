@@ -4,9 +4,10 @@ import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
+import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: {
     host: '0.0.0.0',
     port: parseInt(process.env.VITE_DEV_PORT || '3000', 10),
@@ -23,8 +24,9 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
+    mode === 'development' && vueDevTools(),
     tailwindcss(),
-  ],
+  ].filter(Boolean),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -33,4 +35,4 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
-})
+}))
