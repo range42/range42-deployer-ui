@@ -1,8 +1,11 @@
 <script setup>
+defineOptions({ name: 'DashboardView' })
+
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import DeployForm from '@/components/project/DeployForm.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -14,6 +17,31 @@ const searchQuery = ref('')
 const viewMode = ref('grid') // 'grid' | 'list'
 const importFileInput = ref(null)
 const importError = ref('')
+
+// Plan C §C4.6 — quick-deploy from dashboard.
+const quickDeployTarget = ref(null)
+const quickDeployCodenames = ref([])
+
+async function openQuickDeploy(project, event) {
+  if (event) { event.stopPropagation(); event.preventDefault() }
+  try {
+    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
+    if (res.ok) {
+      const body = await res.json()
+      const items = Array.isArray(body) ? body : (body?.deployments || [])
+      quickDeployCodenames.value = items.map(d => d.codename).filter(Boolean)
+    } else {
+      quickDeployCodenames.value = []
+    }
+  } catch {
+    quickDeployCodenames.value = []
+  }
+  quickDeployTarget.value = project
+}
+
+function closeQuickDeploy() {
+  quickDeployTarget.value = null
+}
 
 onMounted(() => {
   projectStore.loadProjects()
@@ -253,8 +281,10 @@ const formatDate = (date) => {
         <!-- Grid View -->
         <div v-if="viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           <!-- Create New Card -->
-          <div
-            class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px]"
+          <button
+            type="button"
+            class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px] bg-transparent w-full"
+            aria-label="New project"
             @click="showCreateModal = true"
           >
             <div class="w-14 h-14 rounded-2xl bg-base-200 group-hover:bg-primary/20 flex items-center justify-center mb-4 transition-colors">
@@ -264,14 +294,19 @@ const formatDate = (date) => {
             </div>
             <h4 class="font-semibold mb-1">New Project</h4>
             <p class="text-sm text-base-content/50">Start from scratch</p>
-          </div>
+          </button>
 
           <!-- Project Cards -->
           <div
             v-for="project in filteredProjects"
             :key="project.id"
             class="card bg-base-100 border border-base-300 card-hover cursor-pointer group"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open project ${project.name}`"
             @click="openProject(project.id)"
+            @keydown.enter.prevent="openProject(project.id)"
+            @keydown.space.prevent="openProject(project.id)"
           >
             <div class="card-body p-5">
               <!-- Header -->
@@ -304,6 +339,17 @@ const formatDate = (date) => {
                       <button type="button" class="gap-2 w-full text-left" @click.stop="duplicateProject(project)">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         Duplicate
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        class="gap-2 w-full text-left"
+                        data-testid="dashboard-quick-deploy"
+                        @click.stop="openQuickDeploy(project, $event)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                        Deploy…
                       </button>
                     </li>
                     <div class="divider my-1"></div>
@@ -355,7 +401,12 @@ const formatDate = (date) => {
             v-for="project in filteredProjects"
             :key="project.id"
             class="flex items-center gap-4 p-4 rounded-xl border border-base-300 hover:border-primary/30 hover:bg-base-200/50 cursor-pointer transition-all group"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open project ${project.name}`"
             @click="openProject(project.id)"
+            @keydown.enter.prevent="openProject(project.id)"
+            @keydown.space.prevent="openProject(project.id)"
           >
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <AppIcon name="ruler" class="w-5 h-5" />
@@ -479,6 +530,19 @@ const formatDate = (date) => {
     </div>
     <div class="modal-backdrop" @click="cancelDelete"></div>
   </div>
+
+  <!-- Plan C §C4.6 — Quick-deploy DeployForm -->
+  <DeployForm
+    v-if="quickDeployTarget"
+    :visible="!!quickDeployTarget"
+    :project-id="quickDeployTarget.id"
+    :project-name="quickDeployTarget.name"
+    :catalog-sha="quickDeployTarget?.catalog_sha || quickDeployTarget?.pinned_catalog_sha || ''"
+    :project-sha="quickDeployTarget?.head_sha || quickDeployTarget?.project_sha || ''"
+    :existing-codenames="quickDeployCodenames"
+    :gamenet="!!quickDeployTarget?.gamenet"
+    @close="closeQuickDeploy"
+  />
 </template>
 
 <style scoped>

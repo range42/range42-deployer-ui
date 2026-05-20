@@ -30,12 +30,15 @@ const config = ref({
   mtu: null,
   rate: null,
   isGateway: false,
+  // Replication intent (Plan C §6): 'fan_out' | 'mesh' | 'pair_scoped'
+  replication_intent: 'pair_scoped',
   // UI helper
   useDhcp: true
 })
 
 // Initialize form from edge data
 watch(() => props.edge, (edge) => {
+  const intent = edge?.data?.replication_intent || 'pair_scoped'
   if (edge?.data?.connection) {
     const conn = edge.data.connection
     config.value = {
@@ -48,6 +51,7 @@ watch(() => props.edge, (edge) => {
       mtu: conn.mtu || null,
       rate: conn.rate || null,
       isGateway: conn.isGateway ?? false,
+      replication_intent: intent,
       useDhcp: !conn.ipAddress || conn.ipAddress === 'dhcp'
     }
   } else if (edge?.data) {
@@ -62,6 +66,7 @@ watch(() => props.edge, (edge) => {
       mtu: edge.data.mtu || null,
       rate: edge.data.rate || null,
       isGateway: edge.data.isGateway ?? false,
+      replication_intent: intent,
       useDhcp: edge.data.useDhcp ?? true
     }
   }
@@ -100,8 +105,9 @@ const connectionData = computed(() => ({
 // Auto-update parent when config changes
 watch(config, () => {
   // Emit the edge data in the correct format: { connection: NetworkConnectionData }
-  emit('update', props.edge.id, { 
+  emit('update', props.edge.id, {
     connection: connectionData.value,
+    replication_intent: config.value.replication_intent || 'pair_scoped',
     label: config.value.ipAddress || undefined
   })
 }, { deep: true })
@@ -251,6 +257,54 @@ const close = () => {
               min="1"
             />
           </div>
+        </div>
+      </div>
+
+      <!-- Replication intent (Plan C §6) -->
+      <div class="form-control mb-3">
+        <label class="label py-1">
+          <span class="label-text text-sm font-medium">Replication intent</span>
+        </label>
+        <div class="flex flex-col gap-1" data-testid="replication-intent-group">
+          <label class="cursor-pointer label justify-start gap-2 py-1">
+            <input
+              v-model="config.replication_intent"
+              type="radio"
+              value="fan_out"
+              class="radio radio-xs radio-primary"
+              data-testid="replication-intent-fan_out"
+            />
+            <div>
+              <span class="label-text text-xs font-semibold">fan_out</span>
+              <p class="text-[11px] opacity-70">One shared endpoint talks to each team replica</p>
+            </div>
+          </label>
+          <label class="cursor-pointer label justify-start gap-2 py-1">
+            <input
+              v-model="config.replication_intent"
+              type="radio"
+              value="mesh"
+              class="radio radio-xs radio-primary"
+              data-testid="replication-intent-mesh"
+            />
+            <div>
+              <span class="label-text text-xs font-semibold">mesh</span>
+              <p class="text-[11px] opacity-70">Both endpoints live in the same team_scope</p>
+            </div>
+          </label>
+          <label class="cursor-pointer label justify-start gap-2 py-1">
+            <input
+              v-model="config.replication_intent"
+              type="radio"
+              value="pair_scoped"
+              class="radio radio-xs radio-primary"
+              data-testid="replication-intent-pair_scoped"
+            />
+            <div>
+              <span class="label-text text-xs font-semibold">pair_scoped</span>
+              <p class="text-[11px] opacity-70">Single pair — no per-team replication</p>
+            </div>
+          </label>
         </div>
       </div>
 

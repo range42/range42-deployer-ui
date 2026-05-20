@@ -4,5 +4,8 @@
   "save": "保存",
   "back": "戻る",
   "export": "エクスポート",
-  "settings": "設定"
+  "settings": "設定",
+  "close": "閉じる",
+  "add": "追加",
+  "remove": "削除"
 }

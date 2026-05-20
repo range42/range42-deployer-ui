@@ -1,0 +1,12 @@
+{
+  "files": "Files",
+  "refresh": "Refresh",
+  "base": "Base (read-only)",
+  "overlay": "Overlay",
+  "baseMissing": "No base file at this path",
+  "emptyOverlay": "Overlay empty — fork a base file or create new",
+  "forkToOverride": "Fork to override",
+  "drift": "Upstream drift",
+  "driftBanner": "Upstream changed at {sha}",
+  "yamlAnchorsWarning": "This YAML uses anchors/aliases; round-trip may rewrite them."
+}

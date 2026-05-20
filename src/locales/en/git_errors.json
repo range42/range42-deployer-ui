@@ -1,0 +1,11 @@
+{
+  "credentials_expired": "Git credentials expired. Re-authenticate in Settings.",
+  "sso_required": "GitHub org requires SSO authorization for this token.",
+  "insufficient_scope": "You lack write permission. Fork the repo or request access.",
+  "repo_not_found": "Repository not found. Refresh sources or reconnect.",
+  "branch_protected": "Branch is protected — switching to PR mode.",
+  "silent_fork_exists": "",
+  "rate_limited": "Rate limited. Retry in {retryAfterSec}s.",
+  "network_unreachable": "Can't reach git provider. Check your connection.",
+  "unknown": "Git operation failed. See console for details."
+}

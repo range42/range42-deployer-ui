@@ -9,13 +9,17 @@ export * from './types'
 
 // Providers
 export { GitHubProvider, getGitHubProvider } from './github'
+export { GitLabProvider, getGitLabProvider } from './gitlab'
+export { GiteaProvider, getGiteaProvider } from './gitea'
 
 // =============================================================================
 // Provider Registry
 // =============================================================================
 
-import type { GitProvider, GitProviderName } from './types'
+import type { GitProvider, GitProviderName, GitProviderV1, GitProviderV1Kind } from './types'
 import { getGitHubProvider } from './github'
+import { GitLabProvider } from './gitlab'
+import { GiteaProvider } from './gitea'
 
 const providers = new Map<GitProviderName, () => GitProvider>()
 
@@ -45,6 +49,39 @@ export function getGitProvider(name: GitProviderName = 'github'): GitProvider {
  */
 export function getRegisteredProviders(): GitProviderName[] {
   return Array.from(providers.keys())
+}
+
+// =============================================================================
+// V1 Provider Factory (GitProviderV1)
+// =============================================================================
+//
+// Returns an instance of the simpler v1 interface (used by
+// ProjectRepoAdapter and new catalog/source flows). GitHub support in v1 is
+// out of scope until the GitHub adapter is ported; callers that need GitHub
+// continue to go through `getGitProvider('github')`.
+
+export interface GetProviderOpts {
+  baseUrl?: string
+  token?: string | null
+  fetchImpl?: typeof fetch
+}
+
+export function getProvider(kind: GitProviderV1Kind, opts: GetProviderOpts = {}): GitProviderV1 {
+  switch (kind) {
+    case 'gitlab':
+      return new GitLabProvider(opts)
+    case 'gitea':
+      return new GiteaProvider(opts)
+    case 'github':
+    case 'generic':
+      throw new Error(
+        `getProvider('${kind}'): v1 adapter not yet implemented; use legacy getGitProvider for GitHub`,
+      )
+    default: {
+      const _exhaustive: never = kind
+      throw new Error(`unknown provider kind: ${String(_exhaustive)}`)
+    }
+  }
 }
 
 /**

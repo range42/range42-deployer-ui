@@ -1,0 +1,12 @@
+{
+  "files": "Fichiers",
+  "refresh": "Rafraîchir",
+  "base": "Base (lecture seule)",
+  "overlay": "Calque",
+  "baseMissing": "Aucun fichier de base à ce chemin",
+  "emptyOverlay": "Calque vide — dupliquez un fichier de base ou créez-en un",
+  "forkToOverride": "Dupliquer pour remplacer",
+  "drift": "Décalage amont",
+  "driftBanner": "Amont modifié à {sha}",
+  "yamlAnchorsWarning": "Ce YAML utilise des ancres/alias ; le round-trip peut les réécrire."
+}

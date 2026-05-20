@@ -1,0 +1,11 @@
+{
+  "credentials_expired": "Identifiants Git expirés. Ré-authentifiez-vous dans Paramètres.",
+  "sso_required": "L'organisation GitHub requiert une autorisation SSO pour ce jeton.",
+  "insufficient_scope": "Vous n'avez pas les droits d'écriture. Forkez le dépôt ou demandez l'accès.",
+  "repo_not_found": "Dépôt introuvable. Rafraîchissez les sources ou reconnectez-vous.",
+  "branch_protected": "Branche protégée — passage en mode PR.",
+  "silent_fork_exists": "",
+  "rate_limited": "Limite de taux atteinte. Réessayez dans {retryAfterSec}s.",
+  "network_unreachable": "Impossible de joindre le fournisseur Git. Vérifiez votre connexion.",
+  "unknown": "Opération Git échouée. Voir la console."
+}

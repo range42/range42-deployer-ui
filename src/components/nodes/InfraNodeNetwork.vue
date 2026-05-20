@@ -13,7 +13,7 @@ import { getNetworkColor } from '@/constants/networkColors'
 
 const props = defineProps(['id', 'data', 'selected', 'connectable'])
 
-const { getEdges, getNode } = useVueFlow()
+const { getEdges, findNode } = useVueFlow()
 
 const segmentColor = computed(() => {
   return getNetworkColor(props.data?.config?.segmentType || 'custom')
@@ -25,7 +25,7 @@ const connectedDevices = computed(() => {
     .filter(e => e.source === nodeId || e.target === nodeId)
     .map(e => {
       const otherId = e.source === nodeId ? e.target : e.source
-      return getNode(otherId)
+      return findNode(otherId)
     })
     .filter(Boolean)
 })
