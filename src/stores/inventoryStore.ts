@@ -24,6 +24,8 @@ import {
 // =============================================================================
 
 const STORAGE_KEY = 'range42_inventories'
+const SOURCES_STORAGE_KEY = 'range42_git_sources'
+const TOKEN_STORAGE_PREFIX = 'range42_token_'
 
 // =============================================================================
 // Types
@@ -45,6 +47,43 @@ export interface ComponentListItem {
 }
 
 // =============================================================================
+// GitSource Model (Plan C §4)
+// =============================================================================
+
+export type GitSourceProvider = 'github' | 'gitlab' | 'gitea' | 'generic'
+
+export type GitSourceAuthKind = 'none' | 'oauth' | 'pat'
+
+export interface GitSourceAuth {
+  kind: GitSourceAuthKind
+  ref_to_token_id?: string
+}
+
+export interface GitSourceRepo {
+  owner: string
+  repo: string
+  branch: string
+  manifest?: string
+}
+
+export interface GitSourceHealth {
+  status: 'ok' | 'degraded' | 'down' | 'unknown'
+  rtt_ms?: number
+  checked_at?: string
+  error?: string
+}
+
+export interface GitSource {
+  id: string
+  provider: GitSourceProvider
+  base_url: string
+  auth: GitSourceAuth
+  repos: GitSourceRepo[]
+  name?: string
+  health?: GitSourceHealth
+}
+
+// =============================================================================
 // Store
 // =============================================================================
 
@@ -55,6 +94,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   
   const registeredRepos = ref<RegisteredInventory[]>(loadFromStorage())
   const cachedComponents = ref<Map<string, CachedComponent>>(new Map())
+  const sources = ref<GitSource[]>(loadSourcesFromStorage())
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   
@@ -110,6 +150,90 @@ export const useInventoryStore = defineStore('inventory', () => {
     } catch (e) {
       console.warn('[InventoryStore] Failed to save to storage:', e)
     }
+  }
+
+  function loadSourcesFromStorage(): GitSource[] {
+    try {
+      const stored = localStorage.getItem(SOURCES_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) return parsed as GitSource[]
+      }
+    } catch (e) {
+      console.warn('[InventoryStore] Failed to load sources from storage:', e)
+    }
+    return []
+  }
+
+  function saveSourcesToStorage(): void {
+    try {
+      localStorage.setItem(SOURCES_STORAGE_KEY, JSON.stringify(sources.value))
+    } catch (e) {
+      console.warn('[InventoryStore] Failed to save sources to storage:', e)
+    }
+  }
+
+  // ===========================================================================
+  // GitSource Management (Plan C §4)
+  // ===========================================================================
+
+  function addSource(source: GitSource): GitSource {
+    if (!source || !source.id) {
+      throw new Error('Source requires an id')
+    }
+    if (sources.value.some((s) => s.id === source.id)) {
+      throw new Error('Source already exists with this id')
+    }
+    const normalized: GitSource = {
+      ...source,
+      auth: source.auth || { kind: 'none' },
+      repos: source.repos || [],
+    }
+    sources.value.push(normalized)
+    saveSourcesToStorage()
+    return normalized
+  }
+
+  function removeSource(id: string): void {
+    const idx = sources.value.findIndex((s) => s.id === id)
+    if (idx >= 0) {
+      sources.value.splice(idx, 1)
+      saveSourcesToStorage()
+    }
+    // Also clear the associated token
+    try {
+      localStorage.removeItem(TOKEN_STORAGE_PREFIX + id)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function updateSourceHealth(id: string, health: GitSourceHealth): void {
+    const s = sources.value.find((s) => s.id === id)
+    if (s) {
+      s.health = { ...health }
+      saveSourcesToStorage()
+    }
+  }
+
+  function setToken(sourceId: string, token: string): void {
+    try {
+      localStorage.setItem(TOKEN_STORAGE_PREFIX + sourceId, token)
+    } catch (e) {
+      console.warn('[InventoryStore] Failed to save token:', e)
+    }
+  }
+
+  function getToken(sourceId: string): string | null {
+    try {
+      return localStorage.getItem(TOKEN_STORAGE_PREFIX + sourceId)
+    } catch {
+      return null
+    }
+  }
+
+  function getSource(id: string): GitSource | undefined {
+    return sources.value.find((s) => s.id === id)
   }
   
   // ===========================================================================
@@ -532,35 +656,44 @@ export const useInventoryStore = defineStore('inventory', () => {
     // State
     registeredRepos,
     cachedComponents,
+    sources,
     isLoading,
     error,
-    
+
     // Computed
     repoCount,
     allComponents,
     componentsByType,
-    
+
     // Repository management
     addRepository,
     removeRepository,
     refreshRepository,
-    
+
     // Component operations
     listComponents,
     fetchComponent,
     loadAllComponents,
-    
+
     // Scenario operations
     loadScenario,
-    
+
     // Write operations
     publishComponent,
     deleteComponent,
     forkInventory,
-    
+
     // Cache
     clearCache,
     getCachedComponent,
+
+    // GitSource management (Plan C §4)
+    addSource,
+    removeSource,
+    updateSourceHealth,
+    setToken,
+    getToken,
+    getSource,
   }
 })
 

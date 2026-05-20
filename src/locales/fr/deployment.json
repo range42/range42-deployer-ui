@@ -1,0 +1,228 @@
+{
+  "list": {
+    "title": "Déploiements",
+    "subtitle": "Déploiements actifs et historique, groupés par projet.",
+    "active": "Actifs",
+    "past": "Passés",
+    "activeHeading": "Actifs",
+    "pastHeading": "Passés",
+    "noActive": "Aucun déploiement actif.",
+    "noPast": "Aucun déploiement passé pour l'instant.",
+    "emptyAll": "Aucun déploiement pour l'instant. Lancez-en un depuis un projet.",
+    "filters": {
+      "failedOnly": "Échecs uniquement",
+      "inProgressOnly": "En cours uniquement",
+      "clear": "Effacer les filtres"
+    },
+    "row": {
+      "codename": "Nom de code",
+      "scenario": "Scénario",
+      "state": "État",
+      "started": "Lancé",
+      "attempts": "Tentatives",
+      "open": "Ouvrir",
+      "attemptCount": "{n} tentative | {n} tentatives",
+      "noProject": "(sans projet)"
+    }
+  },
+  "detail": {
+    "back": "Retour aux déploiements",
+    "cancel": "Annuler le déploiement",
+    "pause": "Pause",
+    "teardown": "Démanteler…",
+    "overview": "Vue d'ensemble",
+    "teams": "Équipes",
+    "logs": "Logs",
+    "preflight": "Préalable",
+    "preflightLink": "Voir le rapport préalable",
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "teams": "Équipes",
+      "logs": "Logs"
+    },
+    "overview": {
+      "stateChainHeading": "Machine à états",
+      "phaseHeading": "Phase actuelle",
+      "attemptHeading": "Tentative en cours",
+      "lastHeartbeat": "Dernier battement",
+      "noAttempts": "Aucune tentative enregistrée.",
+      "connection": {
+        "label": "Flux",
+        "idle": "inactif",
+        "connecting": "connexion…",
+        "open": "en direct",
+        "retrying": "nouvelle tentative",
+        "closed": "fermé",
+        "exhausted": "déconnecté"
+      }
+    },
+    "teams": {
+      "heading": "Équipes",
+      "empty": "Aucune équipe pour l'instant — elles apparaissent au fil du déploiement."
+    },
+    "logs": {
+      "heading": "Logs",
+      "filterPlaceholder": "Filtrer…",
+      "download": "Télécharger events.jsonl",
+      "empty": "Aucune ligne de log reçue pour l'instant.",
+      "teamFilter": "Affichage des logs de l'équipe {id}",
+      "clearTeamFilter": "Retirer le filtre d'équipe"
+    },
+    "notFound": "Déploiement introuvable."
+  },
+  "team": {
+    "ariaLabel": "Équipe {id}",
+    "menuLabel": "Actions de l'équipe",
+    "openLogs": "Ouvrir les logs de cette équipe",
+    "noLogsYet": "Aucun log.",
+    "queued": "en file",
+    "reset": "Réinitialiser l'équipe",
+    "snapshot": "Snapshot",
+    "rollback": "Restaurer",
+    "copy_ssh": "Copier la commande SSH",
+    "open_terminal": "Ouvrir le terminal",
+    "snapshotCount": "{n} snapshot | {n} snapshots",
+    "status": {
+      "pending": "en attente",
+      "deploying": "déploiement",
+      "deployed": "déployée",
+      "failed": "en échec",
+      "partial": "partielle",
+      "unknown": "inconnu"
+    },
+    "actions": {
+      "reset": "Réinitialiser l'équipe",
+      "snapshot": "Snapshot",
+      "rollback": "Restaurer",
+      "copySsh": "Copier la commande SSH",
+      "openTerminal": "Ouvrir le terminal"
+    }
+  },
+  "deploy": {
+    "title": "Déployer",
+    "submit": "Déployer",
+    "submitting": "Déploiement…",
+    "fields": {
+      "codename": "Nom de code",
+      "codenamePlaceholder": "nom-court-unique",
+      "scenario": "Libellé du scénario",
+      "scenarioPlaceholder": "ex. demo_lab",
+      "host": "Hôte Proxmox cible",
+      "hostPlaceholder": "Sélectionner un hôte",
+      "teamCount": "Nombre d'équipes",
+      "vault": "Mot de passe Vault"
+    },
+    "err": {
+      "codenameRequired": "Le nom de code est obligatoire.",
+      "codenameShape": "Lettres minuscules, chiffres, tirets uniquement ; 3 à 32 caractères.",
+      "codenameTaken": "Ce nom de code est déjà utilisé par un autre déploiement local.",
+      "scenarioRequired": "Le libellé du scénario est obligatoire.",
+      "hostRequired": "Choisissez un hôte Proxmox cible.",
+      "teamCountNaN": "Le nombre d'équipes doit être un nombre.",
+      "teamCountMin": "Le nombre d'équipes doit être au moins 1.",
+      "vaultRequired": "Le mot de passe Vault est obligatoire."
+    },
+    "shaPin": {
+      "heading": "Épinglage SHA",
+      "catalog": "SHA du catalogue",
+      "project": "SHA du projet",
+      "ack": "Je confirme le déploiement avec exactement ces révisions."
+    },
+    "preflight": {
+      "heading": "Préalable",
+      "run": "Lancer le préalable",
+      "running": "En cours…",
+      "blocking": "Le préalable a signalé des problèmes bloquants. Corrigez-les avant de déployer.",
+      "acknowledge": "Accepter les avertissements préalables."
+    }
+  },
+  "teardown": {
+    "title": "Démanteler le déploiement",
+    "confirmLabel": "Saisissez le nom de code pour confirmer : {codename}",
+    "inputPlaceholder": "Saisissez ici le nom de code",
+    "mismatch": "La valeur saisie ne correspond pas au nom de code.",
+    "cancel": "Annuler",
+    "destroy": "Détruire le déploiement",
+    "destroying": "Destruction…",
+    "error": "Échec du démantèlement."
+  },
+  "reset": {
+    "title": "Réinitialiser l'équipe {id}",
+    "body": "Cela relancera le provisionnement de l'équipe {id}.",
+    "queuedNotice": "Un déploiement est en cours — cette réinitialisation sera mise en file.",
+    "cancel": "Annuler",
+    "confirm": "Réinitialiser",
+    "confirmQueue": "Mettre en file",
+    "queuedToast": "Réinitialisation mise en file pour l'équipe {id}.",
+    "runNowToast": "Réinitialisation en file pour l'équipe {id} — lancer maintenant ?",
+    "runNow": "Lancer",
+    "dismiss": "Ignorer"
+  },
+  "snapshot": {
+    "title": "Créer un snapshot — équipe {id}",
+    "name": "Nom du snapshot",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "error": "Échec de création du snapshot."
+  },
+  "rollback": {
+    "title": "Restaurer l'équipe {id}",
+    "chooseSnapshot": "Choisir un snapshot",
+    "noSnapshots": "Cette équipe n'a encore aucun snapshot.",
+    "cancel": "Annuler",
+    "confirm": "Restaurer",
+    "missingHeader": "Des snapshots requis sont manquants sur certaines VMs :",
+    "partial": "Restaurer uniquement les VMs avec snapshots valides",
+    "error": "Échec de la restauration."
+  },
+  "preflight": {
+    "title": "Rapport préalable",
+    "subtitle": "Instantané immuable des vérifications pour ce déploiement.",
+    "copyLink": "Copier le lien partageable",
+    "linkCopied": "Lien copié",
+    "empty": "Ce rapport ne contient aucune vérification.",
+    "generatedAt": "Généré",
+    "attempt": "Tentative",
+    "summary": {
+      "ok": "Toutes les vérifications sont passées",
+      "warn": "Avertissements non bloquants",
+      "block": "Problèmes bloquants détectés"
+    },
+    "result": {
+      "pass": "ok",
+      "warn": "avert.",
+      "block": "bloqué"
+    },
+    "category": {
+      "resources": "Ressources",
+      "vmids": "VMIDs",
+      "ips": "IP",
+      "sdn": "SDN",
+      "git": "Sources Git",
+      "secrets": "Secrets"
+    },
+    "loadFailed": "Échec du chargement du rapport.",
+    "notFound": "Rapport introuvable.",
+    "loading": "Chargement du rapport préalable…"
+  },
+  "states": {
+    "pending": "en attente",
+    "preflight_running": "préalable en cours",
+    "preflight_review": "revue du préalable",
+    "deploying": "déploiement",
+    "completed": "terminé",
+    "partial": "partiel",
+    "failed": "en échec",
+    "cancelled": "annulé",
+    "unknown": "inconnu"
+  },
+  "phases": {
+    "network": "réseau",
+    "router": "routeur",
+    "vm": "vm",
+    "install": "installation",
+    "configure": "configuration",
+    "validate": "validation"
+  }
+}

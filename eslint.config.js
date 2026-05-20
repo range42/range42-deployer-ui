@@ -38,6 +38,15 @@ export default defineConfig([
   },
 
   {
+    files: ['vite.config.*', 'vitest.config.*', 'eslint.config.*'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
+  {
     ...pluginVitest.configs.recommended,
     files: ['src/**/__tests__/*'],
   },

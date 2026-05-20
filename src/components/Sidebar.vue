@@ -1,4 +1,7 @@
 <script setup>
+// Global hotkey bindings (V/C/N/R/F/G) live in AppShell.vue via useHotkeys —
+// intentionally NOT duplicated here to avoid double-firing when both
+// components are mounted. (Task C1.13 a11y sweep.)
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces, setLocale, getLocale } from '@/i18n/index.js'
@@ -40,6 +43,7 @@ const infrastructureComponents = [
     items: [
       { type: 'vm', label: 'Virtual Machine', icon: 'monitor', shortcut: 'V' },
       { type: 'lxc', label: 'Container', icon: 'cube', shortcut: 'C' },
+      { type: 'docker', label: 'Docker', icon: 'container', shortcut: 'D' },
     ]
   },
   {

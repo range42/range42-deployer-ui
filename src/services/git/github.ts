@@ -13,6 +13,7 @@ import type {
   GitBranch,
   GitPullRequest,
 } from './types'
+import { encodeContentBase64, decodeContentBase64 } from './encoding'
 import {
   GitProviderError,
   GitAuthError,
@@ -257,9 +258,9 @@ export class GitHubProvider implements GitProvider {
       encoding: string
     }>(`/repos/${owner}/${repo}/contents/${path}?ref=${ref}`)
     
-    // GitHub returns base64 encoded content
+    // GitHub returns base64-encoded content; decode as UTF-8.
     if (data.encoding === 'base64') {
-      return atob(data.content.replace(/\n/g, ''))
+      return decodeContentBase64(data.content)
     }
     
     return data.content
@@ -333,7 +334,7 @@ export class GitHubProvider implements GitProvider {
       method: 'PUT',
       body: JSON.stringify({
         message,
-        content: btoa(content),  // Base64 encode
+        content: encodeContentBase64(content),  // UTF-8-safe base64 encode
         branch,
         sha,
       }),
@@ -495,9 +496,43 @@ export class GitHubProvider implements GitProvider {
   }
   
   // ===========================================================================
+  // Commits (History tab, C3.9)
+  // ===========================================================================
+
+  async listCommits(opts: {
+    owner: string
+    repo: string
+    path?: string
+    ref?: string
+    perPage?: number
+  }): Promise<import('./types').CommitRef[]> {
+    const params = new URLSearchParams()
+    if (opts.ref) params.set('sha', opts.ref)
+    if (opts.path) params.set('path', opts.path)
+    params.set('per_page', String(opts.perPage ?? 50))
+    const data = await this.request<
+      Array<{
+        sha: string
+        commit: {
+          message: string
+          author: { name: string; date: string }
+        }
+      }>
+    >(
+      `/repos/${opts.owner}/${opts.repo}/commits?${params.toString()}`,
+    )
+    return data.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message,
+      author: c.commit.author.name,
+      date: c.commit.author.date,
+    }))
+  }
+
+  // ===========================================================================
   // Logout
   // ===========================================================================
-  
+
   logout(): void {
     this.token = null
     this.cachedUser = null

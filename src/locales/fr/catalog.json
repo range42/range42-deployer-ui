@@ -1,0 +1,41 @@
+{
+  "title": "Catalogue",
+  "subtitle": "Parcourez labs, gamenets et composants sur l'ensemble de vos sources Git.",
+  "filters": {
+    "kind": "Type",
+    "source": "Source",
+    "os": "OS",
+    "difficulty": "Difficulté",
+    "tags": "Étiquettes",
+    "search": "Rechercher",
+    "clear": "Réinitialiser",
+    "kind_any": "Tous types",
+    "source_any": "Toutes sources",
+    "os_any": "Tous OS",
+    "difficulty_any": "Tous niveaux"
+  },
+  "verbs": {
+    "use": "Utiliser",
+    "customize": "Personnaliser",
+    "fork": "Forker et publier"
+  },
+  "empty": {
+    "no_sources_title": "Aucune source Git configurée",
+    "no_sources_desc": "Ajoutez une source pour découvrir les entrées du catalogue.",
+    "no_entries_title": "Aucune entrée ne correspond à vos filtres",
+    "no_entries_desc": "Essayez d'effacer les filtres ou de modifier votre recherche."
+  },
+  "detail": {
+    "readme": "README",
+    "topology": "Topologie",
+    "metadata": "Métadonnées",
+    "inventory": "Pièces jointes",
+    "source": "Source",
+    "updated": "Mis à jour",
+    "back": "Retour au catalogue",
+    "fork_modal_title": "Forker et publier",
+    "fork_target_repo": "Dépôt cible (propriétaire/dépôt)",
+    "fork_target_name": "Nom de la nouvelle entrée",
+    "fork_submit": "Forker"
+  }
+}

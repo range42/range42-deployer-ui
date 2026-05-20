@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed, provide } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -14,8 +14,10 @@ import InfraNodeLxc from '../components/nodes/InfraNodeLxc.vue'
 import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
 import InfraNodeEdgeFirewall from '../components/nodes/InfraNodeEdgeFirewall.vue'
-import InfraNodeGroup from '../components/nodes/InfraNodeGroup.vue'
+import GroupNode from '../components/nodes/GroupNode.vue'
+import DockerNode from '../components/nodes/DockerNode.vue'
 import NetworkEdge from '../components/edges/NetworkEdge.vue'
+import DockerTetherEdge from '../components/edges/DockerTetherEdge.vue'
 import ConfigPanel from '../components/ConfigPanel.vue'
 import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
@@ -23,16 +25,32 @@ import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
 import DeploymentPanel from '../components/DeploymentPanel.vue'
 import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
+import TemplateBrowser from '../components/TemplateBrowser.vue'
+import ProblemsPanel from '../components/project/ProblemsPanel.vue'
+import CommandPalette from '../components/project/CommandPalette.vue'
+import ConfigTab from '../components/project/ConfigTab.vue'
+import HistoryTab from '../components/project/HistoryTab.vue'
+import VariablesTab from '../components/project/VariablesTab.vue'
+import DeployForm from '../components/project/DeployForm.vue'
+import { createMemoryFs } from '../services/projectRepo/memoryFs'
+import { ensureNamespaces } from '../i18n'
+import { useCanvasHistory } from '../composables/useCanvasHistory'
+import { getProvider as getV1Provider, getGitProvider } from '../services/git'
+import { useProblems } from '../composables/useProblems'
+import { useHotkeys } from '../composables/useHotkeys'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
+import { useCanvasLiveStatus } from '../composables/useCanvasLiveStatus'
+import { useDeploymentStore } from '../stores/deploymentStore.ts'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
-import { useInfraBuilder } from '../composables/useInfraBuilder'
+import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
+import { useToast } from '../composables/useToast'
 import { useProjectStore } from '../stores/projectStore'
 
 
@@ -69,8 +87,14 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized } = useVueFlow()
 
+// Bumped when VueFlow finishes measuring node dimensions, so the network-zone
+// overlay recomputes its geometry off real (not fallback) sizes on first paint.
+const measureTick = ref(0)
+onNodesInitialized(() => { measureTick.value++ })
+
+const { showToast } = useToast()
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
@@ -78,7 +102,9 @@ const showConfigPanel = ref(false)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
 const showDeploymentPanel = ref(false)
-const showInventoryBrowser = ref(false)
+// Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
+const showDeployForm = ref(false)
+const existingCodenames = ref([])
 const showTemplateBrowser = ref(false)
 const showImportModal = ref(false)
 const showDeleteProjectModal = ref(false)
@@ -95,24 +121,172 @@ const deployment = useDeployment(projectId)
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
-const { zones } = useNetworkZones(liveNodes, liveEdges)
+// Docker containment tethers are derived from docker.data.host_ref — they are
+// rendered alongside user-authored edges but never persisted.
+const dockerTetherEdges = computed(() => computeDockerTetherEdges(liveNodes.value))
+const renderedEdges = computed(() => [...(edges.value || []), ...dockerTetherEdges.value])
+
+// Problems panel — reactive over the live canvas graph.
+const attachmentsRef = computed(() => currentProject.value?.attachments || [])
+const { problems: problemList } = useProblems(liveNodes, liveEdges, attachmentsRef)
+const showProblemsPanel = ref(true)
+
+// Command palette (Ctrl/Cmd-P).
+const showCommandPalette = ref(false)
+const paletteItems = computed(() => {
+  const items = []
+  for (const n of liveNodes.value || []) {
+    items.push({
+      id: `node:${n.id}`,
+      kind: 'node',
+      label: n.data?.config?.name || n.data?.label || n.id,
+      subtitle: `${n.type} · ${n.id}`,
+      jumpTo: { kind: 'node', id: n.id },
+    })
+  }
+  for (const a of attachmentsRef.value || []) {
+    items.push({
+      id: `attachment:${a.id}`,
+      kind: 'attachment',
+      label: a.name || a.id,
+      subtitle: a.file_path || a.path || '',
+      jumpTo: { kind: 'attachment', id: a.id },
+    })
+  }
+  for (const f of (currentProject.value?.files || [])) {
+    items.push({
+      id: `file:${f.path}`,
+      kind: 'file',
+      label: (f.path || '').split('/').pop() || f.path,
+      subtitle: f.path,
+      jumpTo: { kind: 'file', id: f.path },
+    })
+  }
+  return items
+})
+
+useHotkeys([
+  {
+    key: 'p',
+    when: () => true,
+    handler: (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      showCommandPalette.value = !showCommandPalette.value
+    },
+  },
+])
+
+function handleJumpTo(descriptor) {
+  if (!descriptor) return
+  if (descriptor.kind === 'node') {
+    const n = (liveNodes.value || []).find((x) => x.id === descriptor.id)
+    if (n) {
+      selectedNode.value = n
+      showConfigPanel.value = true
+    }
+  } else if (descriptor.kind === 'edge') {
+    const e = (liveEdges.value || []).find((x) => x.id === descriptor.id)
+    if (e) selectedEdge.value = e
+  }
+  // attachment / file jumps will be wired when the Config tab lands (C3.7).
+}
+
+const { zones } = useNetworkZones(liveNodes, liveEdges, measureTick)
 
 const autoLayout = useAutoLayout()
+
+// Plan C §C4.7 — Canvas live status from SSE stream.
+// Finds the active (non-terminal) deployment for this project, subscribes
+// to its SSE stream, and mirrors per-node status into VueFlow node data.
+const deploymentStore = useDeploymentStore()
+const activeDeploymentId = ref(null)
+const TERMINAL_STATES_CANVAS = new Set(['deployed', 'failed', 'cancelled', 'torn_down'])
+
+async function refreshActiveDeployment() {
+  const pid = projectId.value
+  if (!pid) return
+  try {
+    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
+    if (!res.ok) return
+    const body = await res.json()
+    const items = Array.isArray(body) ? body : (body?.deployments || [])
+    const active = items.find(d => d.project_id === pid && !TERMINAL_STATES_CANVAS.has(d.state))
+    if (active?.id !== activeDeploymentId.value) {
+      if (activeDeploymentId.value) deploymentStore.unsubscribe(activeDeploymentId.value)
+      activeDeploymentId.value = active?.id || null
+      if (activeDeploymentId.value) deploymentStore.subscribe(activeDeploymentId.value)
+    }
+  } catch {
+    // Backend unavailable — silently skip; canvas falls back to WS status.
+  }
+}
+
+const liveRecord = computed(() => {
+  const id = activeDeploymentId.value
+  if (!id) return null
+  return deploymentStore.deployments[id] || null
+})
+
+// Resolve an event ident to a canvas node id.
+// Order: explicit node_id match > host match > vmId numeric match.
+function resolveCanvasNodeId(ident) {
+  const all = flowGetNodes?.value || nodes.value || []
+  if (ident?.node_id) {
+    const byId = all.find(n => n.id === ident.node_id)
+    if (byId) return byId.id
+    const byCfgName = all.find(n => n.data?.config?.name === ident.node_id)
+    if (byCfgName) return byCfgName.id
+  }
+  if (ident?.host) {
+    const byHost = all.find(n => n.data?.config?.name === ident.host || n.data?.label === ident.host)
+    if (byHost) return byHost.id
+  }
+  if (ident?.vm_id != null) {
+    const vmIdNum = Number(ident.vm_id)
+    const byVmId = all.find(n => Number(n.data?.vmId) === vmIdNum || Number(n.data?.config?.vmid) === vmIdNum)
+    if (byVmId) return byVmId.id
+  }
+  return null
+}
+
+const { statuses: canvasLiveStatuses } = useCanvasLiveStatus(liveRecord, resolveCanvasNodeId)
+
+// Translate the status palette used by the canvas composable to VueFlow node
+// data.status used by infrastructure node components (keeps parity with the
+// existing gray/orange/green/red/blue palette).
+const CANVAS_COLOR_TO_NODE_STATUS = {
+  gray: 'pending',
+  blue: 'deploying',
+  green: 'running',
+  red: 'error',
+  orange: 'warn',
+}
+
+watch(canvasLiveStatuses, (map) => {
+  if (!map || map.size === 0) return
+  const all = flowGetNodes?.value || nodes.value || []
+  for (const node of all) {
+    const colour = map.get(node.id)
+    if (!colour) continue
+    const next = CANVAS_COLOR_TO_NODE_STATUS[colour]
+    if (!next) continue
+    if (node.data?.status !== next) {
+      updateNodeData(node.id, { status: next })
+    }
+  }
+}, { deep: true })
 
 // WebSocket live status — updates deployed nodes in real-time
 const wsStatus = useWebSocketStatus()
 
 // Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
 watch(() => wsStatus.vmStatuses.value, (statuses) => {
-  if (!statuses || statuses.size === 0) { console.log('[ws-sync] No statuses'); return }
+  if (!statuses || statuses.size === 0) return
   const allNodes = flowGetNodes?.value || nodes.value || []
-  console.log('[ws-sync] Statuses:', statuses.size, 'Canvas nodes:', allNodes.length)
-  let matched = 0
+
   for (const node of allNodes) {
     const vmId = Number(node.data?.vmId)
-    if (!vmId) { continue }
-    if (!statuses.has(vmId)) { console.log('[ws-sync] No match for vmId:', vmId, 'node.data.vmId:', node.data?.vmId, typeof node.data?.vmId); continue }
-    matched++
+    if (!vmId || !statuses.has(vmId)) continue
 
     const vm = statuses.get(vmId)
     const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
@@ -151,11 +325,9 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
     }
 
     if (needsUpdate) {
-      console.log('[ws-sync] Updating node', node.id, 'vmId:', vmId, 'data:', JSON.stringify(dataUpdate).slice(0, 200))
       updateNodeData(node.id, dataUpdate)
     }
   }
-  if (matched === 0) console.log('[ws-sync] No canvas nodes matched any WS vmIds. Node vmIds:', allNodes.map(n => ({ id: n.id, type: n.type, vmId: n.data?.vmId })).filter(n => n.vmId))
 }, { deep: true })
 
 ////
@@ -216,17 +388,85 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-
+  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'common'])
+  // Plan C §C4.7 — attach live SSE to canvas when an active deployment exists.
+  refreshActiveDeployment()
 })
 
-watch([nodes, edges], () => {
-  if (currentProject.value) {
+onUnmounted(() => {
+  if (activeDeploymentId.value) {
+    deploymentStore.unsubscribe(activeDeploymentId.value)
+    activeDeploymentId.value = null
+  }
+})
+
+// Canvas undo ring-buffer (C3.11). We snapshot on every node/edge mutation
+// so Ctrl-Z / Ctrl-Shift-Z can walk back through the history. Snapshots
+// are deep-cloned so future mutations don't retroactively alter old
+// entries.
+const canvasHistory = useCanvasHistory()
+function cloneSnapshot() {
+  return JSON.parse(JSON.stringify({
+    nodes: nodes.value || [],
+    edges: edges.value || [],
+  }))
+}
+
+// Debounced autosave (C3.11). 500ms debounce avoids flooding localStorage
+// on every canvas nudge. When the project is wired to a git-backed
+// ProjectRepoAdapter, the autosave body will also call adapter.autosave.
+let autosaveTimer = null
+function scheduleAutosave() {
+  if (!currentProject.value) return
+  if (autosaveTimer !== null) clearTimeout(autosaveTimer)
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = null
+    if (!currentProject.value) return
     projectStore.updateProject(currentProject.value.id, {
       nodes: nodes.value,
-      edges: edges.value
+      edges: edges.value,
     })
-  }
+  }, 500)
+}
+
+watch([nodes, edges], () => {
+  if (!currentProject.value) return
+  canvasHistory.push(cloneSnapshot())
+  scheduleAutosave()
 }, { deep: true })
+
+// Undo / redo hotkeys — only fired while the canvas tab is active so we
+// don't hijack CodeMirror's built-in undo on the Config tab.
+useHotkeys([
+  {
+    key: 'z',
+    when: () => tab.value === 'canvas',
+    handler: (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.shiftKey) {
+        const next = canvasHistory.redo()
+        if (next) applyCanvasSnapshot(next)
+      } else {
+        const next = canvasHistory.undo()
+        if (next) applyCanvasSnapshot(next)
+      }
+    },
+  },
+])
+
+function applyCanvasSnapshot(snapshot) {
+  // Applying a snapshot writes back via loadProjectData so selection +
+  // VueFlow state stay in sync with the restored graph.
+  loadProjectData({
+    ...currentProject.value,
+    nodes: snapshot.nodes,
+    edges: snapshot.edges,
+  })
+}
+
+onUnmounted(() => {
+  if (autosaveTimer !== null) clearTimeout(autosaveTimer)
+})
 
 const manualSave = () => {
   if (!currentProject.value) return
@@ -238,7 +478,15 @@ const manualSave = () => {
   })
 }
 
+let layoutAnimationId = null
+
 function handleAutoLayout() {
+  // Cancel any in-flight animation before starting a new one
+  if (layoutAnimationId !== null) {
+    cancelAnimationFrame(layoutAnimationId)
+    layoutAnimationId = null
+  }
+
   const currentNodes = liveNodes.value
   const currentEdges = liveEdges.value
   if (currentNodes.length === 0) return
@@ -266,11 +514,22 @@ function handleAutoLayout() {
       }
     }
 
-    if (t < 1) requestAnimationFrame(animate)
+    if (t < 1) {
+      layoutAnimationId = requestAnimationFrame(animate)
+    } else {
+      layoutAnimationId = null
+    }
   }
 
-  requestAnimationFrame(animate)
+  layoutAnimationId = requestAnimationFrame(animate)
 }
+
+onUnmounted(() => {
+  if (layoutAnimationId !== null) {
+    cancelAnimationFrame(layoutAnimationId)
+    layoutAnimationId = null
+  }
+})
 
 const handleNodeClick = (event) => {
   onNodeClick(event)
@@ -280,6 +539,70 @@ const handleNodeClick = (event) => {
 const closeConfigPanel = () => {
   showConfigPanel.value = false
   selectedNode.value = null
+}
+
+/**
+ * Keyboard navigation on the canvas (Plan C §C5.3):
+ *  - Arrow keys move selection to the nearest node in that cardinal direction.
+ *  - Enter opens the ConfigPanel for the currently-selected node.
+ *  - Tab is intentionally NOT consumed so native handle-focus cycling still
+ *    works inside VueFlow.
+ * The handler only reacts when the canvas wrapper (or one of its children
+ * that isn't an editable control) is the active element — preventing
+ * interference with mouse interactions and form inputs.
+ */
+// Mobile sidebar drawer state (Plan C §C5.3 — a11y wiring for <lg screens).
+// Focus management: when the drawer opens we move focus inside it; Escape
+// closes. aria-expanded on the toggle reflects open state.
+const mobileSidebarOpen = ref(false)
+const mobileSidebarRef = ref(null)
+function toggleMobileSidebar() {
+  mobileSidebarOpen.value = !mobileSidebarOpen.value
+  if (mobileSidebarOpen.value) {
+    // Focus the drawer container so Tab cycles inside and Escape is captured
+    setTimeout(() => mobileSidebarRef.value?.focus?.(), 0)
+  }
+}
+function closeMobileSidebar() {
+  mobileSidebarOpen.value = false
+}
+function handleMobileSidebarKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeMobileSidebar()
+  }
+}
+
+const ARROW_DIRS = {
+  ArrowRight: 'right',
+  ArrowLeft: 'left',
+  ArrowDown: 'down',
+  ArrowUp: 'up',
+}
+
+const handleCanvasKeydown = (event) => {
+  const target = event.target
+  if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable)) {
+    return
+  }
+
+  if (event.key === 'Enter') {
+    if (selectedNode.value) {
+      showConfigPanel.value = true
+      event.preventDefault()
+    }
+    return
+  }
+
+  const dir = ARROW_DIRS[event.key]
+  if (!dir) return
+
+  const allNodes = flowGetNodes.value || nodes.value || []
+  const next = nextKeyboardSelection(allNodes, selectedNode.value?.id || null, dir)
+  if (next) {
+    selectedNode.value = next
+    event.preventDefault()
+  }
 }
 
 // Edge handlers for network connection configuration
@@ -347,16 +670,32 @@ const closeProxmoxSettings = () => {
 // Deployment handlers
 const showReconcileModal = ref(false)
 
-const handleOpenDeploy = () => {
-  // Ensure API is configured
+const handleOpenDeploy = async () => {
+  // Fetch known codenames from the backend deployments index so the
+  // DeployForm can flag local collisions client-instant.
+  try {
+    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
+    if (res.ok) {
+      const body = await res.json()
+      const items = Array.isArray(body) ? body : (body?.deployments || [])
+      existingCodenames.value = items.map(d => d.codename).filter(Boolean)
+    }
+  } catch {
+    existingCodenames.value = []
+  }
+  showDeployForm.value = true
+}
+
+// Legacy canvas-reconcile path preserved for imported Proxmox VMs.
+// Kept for future re-wiring alongside the new DeployForm when canvas drift
+// detection lands (§C3.x). Prefixed with _ to satisfy linter until re-used.
+const _handleOpenLegacyDeploy = () => {
   importApiConfig.configure()
   if (!importApiConfig.isReady.value) {
-    alert('Please configure Backend API settings first (click Settings → Proxmox Settings)')
+    showToast('Please configure Backend API settings first', 'warning')
     showProxmoxSettings.value = true
     return
   }
-
-  // Show reconciliation modal before deploying
   showReconcileModal.value = true
 }
 
@@ -386,11 +725,16 @@ const handleReconcileProceed = (toDelete, toImport) => {
     vfAddNodes(JSON.parse(JSON.stringify(importNodes)))
   }
 
-  // TODO: Add delete steps for toDelete VMs to the deployment plan
+  // Warn about VMs marked for deletion (not yet automated)
+  if (toDelete && toDelete.length > 0) {
+    const vmNames = toDelete.map(vm => `${vm.name} (${vm.vmid})`).join(', ')
+    showToast(`${toDelete.length} VM(s) marked for deletion must be removed manually: ${vmNames}`, 'warning', 8000)
+  }
 
-  // defaultStorage is a global preference, not per-project connection config
+  // Global preferences (not per-project connection config)
   const storedSettings = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
   const defaultStorage = storedSettings.defaultStorage || 'local-zfs'
+  const startVmId = parseInt(storedSettings.startVmId, 10) || 2000
 
   // Now prepare and run deployment
   const result = deployment.deploy(
@@ -398,20 +742,22 @@ const handleReconcileProceed = (toDelete, toImport) => {
     liveEdges.value,
     {
       projectName: currentProject.value?.name,
-      startVmId: 2000,
+      startVmId,
       defaultStorage,
     }
   )
 
   if (result.needsConfiguration) {
-    alert('Please configure Backend API settings first (click Settings → Proxmox Settings)')
+    showToast('Please configure Backend API settings first', 'warning')
     showProxmoxSettings.value = true
     return
   }
 
   if (!result.success) {
     validationErrors.value = result.errors
-    alert(`Validation failed:\n${result.errors.map(e => `- ${e.message}`).join('\n')}`)
+    const errorSummary = result.errors.slice(0, 3).map(e => e.message).join('; ')
+    const suffix = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : ''
+    showToast(`Validation failed: ${errorSummary}${suffix}`, 'error', 6000)
     return
   }
 
@@ -422,11 +768,11 @@ const handleOpenValidate = () => {
   const result = deployment.validateTopology(liveNodes.value, liveEdges.value)
   
   if (result.valid) {
-    alert('Topology is valid! No errors found.')
+    showToast('Topology is valid! No errors found.', 'success')
   } else {
-    const errorList = result.errors.map(e => `[Error] ${e.message}`).join('\n')
-    const warningList = result.warnings.map(w => `[Warning] ${w.message}`).join('\n')
-    alert(`Validation Results:\n\n${errorList}\n\n${warningList || 'No warnings'}`)
+    const errorSummary = result.errors.slice(0, 3).map(e => e.message).join('; ')
+    const suffix = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : ''
+    showToast(`Validation: ${errorSummary}${suffix}`, 'error', 6000)
   }
 }
 
@@ -442,6 +788,129 @@ const confirmDeleteProject = () => {
     router.push('/')
   }
 }
+
+// ------------------------------------------------------------
+// Tab shell (Plan C C3.6)
+// ------------------------------------------------------------
+// Tabs are local state driven by the URL query (?tab=…). Switching tabs is a
+// router.replace — cheap, preserves history — and canvas / config panes use
+// v-show so viewport, selection, undo buffers, and CodeMirror state survive
+// cross-tab navigation.
+const TABS = ['canvas', 'config', 'variables', 'history', 'settings']
+const tab = computed(() => {
+  const q = route.query.tab
+  const v = Array.isArray(q) ? q[0] : q
+  return TABS.includes(String(v)) ? String(v) : 'canvas'
+})
+
+function setTab(next) {
+  if (!TABS.includes(next)) return
+  if (route.query.tab === next) return
+  router.replace({ query: { ...route.query, tab: next } })
+}
+
+// Provide project state + a thin adapter to descendant tab panels (variables,
+// history, settings panels land in later phases — giving them a stable
+// provide/inject contract now keeps the contract self-documenting).
+provide('projectAdapter', {
+  getProject: () => currentProject.value,
+  getNodes: () => liveNodes.value,
+  getEdges: () => liveEdges.value,
+  setTab,
+})
+
+// ------------------------------------------------------------
+// Config tab file-system wiring (C3.7)
+// ------------------------------------------------------------
+// Two in-memory VirtualFs stores: one for the project's local overlay
+// (persisted alongside project.files), and an empty base for now (the
+// base filesystem will be wired to the catalog source in a later task).
+// Using refs so FileTree picks up changes reactively on putFile.
+const overlayFiles = computed(() => currentProject.value?.files || {})
+const baseFiles = ref({})
+
+const configOverlayFs = computed(() =>
+  createMemoryFs({
+    files: overlayFiles.value || {},
+    onChange: (files) => {
+      if (!currentProject.value) return
+      currentProject.value.files = { ...files }
+      projectStore.updateProject(currentProject.value.id, {
+        files: currentProject.value.files,
+      })
+    },
+  }),
+)
+const configBaseFs = computed(() => createMemoryFs({ files: baseFiles.value }))
+
+function handleConfigSave() {
+  // onChange in memoryFs already persists; this hook exists so future git-
+  // backed adapters can trigger an autosave/commit here without touching
+  // the child component contract.
+}
+
+function handleAttachmentsUpdate(next) {
+  if (!currentProject.value) return
+  currentProject.value.attachments = next
+  projectStore.updateProject(currentProject.value.id, {
+    attachments: next,
+  })
+}
+
+// HistoryTab wiring (C3.9). When the project is linked to a git source
+// (`project.gitSource = { provider, owner, repo, path, ref }`), we return
+// a live provider + locator. Otherwise the tab shows an empty-state hint.
+const historyProvider = computed(() => {
+  const src = currentProject.value?.gitSource
+  if (!src?.provider) return null
+  try {
+    if (src.provider === 'github') {
+      // GitHub uses the legacy provider interface; it also exposes
+      // `listCommits` + `getFile` — adapt the call shape here so
+      // HistoryTab can talk to it via the same surface as GitLab/Gitea.
+      const gh = getGitProvider('github')
+      return {
+        listCommits: (opts) => gh.listCommits(opts),
+        getFile: async (opts) => {
+          const content = await gh.getFile(opts.owner, opts.repo, opts.path, opts.ref)
+          return { content, sha: '' }
+        },
+      }
+    }
+    return getV1Provider(src.provider, {
+      baseUrl: src.baseUrl,
+      token: src.token ?? null,
+    })
+  } catch {
+    return null
+  }
+})
+
+// VariablesTab wiring (C3.10). The effective env[] comes from the catalog
+// base doc embedded in the project (`project.baseDoc`) — missing today for
+// legacy projects, so we fall back to an empty list. Overrides are
+// persisted on `project.overlay.param_overrides.env`.
+const variablesBase = computed(() => currentProject.value?.baseDoc || { env: [] })
+const variablesOverlay = computed(() => currentProject.value?.overlay || {})
+
+function handleOverlayUpdate(nextOverlay) {
+  if (!currentProject.value) return
+  currentProject.value.overlay = nextOverlay
+  projectStore.updateProject(currentProject.value.id, {
+    overlay: nextOverlay,
+  })
+}
+
+const historyLocator = computed(() => {
+  const src = currentProject.value?.gitSource
+  if (!src?.owner || !src?.repo) return null
+  return {
+    owner: src.owner,
+    repo: src.repo,
+    path: src.path || 'range42.yaml',
+    ref: src.ref || 'main',
+  }
+})
 
 // Import config: resolved from per-project settings at setup level
 const importApiConfig = useApiConfig(projectId, { autoSync: true })
@@ -481,18 +950,49 @@ const handleInfrastructureImport = (result) => {
 </script>
 
 <template>
+  <div>
   <div class="h-screen bg-base-100 flex" v-if="currentProject">
-    <!-- Sidebar -->
-    <Sidebar 
-      :project="currentProject" 
+    <!-- Sidebar (desktop ≥lg) -->
+    <Sidebar
+      :project="currentProject"
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
-      @openInventory="showInventoryBrowser = true"
+      @openInventory="router.push('/catalog')"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
       class="hidden lg:flex shrink-0"
     />
+
+    <!-- Mobile drawer (<lg). Focus moves into the drawer on open; Escape closes. -->
+    <div
+      v-if="mobileSidebarOpen"
+      id="mobile-drawer"
+      class="fixed inset-0 z-50 lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Navigation drawer"
+      data-testid="mobile-drawer"
+      @keydown="handleMobileSidebarKeydown"
+    >
+      <div class="absolute inset-0 bg-black/50" @click="closeMobileSidebar" />
+      <div
+        ref="mobileSidebarRef"
+        tabindex="-1"
+        class="absolute left-0 top-0 h-full w-72 bg-base-100 shadow-xl flex focus:outline-none"
+      >
+        <Sidebar
+          :project="currentProject"
+          class="w-full"
+          @openExport="showExportModal = true; closeMobileSidebar()"
+          @openDeploy="(p) => { handleOpenDeploy(p); closeMobileSidebar() }"
+          @openValidate="handleOpenValidate(); closeMobileSidebar()"
+          @openInventory="router.push('/catalog'); closeMobileSidebar()"
+          @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
+          @openImport="handleOpenImport(); closeMobileSidebar()"
+        />
+      </div>
+    </div>
 
     <!-- Main Content -->
     <div class="flex-1 flex flex-col min-w-0">
@@ -500,11 +1000,19 @@ const handleInfrastructureImport = (result) => {
       <header class="h-14 px-4 flex items-center justify-between border-b border-base-300 bg-base-100 shrink-0">
         <div class="flex items-center gap-3">
           <!-- Mobile menu toggle -->
-          <label for="mobile-drawer" class="btn btn-ghost btn-sm btn-square lg:hidden">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm btn-square lg:hidden"
+            :aria-expanded="mobileSidebarOpen ? 'true' : 'false'"
+            aria-controls="mobile-drawer"
+            aria-label="Toggle navigation"
+            data-testid="mobile-drawer-toggle"
+            @click="toggleMobileSidebar"
+          >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
             </svg>
-          </label>
+          </button>
           
           <!-- Back button -->
           <button class="btn btn-ghost btn-sm gap-2" @click="goBack">
@@ -587,17 +1095,40 @@ const handleInfrastructureImport = (result) => {
       </header>
 
 
-      <!-- VueFlow Canvas -->
-      <div 
-        class="flex-1 relative transition-colors duration-200" 
+      <!-- Tab strip -->
+      <div role="tablist" class="tabs tabs-lift px-3 pt-1 border-b border-base-300" data-testid="project-tabs">
+        <button
+          v-for="t in ['canvas', 'config', 'variables', 'history', 'settings']"
+          :key="t"
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': tab === t }"
+          :aria-selected="tab === t"
+          :data-testid="`project-tab-${t}`"
+          @click="setTab(t)"
+        >
+          {{ t }}
+        </button>
+      </div>
+
+      <!-- VueFlow Canvas (v-show keeps state across tab switches) -->
+      <div
+        v-show="tab === 'canvas'"
+        class="flex-1 relative transition-colors duration-200 focus:outline-none"
         :class="{ 'bg-primary/5 ring-2 ring-primary/20 ring-inset': isDragOver }"
-        @drop="handleDrop" 
-        @dragover="handleDragOver" 
+        tabindex="0"
+        role="application"
+        aria-label="Infrastructure canvas"
+        data-testid="canvas-wrapper"
+        @drop="handleDrop"
+        @dragover="handleDragOver"
         @dragleave="handleDragLeave"
+        @keydown="handleCanvasKeydown"
       >
-        <VueFlow 
-          :nodes="nodes" 
-          :edges="edges" 
+        <VueFlow
+          :nodes="nodes"
+          :edges="renderedEdges"
           @connect="onConnect" 
           @node-click="handleNodeClick"
           @edge-click="handleEdgeClick" 
@@ -614,7 +1145,12 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Organization -->
           <template #node-group="props">
-            <InfraNodeGroup v-bind="props" />
+            <GroupNode
+              v-bind="props"
+              @update:kind="(kind) => updateNodeStatus(props.id, { kind })"
+              @update:scope="(kind) => updateNodeStatus(props.id, { kind })"
+              @update:expanded="(open) => updateNodeStatus(props.id, { _expanded_preview: open })"
+            />
           </template>
 
           <!-- Compute -->
@@ -624,6 +1160,10 @@ const handleInfrastructureImport = (result) => {
 
           <template #node-lxc="props">
             <InfraNodeLxc v-bind="props" />
+          </template>
+
+          <template #node-docker="props">
+            <DockerNode v-bind="props" />
           </template>
 
           <!-- Network -->
@@ -642,6 +1182,11 @@ const handleInfrastructureImport = (result) => {
           <!-- Custom Edge for network connections -->
           <template #edge-network="props">
             <NetworkEdge v-bind="props" />
+          </template>
+
+          <!-- Dashed containment tether: Docker -> VM/LXC host -->
+          <template #edge-docker-tether="props">
+            <DockerTetherEdge v-bind="props" />
           </template>
         </VueFlow>
 
@@ -667,11 +1212,63 @@ const handleInfrastructureImport = (result) => {
           </div>
         </div>
       </div>
+
+      <!-- Problems panel — docked below canvas, reactive over validation state -->
+      <ProblemsPanel
+        v-if="showProblemsPanel"
+        v-show="tab === 'canvas'"
+        :problems="problemList"
+        class="shrink-0"
+        @jumpTo="handleJumpTo"
+        @close="showProblemsPanel = false"
+      />
+
+      <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->
+      <div v-show="tab === 'config'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
+        <ConfigTab
+          v-if="currentProject"
+          :overlay-fs="configOverlayFs"
+          :base-fs="configBaseFs"
+          :attachments="attachmentsRef"
+          :nodes="liveNodes"
+          @update:attachments="handleAttachmentsUpdate"
+          @save="handleConfigSave"
+        />
+      </div>
+
+      <!-- Variables tab (C3.10) -->
+      <div v-show="tab === 'variables'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-variables">
+        <VariablesTab
+          v-if="currentProject"
+          :base="variablesBase"
+          :overlay="variablesOverlay"
+          @update:overlay="handleOverlayUpdate"
+        />
+      </div>
+
+      <!-- History tab (C3.9) -->
+      <div v-show="tab === 'history'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-history">
+        <HistoryTab
+          v-if="historyProvider && historyLocator"
+          :provider="historyProvider"
+          :locator="historyLocator"
+        />
+        <div v-else class="p-4 text-sm text-base-content/60">
+          {{ $t ? $t('historyTab.noSource') : 'Link this project to a git source to see its history.' }}
+        </div>
+      </div>
+
+      <!-- Settings tab placeholder -->
+      <div v-show="tab === 'settings'" class="flex-1 overflow-y-auto p-4" data-testid="tab-settings">
+        <div class="alert alert-info text-sm">
+          Settings tab — per-project settings live here in a later phase.
+        </div>
+      </div>
     </div>
 
-    <!-- Config Panel -->
+    <!-- Config Panel (node config — only on canvas tab) -->
     <ConfigPanel
-      v-if="selectedNode && showConfigPanel"
+      v-if="selectedNode && showConfigPanel && tab === 'canvas'"
       :node="selectedNode"
       @close="closeConfigPanel"
       @update="updateNodeStatus"
@@ -709,6 +1306,20 @@ const handleInfrastructureImport = (result) => {
     <DeploymentPanel
       v-if="showDeploymentPanel"
       @close="closeDeploymentPanel"
+    />
+
+    <!-- Plan C §C4.6 — DeployForm with inline preflight + SHA-pin -->
+    <DeployForm
+      v-if="showDeployForm && currentProject"
+      :visible="showDeployForm"
+      :project-id="currentProject.id"
+      :project-name="currentProject.name"
+      :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
+      :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
+      :existing-codenames="existingCodenames"
+      :gamenet="!!currentProject?.gamenet"
+      @close="showDeployForm = false"
+      @created="refreshActiveDeployment"
     />
 
     <!-- Delete Project Confirmation Modal -->
@@ -753,8 +1364,15 @@ const handleInfrastructureImport = (result) => {
     <span class="loading loading-spinner loading-lg text-primary"></span>
   </div>
 
-  <!-- Import modal — teleported to body so it's not constrained by the flex layout -->
+  <!-- Modals teleported to body so they're not constrained by the flex layout -->
   <Teleport to="body">
+    <TemplateBrowser
+      v-if="showTemplateBrowser"
+      :api-url="importApiConfig.apiUrl.value"
+      :proxmox-node="importApiConfig.node.value"
+      @close="showTemplateBrowser = false"
+    />
+
     <InfrastructureImportModal
       v-if="showImportModal"
       :api-url="importApiConfig.apiUrl.value"
@@ -770,5 +1388,15 @@ const handleInfrastructureImport = (result) => {
       @proceed="handleReconcileProceed"
       @cancel="showReconcileModal = false"
     />
+
+    <!-- Command palette (Ctrl/Cmd-P) — body-teleported by the component itself -->
+    <CommandPalette
+      :open="showCommandPalette"
+      :items="paletteItems"
+      @update:open="showCommandPalette = $event"
+      @close="showCommandPalette = false"
+      @jumpTo="handleJumpTo"
+    />
   </Teleport>
+  </div>
 </template>
