@@ -251,6 +251,29 @@ export class GitLabProvider implements GitProviderV1 {
     }))
   }
 
+  async canWrite(owner: string, repo: string): Promise<boolean> {
+    if (!this.token) {
+      return false
+    }
+    try {
+      const pid = this.projectId(owner, repo)
+      // GitLab returns the caller's effective access via `permissions`, with
+      // `project_access` and/or `group_access` each carrying an `access_level`.
+      // Developer (30) is the minimum level that can push to a repository.
+      const data = await this.json<{
+        permissions?: {
+          project_access?: { access_level?: number } | null
+          group_access?: { access_level?: number } | null
+        }
+      }>(this.url(`/projects/${pid}`), { headers: this.headers() })
+      const projectLevel = data.permissions?.project_access?.access_level ?? 0
+      const groupLevel = data.permissions?.group_access?.access_level ?? 0
+      return Math.max(projectLevel, groupLevel) >= 30
+    } catch {
+      return false
+    }
+  }
+
   async health(): Promise<{ ok: boolean; rtt_ms: number }> {
     const started = Date.now()
     try {

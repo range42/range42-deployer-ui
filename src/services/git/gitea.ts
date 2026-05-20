@@ -243,6 +243,28 @@ export class GiteaProvider implements GitProviderV1 {
     }))
   }
 
+  async canWrite(owner: string, repo: string): Promise<boolean> {
+    if (!this.token) {
+      return false
+    }
+    try {
+      // Gitea's repo endpoint mirrors GitHub: a `permissions` object carries
+      // `admin`, `push`, and `pull` booleans for the authenticated caller.
+      const data = await this.json<{
+        permissions?: {
+          admin?: boolean
+          push?: boolean
+        }
+      }>(
+        this.url(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`),
+        { headers: this.headers() },
+      )
+      return !!(data.permissions?.push || data.permissions?.admin)
+    } catch {
+      return false
+    }
+  }
+
   async health(): Promise<{ ok: boolean; rtt_ms: number }> {
     const started = Date.now()
     try {

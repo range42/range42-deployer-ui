@@ -230,4 +230,57 @@ describe('GitLabProvider', () => {
     expect(h.ok).toBe(true);
     expect(typeof h.rtt_ms).toBe('number');
   });
+
+  it('canWrite: true when project_access access_level >= 30 (Developer)', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitlab.com/api/v4/projects/acme%2Flab',
+        response: () =>
+          jsonResponse({
+            permissions: {
+              project_access: { access_level: 30 },
+              group_access: null,
+            },
+          }),
+      },
+    ]);
+    const p = new GitLabProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(true);
+    expect(fetchImpl.mock.calls[0][1].headers['PRIVATE-TOKEN']).toBe('t');
+  });
+
+  it('canWrite: false when only Reporter access (access_level < 30)', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitlab.com/api/v4/projects/acme%2Flab',
+        response: () =>
+          jsonResponse({
+            permissions: {
+              project_access: { access_level: 20 },
+              group_access: { access_level: 10 },
+            },
+          }),
+      },
+    ]);
+    const p = new GitLabProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(false);
+  });
+
+  it('canWrite: false without a token (no request made)', async () => {
+    fetchImpl = makeFetch([]);
+    const p = new GitLabProvider({ fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('canWrite: false on error response', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitlab.com/api/v4/projects/acme%2Flab',
+        response: () => jsonResponse({ message: '404 Project Not Found' }, 404),
+      },
+    ]);
+    const p = new GitLabProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(false);
+  });
 });

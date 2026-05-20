@@ -212,4 +212,59 @@ describe('GiteaProvider', () => {
     expect(h.ok).toBe(true);
     expect(typeof h.rtt_ms).toBe('number');
   });
+
+  it('canWrite: true when permissions.push is set', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitea.com/api/v1/repos/acme/lab',
+        response: () =>
+          jsonResponse({ permissions: { admin: false, push: true, pull: true } }),
+      },
+    ]);
+    const p = new GiteaProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(true);
+    expect(fetchImpl.mock.calls[0][1].headers['Authorization']).toBe('token t');
+  });
+
+  it('canWrite: true when only admin is set', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitea.com/api/v1/repos/acme/lab',
+        response: () =>
+          jsonResponse({ permissions: { admin: true, push: false, pull: true } }),
+      },
+    ]);
+    const p = new GiteaProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(true);
+  });
+
+  it('canWrite: false when only pull access', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitea.com/api/v1/repos/acme/lab',
+        response: () =>
+          jsonResponse({ permissions: { admin: false, push: false, pull: true } }),
+      },
+    ]);
+    const p = new GiteaProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(false);
+  });
+
+  it('canWrite: false without a token (no request made)', async () => {
+    fetchImpl = makeFetch([]);
+    const p = new GiteaProvider({ fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('canWrite: false on error response', async () => {
+    fetchImpl = makeFetch([
+      {
+        match: (url) => url === 'https://gitea.com/api/v1/repos/acme/lab',
+        response: () => jsonResponse({ message: 'Not Found' }, 404),
+      },
+    ]);
+    const p = new GiteaProvider({ token: 't', fetchImpl });
+    expect(await p.canWrite('acme', 'lab')).toBe(false);
+  });
 });

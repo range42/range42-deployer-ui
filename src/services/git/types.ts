@@ -353,6 +353,11 @@ export interface GitProviderV1 {
     ref?: string
     perPage?: number
   }): Promise<CommitRef[]>
+  // Check write/push permission on a repo. Mirrors the legacy GitProvider
+  // signature (positional owner/repo, Promise<boolean>, never throws) so the
+  // inventory store can call `provider.canWrite(owner, repo)` uniformly across
+  // GitHub (legacy) and GitLab/Gitea (v1) providers.
+  canWrite(owner: string, repo: string): Promise<boolean>
   health(): Promise<{ ok: boolean; rtt_ms: number }>
 }
 
