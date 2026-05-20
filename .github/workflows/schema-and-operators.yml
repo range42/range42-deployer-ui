@@ -48,6 +48,16 @@ jobs:
         working-directory: range42-deployer-ui
         run: npm run test:unit -- --run
 
+      - name: Lint (ESLint, non-mutating)
+        working-directory: range42-deployer-ui
+        # npm "lint" script is `eslint . --fix` (mutating); invoke eslint directly
+        # so CI fails on lint errors instead of auto-fixing them.
+        run: npx eslint .
+
+      - name: Build (Vite production build)
+        working-directory: range42-deployer-ui
+        run: npm run build
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
