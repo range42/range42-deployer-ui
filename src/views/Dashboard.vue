@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'DashboardView' })
+
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
