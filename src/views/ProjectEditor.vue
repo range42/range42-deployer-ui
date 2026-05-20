@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, provide } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, provide, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -87,7 +87,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized, findNode } = useVueFlow()
 
 // Bumped when VueFlow finishes measuring node dimensions, so the network-zone
 // overlay recomputes its geometry off real (not fallback) sizes on first paint.
@@ -99,6 +99,7 @@ const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
+const configPanelRef = ref(null)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
 const showDeploymentPanel = ref(false)
@@ -571,6 +572,15 @@ const handleNodeClick = (event) => {
 const closeConfigPanel = () => {
   showConfigPanel.value = false
   selectedNode.value = null
+}
+
+// Node-card "Apply" strip → open that node's ConfigPanel and surface the apply dialog.
+const onNodeApply = (slotProps) => {
+  const n = findNode(slotProps.id)
+  if (!n) return
+  selectedNode.value = n
+  showConfigPanel.value = true
+  nextTick(() => configPanelRef.value?.openApplyDialog?.())
 }
 
 /**
@@ -1187,7 +1197,7 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Compute -->
           <template #node-vm="props">
-            <InfraNodeVm v-bind="props" />
+            <InfraNodeVm v-bind="props" @open-apply-dialog="onNodeApply(props)" />
           </template>
 
           <template #node-lxc="props">
@@ -1300,6 +1310,7 @@ const handleInfrastructureImport = (result) => {
 
     <!-- Config Panel (node config — only on canvas tab) -->
     <ConfigPanel
+      ref="configPanelRef"
       v-if="selectedNode && showConfigPanel && tab === 'canvas'"
       :node="selectedNode"
       @close="closeConfigPanel"

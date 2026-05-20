@@ -2,7 +2,7 @@ import { computed, type Ref } from 'vue'
 import { getChangeCategory, getChangeLabel } from '@/constants/changeCategories'
 import type { PendingChange } from '@/services/proxmox/types'
 
-const DIFFABLE_FIELDS = ['name', 'cores', 'memory', 'tags']
+const DIFFABLE_FIELDS = ['name', 'description', 'cores', 'memory', 'tags']
 
 function arraysEqual(a: unknown[], b: unknown[]): boolean {
   if (a.length !== b.length) return false

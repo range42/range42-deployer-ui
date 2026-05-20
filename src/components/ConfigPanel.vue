@@ -268,6 +268,8 @@ async function handleVmAction(action) {
     switch (action) {
       case 'start': await proxmoxApi.vm.start(request); break
       case 'stop': await proxmoxApi.vm.stop(request); break
+      case 'pause': await proxmoxApi.vm.pause(request); break
+      case 'resume': await proxmoxApi.vm.resume(request); break
       case 'restart':
         await proxmoxApi.vm.stop(request)
         await new Promise(r => setTimeout(r, 3000))
@@ -354,6 +356,8 @@ const {
 } = usePendingChanges(nodeDataRef)
 
 const showApplyDialog = ref(false)
+// Let the parent (node-card "Apply" strip) open the apply dialog directly.
+defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 </script>
 
 <template>
