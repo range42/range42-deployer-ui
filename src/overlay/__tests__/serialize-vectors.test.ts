@@ -12,7 +12,6 @@ describe('overlay/serialize — vector harness', () => {
   expect(files.length).toBeGreaterThan(0);
   for (const file of files) {
     const vec = JSON.parse(readFileSync(join(DIR, file), 'utf8'));
-    // eslint-disable-next-line vitest/valid-title
     it(`${file} — ${vec.name}`, () => {
       const got = serializeToCatalogEntry(vec.input.canvas, vec.input.meta);
       expect(got).toEqual(vec.expected);
