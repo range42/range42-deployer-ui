@@ -7,8 +7,9 @@
  * extractLayout (a later task), NOT this function.
  */
 import type {
-  CatalogEntry, CatalogKind, NodeKind,
+  CatalogEntry, CatalogKind, Node, NodeKind, NodeRole,
 } from '@/types/range42-schema';
+import { getTeamScopeAncestorId } from '@/composables/useInfraBuilder';
 
 export interface CanvasModel {
   nodes: any[];
@@ -59,4 +60,34 @@ export function serializeToCatalogEntry(
     bridge_base: meta.bridge_base ?? 140,
     nodes: [],
   };
+}
+
+const HOST_KINDS = new Set<NodeKind>(['vm', 'lxc', 'docker']);
+const DROP_CONFIG_KEYS = new Set(['template', 'ipAddress', 'vmId', 'role', 'host_ref']);
+
+export function inferRole(node: any, allNodes: any[]): NodeRole {
+  return getTeamScopeAncestorId(node, allNodes) ? 'team' : 'admin';
+}
+
+export function buildNode(node: any, allNodes: any[], _edges: any[]): Node {
+  const kind = mapKind(node.type) as NodeKind;
+  const rawConfig = node.data?.config ?? {};
+  const config: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rawConfig)) {
+    if (!DROP_CONFIG_KEYS.has(k)) config[k] = v;
+  }
+
+  const out: Node = { id: node.id, kind };
+  if (Object.keys(config).length > 0) out.config = config;
+
+  if (HOST_KINDS.has(kind)) {
+    out.role = (rawConfig.role as NodeRole) ?? inferRole(node, allNodes);
+    const tpl = parseInt(String(rawConfig.template ?? ''), 10);
+    if (Number.isFinite(tpl) && tpl >= 100) out.template_vmid = tpl;
+  }
+  if (kind === 'docker') {
+    const ref = node.data?.host_ref ?? rawConfig.host_ref;
+    if (ref) out.host_ref = String(ref);
+  }
+  return out;
 }

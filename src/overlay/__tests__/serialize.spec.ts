@@ -72,3 +72,41 @@ describe('serializeToCatalogEntry — top level', () => {
     expect(doc.bridge_base).toBe(140);
   });
 });
+
+import { inferRole, buildNode } from '@/overlay/serialize';
+
+describe('inferRole', () => {
+  it('team inside a team_scope group, admin otherwise', () => {
+    const grp = { id: 'g', type: 'group', data: { kind: 'team_scope' } };
+    const inside = { id: 'vm1', type: 'vm', parentNode: 'g', data: {} };
+    const outside = { id: 'vm2', type: 'vm', data: {} };
+    const all = [grp, inside, outside];
+    expect(inferRole(inside, all)).toBe('team');
+    expect(inferRole(outside, all)).toBe('admin');
+  });
+});
+
+describe('buildNode — host kinds', () => {
+  it('vm: maps template, cores/memory to config, emits role + template_vmid', () => {
+    const vm = {
+      id: 'vm1', type: 'vm',
+      data: { config: { name: 'web', template: '9001', cores: 4, memory: 4096, ipAddress: '1.2.3.4', vmId: 555 } },
+    };
+    const node = buildNode(vm, [vm], []);
+    expect(node).toMatchObject({ id: 'vm1', kind: 'vm', role: 'admin', template_vmid: 9001 });
+    expect(node.config).toMatchObject({ name: 'web', cores: 4, memory: 4096 });
+    expect(node.config).not.toHaveProperty('template');
+    expect(node.config).not.toHaveProperty('ipAddress');
+    expect(node.config).not.toHaveProperty('vmId');
+  });
+  it('explicit config.role wins over inference', () => {
+    const vm = { id: 'v', type: 'vm', data: { config: { role: 'trainee' } } };
+    expect(buildNode(vm, [vm], []).role).toBe('trainee');
+  });
+  it('docker: emits host_ref from data.host_ref', () => {
+    const d = { id: 'd', type: 'docker', data: { host_ref: 'vm1', config: { image: 'nginx' } } };
+    const node = buildNode(d, [d], []);
+    expect(node.kind).toBe('docker');
+    expect(node.host_ref).toBe('vm1');
+  });
+});
