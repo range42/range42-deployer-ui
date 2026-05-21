@@ -7,9 +7,9 @@
  * extractLayout (a later task), NOT this function.
  */
 import type {
-  CatalogEntry, CatalogKind, NetworkAttachment, Node, NodeKind, NodeRole, ReplicationScope,
+  Attachment, CatalogEntry, CatalogKind, NetworkAttachment, Node, NodeKind, NodeRole, ReplicationScope,
 } from '@/types/range42-schema';
-import { getTeamScopeAncestorId } from '@/composables/useInfraBuilder';
+import { getTeamScopeAncestorId, normalizeAttachment } from '@/composables/useInfraBuilder';
 
 export interface CanvasModel {
   nodes: any[];
@@ -48,9 +48,22 @@ function parentOf(node: any): string | null {
   return node.parentNode ?? node.parent ?? null;
 }
 
+function attachmentsByNode(attachments: any[]): Map<string, Attachment[]> {
+  const byNode = new Map<string, Attachment[]>();
+  for (const raw of attachments || []) {
+    const a = normalizeAttachment(raw);
+    if (!a?.target_node) continue;
+    const { target_node: _t, inherited: _i, inherited_from: _if, ...rest } = a;
+    if (!byNode.has(_t)) byNode.set(_t, []);
+    byNode.get(_t)!.push(rest as Attachment);
+  }
+  return byNode;
+}
+
 function buildNodeTree(canvas: CanvasModel): Node[] {
   const supported = (canvas.nodes || []).filter((n) => mapKind(n.type) !== null);
   const supportedIds = new Set(supported.map((n) => n.id));
+  const attMap = attachmentsByNode(canvas.attachments);
   const childrenByParent = new Map<string, any[]>();
   const roots: any[] = [];
   for (const n of supported) {
@@ -79,6 +92,8 @@ function buildNodeTree(canvas: CanvasModel): Node[] {
       const scope: ReplicationScope = raw.data?.kind === 'team_scope' ? 'per_team' : 'shared';
       node.replication = { scope };
     }
+    const atts = attMap.get(raw.id);
+    if (atts?.length) node.attachments = atts;
     const kids = childrenByParent.get(raw.id);
     if (kids?.length) node.children = kids.map(build);
     return node;
