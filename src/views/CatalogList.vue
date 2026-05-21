@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useCatalog } from '@/composables/useCatalog'
+import { useCatalog, applyClientFilters } from '@/composables/useCatalog'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { getProvider } from '@/services/git'
@@ -34,24 +34,32 @@ const forkTargetName = ref('')
 const forkBusy = ref(false)
 const forkError = ref('')
 
-const KINDS = ['lab', 'gamenet', 'component']
+// Kinds the backend can emit (catalog/entries.py). `unknown` is a fallback
+// bucket, not a useful filter facet, so it is intentionally omitted here.
+const KINDS = ['lab', 'gamenet', 'component', 'container', 'ansible_role']
 const DIFFICULTIES = ['easy', 'medium', 'hard']
 
-// Proxy the ref so the template always sees a plain array (composables
-// return a Ref<T[]>; in templates Vue unwraps `catalog.entries`, but the
-// extra computed insulates us from shape drift).
-const entriesView = computed(() => entries.value || [])
-
-const filters = computed(() => ({
-  kind: selectedKinds.value.length ? selectedKinds.value : undefined,
-  source: selectedSources.value.length ? selectedSources.value : undefined,
-  os: selectedOs.value || undefined,
-  difficulty: selectedDifficulty.value || undefined,
-  tags: tagInput.value
+const parsedTags = computed(() =>
+  tagInput.value
     ? tagInput.value.split(',').map((s) => s.trim()).filter(Boolean)
-    : undefined,
-  q: searchQuery.value || undefined,
-}))
+    : [],
+)
+
+// All filtering is client-side. We fetch the full entry set once (the backend
+// pages at `limit`) and keep `entries.value` as a stable superset, so toggling
+// any control is instant and — crucially — never operates over a server-narrowed
+// subset. (An earlier version narrowed server-side on single-select, which made
+// widening a selection show too few results until a refetch resolved.)
+const entriesView = computed(() =>
+  applyClientFilters(entries.value, {
+    kinds: selectedKinds.value,
+    sources: selectedSources.value,
+    tags: parsedTags.value,
+    os: selectedOs.value || undefined,
+    difficulty: selectedDifficulty.value || undefined,
+    q: searchQuery.value || undefined,
+  }),
+)
 
 function toggleKind(kind) {
   const i = selectedKinds.value.indexOf(kind)
@@ -74,13 +82,13 @@ function clearFilters() {
   searchQuery.value = ''
 }
 
+// Fetch the full entry set; a generous limit avoids silently truncating
+// catalogs. Real pagination is deferred (TODO) — acceptable while catalogs are
+// small. Filtering happens entirely client-side in `entriesView`, so there is
+// no per-filter refetch.
 async function refresh() {
-  await catalog.listEntries(filters.value)
+  await catalog.listEntries({ limit: 500 })
 }
-
-watch(filters, () => {
-  refresh()
-}, { deep: true })
 
 onMounted(async () => {
   await ensureNamespaces(['catalog', 'common', 'sources'])
@@ -219,7 +227,7 @@ async function submitFork() {
               :class="selectedKinds.includes(k) ? 'btn-primary' : 'btn-ghost'"
               @click="toggleKind(k)"
             >
-              {{ k }}
+              {{ k.replace(/_/g, ' ') }}
             </button>
           </div>
         </div>
@@ -312,7 +320,7 @@ async function submitFork() {
       >
         <span class="text-sm">{{ loadError }}</span>
         <button class="btn btn-xs btn-ghost" @click="refresh">
-          {{ t('catalog.filters.clear') }}
+          {{ t('common.retry') }}
         </button>
       </div>
 

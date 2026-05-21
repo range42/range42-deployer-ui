@@ -13,17 +13,33 @@ import { openDB, type IDBPDatabase } from 'idb'
 // Types
 // =============================================================================
 
+/**
+ * Server-side filters accepted by `GET /v1/catalog/entries`.
+ *
+ * These mirror exactly what the backend honors — `source_id`, `kind`, `tag`
+ * (singular), `offset`, `limit`. Presentation-only refinement (os, difficulty,
+ * free-text, multi-select) is applied client-side via {@link applyClientFilters}
+ * so the API client stays a faithful mirror of the backend contract.
+ */
 export interface CatalogEntryFilters {
-  kind?: string | string[]
-  source?: string | string[]
-  os?: string | string[]
-  difficulty?: string | string[]
-  tags?: string | string[]
-  q?: string
+  kind?: string
+  source_id?: string
+  tag?: string
+  offset?: number
+  limit?: number
 }
 
+/** Kinds the backend can emit; see range42-backend-api catalog/entries.py. */
+export type CatalogEntryKind =
+  | 'lab'
+  | 'gamenet'
+  | 'component'
+  | 'container'
+  | 'ansible_role'
+  | 'unknown'
+
 export interface CatalogEntry {
-  kind: 'lab' | 'gamenet' | 'component' | string
+  kind: CatalogEntryKind | string
   name: string
   description?: string
   tags?: string[]
@@ -39,9 +55,55 @@ export interface CatalogEntry {
   metadata?: Record<string, unknown>
 }
 
-export interface CatalogListResponse {
-  entries: CatalogEntry[]
-  source_sha?: string
+/** Paged response envelope returned by the backend (`app.schemas.v1.common.Page`). */
+export interface CatalogPage {
+  items: CatalogEntry[]
+  total: number
+  offset: number
+  limit: number
+}
+
+/** Presentation-side filters applied in the browser over fetched entries. */
+export interface CatalogClientFilters {
+  kinds?: string[]
+  sources?: string[]
+  tags?: string[]
+  os?: string
+  difficulty?: string
+  q?: string
+}
+
+/**
+ * Refine an already-fetched entry list in the browser. The backend only
+ * filters by a single `source_id`/`kind`/`tag`, so multi-select and the
+ * os/difficulty/free-text controls are resolved here. All dimensions combine
+ * with AND; values within `kinds`/`sources` combine with OR; every tag in
+ * `tags` must be present (AND).
+ */
+export function applyClientFilters(
+  entries: CatalogEntry[] | null | undefined,
+  filters: CatalogClientFilters = {},
+): CatalogEntry[] {
+  const { kinds, sources, tags, os, difficulty, q } = filters
+  let out = entries ?? []
+  if (kinds?.length) out = out.filter((e) => kinds.includes(e.kind))
+  if (sources?.length) out = out.filter((e) => sources.includes(e.source_id))
+  if (tags?.length) out = out.filter((e) => tags.every((tIdx) => (e.tags ?? []).includes(tIdx)))
+  if (os) {
+    const needle = os.toLowerCase()
+    out = out.filter((e) => (e.os ?? '').toLowerCase() === needle)
+  }
+  if (difficulty) {
+    const needle = difficulty.toLowerCase()
+    out = out.filter((e) => (e.difficulty ?? '').toLowerCase() === needle)
+  }
+  if (q) {
+    const needle = q.toLowerCase()
+    out = out.filter((e) =>
+      [e.name, e.description, e.path].some((s) => (s ?? '').toLowerCase().includes(needle)),
+    )
+  }
+  return out
 }
 
 // =============================================================================
@@ -71,18 +133,15 @@ function buildQueryString(filters: CatalogEntryFilters): string {
   const params = new URLSearchParams()
   const put = (k: string, v: unknown) => {
     if (v === undefined || v === null || v === '') return
-    if (Array.isArray(v)) {
-      v.forEach((x) => params.append(k, String(x)))
-    } else {
-      params.append(k, String(v))
-    }
+    params.append(k, String(v))
   }
+  // Only the parameters the backend actually filters on. Sending the legacy
+  // `source`/`tags`/`os`/`difficulty`/`q` names was silently ignored server-side.
   put('kind', filters.kind)
-  put('source', filters.source)
-  put('os', filters.os)
-  put('difficulty', filters.difficulty)
-  put('tags', filters.tags)
-  put('q', filters.q)
+  put('source_id', filters.source_id)
+  put('tag', filters.tag)
+  put('offset', filters.offset)
+  put('limit', filters.limit)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 }
@@ -110,13 +169,12 @@ export function useCatalog() {
       if (!res.ok) {
         throw new Error(`catalog list failed: ${res.status}`)
       }
-      const data = (await res.json()) as CatalogListResponse
-      entries.value = data.entries || []
-      // Cache by source_sha when available, else by filter key.
+      const data = (await res.json()) as CatalogPage
+      entries.value = data.items || []
+      // Cache by filter key (the Page envelope carries no source SHA).
       try {
         const db = await getDb()
-        const ck = data.source_sha ? `entries:${data.source_sha}` : key
-        await db.put(STORE, { entries: entries.value, ts: Date.now() }, ck)
+        await db.put(STORE, { entries: entries.value, ts: Date.now() }, key)
       } catch {
         /* ignore cache failures */
       }
