@@ -1315,9 +1315,12 @@ const handleInfrastructureImport = (result) => {
       ref="configPanelRef"
       v-if="selectedNode && showConfigPanel && tab === 'canvas'"
       :node="selectedNode"
+      :attachments="attachmentsRef"
+      :nodes="liveNodes"
       @close="closeConfigPanel"
       @update="updateNodeStatus"
       @delete="handleDeleteNode"
+      @update:attachments="handleAttachmentsUpdate"
     />
     
     <!-- Edge Config Panel -->

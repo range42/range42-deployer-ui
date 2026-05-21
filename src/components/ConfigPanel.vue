@@ -16,13 +16,27 @@ import { usePendingChanges } from '@/composables/usePendingChanges'
 import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
+import NodeAttachmentsSection from '@/components/project/attachments/NodeAttachmentsSection.vue'
 
 const { t } = useI18n({ useScope: 'global' })
 const { confirm } = useConfirmDialog()
 const { showToast } = useToast()
 
-const props = defineProps(['node'])
-const emit = defineEmits(['close', 'update', 'delete'])
+const props = defineProps({
+  node: {
+    type: Object,
+    default: null,
+  },
+  attachments: {
+    type: Array,
+    default: () => [],
+  },
+  nodes: {
+    type: Array,
+    default: () => [],
+  },
+})
+const emit = defineEmits(['close', 'update', 'delete', 'update:attachments'])
 
 
 const errors = ref([])
@@ -1508,6 +1522,14 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
             />
           </FormSection>
         </template>
+
+        <!-- Per-node Attachments -->
+        <NodeAttachmentsSection
+          :node="node"
+          :attachments="attachments"
+          :nodes="nodes"
+          @update:attachments="$emit('update:attachments', $event)"
+        />
 
         <!-- Shared Service Specific Fields -->
         <template v-if="node.type === 'shared-service'">
