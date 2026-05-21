@@ -170,6 +170,32 @@ describe('buildNode — network node config passthrough', () => {
 });
 
 describe('serializeToCatalogEntry — grouping & replication', () => {
+  it('recurses through nested groups (team_scope > topology_group > vm)', () => {
+    const canvas = {
+      nodes: [
+        { id: 'team', type: 'group', data: { kind: 'team_scope' } },
+        { id: 'inner', type: 'group', parentNode: 'team', data: { kind: 'topology_group' } },
+        { id: 'vm', type: 'vm', parentNode: 'inner', data: { config: { role: 'team' } } },
+      ],
+      edges: [], attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    const team = doc.nodes!.find((n) => n.id === 'team')!;
+    expect(team.children!.map((c) => c.id)).toEqual(['inner']);
+    const inner = team.children!.find((c) => c.id === 'inner')!;
+    expect(inner.replication).toEqual({ scope: 'shared' });
+    expect(inner.children!.map((c) => c.id)).toEqual(['vm']);
+  });
+  it('throws on a cyclic parentNode reference', () => {
+    const canvas = {
+      nodes: [
+        { id: 'a', type: 'group', parentNode: 'b', data: { kind: 'topology_group' } },
+        { id: 'b', type: 'group', parentNode: 'a', data: { kind: 'topology_group' } },
+      ],
+      edges: [], attachments: [],
+    };
+    expect(() => serializeToCatalogEntry(canvas, { name: 'r' })).toThrow(/cycle detected/);
+  });
   it('folds parentNode into children and sets replication scope', () => {
     const canvas = {
       nodes: [
