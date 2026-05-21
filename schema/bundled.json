@@ -82,6 +82,9 @@
         },
         "content_ref": {
           "type": "string"
+        },
+        "content_inline": {
+          "type": "string"
         }
       },
       "required": [
