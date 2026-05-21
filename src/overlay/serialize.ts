@@ -70,7 +70,10 @@ export function inferRole(node: any, allNodes: any[]): NodeRole {
 }
 
 export function buildNode(node: any, allNodes: any[], _edges: any[]): Node {
-  const kind = mapKind(node.type) as NodeKind;
+  const kind = mapKind(node.type);
+  if (kind === null) {
+    throw new Error(`buildNode: unsupported node type '${node.type}' (id=${node.id})`);
+  }
   const rawConfig = node.data?.config ?? {};
   const config: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rawConfig)) {
@@ -82,7 +85,8 @@ export function buildNode(node: any, allNodes: any[], _edges: any[]): Node {
 
   if (HOST_KINDS.has(kind)) {
     out.role = (rawConfig.role as NodeRole) ?? inferRole(node, allNodes);
-    const tpl = parseInt(String(rawConfig.template ?? ''), 10);
+    const tpl = Number(rawConfig.template);
+    // Proxmox reserves VMIDs below 100; only accept real user template IDs.
     if (Number.isFinite(tpl) && tpl >= 100) out.template_vmid = tpl;
   }
   if (kind === 'docker') {
