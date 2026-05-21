@@ -168,3 +168,26 @@ describe('buildNode — network node config passthrough', () => {
     expect(buildNode(net, [net], [])).not.toHaveProperty('vlan_tag');
   });
 });
+
+describe('serializeToCatalogEntry — grouping & replication', () => {
+  it('folds parentNode into children and sets replication scope', () => {
+    const canvas = {
+      nodes: [
+        { id: 'team', type: 'group', data: { kind: 'team_scope' } },
+        { id: 'topo', type: 'group', data: { kind: 'topology_group' } },
+        { id: 'vmA', type: 'vm', parentNode: 'team', data: { config: { role: 'team' } } },
+        { id: 'vmB', type: 'vm', data: { config: { role: 'admin' } } },
+      ],
+      edges: [], attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    const team = doc.nodes!.find((n) => n.id === 'team')!;
+    const topo = doc.nodes!.find((n) => n.id === 'topo')!;
+    expect(team.kind).toBe('group');
+    expect(team.replication).toEqual({ scope: 'per_team' });
+    expect(topo.replication).toEqual({ scope: 'shared' });
+    expect(team.children!.map((c) => c.id)).toEqual(['vmA']);
+    expect(doc.nodes!.find((n) => n.id === 'vmB')).toBeTruthy();
+    expect(doc.nodes!.find((n) => n.id === 'vmA')).toBeUndefined();
+  });
+});

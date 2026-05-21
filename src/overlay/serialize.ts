@@ -7,7 +7,7 @@
  * extractLayout (a later task), NOT this function.
  */
 import type {
-  CatalogEntry, CatalogKind, NetworkAttachment, Node, NodeKind, NodeRole,
+  CatalogEntry, CatalogKind, NetworkAttachment, Node, NodeKind, NodeRole, ReplicationScope,
 } from '@/types/range42-schema';
 import { getTeamScopeAncestorId } from '@/composables/useInfraBuilder';
 
@@ -44,6 +44,37 @@ export function sanitizeNamingPrefix(name: string): string {
   return s || 'lab';
 }
 
+function parentOf(node: any): string | null {
+  return node.parentNode ?? node.parent ?? null;
+}
+
+function buildNodeTree(canvas: CanvasModel): Node[] {
+  const supported = (canvas.nodes || []).filter((n) => mapKind(n.type) !== null);
+  const childrenByParent = new Map<string, any[]>();
+  const roots: any[] = [];
+  for (const n of supported) {
+    const p = parentOf(n);
+    if (p && supported.some((x) => x.id === p)) {
+      if (!childrenByParent.has(p)) childrenByParent.set(p, []);
+      childrenByParent.get(p)!.push(n);
+    } else {
+      roots.push(n);
+    }
+  }
+
+  const build = (raw: any): Node => {
+    const node = buildNode(raw, canvas.nodes, canvas.edges);
+    if (raw.type === 'group') {
+      const scope: ReplicationScope = raw.data?.kind === 'team_scope' ? 'per_team' : 'shared';
+      node.replication = { scope };
+    }
+    const kids = childrenByParent.get(raw.id);
+    if (kids?.length) node.children = kids.map(build);
+    return node;
+  };
+  return roots.map(build);
+}
+
 export function serializeToCatalogEntry(
   canvas: CanvasModel,
   meta: ProjectMeta,
@@ -58,7 +89,7 @@ export function serializeToCatalogEntry(
     name: meta.name,
     naming_prefix: sanitizeNamingPrefix(meta.name),
     bridge_base: meta.bridge_base ?? 140,
-    nodes: [],
+    nodes: buildNodeTree(canvas),
   };
 }
 
