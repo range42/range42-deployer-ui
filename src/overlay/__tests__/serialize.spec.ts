@@ -321,9 +321,10 @@ describe('deserializeToCanvas', () => {
 });
 
 import { compose } from '@/overlay/compose';
+import type { ProjectOverlay } from '@/types/range42-schema';
 
 describe('serialize → compose identity (full-snapshot)', () => {
-  it('compose(serialize(canvas), {}) === serialize(canvas)', () => {
+  it('a no-op empty overlay leaves the serialized doc unchanged', () => {
     const canvas = {
       nodes: [
         { id: 'vm1', type: 'vm', data: { config: { role: 'admin', template: '9001', cores: 2 } } },
@@ -333,7 +334,13 @@ describe('serialize → compose identity (full-snapshot)', () => {
       attachments: [],
     };
     const doc = serializeToCatalogEntry(canvas, { name: 'r' });
-    expect(compose(doc, {} as any)).toEqual(doc);
+    const emptyOverlay: ProjectOverlay = {
+      schema_version: '1.0',
+      source_url: 'scratch://r',
+      source_sha: 'scratch',
+      param_overrides: {}, nodes_added: [], nodes_removed: [], nodes_patched: [], attachments_added: [],
+    };
+    expect(compose(doc, emptyOverlay)).toEqual(doc);
   });
 });
 
