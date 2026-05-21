@@ -24,6 +24,8 @@ export interface AttachmentSource {
   sha?: string;
   url?: string;
   content_ref?: string;
+  /** Inline content for inline_yaml (YAML text) and file_upload (base64). */
+  content_inline?: string;
 }
 
 export type AnsiblePrimitive = 'task' | 'handler' | 'block';
