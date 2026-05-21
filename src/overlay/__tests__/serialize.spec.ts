@@ -121,3 +121,33 @@ describe('buildNode — host kinds', () => {
     expect(() => buildNode({ id: 's', type: 'switch', data: {} }, [], [])).toThrow(/unsupported node type/);
   });
 });
+
+import { buildNetworks } from '@/overlay/serialize';
+
+describe('buildNetworks — compute→network edges', () => {
+  const vm = { id: 'vm1', type: 'vm', data: {} };
+  const net = { id: 'net1', type: 'network-segment', data: {} };
+  it('static ip edge → { node_ref, ip }', () => {
+    const e = { id: 'e1', source: 'vm1', target: 'net1', data: { connection: { ipAddress: '10.0.0.5' } } };
+    expect(buildNetworks('vm1', [e], [vm, net])).toEqual([{ node_ref: 'net1', ip: '10.0.0.5' }]);
+  });
+  it('dhcp edge → { node_ref, dhcp:true }', () => {
+    const e = { id: 'e1', source: 'vm1', target: 'net1', data: { useDhcp: true, connection: { ipAddress: '' } } };
+    expect(buildNetworks('vm1', [e], [vm, net])).toEqual([{ node_ref: 'net1', dhcp: true }]);
+  });
+  it('ignores non-network edges and edges not touching the node', () => {
+    const e = { id: 'e1', source: 'vm1', target: 'other', data: {} };
+    expect(buildNetworks('vm1', [e], [vm, net])).toEqual([]);
+  });
+});
+
+describe('buildNode — network node config passthrough', () => {
+  it('keeps bridge/cidr/gateway, lifts vlan to vlan_tag', () => {
+    const net = { id: 'n', type: 'network-segment', data: { config: { bridge: 'vmbr142', cidr: '192.168.142.0/24', gateway: '192.168.142.1', vlan: 10 } } };
+    const node = buildNode(net, [net], []);
+    expect(node.kind).toBe('network');
+    expect(node.config).toMatchObject({ bridge: 'vmbr142', cidr: '192.168.142.0/24', gateway: '192.168.142.1' });
+    expect(node.vlan_tag).toBe(10);
+    expect(node.config).not.toHaveProperty('vlan');
+  });
+});
