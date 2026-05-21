@@ -26,6 +26,7 @@ function onFieldInput(field, event) {
       <input
         data-testid="git-url"
         type="text"
+        :aria-label="t('project.attachments.git.url_label')"
         class="input input-bordered w-full"
         :value="source.url ?? ''"
         @input="onFieldInput('url', $event)"
@@ -39,6 +40,7 @@ function onFieldInput(field, event) {
       <input
         data-testid="git-sha"
         type="text"
+        :aria-label="t('project.attachments.git.sha_label')"
         class="input input-bordered w-full font-mono"
         :value="source.sha ?? ''"
         @input="onFieldInput('sha', $event)"
@@ -52,6 +54,7 @@ function onFieldInput(field, event) {
       <input
         data-testid="git-ref"
         type="text"
+        :aria-label="t('project.attachments.git.ref_label')"
         class="input input-bordered w-full font-mono"
         :value="source.ref ?? ''"
         @input="onFieldInput('ref', $event)"

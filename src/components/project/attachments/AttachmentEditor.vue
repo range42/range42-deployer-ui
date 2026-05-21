@@ -98,6 +98,7 @@ function onSourceUpdate(newSource) {
         <input
           data-testid="att-title"
           type="text"
+          :aria-label="t('project.attachments.editor.title')"
           class="input input-bordered input-sm w-full"
           :value="attachment.title ?? ''"
           @input="onTitleInput"
@@ -109,6 +110,7 @@ function onSourceUpdate(newSource) {
         <input
           data-testid="att-stage"
           type="text"
+          :aria-label="t('project.attachments.editor.stage')"
           class="input input-bordered input-sm w-full"
           :value="attachment.stage ?? ''"
           @input="onStageInput"
@@ -120,6 +122,7 @@ function onSourceUpdate(newSource) {
         <input
           data-testid="att-order"
           type="number"
+          :aria-label="t('project.attachments.editor.order')"
           class="input input-bordered input-sm w-full"
           :value="attachment.order_in_stage ?? ''"
           @input="onOrderInput"
@@ -133,6 +136,7 @@ function onSourceUpdate(newSource) {
         <span class="label text-sm">{{ t('project.attachments.editor.scope') }}</span>
         <select
           data-testid="att-scope"
+          :aria-label="t('project.attachments.editor.scope')"
           class="select select-bordered select-sm w-full"
           :value="attachment.scope ?? 'node'"
           @change="onScopeChange"
