@@ -423,7 +423,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'common'])
+  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common'])
   // Plan C §C4.7 — attach live SSE to canvas when an active deployment exists.
   refreshActiveDeployment()
 })

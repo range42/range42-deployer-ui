@@ -109,7 +109,7 @@ onMounted(async () => {
   }
 
   // Load i18n namespaces used by this panel
-  ensureNamespaces(['configPanel', 'common'])
+  ensureNamespaces(['configPanel', 'project', 'common'])
 })
 
 // Add validation
