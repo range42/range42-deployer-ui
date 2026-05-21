@@ -19,7 +19,9 @@
     "dnsServer": "Serveur DNS",
     "enableDhcp": "Activer DHCP",
     "routingProtocol": "Protocole de routage",
-    "routerId": "ID Routeur"
+    "routerId": "ID Routeur",
+    "role": "Rôle",
+    "roleAuto": "Auto (déduit du périmètre d'équipe)"
   },
   "placeholders": {
     "name": "Saisir le nom {type}",

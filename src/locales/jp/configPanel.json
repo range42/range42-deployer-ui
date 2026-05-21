@@ -19,7 +19,9 @@
     "dnsServer": "DNS サーバー",
     "enableDhcp": "DHCP を有効化",
     "routingProtocol": "ルーティングプロトコル",
-    "routerId": "ルーター ID"
+    "routerId": "ルーター ID",
+    "role": "ロール",
+    "roleAuto": "自動（チームスコープから推測）"
   },
   "placeholders": {
     "name": "{type} 名を入力",

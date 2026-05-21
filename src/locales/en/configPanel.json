@@ -19,7 +19,9 @@
     "dnsServer": "DNS Server",
     "enableDhcp": "Enable DHCP",
     "routingProtocol": "Routing Protocol",
-    "routerId": "Router ID"
+    "routerId": "Router ID",
+    "role": "Role",
+    "roleAuto": "Auto (inferred from team scope)"
   },
   "placeholders": {
     "name": "Enter {type} name",
