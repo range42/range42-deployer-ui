@@ -60,4 +60,15 @@ describe('serializeToCatalogEntry — top level', () => {
     }, { name: 'r' });
     expect(doc.kind).toBe('gamenet');
   });
+  it('explicit meta.kind overrides the team_scope heuristic', () => {
+    const doc = serializeToCatalogEntry({
+      nodes: [{ id: 'g', type: 'group', data: { kind: 'team_scope' } }],
+      edges: [], attachments: [],
+    }, { name: 'r', kind: 'component' });
+    expect(doc.kind).toBe('component');
+  });
+  it('bridge_base defaults to 140 when omitted', () => {
+    const doc = serializeToCatalogEntry({ nodes: [], edges: [], attachments: [] }, { name: 'r' });
+    expect(doc.bridge_base).toBe(140);
+  });
 });
