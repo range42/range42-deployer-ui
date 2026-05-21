@@ -202,4 +202,18 @@ describe('ProjectRepoAdapter', () => {
     const written = mock.files.get('draft-bi-123:projects/demo/topology.json');
     expect(written?.content).toBe('{"schema_version":"1.0"}');
   });
+
+  it('autosave: writes topology.json at repo ROOT when projectPath is empty', async () => {
+    const mock = makeMockProvider();
+    const adapter = createProjectRepoAdapter({
+      provider: mock.impl,
+      source: { id: 'src-1', provider: 'gitlab', base_url: 'https://gitlab.example.com', repos: [{ owner: 'acme', repo: 'lab', branch: 'main' }] },
+      branchStrategy: 'dedicated_repo',
+      projectPath: '',
+      browserInstanceId: 'bi-root',
+    });
+    await adapter.autosave('proj-root', { overlay: '', canvas_layout: '{}', meta: {}, topology: '{"schema_version":"1.0"}' });
+    const written = mock.files.get('draft-bi-root:topology.json');
+    expect(written?.content).toBe('{"schema_version":"1.0"}');
+  });
 });
