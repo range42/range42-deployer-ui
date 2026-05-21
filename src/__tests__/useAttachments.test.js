@@ -118,13 +118,22 @@ describe('validateAttachment — per-kind completeness rules', () => {
     expect(codes(a)).toEqual([])
   })
 
-  it('inline_yaml and file_upload require content_ref', () => {
+  it('inline_yaml and file_upload require content (content_inline)', () => {
     expect(codes({ id: 'x', target_node: 'vm-a', source: { kind: 'inline_yaml' } })).toContain(
       'attachment.content.missing',
     )
     expect(codes({ id: 'x', target_node: 'vm-a', source: { kind: 'file_upload' } })).toContain(
       'attachment.content.missing',
     )
+  })
+
+  it('inline_yaml and file_upload are valid once content_inline is set', () => {
+    expect(
+      codes({ id: 'x', target_node: 'vm-a', source: { kind: 'inline_yaml', content_inline: 'foo: bar\n' } }),
+    ).toEqual([])
+    expect(
+      codes({ id: 'x', target_node: 'vm-a', source: { kind: 'file_upload', content_inline: 'YmFzZTY0' } }),
+    ).toEqual([])
   })
 
   it('external_git requires a url and a pinned sha', () => {

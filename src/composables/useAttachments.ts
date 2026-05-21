@@ -132,9 +132,9 @@ export function validateAttachment(a: Attachment | null | undefined): Attachment
       break
     case 'inline_yaml':
     case 'file_upload':
-      if (!src.content_ref) {
+      if (!src.content_inline) {
         problems.push({
-          field: 'source.content_ref',
+          field: 'source.content_inline',
           code: 'attachment.content.missing',
           message: 'Attachment has no content',
         })
