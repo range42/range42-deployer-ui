@@ -50,7 +50,7 @@ const selectionIntersectsGroup = computed(() => {
   )
   for (const a of props.attachments) {
     if (!selected.value.has(a.id)) continue
-    if (a.node_id && groupIds.has(a.node_id)) return true
+    if (a.target_node && groupIds.has(a.target_node)) return true
   }
   return false
 })
@@ -178,9 +178,9 @@ function applyNodeScoped() {
             />
           </td>
           <td class="font-mono text-xs">{{ a.id }}</td>
-          <td class="font-mono text-xs">{{ a.node_id }}</td>
+          <td class="font-mono text-xs">{{ a.target_node }}</td>
           <td>{{ a.stage || '—' }}</td>
-          <td>{{ a.order ?? '—' }}</td>
+          <td>{{ a.order_in_stage ?? '—' }}</td>
           <td>
             <span class="badge badge-xs" :class="a.scope === 'group_inherited' ? 'badge-accent' : 'badge-ghost'">
               {{ a.scope || 'node' }}
