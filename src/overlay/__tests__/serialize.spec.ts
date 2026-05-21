@@ -320,6 +320,23 @@ describe('deserializeToCanvas', () => {
   });
 });
 
+import { compose } from '@/overlay/compose';
+
+describe('serialize → compose identity (full-snapshot)', () => {
+  it('compose(serialize(canvas), {}) === serialize(canvas)', () => {
+    const canvas = {
+      nodes: [
+        { id: 'vm1', type: 'vm', data: { config: { role: 'admin', template: '9001', cores: 2 } } },
+        { id: 'net1', type: 'network-segment', data: { config: { bridge: 'vmbr142' } } },
+      ],
+      edges: [{ id: 'e1', source: 'vm1', target: 'net1', data: { connection: { ipAddress: '10.0.0.2' } } }],
+      attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    expect(compose(doc, {} as any)).toEqual(doc);
+  });
+});
+
 import { extractLayout } from '@/overlay/serialize';
 
 describe('extractLayout', () => {
