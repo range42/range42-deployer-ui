@@ -8,6 +8,8 @@
  */
 import type {
   Attachment,
+  AttachmentScope,
+  AttachmentSource,
   AttachmentSourceKind,
 } from '@/types/range42-schema'
 
@@ -34,4 +36,50 @@ export function createAttachment(
   }
   if (opts.title) att.title = opts.title
   return att
+}
+
+/** Shallow-merge `patch` onto the attachment with `id`. Returns a new array. */
+export function updateAttachment(
+  attachments: Attachment[] | null | undefined,
+  id: string,
+  patch: Partial<Attachment>,
+): Attachment[] {
+  return (attachments ?? []).map((a) => (a.id === id ? { ...a, ...patch } : a))
+}
+
+/** Remove the attachment with `id`. Returns a new array. */
+export function removeAttachment(
+  attachments: Attachment[] | null | undefined,
+  id: string,
+): Attachment[] {
+  return (attachments ?? []).filter((a) => a.id !== id)
+}
+
+/** Set `scope` on the attachment with `id`. */
+export function setAttachmentScope(
+  attachments: Attachment[] | null | undefined,
+  id: string,
+  scope: AttachmentScope,
+): Attachment[] {
+  return updateAttachment(attachments, id, { scope })
+}
+
+/** Set the canonical `order_in_stage` on the attachment with `id`. */
+export function setAttachmentOrder(
+  attachments: Attachment[] | null | undefined,
+  id: string,
+  order: number,
+): Attachment[] {
+  return updateAttachment(attachments, id, { order_in_stage: order })
+}
+
+/** Merge `sourcePatch` into the attachment's `source` (preserves other source fields). */
+export function setAttachmentSource(
+  attachments: Attachment[] | null | undefined,
+  id: string,
+  sourcePatch: Partial<AttachmentSource>,
+): Attachment[] {
+  return (attachments ?? []).map((a) =>
+    a.id === id ? { ...a, source: { ...a.source, ...sourcePatch } } : a,
+  )
 }
