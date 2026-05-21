@@ -54,6 +54,10 @@ function lockPath(projectPath: string): string {
   return `${projectPath.replace(/\/+$/, '')}/.lock`
 }
 
+// Unlike the sibling *Path helpers, this intentionally omits the leading slash
+// for an empty projectPath: build-from-scratch deploys read topology.json at the
+// project repo ROOT (see backend checkout_project), so it must resolve to
+// `topology.json`, never `/topology.json`.
 function topologyPath(projectPath: string): string {
   const base = projectPath.replace(/\/+$/, '')
   return base ? `${base}/topology.json` : 'topology.json'
