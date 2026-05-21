@@ -7,7 +7,7 @@
  * extractLayout (a later task), NOT this function.
  */
 import type {
-  CatalogEntry, CatalogKind, Node, NodeKind, NodeRole,
+  CatalogEntry, CatalogKind, NetworkAttachment, Node, NodeKind, NodeRole,
 } from '@/types/range42-schema';
 import { getTeamScopeAncestorId } from '@/composables/useInfraBuilder';
 
@@ -63,13 +63,38 @@ export function serializeToCatalogEntry(
 }
 
 const HOST_KINDS = new Set<NodeKind>(['vm', 'lxc', 'docker']);
-const DROP_CONFIG_KEYS = new Set(['template', 'ipAddress', 'vmId', 'role', 'host_ref']);
+const DROP_CONFIG_KEYS = new Set(['template', 'ipAddress', 'vmId', 'role', 'host_ref', 'vlan']);
 
 export function inferRole(node: any, allNodes: any[]): NodeRole {
   return getTeamScopeAncestorId(node, allNodes) ? 'team' : 'admin';
 }
 
-export function buildNode(node: any, allNodes: any[], _edges: any[]): Node {
+function isNetwork(nodeId: string, allNodes: any[]): boolean {
+  const n = allNodes.find((x) => x.id === nodeId);
+  return n?.type === 'network-segment';
+}
+
+export function buildNetworks(
+  nodeId: string, edges: any[], allNodes: any[],
+): NetworkAttachment[] {
+  const out: NetworkAttachment[] = [];
+  for (const e of edges || []) {
+    let netId: string | null = null;
+    if (e.source === nodeId && isNetwork(e.target, allNodes)) netId = e.target;
+    else if (e.target === nodeId && isNetwork(e.source, allNodes)) netId = e.source;
+    if (!netId) continue;
+    const conn = e.data?.connection ?? {};
+    const ip = conn.ipAddress ? String(conn.ipAddress) : '';
+    const dhcp = !!e.data?.useDhcp || !ip;
+    const na: NetworkAttachment = { node_ref: netId };
+    if (dhcp) na.dhcp = true;
+    else na.ip = ip;
+    out.push(na);
+  }
+  return out;
+}
+
+export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
   const kind = mapKind(node.type);
   if (kind === null) {
     throw new Error(`buildNode: unsupported node type '${node.type}' (id=${node.id})`);
@@ -92,6 +117,16 @@ export function buildNode(node: any, allNodes: any[], _edges: any[]): Node {
   if (kind === 'docker') {
     const ref = node.data?.host_ref ?? rawConfig.host_ref;
     if (ref) out.host_ref = String(ref);
+  }
+  // Network node: lift vlan -> vlan_tag (node-level per schema).
+  if (kind === 'network' && rawConfig.vlan != null) {
+    out.vlan_tag = Number(rawConfig.vlan);
+    if (out.config) delete (out.config as Record<string, unknown>).vlan;
+  }
+  // Compute/appliance nodes carry their network attachments derived from edges.
+  if (HOST_KINDS.has(kind) || kind === 'router' || kind === 'firewall') {
+    const nets = buildNetworks(node.id, edges, allNodes);
+    if (nets.length > 0) out.networks = nets;
   }
   return out;
 }
