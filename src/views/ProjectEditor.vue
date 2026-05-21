@@ -44,7 +44,7 @@ import { useNetworkZones } from '../composables/useNetworkZones'
 import { useCanvasLiveStatus } from '../composables/useCanvasLiveStatus'
 import { useDeploymentStore } from '../stores/deploymentStore.ts'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
-import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection } from '../composables/useInfraBuilder'
+import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection, normalizeAttachment } from '../composables/useInfraBuilder'
 import { useDeployment } from '../composables/useDeployment'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
@@ -128,7 +128,9 @@ const dockerTetherEdges = computed(() => computeDockerTetherEdges(liveNodes.valu
 const renderedEdges = computed(() => [...(edges.value || []), ...dockerTetherEdges.value])
 
 // Problems panel — reactive over the live canvas graph.
-const attachmentsRef = computed(() => currentProject.value?.attachments || [])
+const attachmentsRef = computed(() =>
+  (currentProject.value?.attachments || []).map(normalizeAttachment),
+)
 const { problems: problemList } = useProblems(liveNodes, liveEdges, attachmentsRef)
 const showProblemsPanel = ref(true)
 

@@ -18,7 +18,7 @@ describe('computeEffectiveAttachments', () => {
   ]
 
   it('direct node attachments remain on their node, unflagged as inherited', () => {
-    const atts = [{ id: 'a1', node_id: 'vm-a', scope: 'node', stage: 'run' }]
+    const atts = [{ id: 'a1', target_node: 'vm-a', scope: 'node', stage: 'run' }]
     const out = computeEffectiveAttachments(nodes, atts)
     expect(out.get('vm-a')).toHaveLength(1)
     expect(out.get('vm-a')[0].id).toBe('a1')
@@ -27,7 +27,7 @@ describe('computeEffectiveAttachments', () => {
   })
 
   it('group_inherited attachments propagate to all descendants (including nested group descendants)', () => {
-    const atts = [{ id: 'inh', node_id: 'g1', scope: 'group_inherited', stage: 'preflight' }]
+    const atts = [{ id: 'inh', target_node: 'g1', scope: 'group_inherited', stage: 'preflight' }]
     const out = computeEffectiveAttachments(nodes, atts)
     // Group owns its own copy (non-inherited — it's the source row)
     expect(out.get('g1')).toHaveLength(1)
@@ -46,8 +46,8 @@ describe('computeEffectiveAttachments', () => {
 
   it('merges direct + inherited attachments on the same node', () => {
     const atts = [
-      { id: 'direct', node_id: 'vm-a', scope: 'node', stage: 'post' },
-      { id: 'inh', node_id: 'g1', scope: 'group_inherited', stage: 'pre' },
+      { id: 'direct', target_node: 'vm-a', scope: 'node', stage: 'post' },
+      { id: 'inh', target_node: 'g1', scope: 'group_inherited', stage: 'pre' },
     ]
     const out = computeEffectiveAttachments(nodes, atts)
     const list = out.get('vm-a')
@@ -58,7 +58,7 @@ describe('computeEffectiveAttachments', () => {
   })
 
   it('does not mutate the source attachments array', () => {
-    const atts = [{ id: 'inh', node_id: 'g1', scope: 'group_inherited' }]
+    const atts = [{ id: 'inh', target_node: 'g1', scope: 'group_inherited' }]
     const snapshot = JSON.stringify(atts)
     computeEffectiveAttachments(nodes, atts)
     expect(JSON.stringify(atts)).toBe(snapshot)
@@ -67,9 +67,9 @@ describe('computeEffectiveAttachments', () => {
 
 describe('applyBulkAttachmentEdit', () => {
   const atts = [
-    { id: 'a1', node_id: 'vm-a', stage: 'pre', order: 0 },
-    { id: 'a2', node_id: 'vm-b', stage: 'pre', order: 1 },
-    { id: 'a3', node_id: 'g1', scope: 'node' },
+    { id: 'a1', target_node: 'vm-a', stage: 'pre', order_in_stage: 0 },
+    { id: 'a2', target_node: 'vm-b', stage: 'pre', order_in_stage: 1 },
+    { id: 'a3', target_node: 'g1', scope: 'node' },
   ]
 
   it('sets stage on selected rows only', () => {
