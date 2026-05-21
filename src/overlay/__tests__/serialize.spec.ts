@@ -169,6 +169,38 @@ describe('buildNode — network node config passthrough', () => {
   });
 });
 
+describe('serializeToCatalogEntry — attachments', () => {
+  it('nests flat attachments under their target node, dropping target_node', () => {
+    const canvas = {
+      nodes: [{ id: 'vm1', type: 'vm', data: { config: { role: 'admin' } } }],
+      edges: [],
+      attachments: [
+        { id: 'a1', target_node: 'vm1', stage: 'configure', order_in_stage: 0,
+          source: { kind: 'catalog_role', ref: 'software.install.wazuh' } },
+      ],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    const vm = doc.nodes!.find((n) => n.id === 'vm1')!;
+    expect(vm.attachments).toHaveLength(1);
+    expect(vm.attachments![0]).not.toHaveProperty('target_node');
+    expect(vm.attachments![0].source.ref).toBe('software.install.wazuh');
+  });
+  it('nests group_inherited attachments on the group node', () => {
+    const canvas = {
+      nodes: [{ id: 'g', type: 'group', data: { kind: 'topology_group' } }],
+      edges: [],
+      attachments: [
+        { id: 'a2', target_node: 'g', scope: 'group_inherited', stage: 'configure',
+          source: { kind: 'inline_yaml', content_inline: '- debug: msg=hi' } },
+      ],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    const g = doc.nodes!.find((n) => n.id === 'g')!;
+    expect(g.attachments).toHaveLength(1);
+    expect(g.attachments![0].scope).toBe('group_inherited');
+  });
+});
+
 describe('serializeToCatalogEntry — grouping & replication', () => {
   it('recurses through nested groups (team_scope > topology_group > vm)', () => {
     const canvas = {
