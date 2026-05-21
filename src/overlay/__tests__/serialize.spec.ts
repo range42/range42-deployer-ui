@@ -287,4 +287,19 @@ describe('extractLayout', () => {
     expect(layout.edges['vm1|net1'].sourceHandle).toBe('out-0');
     expect(layout.edges['vm1|net1'].connection.interfaceModel).toBe('e1000');
   });
+  it('keys compute↔network edges as compute|network regardless of draw direction', () => {
+    const canvas = {
+      nodes: [
+        { id: 'vm1', type: 'vm', position: { x: 0, y: 0 }, data: {} },
+        { id: 'net1', type: 'network-segment', position: { x: 0, y: 0 }, data: {} },
+      ],
+      // drawn network -> compute (source is the network)
+      edges: [{ id: 'e9', source: 'net1', target: 'vm1', sourceHandle: 'h', data: { connection: { interfaceModel: 'virtio' } } }],
+      attachments: [],
+    };
+    const layout = extractLayout(canvas);
+    expect(layout.edges['vm1|net1']).toBeTruthy();
+    expect(layout.edges['vm1|net1'].connection.interfaceModel).toBe('virtio');
+    expect(layout.edges['net1|vm1']).toBeUndefined();
+  });
 });

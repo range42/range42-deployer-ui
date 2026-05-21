@@ -202,7 +202,17 @@ export function extractLayout(canvas: CanvasModel): CanvasLayout {
   }
   for (const e of canvas.edges || []) {
     if (e.data?.synthetic) continue; // docker tethers are re-derived
-    layout.edges[edgeKey(e.source, e.target)] = {
+    // Canonicalize compute<->network edges to edgeKey(computeEnd, networkEnd)
+    // so the deserialize lookup (keyed compute|network) hits regardless of the
+    // direction the user drew the edge. buildNetworks dedupes by network, so a
+    // single layout entry per (compute, network) pair is the intended grain.
+    let from = e.source;
+    let to = e.target;
+    if (isNetwork(e.source, canvas.nodes) && !isNetwork(e.target, canvas.nodes)) {
+      from = e.target;
+      to = e.source;
+    }
+    layout.edges[edgeKey(from, to)] = {
       id: e.id,
       source: e.source,
       target: e.target,
