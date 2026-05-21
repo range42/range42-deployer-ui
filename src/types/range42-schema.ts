@@ -61,15 +61,22 @@ export interface NetworkAttachment {
 export type NodeKind =
   | 'vm' | 'lxc' | 'docker' | 'network' | 'router' | 'firewall' | 'skin' | 'group';
 
+export type NodeRole = 'admin' | 'team' | 'trainee' | 'shared';
+
 export interface Node {
   id: string;
   kind: NodeKind;
+  role?: NodeRole;
   replication?: Replication;
   host_ref?: string;
   config?: Record<string, unknown>;
   networks?: NetworkAttachment[];
   attachments?: Attachment[];
   children?: Node[];
+  cidr_template?: string;
+  bridge_template?: string;
+  vlan_tag?: number | null;
+  template_vmid?: number;
 }
 
 export interface Execution {
@@ -109,6 +116,9 @@ export interface CatalogEntry {
   flags?: Flag[];
   defaults?: Record<string, unknown>;
   execution?: Execution;
+  naming_prefix?: string;
+  bridge_base?: number;
+  preflight_checks?: string[];
 }
 
 export interface NodePatch {
