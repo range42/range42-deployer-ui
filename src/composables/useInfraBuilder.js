@@ -33,6 +33,26 @@ export function getTeamScopeAncestorId(node, allNodes) {
 }
 
 /**
+ * Upgrade a persisted attachment row to the canonical schema shape:
+ *   node_id → target_node, order → order_in_stage.
+ * Pure and idempotent — canonical rows pass through unchanged, and legacy keys
+ * are always removed so downstream code only ever sees canonical names.
+ */
+export function normalizeAttachment(raw) {
+  if (!raw || typeof raw !== 'object') return raw
+  const a = { ...raw }
+  if (a.target_node === undefined && a.node_id !== undefined) {
+    a.target_node = a.node_id
+  }
+  delete a.node_id
+  if (a.order_in_stage === undefined && a.order !== undefined) {
+    a.order_in_stage = a.order
+  }
+  delete a.order
+  return a
+}
+
+/**
  * Compute the effective attachments for each node: direct attachments on the
  * node itself PLUS any attachments with `scope: 'group_inherited'` defined on
  * a group ancestor (team_scope or topology_group). Inherited attachments are
@@ -438,5 +458,6 @@ export function useInfraBuilder() {
     getTeamScopeAncestorId,
     computeEffectiveAttachments,
     applyBulkAttachmentEdit,
+    normalizeAttachment,
   }
 }
