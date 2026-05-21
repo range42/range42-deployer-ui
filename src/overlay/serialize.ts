@@ -164,6 +164,56 @@ export function buildNetworks(
   return [...byRef.values()];
 }
 
+export interface CanvasLayout {
+  nodes: Record<string, {
+    position?: { x: number; y: number };
+    dimensions?: unknown;
+    style?: unknown;
+    label?: string;
+  }>;
+  edges: Record<string, {
+    id: string;
+    source: string;
+    target: string;
+    sourceHandle?: string;
+    targetHandle?: string;
+    connection?: Record<string, unknown>;
+  }>;
+  unsupported: any[];
+}
+
+export function edgeKey(source: string, target: string): string {
+  return `${source}|${target}`;
+}
+
+export function extractLayout(canvas: CanvasModel): CanvasLayout {
+  const layout: CanvasLayout = { nodes: {}, edges: {}, unsupported: [] };
+  for (const n of canvas.nodes || []) {
+    if (mapKind(n.type) === null) {
+      layout.unsupported.push(JSON.parse(JSON.stringify(n)));
+      continue;
+    }
+    layout.nodes[n.id] = {
+      position: n.position,
+      dimensions: n.dimensions,
+      style: n.style,
+      label: n.data?.label,
+    };
+  }
+  for (const e of canvas.edges || []) {
+    if (e.data?.synthetic) continue; // docker tethers are re-derived
+    layout.edges[edgeKey(e.source, e.target)] = {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle,
+      connection: e.data?.connection,
+    };
+  }
+  return layout;
+}
+
 export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
   const kind = mapKind(node.type);
   if (kind === null) {
