@@ -54,6 +54,11 @@ function lockPath(projectPath: string): string {
   return `${projectPath.replace(/\/+$/, '')}/.lock`
 }
 
+function topologyPath(projectPath: string): string {
+  const base = projectPath.replace(/\/+$/, '')
+  return base ? `${base}/topology.json` : 'topology.json'
+}
+
 interface SharedWorkerLike {
   port: { postMessage(data: unknown): void }
 }
@@ -107,15 +112,17 @@ class RepoAdapter implements ProjectRepoAdapter {
   // ---------------------------------------------------------------------------
 
   async load(_projectId: string): Promise<ProjectState> {
-    const [overlay, layout, meta] = await Promise.all([
+    const [overlay, layout, meta, topology] = await Promise.all([
       this.safeGet(overlayPath(this.projectPath)),
       this.safeGet(layoutPath(this.projectPath)),
       this.safeGet(metaPath(this.projectPath)),
+      this.safeGet(topologyPath(this.projectPath)),
     ])
     return {
       overlay: overlay?.content ?? '',
       canvas_layout: layout?.content ?? '',
       meta: meta ? safeParseJson(meta.content) : {},
+      topology: topology?.content ?? '',
     }
   }
 
@@ -129,6 +136,7 @@ class RepoAdapter implements ProjectRepoAdapter {
       { path: overlayPath(this.projectPath), content: state.overlay },
       { path: layoutPath(this.projectPath), content: state.canvas_layout },
       { path: metaPath(this.projectPath), content: JSON.stringify(state.meta, null, 2) },
+      { path: topologyPath(this.projectPath), content: state.topology ?? '' },
     ]
     for (const w of writes) {
       const sha = this.shaCache.get(`${this.draftBranch}:${w.path}`)
@@ -301,6 +309,7 @@ class RepoAdapter implements ProjectRepoAdapter {
       overlayPath(this.projectPath),
       layoutPath(this.projectPath),
       metaPath(this.projectPath),
+      topologyPath(this.projectPath),
     ]
     for (const p of paths) {
       const draftFile = await this.provider.getFile({

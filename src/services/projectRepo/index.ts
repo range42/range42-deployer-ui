@@ -33,6 +33,7 @@ export interface ProjectState {
   overlay: string
   canvas_layout: string
   meta: Record<string, unknown>
+  topology?: string
 }
 
 export interface LockInfo {
