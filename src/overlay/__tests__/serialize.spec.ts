@@ -19,3 +19,45 @@ describe('range42-schema mirror — node-level fields', () => {
     expect(c.bridge_base).toBe(140);
   });
 });
+
+import { mapKind, sanitizeNamingPrefix, serializeToCatalogEntry } from '@/overlay/serialize';
+
+describe('mapKind', () => {
+  it('maps VueFlow types to schema kinds', () => {
+    expect(mapKind('network-segment')).toBe('network');
+    expect(mapKind('edge-firewall')).toBe('firewall');
+    expect(mapKind('vm')).toBe('vm');
+    expect(mapKind('switch')).toBeNull();
+  });
+});
+
+describe('sanitizeNamingPrefix', () => {
+  it('lowercases, strips invalid chars, caps length, never leads with hyphen', () => {
+    expect(sanitizeNamingPrefix('My Lab #1')).toBe('my-lab-1');
+    expect(sanitizeNamingPrefix('---x')).toBe('x');
+    expect(sanitizeNamingPrefix('')).toBe('lab');
+    expect(sanitizeNamingPrefix('a'.repeat(40)).length).toBeLessThanOrEqual(32);
+  });
+});
+
+describe('serializeToCatalogEntry — top level', () => {
+  it('produces a minimal valid CatalogEntry from empty canvas', () => {
+    const doc = serializeToCatalogEntry(
+      { nodes: [], edges: [], attachments: [] },
+      { name: 'My Lab', bridge_base: 140 },
+    );
+    expect(doc.schema_version).toBe('1.0');
+    expect(doc.kind).toBe('lab');
+    expect(doc.name).toBe('My Lab');
+    expect(doc.naming_prefix).toBe('my-lab');
+    expect(doc.bridge_base).toBe(140);
+    expect(doc.nodes).toEqual([]);
+  });
+  it('kind=gamenet when a team_scope group is present', () => {
+    const doc = serializeToCatalogEntry({
+      nodes: [{ id: 'g', type: 'group', data: { kind: 'team_scope' } }],
+      edges: [], attachments: [],
+    }, { name: 'r' });
+    expect(doc.kind).toBe('gamenet');
+  });
+});
