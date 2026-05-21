@@ -240,6 +240,9 @@ export function deserializeToCanvas(
   const walk = (n: Node, parentId: string | null) => {
     const type = KIND_TO_TYPE[n.kind];
     const lay = layout.nodes?.[n.id] ?? {};
+    // Rebuild the canvas config from the doc. role/template_vmid/vlan_tag live
+    // as node-level schema fields (never inside doc config — buildNode strips
+    // them), so re-injecting them here is a stable round-trip fixpoint.
     const config: Record<string, unknown> = { ...(n.config ?? {}) };
     if (n.role) config.role = n.role;
     if (n.template_vmid != null) config.template = String(n.template_vmid);
@@ -263,7 +266,9 @@ export function deserializeToCanvas(
       if (na.ip) connection.ipAddress = na.ip;
       edges.push({
         id: le?.id ?? `e-${n.id}-${na.node_ref}`,
-        source: n.id, target: na.node_ref, type: 'network',
+        source: le?.source ?? n.id,
+        target: le?.target ?? na.node_ref,
+        type: 'network',
         sourceHandle: le?.sourceHandle, targetHandle: le?.targetHandle,
         data: { connection, useDhcp: !!na.dhcp },
       });
