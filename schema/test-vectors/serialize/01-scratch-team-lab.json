@@ -1,0 +1,37 @@
+{
+  "name": "scratch team lab: one admin vm + per-team vm on a network",
+  "input": {
+    "canvas": {
+      "nodes": [
+        { "id": "team", "type": "group", "data": { "kind": "team_scope" } },
+        { "id": "wazuh", "type": "vm", "data": { "config": { "role": "admin", "template": "9001", "name": "wazuh", "cores": 4 } } },
+        { "id": "kali", "type": "vm", "parentNode": "team", "data": { "config": { "role": "team", "template": "9002", "name": "kali" } } },
+        { "id": "net", "type": "network-segment", "data": { "config": { "bridge": "vmbr143", "cidr": "192.168.143.0/24" } } }
+      ],
+      "edges": [
+        { "id": "e1", "source": "kali", "target": "net", "data": { "connection": { "ipAddress": "192.168.143.10" } } }
+      ],
+      "attachments": [
+        { "id": "a1", "target_node": "wazuh", "stage": "configure", "order_in_stage": 0, "source": { "kind": "catalog_role", "ref": "software.install.wazuh" } }
+      ]
+    },
+    "meta": { "name": "Team Lab", "bridge_base": 140 }
+  },
+  "expected": {
+    "schema_version": "1.0",
+    "kind": "gamenet",
+    "name": "Team Lab",
+    "naming_prefix": "team-lab",
+    "bridge_base": 140,
+    "nodes": [
+      { "id": "team", "kind": "group", "replication": { "scope": "per_team" },
+        "children": [
+          { "id": "kali", "kind": "vm", "config": { "name": "kali" }, "role": "team", "template_vmid": 9002,
+            "networks": [{ "node_ref": "net", "ip": "192.168.143.10" }] }
+        ] },
+      { "id": "wazuh", "kind": "vm", "config": { "name": "wazuh", "cores": 4 }, "role": "admin", "template_vmid": 9001,
+        "attachments": [{ "id": "a1", "stage": "configure", "order_in_stage": 0, "source": { "kind": "catalog_role", "ref": "software.install.wazuh" } }] },
+      { "id": "net", "kind": "network", "config": { "bridge": "vmbr143", "cidr": "192.168.143.0/24" } }
+    ]
+  }
+}
