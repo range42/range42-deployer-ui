@@ -264,3 +264,27 @@ describe('serializeToCatalogEntry — grouping & replication', () => {
     expect(doc.nodes!.find((n) => n.id === 'vmA')).toBeUndefined();
   });
 });
+
+import { extractLayout } from '@/overlay/serialize';
+
+describe('extractLayout', () => {
+  it('captures node positions and unsupported (switch) nodes', () => {
+    const canvas = {
+      nodes: [
+        { id: 'vm1', type: 'vm', position: { x: 10, y: 20 }, data: { label: 'Web' } },
+        { id: 'sw1', type: 'switch', position: { x: 5, y: 5 }, data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'vm1', target: 'net1', sourceHandle: 'out-0', targetHandle: 'in-1',
+          data: { connection: { interfaceModel: 'e1000', macAddress: 'AA:BB', firewall: true } } },
+      ],
+      attachments: [],
+    };
+    const layout = extractLayout(canvas);
+    expect(layout.nodes.vm1.position).toEqual({ x: 10, y: 20 });
+    expect(layout.nodes.vm1.label).toBe('Web');
+    expect(layout.unsupported.map((n) => n.id)).toEqual(['sw1']);
+    expect(layout.edges['vm1|net1'].sourceHandle).toBe('out-0');
+    expect(layout.edges['vm1|net1'].connection.interfaceModel).toBe('e1000');
+  });
+});
