@@ -88,6 +88,15 @@ describe('collectProblems — Plan C §6/§7 cross-node validation', () => {
     expect(entry?.line).toBe(42);
     expect(entry?.severity).toBe('warning');
   });
+
+  it('reports attachment completeness gaps as warnings (not errors)', () => {
+    const nodes = [{ id: 'vm-a', type: 'vm' }]
+    const incomplete = [{ id: 'att1', target_node: 'vm-a', source: { kind: 'inline_yaml' } }]
+    const out = collectProblems(nodes, [], incomplete)
+    const p = out.find((x) => x.code === 'attachment.content.missing')
+    expect(p).toBeDefined()
+    expect(p.severity).toBe('warning')
+  })
 });
 
 describe('useProblems — reactive wrapper', () => {

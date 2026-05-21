@@ -133,7 +133,7 @@ export function collectProblems(
     for (const p of validateAttachment(a as never)) {
       out.push({
         id: `attachment-${id}-${p.code}`,
-        severity: 'error',
+        severity: 'warning',
         code: p.code,
         message: p.message,
         attachment_id: id,

@@ -24,6 +24,7 @@ function onInput(event) {
     </label>
     <textarea
       data-testid="inline-yaml"
+      :aria-label="t('project.attachments.inline.label')"
       class="textarea textarea-bordered font-mono w-full"
       :value="source.content_inline ?? ''"
       @input="onInput"

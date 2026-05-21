@@ -58,6 +58,7 @@ async function onFileChange(event) {
     <input
       data-testid="file-input"
       type="file"
+      :aria-label="t('project.attachments.file.label')"
       class="file-input file-input-bordered w-full"
       @change="onFileChange"
     />
