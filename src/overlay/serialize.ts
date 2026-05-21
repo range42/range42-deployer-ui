@@ -50,11 +50,12 @@ function parentOf(node: any): string | null {
 
 function buildNodeTree(canvas: CanvasModel): Node[] {
   const supported = (canvas.nodes || []).filter((n) => mapKind(n.type) !== null);
+  const supportedIds = new Set(supported.map((n) => n.id));
   const childrenByParent = new Map<string, any[]>();
   const roots: any[] = [];
   for (const n of supported) {
     const p = parentOf(n);
-    if (p && supported.some((x) => x.id === p)) {
+    if (p && supportedIds.has(p)) {
       if (!childrenByParent.has(p)) childrenByParent.set(p, []);
       childrenByParent.get(p)!.push(n);
     } else {
@@ -62,7 +63,17 @@ function buildNodeTree(canvas: CanvasModel): Node[] {
     }
   }
 
+  // The canonical doc is a strict tree (each node has exactly one parent), so
+  // each node is built once. A repeated id means a cyclic parentNode reference
+  // in a corrupted canvas — fail loudly instead of recursing forever.
+  // Nodes that form a pure cycle (no root ancestor) never appear in roots and
+  // would be silently dropped; detect them explicitly before recursing.
+  const visited = new Set<string>();
   const build = (raw: any): Node => {
+    if (visited.has(raw.id)) {
+      throw new Error(`buildNodeTree: cycle detected at node '${raw.id}'`);
+    }
+    visited.add(raw.id);
     const node = buildNode(raw, canvas.nodes, canvas.edges);
     if (raw.type === 'group') {
       const scope: ReplicationScope = raw.data?.kind === 'team_scope' ? 'per_team' : 'shared';
@@ -72,7 +83,15 @@ function buildNodeTree(canvas: CanvasModel): Node[] {
     if (kids?.length) node.children = kids.map(build);
     return node;
   };
-  return roots.map(build);
+  const result = roots.map(build);
+  // Any supported node not visited after a full traversal is part of a cycle
+  // (it has a parent in supportedIds but is never reachable from a root).
+  for (const n of supported) {
+    if (!visited.has(n.id)) {
+      throw new Error(`buildNodeTree: cycle detected at node '${n.id}'`);
+    }
+  }
+  return result;
 }
 
 export function serializeToCatalogEntry(
