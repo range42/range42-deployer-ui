@@ -53,6 +53,10 @@ function attachmentsByNode(attachments: any[]): Map<string, Attachment[]> {
   for (const raw of attachments || []) {
     const a = normalizeAttachment(raw);
     if (!a?.target_node) continue;
+    // Strip serialization-layer keys before embedding under the node:
+    // `target_node` becomes implicit (the node it nests under); `inherited` /
+    // `inherited_from` are runtime-only markers added by
+    // computeEffectiveAttachments and never part of the persisted schema.
     const { target_node: _t, inherited: _i, inherited_from: _if, ...rest } = a;
     if (!byNode.has(_t)) byNode.set(_t, []);
     byNode.get(_t)!.push(rest as Attachment);

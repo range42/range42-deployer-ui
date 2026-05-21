@@ -185,6 +185,21 @@ describe('serializeToCatalogEntry — attachments', () => {
     expect(vm.attachments![0]).not.toHaveProperty('target_node');
     expect(vm.attachments![0].source.ref).toBe('software.install.wazuh');
   });
+  it('silently drops attachments targeting a non-existent node', () => {
+    const canvas = {
+      nodes: [{ id: 'vm1', type: 'vm', data: { config: { role: 'admin' } } }],
+      edges: [],
+      attachments: [
+        { id: 'ghost', target_node: 'does-not-exist', stage: 'configure',
+          source: { kind: 'catalog_role', ref: 'x' } },
+      ],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    const vm = doc.nodes!.find((n) => n.id === 'vm1')!;
+    expect(vm.attachments).toBeUndefined();
+    // The orphaned attachment appears on no node in the doc.
+    expect(doc.nodes!.every((n) => !n.attachments)).toBe(true);
+  });
   it('nests group_inherited attachments on the group node', () => {
     const canvas = {
       nodes: [{ id: 'g', type: 'group', data: { kind: 'topology_group' } }],
