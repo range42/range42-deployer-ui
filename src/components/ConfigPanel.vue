@@ -432,6 +432,28 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           </div>
         </div>
 
+        <!-- Role selector (vm / lxc / docker) -->
+        <FormSection
+          v-if="['vm', 'lxc', 'docker'].includes(node.type)"
+          variant="bordered"
+          :columns="1"
+        >
+          <FormField
+            v-model="config.role"
+            :label="t('configPanel.fields.role')"
+            type="select"
+            :options="[
+              { value: '', label: t('configPanel.fields.roleAuto') },
+              { value: 'admin', label: 'admin' },
+              { value: 'team', label: 'team' },
+              { value: 'trainee', label: 'trainee' },
+              { value: 'shared', label: 'shared' },
+            ]"
+            hint=""
+            icon=""
+          />
+        </FormSection>
+
         <!-- Deployed VM Status View -->
         <template v-if="node.type === 'vm' && node.data?.deployed">
           <!-- Editable Config Fields -->
