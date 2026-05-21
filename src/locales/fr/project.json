@@ -30,5 +30,13 @@
     "pr_opened": "Pull request ouverte",
     "conflict": "Enregistrement bloqué par un conflit — ouvrez la PR pour résoudre.",
     "offline": "Hors ligne — vos modifications sont mises en file localement."
+  },
+  "attachments": {
+    "section": { "add": "Ajouter une pièce jointe", "empty": "Aucune pièce jointe sur ce nœud" },
+    "editor": { "title": "Titre", "stage": "Étape", "order": "Ordre dans l'étape", "scope": "Portée", "delete": "Supprimer", "close": "Fermer" },
+    "catalog": { "loading": "Chargement du catalogue…", "empty": "Aucune entrée de catalogue trouvée" },
+    "inline": { "label": "YAML en ligne" },
+    "file": { "label": "Téléverser un fichier (≤ 256 Ko)", "size_error": "Le fichier dépasse la limite de 256 Ko" },
+    "git": { "url_label": "URL du dépôt", "sha_label": "SHA du commit (requis)", "ref_label": "Sous-chemin (optionnel)", "security_note": "Le contenu est récupéré au moment du déploiement sur la cible — n'utilisez que des sources fiables et épinglées." }
   }
 }
