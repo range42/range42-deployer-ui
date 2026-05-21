@@ -12,6 +12,7 @@ import type {
   AttachmentSource,
   AttachmentSourceKind,
 } from '@/types/range42-schema'
+import { normalizeAttachment } from '@/composables/useInfraBuilder'
 
 const DEFAULT_STAGE = 'main'
 
@@ -82,4 +83,92 @@ export function setAttachmentSource(
   return (attachments ?? []).map((a) =>
     a.id === id ? { ...a, source: { ...a.source, ...sourcePatch } } : a,
   )
+}
+
+export interface AttachmentProblem {
+  field: string
+  code: string
+  message: string
+}
+
+function isValidGitUrl(url: string): boolean {
+  return /^https:\/\/\S+$/.test(url) || /^git@[^:\s]+:\S+$/.test(url) || /^ssh:\/\/\S+$/.test(url)
+}
+
+/**
+ * Return the completeness problems for an attachment (empty = valid/deployable).
+ * Per-kind rules; catalog `sha` is intentionally NOT required (the backend
+ * emits null shas today — see the attachments spec).
+ */
+export function validateAttachment(a: Attachment | null | undefined): AttachmentProblem[] {
+  const problems: AttachmentProblem[] = []
+  if (!a || typeof a !== 'object') return problems
+  if (!a.target_node) {
+    problems.push({
+      field: 'target_node',
+      code: 'attachment.target_node.missing',
+      message: 'Attachment has no target node',
+    })
+  }
+  const src = a.source
+  if (!src || !src.kind) {
+    problems.push({
+      field: 'source.kind',
+      code: 'attachment.source.missing',
+      message: 'Attachment has no source kind',
+    })
+    return problems
+  }
+  switch (src.kind) {
+    case 'catalog_role':
+    case 'catalog_container':
+      if (!src.ref) {
+        problems.push({
+          field: 'source.ref',
+          code: 'attachment.catalog.ref.missing',
+          message: 'Catalog attachment has no source reference',
+        })
+      }
+      break
+    case 'inline_yaml':
+    case 'file_upload':
+      if (!src.content_ref) {
+        problems.push({
+          field: 'source.content_ref',
+          code: 'attachment.content.missing',
+          message: 'Attachment has no content',
+        })
+      }
+      break
+    case 'external_git':
+      if (!src.url) {
+        problems.push({
+          field: 'source.url',
+          code: 'attachment.git.url.missing',
+          message: 'External git attachment has no URL',
+        })
+      } else if (!isValidGitUrl(src.url)) {
+        problems.push({
+          field: 'source.url',
+          code: 'attachment.git.url.invalid',
+          message: 'External git URL must be https:// or git@host:path',
+        })
+      }
+      if (!src.sha) {
+        problems.push({
+          field: 'source.sha',
+          code: 'attachment.git.sha.missing',
+          message: 'External git attachment must be pinned to a commit sha',
+        })
+      }
+      break
+  }
+  return problems
+}
+
+/** Upgrade a list of (possibly legacy) attachment rows to canonical shape. */
+export function normalizeAttachments(
+  attachments: Attachment[] | null | undefined,
+): Attachment[] {
+  return (attachments ?? []).map(normalizeAttachment)
 }
