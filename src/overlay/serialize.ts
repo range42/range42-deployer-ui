@@ -246,13 +246,17 @@ export function deserializeToCanvas(
     const config: Record<string, unknown> = { ...(n.config ?? {}) };
     if (n.role) config.role = n.role;
     if (n.template_vmid != null) config.template = String(n.template_vmid);
-    if (n.vlan_tag != null) config.vlan = n.vlan_tag;
+    if (n.kind === 'network' && n.vlan_tag != null) config.vlan = n.vlan_tag;
 
     const data: Record<string, unknown> = { type, config, status: 'gray' };
     if (lay.label) data.label = lay.label;
     if (n.kind === 'group') data.kind = n.replication?.scope === 'per_team' ? 'team_scope' : 'topology_group';
     if (n.kind === 'docker' && n.host_ref) data.host_ref = n.host_ref;
 
+    // Position is visual-only (lives in canvas_layout, not the canonical doc).
+    // A missing layout entry defaults to origin — so the layout round-trip is
+    // "≈" not "==" for nodes that never had a position. Real VueFlow nodes
+    // always carry one.
     const node: any = { id: n.id, type, position: lay.position ?? { x: 0, y: 0 }, data };
     if (parentId) { node.parentNode = parentId; node.extent = 'parent'; }
     if (lay.dimensions) node.dimensions = lay.dimensions;

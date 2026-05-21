@@ -382,3 +382,65 @@ describe('extractLayout', () => {
     expect(layout.edges['net1|vm1']).toBeUndefined();
   });
 });
+
+describe('serialize/deserialize — broader kind coverage', () => {
+  it('round-trips router, firewall, and skin nodes', () => {
+    const canvas = {
+      nodes: [
+        { id: 'r1', type: 'router', position: { x: 1, y: 1 }, data: { config: { applianceType: 'vyos' } } },
+        { id: 'fw1', type: 'edge-firewall', position: { x: 2, y: 2 }, data: { config: { applianceType: 'pfsense' } } },
+        { id: 'sk1', type: 'skin', position: { x: 3, y: 3 }, data: { config: { theme: 'hospital' } } },
+      ],
+      edges: [], attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    expect(doc.nodes!.map((n) => [n.id, n.kind])).toEqual([['r1','router'],['fw1','firewall'],['sk1','skin']]);
+    const back = deserializeToCanvas(doc, extractLayout(canvas));
+    expect(back.nodes.map((n) => [n.id, n.type])).toEqual([['r1','router'],['fw1','edge-firewall'],['sk1','skin']]);
+  });
+  it('round-trips a compute node attached to two distinct networks', () => {
+    const canvas = {
+      nodes: [
+        { id: 'vm1', type: 'vm', position: { x: 0, y: 0 }, data: { config: { role: 'admin' } } },
+        { id: 'lan', type: 'network-segment', position: { x: 0, y: 0 }, data: {} },
+        { id: 'dmz', type: 'network-segment', position: { x: 0, y: 0 }, data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'vm1', target: 'lan', data: { connection: { ipAddress: '10.0.0.2' } } },
+        { id: 'e2', source: 'vm1', target: 'dmz', data: { useDhcp: true, connection: { ipAddress: '' } } },
+      ],
+      attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    const vm = doc.nodes!.find((n) => n.id === 'vm1')!;
+    expect(vm.networks).toEqual([{ node_ref: 'lan', ip: '10.0.0.2' }, { node_ref: 'dmz', dhcp: true }]);
+    const back = deserializeToCanvas(doc, extractLayout(canvas));
+    expect(back.edges.filter((e) => e.source === 'vm1')).toHaveLength(2);
+  });
+  it('preserves an unsupported (switch) node through a full round-trip', () => {
+    const canvas = {
+      nodes: [
+        { id: 'vm1', type: 'vm', position: { x: 0, y: 0 }, data: { config: { role: 'admin' } } },
+        { id: 'sw1', type: 'switch', position: { x: 5, y: 5 }, data: { label: 'L2' } },
+      ],
+      edges: [], attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    expect(doc.nodes!.find((n) => n.id === 'sw1')).toBeUndefined(); // not in canonical doc
+    const back = deserializeToCanvas(doc, extractLayout(canvas));
+    expect(back.nodes.find((n) => n.id === 'sw1')).toBeTruthy(); // restored from layout.unsupported
+  });
+  it('round-trips a docker node host_ref', () => {
+    const canvas = {
+      nodes: [
+        { id: 'host', type: 'vm', position: { x: 0, y: 0 }, data: { config: { role: 'admin' } } },
+        { id: 'c1', type: 'docker', position: { x: 1, y: 1 }, data: { host_ref: 'host', config: { image: 'nginx' } } },
+      ],
+      edges: [], attachments: [],
+    };
+    const doc = serializeToCatalogEntry(canvas, { name: 'r' });
+    expect(doc.nodes!.find((n) => n.id === 'c1')!.host_ref).toBe('host');
+    const back = deserializeToCanvas(doc, extractLayout(canvas));
+    expect(back.nodes.find((n) => n.id === 'c1')!.data.host_ref).toBe('host');
+  });
+});
