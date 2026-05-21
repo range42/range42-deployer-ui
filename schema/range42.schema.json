@@ -39,7 +39,8 @@
         "ref": { "type": "string" },
         "sha": { "type": "string" },
         "url": { "type": "string", "format": "uri" },
-        "content_ref": { "type": "string" }
+        "content_ref": { "type": "string" },
+        "content_inline": { "type": "string" }
       },
       "required": ["kind"],
       "additionalProperties": false
