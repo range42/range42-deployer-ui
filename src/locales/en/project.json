@@ -30,5 +30,13 @@
     "pr_opened": "Pull request opened",
     "conflict": "Save blocked by a conflict — open the PR to resolve.",
     "offline": "Offline — your changes are queued locally."
+  },
+  "attachments": {
+    "section": { "add": "Add attachment", "empty": "No attachments on this node" },
+    "editor": { "title": "Title", "stage": "Stage", "order": "Order in stage", "scope": "Scope", "delete": "Delete", "close": "Close" },
+    "catalog": { "loading": "Loading catalog…", "empty": "No catalog entries found" },
+    "inline": { "label": "Inline YAML" },
+    "file": { "label": "Upload file (≤ 256 KB)", "size_error": "File exceeds the 256 KB limit" },
+    "git": { "url_label": "Repository URL", "sha_label": "Commit SHA (required)", "ref_label": "Subpath (optional)", "security_note": "Content is fetched at deploy time on the target — use only trusted, pinned sources." }
   }
 }

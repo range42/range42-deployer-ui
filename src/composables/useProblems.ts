@@ -3,6 +3,7 @@ import {
   validateDockerNode,
   getTeamScopeAncestorId,
 } from './useInfraBuilder';
+import { validateAttachment } from './useAttachments';
 
 export type ProblemSeverity = 'error' | 'warning' | 'info';
 
@@ -122,6 +123,21 @@ export function collectProblems(
         file_path: att.file_path,
         line: att.line,
         jumpTo: { kind: 'attachment', id: att.id },
+      });
+    }
+  }
+
+  // --- Attachment completeness (per-kind required fields) ---
+  for (const a of attachments || []) {
+    const id = (a as { id?: string }).id;
+    for (const p of validateAttachment(a as never)) {
+      out.push({
+        id: `attachment-${id}-${p.code}`,
+        severity: 'error',
+        code: p.code,
+        message: p.message,
+        attachment_id: id,
+        jumpTo: { kind: 'attachment', id: id as string },
       });
     }
   }
