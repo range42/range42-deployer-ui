@@ -61,7 +61,7 @@ export function normalizeAttachment(raw) {
  * duplicate records.
  *
  * Pure function — callers pass the full nodes list + a flat attachments list:
- *   attachments: [{ id, node_id, scope?: 'node' | 'group_inherited', ... }]
+ *   attachments: [{ id, target_node, scope?: 'node' | 'group_inherited', ... }]
  *
  * Returns: Map<nodeId, Attachment[]>
  */
@@ -73,19 +73,19 @@ export function computeEffectiveAttachments(allNodes, attachments) {
   // 1) Direct attachments go on their owning node unchanged.
   const groupInherited = []
   for (const a of attachments || []) {
-    if (!a?.node_id) continue
+    if (!a?.target_node) continue
     if (a.scope === 'group_inherited') {
       groupInherited.push(a)
       continue
     }
-    if (!byNode.has(a.node_id)) byNode.set(a.node_id, [])
-    byNode.get(a.node_id).push({ ...a, inherited: false })
+    if (!byNode.has(a.target_node)) byNode.set(a.target_node, [])
+    byNode.get(a.target_node).push({ ...a, inherited: false })
   }
 
   // 2) Inherited attachments: each group_inherited attachment on a group node
   //    propagates to all descendant nodes (leaf + nested groups) as a copy.
   for (const a of groupInherited) {
-    const group = byId.get(a.node_id)
+    const group = byId.get(a.target_node)
     if (!group) continue
     // Also attach to the group itself so Config tab shows it on the group row.
     if (!byNode.has(group.id)) byNode.set(group.id, [])
@@ -128,7 +128,7 @@ export function applyBulkAttachmentEdit(attachments, selectedIds, edit) {
     if (!selected.has(a.id)) return a
     const next = { ...a }
     if (edit?.setStage !== undefined) next.stage = edit.setStage
-    if (edit?.setOrder !== undefined) next.order = Number(edit.setOrder) || 0
+    if (edit?.setOrder !== undefined) next.order_in_stage = Number(edit.setOrder) || 0
     if (edit?.setScope !== undefined) next.scope = edit.setScope
     if (edit?.addVars) {
       next.vars = { ...(a.vars || {}), ...edit.addVars }
