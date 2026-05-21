@@ -18,10 +18,17 @@ const kindBadgeClass = computed(() => {
       return 'badge-secondary'
     case 'component':
       return 'badge-accent'
+    case 'container':
+      return 'badge-info'
+    case 'ansible_role':
+      return 'badge-warning'
     default:
       return 'badge-ghost'
   }
 })
+
+// Render `ansible_role` as a readable label without changing the underlying value.
+const kindLabel = computed(() => String(props.entry?.kind ?? '').replace(/_/g, ' '))
 </script>
 
 <template>
@@ -38,7 +45,7 @@ const kindBadgeClass = computed(() => {
             {{ entry.source_id }} · {{ entry.path }}
           </p>
         </div>
-        <span class="badge" :class="kindBadgeClass">{{ entry.kind }}</span>
+        <span class="badge" :class="kindBadgeClass">{{ kindLabel }}</span>
       </header>
 
       <p v-if="entry.description" class="text-sm text-base-content/70 line-clamp-3 mt-2">

@@ -7,5 +7,6 @@
   "settings": "Settings",
   "close": "Close",
   "add": "Add",
-  "remove": "Remove"
+  "remove": "Remove",
+  "retry": "Retry"
 }
