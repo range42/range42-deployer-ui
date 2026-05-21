@@ -312,6 +312,11 @@ describe('deserializeToCanvas', () => {
     expect(canvas1.nodes.find((n) => n.id === 'vm1')!.parentNode).toBe('g');
     expect(canvas1.attachments).toHaveLength(1);
     expect(canvas1.attachments[0].target_node).toBe('vm1');
+    const rtVm = canvas1.nodes.find((n) => n.id === 'vm1')!;
+    expect(rtVm.data.config).toMatchObject({ role: 'team', name: 'web', cores: 2 });
+    const rtEdge = canvas1.edges.find((e) => e.source === 'vm1' && e.target === 'net1')!;
+    expect(rtEdge).toBeTruthy();
+    expect(rtEdge.data.connection.ipAddress).toBe('10.0.0.9');
   });
 });
 
