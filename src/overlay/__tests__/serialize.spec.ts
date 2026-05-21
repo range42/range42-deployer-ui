@@ -139,6 +139,19 @@ describe('buildNetworks — compute→network edges', () => {
     const e = { id: 'e1', source: 'vm1', target: 'other', data: {} };
     expect(buildNetworks('vm1', [e], [vm, net])).toEqual([]);
   });
+  it('buildNetworks: returns [] when the node itself is a network (no network→network)', () => {
+    const a = { id: 'na', type: 'network-segment', data: {} };
+    const b = { id: 'nb', type: 'network-segment', data: {} };
+    const e = { id: 'e', source: 'na', target: 'nb', data: {} };
+    expect(buildNetworks('na', [e], [a, b])).toEqual([]);
+  });
+  it('buildNetworks: dedups multiple edges to the same network (keeps last)', () => {
+    const vm = { id: 'vm1', type: 'vm', data: {} };
+    const net = { id: 'net1', type: 'network-segment', data: {} };
+    const e1 = { id: 'e1', source: 'vm1', target: 'net1', data: { connection: { ipAddress: '10.0.0.5' } } };
+    const e2 = { id: 'e2', source: 'vm1', target: 'net1', data: { useDhcp: true, connection: { ipAddress: '' } } };
+    expect(buildNetworks('vm1', [e1, e2], [vm, net])).toEqual([{ node_ref: 'net1', dhcp: true }]);
+  });
 });
 
 describe('buildNode — network node config passthrough', () => {
@@ -149,5 +162,9 @@ describe('buildNode — network node config passthrough', () => {
     expect(node.config).toMatchObject({ bridge: 'vmbr142', cidr: '192.168.142.0/24', gateway: '192.168.142.1' });
     expect(node.vlan_tag).toBe(10);
     expect(node.config).not.toHaveProperty('vlan');
+  });
+  it('buildNode: omits vlan_tag for a non-numeric vlan', () => {
+    const net = { id: 'n', type: 'network-segment', data: { config: { vlan: 'trunk' } } };
+    expect(buildNode(net, [net], [])).not.toHaveProperty('vlan_tag');
   });
 });

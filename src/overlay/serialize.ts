@@ -77,7 +77,8 @@ function isNetwork(nodeId: string, allNodes: any[]): boolean {
 export function buildNetworks(
   nodeId: string, edges: any[], allNodes: any[],
 ): NetworkAttachment[] {
-  const out: NetworkAttachment[] = [];
+  if (isNetwork(nodeId, allNodes)) return [];
+  const byRef = new Map<string, NetworkAttachment>();
   for (const e of edges || []) {
     let netId: string | null = null;
     if (e.source === nodeId && isNetwork(e.target, allNodes)) netId = e.target;
@@ -89,9 +90,9 @@ export function buildNetworks(
     const na: NetworkAttachment = { node_ref: netId };
     if (dhcp) na.dhcp = true;
     else na.ip = ip;
-    out.push(na);
+    byRef.set(netId, na);
   }
-  return out;
+  return [...byRef.values()];
 }
 
 export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
@@ -118,10 +119,11 @@ export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
     const ref = node.data?.host_ref ?? rawConfig.host_ref;
     if (ref) out.host_ref = String(ref);
   }
-  // Network node: lift vlan -> vlan_tag (node-level per schema).
+  // Network node: lift vlan -> vlan_tag (node-level per schema). `vlan` is in
+  // DROP_CONFIG_KEYS so it never reaches out.config.
   if (kind === 'network' && rawConfig.vlan != null) {
-    out.vlan_tag = Number(rawConfig.vlan);
-    if (out.config) delete (out.config as Record<string, unknown>).vlan;
+    const v = Number(rawConfig.vlan);
+    if (Number.isFinite(v)) out.vlan_tag = v;
   }
   // Compute/appliance nodes carry their network attachments derived from edges.
   if (HOST_KINDS.has(kind) || kind === 'router' || kind === 'firewall') {
