@@ -79,7 +79,7 @@ describe('ProjectRepoAdapter', () => {
     expect(branches[0].from).toBe('main');
 
     const puts = mock.calls.filter((c) => c.op === 'putFile');
-    expect(puts.length).toBe(3);
+    expect(puts.length).toBe(4);
     for (const p of puts) {
       expect(p.branch).toBe('draft-bi-123');
     }
@@ -87,6 +87,7 @@ describe('ProjectRepoAdapter', () => {
       'projects/demo/canvas_layout.json',
       'projects/demo/meta.json',
       'projects/demo/overlay.json',
+      'projects/demo/topology.json',
     ]);
 
     // IDB mirror
@@ -120,7 +121,7 @@ describe('ProjectRepoAdapter', () => {
     const mainPuts = mock.calls.filter(
       (c) => c.op === 'putFile' && c.branch === 'main',
     );
-    expect(mainPuts.length).toBe(3);
+    expect(mainPuts.length).toBe(4);
     const overlayPut = mainPuts.find((p) => p.path.endsWith('/overlay.json'));
     expect(overlayPut.sha).toBe('sha-main-0');
   });
@@ -187,5 +188,18 @@ describe('ProjectRepoAdapter', () => {
     const adapter = makeAdapter(mock);
     const out = await adapter.checkLockOwnership('proj-1');
     expect(out).toBe('free');
+  });
+
+  it('autosave: writes topology.json from ProjectState.topology', async () => {
+    const mock = makeMockProvider();
+    const adapter = makeAdapter(mock);
+    await adapter.autosave('proj-1', {
+      overlay: 'version: 1',
+      canvas_layout: '{}',
+      meta: { name: 'demo' },
+      topology: '{"schema_version":"1.0"}',
+    });
+    const written = mock.files.get('draft-bi-123:projects/demo/topology.json');
+    expect(written?.content).toBe('{"schema_version":"1.0"}');
   });
 });
