@@ -109,4 +109,15 @@ describe('buildNode — host kinds', () => {
     expect(node.kind).toBe('docker');
     expect(node.host_ref).toBe('vm1');
   });
+  it('omits template_vmid when below the Proxmox minimum (100)', () => {
+    const vm = { id: 'v', type: 'vm', data: { config: { template: '50' } } };
+    expect(buildNode(vm, [vm], [])).not.toHaveProperty('template_vmid');
+  });
+  it('omits template_vmid for a non-numeric template', () => {
+    const vm = { id: 'v', type: 'vm', data: { config: { template: '9001-beta' } } };
+    expect(buildNode(vm, [vm], [])).not.toHaveProperty('template_vmid');
+  });
+  it('throws on an unsupported node type', () => {
+    expect(() => buildNode({ id: 's', type: 'switch', data: {} }, [], [])).toThrow(/unsupported node type/);
+  });
 });
