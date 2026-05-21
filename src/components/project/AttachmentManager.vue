@@ -6,11 +6,15 @@
  * - When any selected attachment belongs to a GroupNode, an extra action is
  *   offered: "Attach at group (inherited by descendants)" — toggles
  *   `scope: 'group_inherited'` on those rows.
+ * - Per-row Edit button opens the AttachmentEditor panel.
+ * - Global add control: choose a node + kind and click Add.
  * - Emits `update:attachments` with the new attachments array so the parent
  *   project store can persist.
  */
 import { computed, ref } from 'vue'
 import { applyBulkAttachmentEdit } from '@/composables/useInfraBuilder'
+import { createAttachment, removeAttachment } from '@/composables/useAttachments'
+import AttachmentEditor from '@/components/project/attachments/AttachmentEditor.vue'
 
 const props = defineProps({
   attachments: { type: Array, default: () => [] },
@@ -25,6 +29,52 @@ const bulk = ref({
   varsKey: '',
   varsValue: '',
 })
+
+// Per-row edit state
+const editingId = ref(null)
+const editingAttachment = computed(
+  () => (editingId.value ? props.attachments.find((a) => a.id === editingId.value) ?? null : null),
+)
+
+// Global add state
+const SOURCE_KINDS = ['catalog_role', 'catalog_container', 'inline_yaml', 'file_upload', 'external_git']
+const addNodeId = ref('')
+const addKind = ref('inline_yaml')
+
+function onEditorUpdate(next) {
+  emit('update:attachments', props.attachments.map((a) => (a.id === next.id ? next : a)))
+}
+
+function onEditorDelete() {
+  emit('update:attachments', removeAttachment(props.attachments, editingId.value))
+  editingId.value = null
+}
+
+function onAddAttachment() {
+  if (!addNodeId.value) return
+  const att = createAttachment(addKind.value, addNodeId.value)
+  emit('update:attachments', [...props.attachments, att])
+  editingId.value = att.id
+}
+
+/** Short human summary of an attachment source for the Source column. */
+function sourceSummary(a) {
+  const src = a.source
+  if (!src) return '—'
+  switch (src.kind) {
+    case 'catalog_role':
+    case 'catalog_container':
+      return src.ref || '—'
+    case 'external_git':
+      return src.url || '—'
+    case 'inline_yaml':
+      return 'inline'
+    case 'file_upload':
+      return 'file'
+    default:
+      return '—'
+  }
+}
 
 const allSelected = computed({
   get: () => props.attachments.length > 0 && selected.value.size === props.attachments.length,
@@ -115,6 +165,33 @@ function applyNodeScoped() {
       <span class="text-xs opacity-60">{{ selected.size }} selected / {{ attachments.length }}</span>
     </header>
 
+    <!-- Global add control -->
+    <div class="px-3 py-2 border-b border-base-300 flex flex-wrap items-center gap-2">
+      <select
+        v-model="addNodeId"
+        class="select select-xs select-bordered"
+        data-testid="add-node"
+      >
+        <option value="">— node —</option>
+        <option v-for="n in nodes" :key="n.id" :value="n.id">{{ n.id }}</option>
+      </select>
+      <select
+        v-model="addKind"
+        class="select select-xs select-bordered"
+        data-testid="add-kind"
+      >
+        <option v-for="k in SOURCE_KINDS" :key="k" :value="k">{{ k }}</option>
+      </select>
+      <button
+        class="btn btn-xs btn-primary"
+        data-testid="add-btn"
+        type="button"
+        @click="onAddAttachment"
+      >
+        Add
+      </button>
+    </div>
+
     <!-- Bulk actions toolbar -->
     <div v-if="selected.size" class="px-3 py-2 border-b border-base-300 flex flex-wrap items-center gap-2" data-testid="bulk-toolbar">
       <div class="join">
@@ -161,9 +238,12 @@ function applyNodeScoped() {
           </th>
           <th>Id</th>
           <th>Node</th>
+          <th>Kind</th>
+          <th>Source</th>
           <th>Stage</th>
           <th>Order</th>
           <th>Scope</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -179,6 +259,12 @@ function applyNodeScoped() {
           </td>
           <td class="font-mono text-xs">{{ a.id }}</td>
           <td class="font-mono text-xs">{{ a.target_node }}</td>
+          <td class="font-mono text-xs" :data-testid="`att-kind-${a.id}`">
+            {{ a.source?.kind ?? '—' }}
+          </td>
+          <td class="font-mono text-xs" :data-testid="`att-src-${a.id}`">
+            {{ sourceSummary(a) }}
+          </td>
           <td>{{ a.stage || '—' }}</td>
           <td>{{ a.order_in_stage ?? '—' }}</td>
           <td>
@@ -186,11 +272,35 @@ function applyNodeScoped() {
               {{ a.scope || 'node' }}
             </span>
           </td>
+          <td>
+            <button
+              class="btn btn-xs btn-ghost"
+              :data-testid="`att-edit-${a.id}`"
+              type="button"
+              @click="editingId = a.id"
+            >
+              Edit
+            </button>
+          </td>
         </tr>
         <tr v-if="!attachments.length">
-          <td colspan="6" class="text-center text-xs opacity-60 py-4">No attachments yet.</td>
+          <td colspan="8" class="text-center text-xs opacity-60 py-4">No attachments yet.</td>
         </tr>
       </tbody>
     </table>
+    <!-- Per-row attachment editor panel -->
+    <div
+      v-if="editingAttachment"
+      class="px-3 py-3 border-t border-base-300"
+      data-testid="attachment-editor-panel"
+    >
+      <AttachmentEditor
+        :attachment="editingAttachment"
+        :nodes="nodes"
+        @update:attachment="onEditorUpdate"
+        @delete="onEditorDelete"
+        @close="editingId = null"
+      />
+    </div>
   </section>
 </template>
