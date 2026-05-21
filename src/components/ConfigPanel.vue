@@ -103,6 +103,7 @@ onMounted(async () => {
     config.value.kind = props.node.data?.kind || 'topology_group'
     config.value.team_count = Number(props.node.data?.team_count ?? config.value.team_count ?? 1)
   }
+  config.value.role = config.value.role ?? ''
 
   if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
     await loadTemplates()
@@ -356,8 +357,11 @@ watch(() => props.node, (newNode) => {
       config.value.kind = newNode.data?.kind || 'topology_group'
       config.value.team_count = Number(newNode.data?.team_count ?? config.value.team_count ?? 1)
     }
+    config.value.role = config.value.role ?? ''
   }
 }, { immediate: true })
+
+const isHostNode = computed(() => ['vm', 'lxc', 'docker'].includes(props.node?.type))
 
 const nodeDataRef = computed(() => props.node?.data || {})
 const {
@@ -434,7 +438,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
         <!-- Role selector (vm / lxc / docker) -->
         <FormSection
-          v-if="['vm', 'lxc', 'docker'].includes(node.type)"
+          v-if="isHostNode"
           variant="bordered"
           :columns="1"
         >
