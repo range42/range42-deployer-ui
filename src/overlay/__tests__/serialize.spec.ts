@@ -265,6 +265,56 @@ describe('serializeToCatalogEntry — grouping & replication', () => {
   });
 });
 
+import { deserializeToCanvas } from '@/overlay/serialize';
+
+describe('deserializeToCanvas', () => {
+  it('rebuilds flat nodes (kind→type), restores positions, edges from networks', () => {
+    const doc = {
+      schema_version: '1.0', kind: 'lab', name: 'r', naming_prefix: 'r', bridge_base: 140,
+      nodes: [
+        { id: 'team', kind: 'group', replication: { scope: 'per_team' },
+          children: [{ id: 'vm1', kind: 'vm', role: 'team', template_vmid: 9001,
+                        networks: [{ node_ref: 'net1', ip: '10.0.0.5' }] }] },
+        { id: 'net1', kind: 'network', config: { bridge: 'vmbr143' } },
+      ],
+    } as any;
+    const layout = {
+      nodes: { vm1: { position: { x: 1, y: 2 } } },
+      edges: { 'vm1|net1': { id: 'e1', source: 'vm1', target: 'net1', sourceHandle: 'out-0', connection: { interfaceModel: 'e1000' } } },
+      unsupported: [],
+    };
+    const canvas = deserializeToCanvas(doc, layout);
+    const vm1 = canvas.nodes.find((n) => n.id === 'vm1')!;
+    expect(vm1.type).toBe('vm');
+    expect(vm1.parentNode).toBe('team');
+    expect(vm1.position).toEqual({ x: 1, y: 2 });
+    expect(vm1.data.config.template).toBe('9001');
+    const e = canvas.edges.find((x) => x.source === 'vm1' && x.target === 'net1')!;
+    expect(e.type).toBe('network');
+    expect(e.data.connection.ipAddress).toBe('10.0.0.5');
+    expect(e.data.connection.interfaceModel).toBe('e1000');
+    expect(e.sourceHandle).toBe('out-0');
+  });
+  it('round-trips: serialize → deserialize preserves node ids, kinds, attachments', () => {
+    const canvas0 = {
+      nodes: [
+        { id: 'g', type: 'group', data: { kind: 'team_scope' } },
+        { id: 'vm1', type: 'vm', parentNode: 'g', position: { x: 3, y: 4 }, data: { config: { role: 'team', name: 'web', cores: 2 } } },
+        { id: 'net1', type: 'network-segment', position: { x: 0, y: 0 }, data: { config: { bridge: 'vmbr143' } } },
+      ],
+      edges: [{ id: 'e1', source: 'vm1', target: 'net1', data: { connection: { ipAddress: '10.0.0.9' } } }],
+      attachments: [{ id: 'a1', target_node: 'vm1', stage: 'configure', source: { kind: 'catalog_role', ref: 'x' } }],
+    };
+    const doc = serializeToCatalogEntry(canvas0, { name: 'r' });
+    const layout = extractLayout(canvas0);
+    const canvas1 = deserializeToCanvas(doc, layout);
+    expect(new Set(canvas1.nodes.map((n) => n.id))).toEqual(new Set(['g', 'vm1', 'net1']));
+    expect(canvas1.nodes.find((n) => n.id === 'vm1')!.parentNode).toBe('g');
+    expect(canvas1.attachments).toHaveLength(1);
+    expect(canvas1.attachments[0].target_node).toBe('vm1');
+  });
+});
+
 import { extractLayout } from '@/overlay/serialize';
 
 describe('extractLayout', () => {

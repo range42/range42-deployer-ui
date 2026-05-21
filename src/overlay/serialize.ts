@@ -224,6 +224,62 @@ export function extractLayout(canvas: CanvasModel): CanvasLayout {
   return layout;
 }
 
+const KIND_TO_TYPE: Record<NodeKind, string> = {
+  vm: 'vm', lxc: 'lxc', docker: 'docker',
+  network: 'network-segment', router: 'router',
+  firewall: 'edge-firewall', group: 'group', skin: 'skin',
+};
+
+export function deserializeToCanvas(
+  doc: CatalogEntry, layout: CanvasLayout,
+): CanvasModel {
+  const nodes: any[] = [];
+  const edges: any[] = [];
+  const attachments: any[] = [];
+
+  const walk = (n: Node, parentId: string | null) => {
+    const type = KIND_TO_TYPE[n.kind];
+    const lay = layout.nodes?.[n.id] ?? {};
+    const config: Record<string, unknown> = { ...(n.config ?? {}) };
+    if (n.role) config.role = n.role;
+    if (n.template_vmid != null) config.template = String(n.template_vmid);
+    if (n.vlan_tag != null) config.vlan = n.vlan_tag;
+
+    const data: Record<string, unknown> = { type, config, status: 'gray' };
+    if (lay.label) data.label = lay.label;
+    if (n.kind === 'group') data.kind = n.replication?.scope === 'per_team' ? 'team_scope' : 'topology_group';
+    if (n.kind === 'docker' && n.host_ref) data.host_ref = n.host_ref;
+
+    const node: any = { id: n.id, type, position: lay.position ?? { x: 0, y: 0 }, data };
+    if (parentId) { node.parentNode = parentId; node.extent = 'parent'; }
+    if (lay.dimensions) node.dimensions = lay.dimensions;
+    if (lay.style) node.style = lay.style;
+    nodes.push(node);
+
+    for (const na of n.networks ?? []) {
+      const key = edgeKey(n.id, na.node_ref);
+      const le = layout.edges?.[key];
+      const connection: Record<string, unknown> = { ...(le?.connection ?? {}) };
+      if (na.ip) connection.ipAddress = na.ip;
+      edges.push({
+        id: le?.id ?? `e-${n.id}-${na.node_ref}`,
+        source: n.id, target: na.node_ref, type: 'network',
+        sourceHandle: le?.sourceHandle, targetHandle: le?.targetHandle,
+        data: { connection, useDhcp: !!na.dhcp },
+      });
+    }
+    for (const att of n.attachments ?? []) {
+      attachments.push({ ...att, target_node: n.id });
+    }
+    for (const child of n.children ?? []) walk(child, n.id);
+  };
+
+  for (const n of doc.nodes ?? []) walk(n, null);
+  for (const u of layout.unsupported ?? []) nodes.push(JSON.parse(JSON.stringify(u)));
+
+  return { nodes, edges, attachments };
+}
+
 export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
   const kind = mapKind(node.type);
   if (kind === null) {
