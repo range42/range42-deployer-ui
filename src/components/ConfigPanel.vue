@@ -575,11 +575,29 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
             </div>
           </div>
 
-          <!-- VM Actions -->
+          <!-- VM Actions — gated by live status so we never offer an action
+               that doesn't apply (e.g. Start on an already-running VM). -->
           <div class="flex gap-1 mb-3">
-            <button class="btn btn-xs btn-success flex-1" :disabled="actionLoading" @click="handleVmAction('start')">Start</button>
-            <button class="btn btn-xs btn-warning flex-1" :disabled="actionLoading" @click="handleVmAction('stop')">Stop</button>
-            <button class="btn btn-xs btn-info flex-1" :disabled="actionLoading" @click="handleVmAction('pause')">Pause</button>
+            <button
+              v-if="node.data.status !== 'running' && node.data.status !== 'paused'"
+              class="btn btn-xs btn-success flex-1" :disabled="actionLoading"
+              @click="handleVmAction('start')"
+            >Start</button>
+            <button
+              v-if="node.data.status === 'paused'"
+              class="btn btn-xs btn-success flex-1" :disabled="actionLoading"
+              @click="handleVmAction('resume')"
+            >Resume</button>
+            <button
+              v-if="node.data.status === 'running'"
+              class="btn btn-xs btn-info flex-1" :disabled="actionLoading"
+              @click="handleVmAction('pause')"
+            >Pause</button>
+            <button
+              v-if="node.data.status === 'running' || node.data.status === 'paused'"
+              class="btn btn-xs btn-warning flex-1" :disabled="actionLoading"
+              @click="handleVmAction('stop')"
+            >Stop</button>
           </div>
 
           <!-- Pending Changes Actions -->

@@ -68,6 +68,8 @@ export interface VmListItem {
   node: ProxmoxNode
   isTemplate: boolean
   tags: string
+  /** 'qemu' | 'lxc' — populated by the v1 list endpoint. */
+  type?: 'qemu' | 'lxc'
 }
 
 export interface VmActionRequest {

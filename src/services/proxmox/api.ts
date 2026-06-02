@@ -190,70 +190,102 @@ async function del<T>(endpoint: string, body?: unknown): Promise<T> {
 // VM API
 // =============================================================================
 
+// ---------------------------------------------------------------------------
+// v1 Proxmox host resolution + VM management (direct API via registered host)
+// ---------------------------------------------------------------------------
+
+interface V1Vm {
+  vmid: number
+  name?: string
+  type: 'qemu' | 'lxc'
+  status: string
+  node: string
+  maxmem?: number
+  maxcpu?: number
+  uptime?: number
+  template?: boolean
+  tags?: string
+}
+
+let _hostCache: { id: string; node_name: string } | null = null
+
+/** Test seam: clear the memoized registered-host lookup. */
+export function _resetHostCacheForTests(): void {
+  _hostCache = null
+}
+
 /**
- * Unwrap backend response: { rc, result: [[...items...]] } → items[]
- * The backend wraps Ansible results in a nested array.
+ * Resolve the single registered Proxmox host (id + node_name) from the v1 API.
+ * Memoized for the session. This is the single source of truth — callers no
+ * longer pass a (often stale) node name; v1 uses the registered host's node.
  */
-function unwrapResult<T>(raw: unknown): T[] {
-  const data = raw as { rc?: number; result?: unknown[] }
-  if (!data?.result || !Array.isArray(data.result)) return []
-  // result is [[...items...]] — unwrap one level
-  const inner = data.result[0]
-  return Array.isArray(inner) ? inner as T[] : data.result as T[]
-}
-
-interface BackendVm {
-  vm_id: number
-  vm_name: string
-  vm_status: string
-  vm_uptime: number
-  vm_template?: number
-  vm_tags?: string
-  proxmox_node: string
-  vm_meta: {
-    cpu_current_usage: number
-    cpu_allocated: number
-    ram_current_usage: number
-    ram_max: number
-    disk_max: number
+export async function getRegisteredHost(): Promise<{ id: string; node_name: string }> {
+  if (_hostCache) return _hostCache
+  const raw = await request<{ items?: Array<{ id: string; node_name: string }> }>(
+    '/v1/proxmox/hosts',
+    { method: 'GET' },
+  )
+  const host = raw.items?.[0]
+  if (!host?.id) {
+    throw new ProxmoxApiError(0, 'No Proxmox host registered. Add one in Settings → Proxmox.')
   }
+  _hostCache = { id: host.id, node_name: host.node_name }
+  return _hostCache
 }
 
-function normalizeVm(vm: BackendVm): VmListItem {
-  // Use vm_template flag from backend (added in proxmox_controller 2625df3)
-  // Fall back to name heuristic for older backends
-  const isTemplate = vm.vm_template === 1
-    || (vm.vm_name?.startsWith('template-') && vm.vm_status === 'stopped' && vm.vm_uptime === 0)
+function normalizeVmV1(v: V1Vm): VmListItem {
   return {
-    vmid: vm.vm_id,
-    name: vm.vm_name,
-    status: vm.vm_status as VmListItem['status'],
-    isTemplate,
-    tags: vm.vm_tags || (isTemplate ? 'template' : ''),
-    mem: vm.vm_meta?.ram_current_usage || 0,
-    maxmem: vm.vm_meta?.ram_max || 0,
-    cpu: vm.vm_meta?.cpu_current_usage || 0,
-    maxcpu: vm.vm_meta?.cpu_allocated || 1,
-    uptime: vm.vm_uptime || 0,
-    node: vm.proxmox_node as ProxmoxNode,
+    vmid: v.vmid,
+    name: v.name ?? `vm-${v.vmid}`,
+    status: v.status as VmListItem['status'],
+    isTemplate: !!v.template,
+    tags: v.tags ?? '',
+    mem: 0, // current usage is not part of the v1 list payload
+    maxmem: v.maxmem ?? 0,
+    cpu: 0,
+    maxcpu: v.maxcpu ?? 1,
+    uptime: v.uptime ?? 0,
+    node: v.node as ProxmoxNode,
+    type: v.type,
   }
+}
+
+async function listHostVms(): Promise<V1Vm[]> {
+  const { id } = await getRegisteredHost()
+  const raw = await request<{ items?: V1Vm[] }>(
+    `/v1/proxmox/hosts/${id}/vms`,
+    { method: 'GET' },
+  )
+  return raw.items ?? []
+}
+
+/** POST a Proxmox status action through v1 (host resolved internally). */
+async function vmStatusAction(
+  vmId: number | string,
+  action: string,
+  vmtype: 'qemu' | 'lxc' = 'qemu',
+): Promise<ApiResponse> {
+  const { id } = await getRegisteredHost()
+  return request<ApiResponse>(
+    `/v1/proxmox/hosts/${id}/vms/${vmId}/status/${action}?vmtype=${vmtype}`,
+    { method: 'POST' },
+  )
 }
 
 export const vm = {
   /**
-   * List all VMs on a node
+   * List qemu VMs on the registered host (v1, direct API). The `node` arg is
+   * retained for signature compatibility but ignored — v1 uses the host's node.
    */
-  async list(node: ProxmoxNode): Promise<VmListItem[]> {
-    const raw = await query('/v0/admin/proxmox/vms/list', { proxmox_node: node })
-    return unwrapResult<BackendVm>(raw).map(normalizeVm)
+  async list(_node: ProxmoxNode): Promise<VmListItem[]> {
+    return (await listHostVms()).filter((v) => v.type === 'qemu').map(normalizeVmV1)
   },
 
   /**
-   * List VMs with resource usage
+   * Alias of list() — v1 returns the same payload (no separate usage call).
    */
   async listUsage(node: ProxmoxNode): Promise<VmListItem[]> {
-    const raw = await query('/v0/admin/proxmox/vms/list_usage', { proxmox_node: node })
-    return unwrapResult<BackendVm>(raw).map(normalizeVm)
+    return this.list(node)
   },
 
   /**
@@ -285,38 +317,38 @@ export const vm = {
   },
 
   /**
-   * Start a VM
+   * Start a VM (v1).
    */
   async start(request: VmActionRequest): Promise<ApiResponse> {
-    return command('/v0/admin/proxmox/vms/vm_id/start', request as unknown as Record<string, unknown>)
+    return vmStatusAction(request.vm_id, 'start')
   },
 
   /**
-   * Stop a VM (graceful)
+   * Stop a VM gracefully — ACPI shutdown (v1).
    */
   async stop(request: VmActionRequest): Promise<ApiResponse> {
-    return command('/v0/admin/proxmox/vms/vm_id/stop', request as unknown as Record<string, unknown>)
+    return vmStatusAction(request.vm_id, 'shutdown')
   },
 
   /**
-   * Force stop a VM
+   * Force stop a VM — hard power-off (v1).
    */
   async stopForce(request: VmActionRequest): Promise<ApiResponse> {
-    return command('/v0/admin/proxmox/vms/vm_id/stop-force', request as unknown as Record<string, unknown>)
+    return vmStatusAction(request.vm_id, 'stop')
   },
 
   /**
-   * Pause a VM
+   * Pause (suspend) a VM (v1).
    */
   async pause(request: VmActionRequest): Promise<ApiResponse> {
-    return command('/v0/admin/proxmox/vms/vm_id/pause', request as unknown as Record<string, unknown>)
+    return vmStatusAction(request.vm_id, 'suspend')
   },
 
   /**
-   * Resume a paused VM
+   * Resume a paused VM (v1).
    */
   async resume(request: VmActionRequest): Promise<ApiResponse> {
-    return command('/v0/admin/proxmox/vms/vm_id/resume', request as unknown as Record<string, unknown>)
+    return vmStatusAction(request.vm_id, 'resume')
   },
 
   /**
@@ -415,10 +447,10 @@ export const snapshot = {
 
 export const lxc = {
   /**
-   * List all LXC containers on a node
+   * List LXC containers on the registered host (v1). `node` ignored.
    */
-  async list(node: ProxmoxNode): Promise<unknown[]> {
-    return query('/v0/admin/proxmox/lxc/list', { proxmox_node: node })
+  async list(_node: ProxmoxNode): Promise<unknown[]> {
+    return (await listHostVms()).filter((v) => v.type === 'lxc').map(normalizeVmV1)
   },
 
   /**
@@ -429,17 +461,17 @@ export const lxc = {
   },
 
   /**
-   * Start an LXC container
+   * Start an LXC container (v1).
    */
-  async start(node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/lxc/start', { proxmox_node: node, vm_id: vmId })
+  async start(_node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
+    return vmStatusAction(vmId, 'start', 'lxc')
   },
 
   /**
-   * Stop an LXC container
+   * Stop an LXC container — graceful shutdown (v1).
    */
-  async stop(node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/lxc/stop', { proxmox_node: node, vm_id: vmId })
+  async stop(_node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
+    return vmStatusAction(vmId, 'shutdown', 'lxc')
   },
 
   /**
