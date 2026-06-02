@@ -17,6 +17,10 @@ export default defineConfig(({ mode }) => ({
     proxy: process.env.VITE_API_URL
       ? {
           '/v0': { target: process.env.VITE_API_URL, changeOrigin: true },
+          // /v1 is the build-from-scratch API surface (deployments, projects,
+          // proxmox hosts, preflight, SSE events). Without this the browser's
+          // v1 calls hit the dev server (404) instead of the backend.
+          '/v1': { target: process.env.VITE_API_URL, changeOrigin: true },
           '/ws': { target: process.env.VITE_API_URL.replace(/^http/, 'ws'), ws: true },
         }
       : undefined,
