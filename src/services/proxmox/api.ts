@@ -53,6 +53,9 @@ const ANSIBLE_DEFAULTS = { hosts: 'px-testing', inventory: 'hosts.yml' }
 export function setBaseUrl(url: string): void {
   // Remove trailing slash if present
   baseUrl = url.replace(/\/$/, '')
+  // The registered-host lookup is per-backend; a base-URL change may point at a
+  // different backend, so the memoized host id must not leak across.
+  _hostCache = null
 }
 
 /**
