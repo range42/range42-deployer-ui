@@ -10,6 +10,7 @@
 
 import { onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { getProvider } from '@/services/git'
+import { useInventoryStore } from '@/stores/inventoryStore'
 import {
   createProjectRepoAdapter,
   type ProjectRepoAdapter,
@@ -45,14 +46,14 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
   const adapter = shallowRef<ProjectRepoAdapter | null>(null)
   const orphanedDraftId = ref<string | null>(null)
 
+  // 'generic' sources speak the Gitea API; github/gitlab/gitea map directly now
+  // that the GitHub v1 provider is implemented.
   const providerKind = opts.source.provider === 'generic' ? 'gitea' : opts.source.provider
-  const provider = getProvider(
-    providerKind === 'github' ? 'gitea' : providerKind,
-    {
-      baseUrl: opts.source.base_url,
-      token: null, // PAT wiring arrives via inventoryStore in C2.1
-    },
-  )
+  const inventory = useInventoryStore()
+  const provider = getProvider(providerKind, {
+    baseUrl: opts.source.base_url,
+    token: inventory.getToken(opts.source.id),
+  })
   adapter.value = createProjectRepoAdapter({
     provider,
     source: opts.source,
@@ -77,7 +78,7 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
     }
   }
 
-  async function save(message: string): Promise<{ pr_url?: string }> {
+  async function save(message: string): Promise<{ pr_url?: string; commit_sha?: string }> {
     status.value = 'saving'
     try {
       const res = await adapter.value!.save(opts.projectId, message)
