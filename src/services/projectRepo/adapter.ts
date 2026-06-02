@@ -178,12 +178,15 @@ class RepoAdapter implements ProjectRepoAdapter {
     }
   }
 
-  async save(projectId: string, message: string): Promise<{ pr_url?: string }> {
+  async save(projectId: string, message: string): Promise<{ pr_url?: string; commit_sha?: string }> {
     // Try fast-forward: rewrite the main-branch files from the latest draft
     // files. We resolve each file by GETting the draft and PUTting onto main.
     try {
       await this.copyDraftIntoMain(projectId, message)
-      return {}
+      // Surface the resulting main-branch HEAD so callers can pin a deploy to
+      // the exact commit the backend will clone+checkout.
+      const commit_sha = await this.headCommitSha(this.mainBranch)
+      return commit_sha ? { commit_sha } : {}
     } catch (err) {
       // If the fast-forward PUT fails, fall back to opening a PR.
       if (isConflictError(err)) {
@@ -306,6 +309,22 @@ class RepoAdapter implements ProjectRepoAdapter {
       message: `lock heartbeat: ${info.editor_id}`,
       branch: this.mainBranch,
     })
+  }
+
+  private async headCommitSha(ref: string): Promise<string | undefined> {
+    try {
+      const commits = await this.provider.listCommits({
+        owner: this.owner,
+        repo: this.repo,
+        ref,
+        perPage: 1,
+      })
+      return commits[0]?.sha
+    } catch {
+      // A missing HEAD SHA is non-fatal: the save itself succeeded, the caller
+      // simply won't get a pinned commit to pre-fill the deploy form.
+      return undefined
+    }
   }
 
   private async copyDraftIntoMain(projectId: string, message: string): Promise<void> {
