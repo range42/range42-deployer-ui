@@ -18,6 +18,7 @@ export { GiteaProvider, getGiteaProvider } from './gitea'
 
 import type { GitProvider, GitProviderName, GitProviderV1, GitProviderV1Kind } from './types'
 import { getGitHubProvider } from './github'
+import { GitHubV1Provider } from './github.v1'
 import { GitLabProvider } from './gitlab'
 import { GiteaProvider } from './gitea'
 
@@ -56,9 +57,9 @@ export function getRegisteredProviders(): GitProviderName[] {
 // =============================================================================
 //
 // Returns an instance of the simpler v1 interface (used by
-// ProjectRepoAdapter and new catalog/source flows). GitHub support in v1 is
-// out of scope until the GitHub adapter is ported; callers that need GitHub
-// continue to go through `getGitProvider('github')`.
+// ProjectRepoAdapter and new catalog/source flows). GitHub, GitLab, and Gitea
+// are supported; the legacy `getGitProvider('github')` remains for the older
+// GitProvider interface consumed by inventoryStore.
 
 export interface GetProviderOpts {
   baseUrl?: string
@@ -73,9 +74,10 @@ export function getProvider(kind: GitProviderV1Kind, opts: GetProviderOpts = {})
     case 'gitea':
       return new GiteaProvider(opts)
     case 'github':
+      return new GitHubV1Provider(opts)
     case 'generic':
       throw new Error(
-        `getProvider('${kind}'): v1 adapter not yet implemented; use legacy getGitProvider for GitHub`,
+        `getProvider('${kind}'): v1 adapter not yet implemented for 'generic'`,
       )
     default: {
       const _exhaustive: never = kind
