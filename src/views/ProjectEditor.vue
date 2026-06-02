@@ -51,6 +51,7 @@ import { useWebSocketStatus } from '../composables/useWebSocketStatus'
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useToast } from '../composables/useToast'
+import { useProjectGitSync, buildPushArgs } from '../composables/useProjectGitSync'
 import { useProjectStore } from '../stores/projectStore'
 
 
@@ -95,6 +96,7 @@ const measureTick = ref(0)
 onNodesInitialized(() => { measureTick.value++ })
 
 const { showToast } = useToast()
+const gitSync = useProjectGitSync()
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
@@ -503,7 +505,7 @@ onUnmounted(() => {
   if (autosaveTimer !== null) clearTimeout(autosaveTimer)
 })
 
-const manualSave = () => {
+const manualSave = async () => {
   if (!currentProject.value) return
   const nodesToSave = liveNodes.value
   const edgesToSave = liveEdges.value
@@ -511,6 +513,30 @@ const manualSave = () => {
     nodes: nodesToSave,
     edges: edgesToSave
   })
+
+  // When the project is bound to a git repo, also serialize the canvas into
+  // topology.json, push it, and pin the resulting commit so DeployForm can
+  // deploy the exact saved snapshot. Local-only projects stop after the store
+  // write above.
+  const pushArgs = buildPushArgs(
+    currentProject.value,
+    nodesToSave,
+    edgesToSave,
+    `Save ${currentProject.value.name}`,
+  )
+  if (!pushArgs) return
+  try {
+    const res = await gitSync.pushToGit(pushArgs)
+    if (res.commit_sha) {
+      currentProject.value.head_sha = res.commit_sha
+      projectStore.updateProject(currentProject.value.id, { head_sha: res.commit_sha })
+      showToast(`Saved to git · pinned ${res.commit_sha.slice(0, 7)}`, 'success')
+    } else if (res.pr_url) {
+      showToast('Saved as a pull request (awaiting merge before deploy)', 'info', 6000)
+    }
+  } catch (err) {
+    showToast(`Git save failed: ${err?.message || err}`, 'error', 6000)
+  }
 }
 
 let layoutAnimationId = null
