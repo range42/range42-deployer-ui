@@ -91,4 +91,14 @@ describe('proxmox api — v1 migration', () => {
     install((url) => (url.endsWith('/v1/proxmox/hosts') ? jsonResp({ items: [] }) : jsonResp({})))
     await expect(vm.list('x')).rejects.toThrow(/no proxmox host/i)
   })
+
+  it('setBaseUrl clears the host cache so a backend switch re-resolves', async () => {
+    const calls = install(defaultHandler)
+    await vm.list('x')
+    const before = calls.filter(([, u]) => u.endsWith('/v1/proxmox/hosts')).length
+    setBaseUrl('http://api2')
+    await vm.list('x')
+    const after = calls.filter(([, u]) => u.endsWith('/v1/proxmox/hosts')).length
+    expect(after).toBe(before + 1)
+  })
 })
