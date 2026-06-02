@@ -6,12 +6,14 @@ import { _resetProjectDbForTests, openProjectDb } from '../services/projectRepo/
 function makeMockProvider() {
   const calls = [];
   const files = new Map(); // key = `${branch}:${path}` -> { content, sha }
+  const heads = new Map(); // branch -> latest commit sha (simulated)
   let shaCounter = 0;
   const nextSha = () => `sha-${++shaCounter}`;
 
   return {
     calls,
     files,
+    heads,
     impl: {
       id: 'gitlab',
       async listRepos() { return []; },
@@ -25,6 +27,8 @@ function makeMockProvider() {
         calls.push({ op: 'putFile', owner, repo, path, sha, message, branch });
         const newSha = nextSha();
         files.set(`${branch}:${path}`, { content, sha: newSha });
+        // Every write advances the branch's HEAD commit.
+        heads.set(branch, `commit-${newSha}`);
         return { sha: newSha };
       },
       async createBranch({ owner, repo, from, name }) {
@@ -35,6 +39,11 @@ function makeMockProvider() {
         return { url: 'https://gitlab.example.com/pr/1', number: 1 };
       },
       async listTree() { return []; },
+      async listCommits({ ref }) {
+        calls.push({ op: 'listCommits', ref });
+        const sha = heads.get(ref) ?? 'commit-initial';
+        return [{ sha, message: 'm', author: 'a', date: 'd' }];
+      },
       async health() { return { ok: true, rtt_ms: 1 }; },
     },
   };
@@ -126,6 +135,23 @@ describe('ProjectRepoAdapter', () => {
     expect(overlayPut.sha).toBe('sha-main-0');
   });
 
+  it('save: returns the main HEAD commit_sha after a fast-forward (deployable SHA)', async () => {
+    const mock = makeMockProvider();
+    const adapter = makeAdapter(mock);
+    await adapter.autosave('proj-1', {
+      overlay: 'o',
+      canvas_layout: 'l',
+      meta: {},
+      topology: '{"schema_version":"1.0"}',
+    });
+
+    const res = await adapter.save('proj-1', 'manual save');
+    expect(res.pr_url).toBeUndefined();
+    expect(res.commit_sha).toBeTruthy();
+    // The returned SHA is the main branch HEAD the backend will check out.
+    expect(res.commit_sha).toBe(mock.heads.get('main'));
+  });
+
   it('save: falls back to createPullRequest on conflict error', async () => {
     const mock = makeMockProvider();
     // Wrap putFile so writes to main throw a conflict.
@@ -144,6 +170,9 @@ describe('ProjectRepoAdapter', () => {
     });
     const res = await adapter.save('proj-1', 'save');
     expect(res.pr_url).toBe('https://gitlab.example.com/pr/1');
+    // Changes are only on the draft branch (awaiting PR merge), so there is no
+    // deployable main-branch commit SHA yet.
+    expect(res.commit_sha).toBeUndefined();
     const prCalls = mock.calls.filter((c) => c.op === 'createPullRequest');
     expect(prCalls.length).toBe(1);
     expect(prCalls[0].from).toBe('draft-bi-123');
