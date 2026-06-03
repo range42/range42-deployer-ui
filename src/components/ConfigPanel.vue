@@ -271,6 +271,17 @@ function removeTag(tagToRemove) {
 // VM actions for deployed nodes
 const actionLoading = ref(null)
 
+// Map a successful lifecycle action to the node's displayed status so the
+// canvas badge reflects the new state immediately, without re-importing (#80).
+const ACTION_RESULT_STATUS = {
+  start: 'running',
+  resume: 'running',
+  restart: 'running',
+  stop: 'stopped',
+  'force-stop': 'stopped',
+  pause: 'paused',
+}
+
 async function handleVmAction(action) {
   const vmId = props.node?.data?.vmId || config.value.vmid
   if (!vmId) return
@@ -303,6 +314,12 @@ async function handleVmAction(action) {
         emit('delete', props.node.id)
         return
       }
+    }
+    // Optimistically update the node badge to the post-action status so it
+    // reflects the new state immediately (badge reads node.data.status).
+    const nextStatus = ACTION_RESULT_STATUS[action]
+    if (nextStatus && props.node?.data) {
+      props.node.data.status = nextStatus // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
     }
     // Refresh status
     proxmoxCache.invalidate()
