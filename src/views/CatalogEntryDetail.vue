@@ -97,6 +97,14 @@ const shortSha = computed(() => {
   return sha ? String(sha).slice(0, 7) : ''
 })
 
+// Customize (fork-and-edit) requires write access to the backing source.
+// Only gate when write access is *known to be false*; unknown stays enabled so
+// we never block on a source that simply hasn't been probed yet.
+const customizeReadonly = computed(() => {
+  const src = inv.getSource(entry.value?.source_id)
+  return src?.writable === false
+})
+
 // ---------- Fork modal ----------
 const forkOpen = ref(false)
 const forkTargetRepo = ref('')
@@ -184,7 +192,7 @@ function useEntry() {
 }
 
 function customizeEntry() {
-  if (!entry.value) return
+  if (!entry.value || customizeReadonly.value) return
   const p = projects.createProject(`${entry.value.name} (custom)`)
   projects.updateProject(p.id, {
     catalogRef: {
@@ -274,7 +282,13 @@ onMounted(async () => {
             <button type="button" class="btn btn-primary btn-sm" @click="useEntry">
               {{ t('catalog.verbs.use') }}
             </button>
-            <button type="button" class="btn btn-ghost btn-sm" @click="customizeEntry">
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              :disabled="customizeReadonly"
+              :title="customizeReadonly ? t('catalog.verbs.customize_readonly_hint') : undefined"
+              @click="customizeEntry"
+            >
               {{ t('catalog.verbs.customize') }}
             </button>
             <button type="button" class="btn btn-ghost btn-sm" @click="openFork">

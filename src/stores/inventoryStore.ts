@@ -71,6 +71,9 @@ export interface GitSourceHealth {
   rtt_ms?: number
   checked_at?: string
   error?: string
+  // Whether the authenticated identity can push to this source's repo(s).
+  // Undefined until a successful write-access probe (canWrite) has run.
+  writable?: boolean
 }
 
 export interface GitSource {
@@ -81,6 +84,9 @@ export interface GitSource {
   repos: GitSourceRepo[]
   name?: string
   health?: GitSourceHealth
+  // Cached write-access flag for the source's repo(s); mirrors health.writable
+  // for convenient lookup from catalog views via getSource().
+  writable?: boolean
 }
 
 // =============================================================================
@@ -212,6 +218,11 @@ export const useInventoryStore = defineStore('inventory', () => {
     const s = sources.value.find((s) => s.id === id)
     if (s) {
       s.health = { ...health }
+      // Mirror write-access onto the source so catalog views can gate actions
+      // via getSource(id).writable without reaching into health.
+      if (typeof health.writable === 'boolean') {
+        s.writable = health.writable
+      }
       saveSourcesToStorage()
     }
   }

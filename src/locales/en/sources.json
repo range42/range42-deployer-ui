@@ -22,5 +22,7 @@
   "generic": "Generic",
   "empty_title": "No sources yet",
   "empty_desc": "Add a Git source to unlock the catalog and project publishing.",
-  "remove": "Remove"
+  "remove": "Remove",
+  "access_writable": "Writable",
+  "access_readonly": "Read-only"
 }

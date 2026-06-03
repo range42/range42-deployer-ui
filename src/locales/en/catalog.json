@@ -17,7 +17,8 @@
   "verbs": {
     "use": "Use",
     "customize": "Customize",
-    "fork": "Fork & publish"
+    "fork": "Fork & publish",
+    "customize_readonly_hint": "You have read-only access to this source. Fork & publish to a writable repository to customize it."
   },
   "empty": {
     "no_sources_title": "No Git sources configured",

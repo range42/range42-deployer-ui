@@ -70,6 +70,7 @@ async function runHealth(id) {
         status: data.status || 'ok',
         rtt_ms: data.rtt_ms,
         checked_at: new Date().toISOString(),
+        ...(typeof data.writable === 'boolean' ? { writable: data.writable } : {}),
       })
       return
     }
@@ -82,10 +83,22 @@ async function runHealth(id) {
       token: inv.getToken(id),
     })
     const h = await prov.health()
+    // Probe write access against the source's primary repo, if one is bound.
+    // Non-fatal: a failed probe leaves writability unknown (no badge).
+    let writable
+    const primary = s.repos?.[0]
+    if (h.ok && primary?.owner && primary?.repo && typeof prov.canWrite === 'function') {
+      try {
+        writable = await prov.canWrite(primary.owner, primary.repo)
+      } catch {
+        /* leave writability unknown */
+      }
+    }
     inv.updateSourceHealth(id, {
       status: h.ok ? 'ok' : 'down',
       rtt_ms: h.rtt_ms,
       checked_at: new Date().toISOString(),
+      ...(typeof writable === 'boolean' ? { writable } : {}),
     })
   } catch (err) {
     inv.updateSourceHealth(id, {

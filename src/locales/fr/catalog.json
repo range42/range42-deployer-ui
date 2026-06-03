@@ -17,7 +17,8 @@
   "verbs": {
     "use": "Utiliser",
     "customize": "Personnaliser",
-    "fork": "Forker et publier"
+    "fork": "Forker et publier",
+    "customize_readonly_hint": "Vous disposez d'un accès en lecture seule à cette source. Forkez et publiez vers un dépôt accessible en écriture pour la personnaliser."
   },
   "empty": {
     "no_sources_title": "Aucune source Git configurée",
