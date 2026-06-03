@@ -13,6 +13,8 @@ function t(key) {
       test_connection: 'Test',
       rotate_token: 'Rotate token',
       remove: 'Remove',
+      access_writable: 'Writable',
+      access_readonly: 'Read-only',
     }
     return fallback[key] || key
   }
@@ -67,6 +69,15 @@ const checkedLabel = computed(() => relativeTime(props.health?.checked_at))
 const displayName = computed(() => {
   return props.source?.name || props.source?.base_url || props.source?.id || 'source'
 })
+
+// Real write-access flag. Prefer the source-level `writable` field; fall back to
+// the health probe's `writable`. When neither is a boolean, access is unknown
+// (e.g. before the first successful health check) and no badge is shown.
+const writable = computed(() => {
+  if (typeof props.source?.writable === 'boolean') return props.source.writable
+  if (typeof props.health?.writable === 'boolean') return props.health.writable
+  return null
+})
 </script>
 
 <template>
@@ -87,6 +98,14 @@ const displayName = computed(() => {
         />
         <span class="font-medium truncate">{{ displayName }}</span>
         <span class="badge badge-ghost badge-sm uppercase">{{ source?.provider }}</span>
+        <span
+          v-if="writable !== null"
+          class="badge badge-sm"
+          :class="writable ? 'badge-success' : 'badge-ghost'"
+          data-testid="source-access-badge"
+        >
+          {{ writable ? t('access_writable') : t('access_readonly') }}
+        </span>
       </div>
       <div class="text-xs text-base-content/60 mt-0.5 flex items-center gap-3">
         <span>rtt: {{ rttLabel }}</span>

@@ -22,5 +22,7 @@
   "generic": "汎用",
   "empty_title": "ソースがありません",
   "empty_desc": "カタログとプロジェクト公開を有効にするには、Gitソースを追加してください。",
-  "remove": "削除"
+  "remove": "削除",
+  "access_writable": "書き込み可能",
+  "access_readonly": "読み取り専用"
 }

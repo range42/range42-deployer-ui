@@ -22,5 +22,7 @@
   "generic": "Générique",
   "empty_title": "Aucune source",
   "empty_desc": "Ajoutez une source Git pour accéder au catalogue et publier des projets.",
-  "remove": "Supprimer"
+  "remove": "Supprimer",
+  "access_writable": "Modifiable",
+  "access_readonly": "Lecture seule"
 }

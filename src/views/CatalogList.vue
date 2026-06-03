@@ -39,6 +39,12 @@ const forkError = ref('')
 const KINDS = ['lab', 'gamenet', 'component', 'container', 'ansible_role']
 const DIFFICULTIES = ['easy', 'medium', 'hard']
 
+// A source is read-only when its write-access probe came back explicitly false.
+// Used to visibly flag (and gate) the customize/fork-and-edit action per tile.
+function isSourceReadonly(sourceId) {
+  return inv.getSource(sourceId)?.writable === false
+}
+
 const parsedTags = computed(() =>
   tagInput.value
     ? tagInput.value.split(',').map((s) => s.trim()).filter(Boolean)
@@ -112,6 +118,11 @@ function useEntry(entry) {
 }
 
 function customizeEntry(entry) {
+  // Gate fork-and-edit on real write access. A source whose `writable` flag is
+  // explicitly false is read-only, so customizing (which publishes back) is not
+  // possible — fork & publish to a writable repo instead.
+  const source = inv.getSource(entry?.source_id)
+  if (source?.writable === false) return
   const p = projects.createProject(`${entry.name} (custom)`)
   projects.updateProject(p.id, {
     catalogRef: {
@@ -330,14 +341,26 @@ async function submitFork() {
         class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
         data-testid="catalog-grid"
       >
-        <CatalogTile
+        <div
           v-for="entry in entriesView"
           :key="`${entry.source_id}:${entry.path}`"
-          :entry="entry"
-          @use="useEntry"
-          @customize="customizeEntry"
-          @fork="openFork"
-        />
+          class="relative"
+        >
+          <span
+            v-if="isSourceReadonly(entry.source_id)"
+            class="badge badge-ghost badge-sm absolute top-3 right-3 z-10"
+            data-testid="tile-readonly-badge"
+            :title="t('catalog.verbs.customize_readonly_hint')"
+          >
+            {{ t('sources.access_readonly') }}
+          </span>
+          <CatalogTile
+            :entry="entry"
+            @use="useEntry"
+            @customize="customizeEntry"
+            @fork="openFork"
+          />
+        </div>
       </div>
       <div v-else-if="!loading">
         <EmptyState
