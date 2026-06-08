@@ -28,4 +28,11 @@ describe('resolveNodeStatus', () => {
     expect(resolveNodeStatus('error').pulse).toBe(false)
     expect(resolveNodeStatus('stopped', 'delete').pulse).toBe(true)
   })
+  it('deploying pulses (in-progress), other steady states do not', () => {
+    expect(resolveNodeStatus('deploying').pulse).toBe(true)
+    expect(resolveNodeStatus('blue').pulse).toBe(true)
+    expect(resolveNodeStatus('running').pulse).toBe(false)
+    expect(resolveNodeStatus('paused').pulse).toBe(false)
+    expect(resolveNodeStatus('stopped').pulse).toBe(false)
+  })
 })

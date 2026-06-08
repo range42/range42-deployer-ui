@@ -16,6 +16,8 @@ const STATUS_TO_COLOR: Record<string, DotColor> = {
   deploying: 'blue', blue: 'blue',
 }
 
+const PULSING_STATUS = new Set(['deploying', 'blue'])
+
 // pendingAction → transitional view. `red`/deleting pulses so it is distinct
 // from the steady `error` red.
 const PENDING: Record<string, { dotColor: DotColor; label: string }> = {
@@ -37,7 +39,7 @@ export function resolveNodeStatus(
     return { dotColor: p.dotColor, label: p.label, pulse: true }
   }
   const dotColor = STATUS_TO_COLOR[status ?? ''] ?? 'gray'
-  return { dotColor, label: status ?? 'unknown', pulse: false }
+  return { dotColor, label: status ?? 'unknown', pulse: PULSING_STATUS.has(status ?? '') }
 }
 
 /** Reactive wrapper for use inside `<script setup>`. */
