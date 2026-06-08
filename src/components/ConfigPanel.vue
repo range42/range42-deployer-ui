@@ -17,6 +17,7 @@ import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { useToast } from '@/composables/useToast'
 import NodeAttachmentsSection from '@/components/project/attachments/NodeAttachmentsSection.vue'
+import { resolveNodeStatus } from '@/composables/useNodeStatus'
 
 const { t } = useI18n({ useScope: 'global' })
 const { confirm } = useConfirmDialog()
@@ -37,6 +38,10 @@ const props = defineProps({
   },
 })
 const emit = defineEmits(['close', 'update', 'delete', 'update:attachments'])
+
+const statusView = computed(() =>
+  resolveNodeStatus(props.node?.data?.status, props.node?.data?.pendingAction),
+)
 
 
 const errors = ref([])
@@ -571,13 +576,15 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
             <div
               class="w-2.5 h-2.5 rounded-full"
               :class="{
-                'bg-success': node.data.status === 'running',
-                'bg-error': node.data.status === 'error',
-                'bg-warning': node.data.status === 'paused',
-                'bg-base-content/30': node.data.status === 'stopped',
+                'bg-success': statusView.dotColor === 'green',
+                'bg-error': statusView.dotColor === 'red',
+                'bg-warning': statusView.dotColor === 'orange',
+                'bg-info': statusView.dotColor === 'blue',
+                'bg-base-content/30': statusView.dotColor === 'gray',
+                'animate-pulse': statusView.pulse,
               }"
             ></div>
-            <span class="text-sm font-medium capitalize">{{ node.data.status }}</span>
+            <span class="text-sm font-medium capitalize">{{ statusView.label }}</span>
             <span v-if="node.data.vmId" class="text-xs text-base-content/50 ml-auto">VMID {{ node.data.vmId }}</span>
           </div>
 

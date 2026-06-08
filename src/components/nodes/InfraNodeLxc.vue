@@ -3,13 +3,14 @@ import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import { getTagColor } from '@/constants/tags'
+import { resolveNodeStatus } from '@/composables/useNodeStatus'
 
 const props = defineProps(['data', 'selected'])
 
-const statusClass = computed(() => {
-  const status = props.data?.status || 'gray'
-  return `status-${status}`
-})
+const statusView = computed(() =>
+  resolveNodeStatus(props.data?.status, props.data?.pendingAction),
+)
+const statusClass = computed(() => `status-${statusView.value.dotColor}`)
 const displayTags = computed(() => (props.data?.tags || []).slice(0, 3))
 const overflowCount = computed(() => Math.max(0, (props.data?.tags || []).length - 3))
 
@@ -40,7 +41,10 @@ function barColor(percent) {
           <div class="text-[10px] text-base-content/50 uppercase tracking-wide">LXC</div>
         </div>
       </div>
-      <div :class="`status-dot ${data?.status || 'gray'}`"></div>
+      <div class="flex items-center gap-1.5">
+        <span v-if="data?.pendingAction" class="text-[10px] opacity-70 capitalize">{{ statusView.label }}</span>
+        <div :class="['status-dot', statusView.dotColor, { pulse: statusView.pulse }]"></div>
+      </div>
     </div>
 
     <!-- Tags -->

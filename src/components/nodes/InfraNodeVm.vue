@@ -4,6 +4,7 @@ import { Handle, Position } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import { getTagColor } from '@/constants/tags'
 import { usePendingChanges } from '@/composables/usePendingChanges'
+import { resolveNodeStatus } from '@/composables/useNodeStatus'
 
 const props = defineProps(['data', 'selected'])
 
@@ -13,27 +14,10 @@ const { hasPendingChanges, pendingCount } = usePendingChanges(nodeDataRef)
 const emit = defineEmits(['open-apply-dialog'])
 
 // Map status values to color scheme
-const statusColor = computed(() => {
-  switch (props.data?.status) {
-    case 'running':
-    case 'green':
-      return 'green'
-    case 'stopped':
-    case 'gray':
-      return 'gray'
-    case 'paused':
-    case 'orange':
-      return 'orange'
-    case 'error':
-    case 'red':
-      return 'red'
-    case 'deploying':
-    case 'blue':
-      return 'blue'
-    default:
-      return 'gray'
-  }
-})
+const statusView = computed(() =>
+  resolveNodeStatus(props.data?.status, props.data?.pendingAction),
+)
+const statusColor = computed(() => statusView.value.dotColor)
 
 const isDeployed = computed(() => !!props.data?.deployed)
 const ramMB = computed(() => {
@@ -84,6 +68,7 @@ function barColor(percent) {
       </div>
       <!-- Status indicator -->
       <div class="flex items-center gap-1.5">
+        <span v-if="data?.pendingAction" class="text-[10px] opacity-70 capitalize">{{ statusView.label }}</span>
         <span v-if="isDeployed" class="text-[9px] font-medium uppercase tracking-wider" :class="{
           'text-success': statusColor === 'green',
           'text-error': statusColor === 'red',
@@ -96,9 +81,10 @@ function barColor(percent) {
           :class="{
             'bg-success shadow-[0_0_6px_theme(colors.success)]': statusColor === 'green',
             'bg-error shadow-[0_0_6px_theme(colors.error)]': statusColor === 'red',
-            'bg-warning shadow-[0_0_6px_theme(colors.warning)] animate-pulse': statusColor === 'orange',
+            'bg-warning shadow-[0_0_6px_theme(colors.warning)]': statusColor === 'orange',
             'bg-base-content/30': statusColor === 'gray',
-            'bg-info shadow-[0_0_6px_theme(colors.info)] animate-pulse': statusColor === 'blue',
+            'bg-info shadow-[0_0_6px_theme(colors.info)]': statusColor === 'blue',
+            'animate-pulse': statusView.pulse,
           }"
         ></div>
       </div>

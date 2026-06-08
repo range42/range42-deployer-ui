@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import { resolveNodeStatus } from '@/composables/useNodeStatus'
 
 const props = defineProps(['id', 'data', 'selected'])
 
@@ -34,21 +35,10 @@ const isValidHost = computed(() => {
   return VALID_HOST_TYPES.includes(hostNode.value.type)
 })
 
-const statusColor = computed(() => {
-  switch (props.data?.status) {
-    case 'running':
-    case 'green': return 'green'
-    case 'stopped':
-    case 'gray': return 'gray'
-    case 'paused':
-    case 'orange': return 'orange'
-    case 'error':
-    case 'red': return 'red'
-    case 'deploying':
-    case 'blue': return 'blue'
-    default: return 'gray'
-  }
-})
+const statusView = computed(() =>
+  resolveNodeStatus(props.data?.status, props.data?.pendingAction),
+)
+const statusColor = computed(() => statusView.value.dotColor)
 </script>
 
 <template>
@@ -83,6 +73,7 @@ const statusColor = computed(() => {
             ? `host_ref '${hostRef}' is not a VM or LXC`
             : 'Docker containers must tether to a VM or LXC host'"
         />
+        <span v-if="data?.pendingAction" class="text-[10px] opacity-70 capitalize">{{ statusView.label }}</span>
         <span
           class="text-[9px] font-medium uppercase tracking-wider"
           :class="{
