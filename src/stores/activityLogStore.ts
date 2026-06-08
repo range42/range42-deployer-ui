@@ -24,13 +24,13 @@ export interface ActivityEntry {
 }
 
 const RING_CAP = 500
-let _seq = 0
 
 export const useActivityLogStore = defineStore('activityLog', () => {
   const entries = ref<ActivityEntry[]>([])
+  let seq = 0
 
   function push(entry: Omit<ActivityEntry, 'id' | 'ts'>): string {
-    const id = `a${++_seq}`
+    const id = `a${++seq}`
     entries.value.push({ ...entry, id, ts: Date.now() })
     if (entries.value.length > RING_CAP) {
       entries.value.splice(0, entries.value.length - RING_CAP)

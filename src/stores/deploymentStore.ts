@@ -373,7 +373,13 @@ export const useDeploymentStore = defineStore('deployment', () => {
       }
       if (parsed) {
         applySseEvent(record, parsed)
-        _eventObservers.forEach((cb) => cb(id, parsed))
+        _eventObservers.forEach((cb) => {
+          try {
+            cb(id, parsed)
+          } catch (err) {
+            console.warn('[deploymentStore] activity observer threw:', err)
+          }
+        })
       }
     }
     es.onerror = () => scheduleReconnect(id)
