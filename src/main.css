@@ -373,10 +373,6 @@ html {
 .status-dot.red { background: #ef4444; }
 .status-dot.blue { background: #3b82f6; }
 
-/* transitional action dots (pendingAction) */
-.status-dot.amber { background: #f59e0b; }
-.status-dot.deleting { background: #ef4444; }
-
 .status-dot.pulse {
   animation: pulse 2s infinite;
 }

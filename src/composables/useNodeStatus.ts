@@ -1,5 +1,3 @@
-import { computed, type Ref, unref } from 'vue'
-
 export type DotColor = 'green' | 'gray' | 'orange' | 'red' | 'blue'
 
 export interface NodeStatusView {
@@ -42,19 +40,3 @@ export function resolveNodeStatus(
   return { dotColor, label: status ?? 'unknown', pulse: PULSING_STATUS.has(status ?? '') }
 }
 
-/** Reactive wrapper for use inside `<script setup>`. */
-export function useNodeStatus(
-  status: Ref<string | undefined> | (() => string | undefined),
-  pendingAction?: Ref<string | undefined> | (() => string | undefined),
-) {
-  return computed(() =>
-    resolveNodeStatus(
-      typeof status === 'function' ? status() : unref(status),
-      pendingAction
-        ? typeof pendingAction === 'function'
-          ? pendingAction()
-          : unref(pendingAction)
-        : undefined,
-    ),
-  )
-}

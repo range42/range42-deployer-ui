@@ -69,7 +69,7 @@ function barColor(percent) {
       <!-- Status indicator -->
       <div class="flex items-center gap-1.5">
         <span v-if="data?.pendingAction" class="text-[10px] opacity-70 capitalize">{{ statusView.label }}</span>
-        <span v-if="isDeployed" class="text-[9px] font-medium uppercase tracking-wider" :class="{
+        <span v-if="isDeployed && !data?.pendingAction" class="text-[9px] font-medium uppercase tracking-wider" :class="{
           'text-success': statusColor === 'green',
           'text-error': statusColor === 'red',
           'text-warning': statusColor === 'orange',
