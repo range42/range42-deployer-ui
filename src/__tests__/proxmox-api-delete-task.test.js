@@ -44,10 +44,15 @@ describe('proxmox v1 delete + task status', () => {
 
   it('lxc.delete issues a v1 DELETE with vmtype=lxc', async () => {
     const calls = install(defaultHandler)
-    await lxc.delete(200, { vmtype: 'lxc' })
+    await lxc.delete(200)
     expect(calls.some(([m, u]) =>
       m === 'DELETE' && u.endsWith('/v1/proxmox/hosts/H1/vms/200?vmtype=lxc&purge=true'),
     )).toBe(true)
+  })
+
+  it('vm.delete rejects an object vmId with a clear error', async () => {
+    install(defaultHandler)
+    await expect(vm.delete({ proxmox_node: 'x', vm_id: '4001' })).rejects.toThrow()
   })
 
   it('getTaskStatus GETs the encoded UPID task-status endpoint', async () => {

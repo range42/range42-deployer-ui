@@ -282,6 +282,9 @@ async function vmDelete(
   vmId: number | string,
   options: { vmtype?: 'qemu' | 'lxc'; purge?: boolean } = {},
 ): Promise<VmActionResult> {
+  if (typeof vmId === 'object' && vmId !== null) {
+    throw new Error('vmDelete: vmId must be a number or string. Pass the numeric vmId directly.')
+  }
   const { vmtype = 'qemu', purge = true } = options
   const { id } = await getRegisteredHost()
   return request<VmActionResult>(
@@ -341,7 +344,7 @@ export const vm = {
    */
   async delete(
     vmId: number | string,
-    options: { vmtype?: 'qemu' | 'lxc'; purge?: boolean } = {},
+    options: { purge?: boolean } = {},
   ): Promise<VmActionResult> {
     return vmDelete(vmId, { vmtype: 'qemu', ...options })
   },
@@ -713,6 +716,7 @@ export const storage = {
 export const proxmoxApi = {
   setBaseUrl,
   getBaseUrl,
+  getTaskStatus,
   vm,
   snapshot,
   lxc,
