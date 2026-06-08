@@ -362,3 +362,41 @@ describe('deploymentStore.subscribe — EventSource lifecycle + reconnect', () =
     expect(store.deployments['dep-6'].last_event_seq).toBe(42);
   });
 });
+
+describe('deploymentStore.onEvent — observer hook', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('notifies observers with (deploymentId, event) after an SSE event is applied', () => {
+    const store = useDeploymentStore();
+    const { MockEventSource, instances } = createMockEventSourceClass();
+    const seen = [];
+    store.onEvent((deploymentId, event) => seen.push({ deploymentId, event }));
+
+    store.subscribe('dep-obs', { eventSourceCtor: MockEventSource, baseUrl: '' });
+    instances[0].open();
+    instances[0].emit({ event_type: 'log_line', event_seq: 1, payload: { stream: 'stdout', text: 'hi' } });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].deploymentId).toBe('dep-obs');
+    expect(seen[0].event.event_type).toBe('log_line');
+    expect(seen[0].event.payload.text).toBe('hi');
+    // applySseEvent still ran (observer notified IN ADDITION, not instead).
+    expect(store.deployments['dep-obs'].logs).toHaveLength(1);
+  });
+
+  it('returns an unsubscribe function that removes the observer', () => {
+    const store = useDeploymentStore();
+    const { MockEventSource, instances } = createMockEventSourceClass();
+    const seen = [];
+    const off = store.onEvent((id, event) => seen.push({ id, event }));
+    off();
+
+    store.subscribe('dep-off', { eventSourceCtor: MockEventSource, baseUrl: '' });
+    instances[0].open();
+    instances[0].emit({ event_type: 'heartbeat', event_seq: 1, payload: {} });
+
+    expect(seen).toHaveLength(0);
+  });
+});

@@ -304,6 +304,16 @@ export const useDeploymentStore = defineStore('deployment', () => {
   const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const subscribeOpts = new Map<string, SubscribeOptions>()
 
+  // Observer registry — notified IN ADDITION TO applySseEvent (after it) so
+  // external consumers (e.g. the activity-log bridge) can react to raw events
+  // without polluting the pure applySseEvent dispatcher.
+  const _eventObservers = new Set<(deploymentId: string, event: unknown) => void>()
+
+  function onEvent(cb: (deploymentId: string, event: unknown) => void): () => void {
+    _eventObservers.add(cb)
+    return () => _eventObservers.delete(cb)
+  }
+
   function getOrCreateRecord(id: string): DeploymentRecord {
     if (!deployments[id]) {
       deployments[id] = makeEmptyRecord(id)
@@ -361,7 +371,10 @@ export const useDeploymentStore = defineStore('deployment', () => {
       } catch {
         return
       }
-      if (parsed) applySseEvent(record, parsed)
+      if (parsed) {
+        applySseEvent(record, parsed)
+        _eventObservers.forEach((cb) => cb(id, parsed))
+      }
     }
     es.onerror = () => scheduleReconnect(id)
     return es
@@ -824,6 +837,7 @@ export const useDeploymentStore = defineStore('deployment', () => {
     subscribe,
     unsubscribe,
     getOrCreateRecord,
+    onEvent,
   }
 })
 
