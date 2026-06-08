@@ -56,6 +56,18 @@ export interface VmConfig {
 
 export type VmStatus = 'running' | 'stopped' | 'paused' | 'unknown'
 
+export interface VmActionResult {
+  status: string
+  upid?: string
+}
+
+export interface TaskStatus {
+  upid: string
+  status: 'running' | 'stopped'
+  exitstatus?: string
+  node: string
+}
+
 export interface VmListItem {
   vmid: number
   name: string

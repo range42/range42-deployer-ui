@@ -17,6 +17,8 @@ import type {
   VmActionRequest,
   VmCloneRequest,
   VmSnapshotRequest,
+  VmActionResult,
+  TaskStatus,
   // LXC types
   LxcCreateRequest,
   // Network types
@@ -275,6 +277,28 @@ async function vmStatusAction(
   )
 }
 
+/** DELETE a VM or LXC container through v1. */
+async function vmDelete(
+  vmId: number | string,
+  options: { vmtype?: 'qemu' | 'lxc'; purge?: boolean } = {},
+): Promise<VmActionResult> {
+  const { vmtype = 'qemu', purge = true } = options
+  const { id } = await getRegisteredHost()
+  return request<VmActionResult>(
+    `/v1/proxmox/hosts/${id}/vms/${vmId}?vmtype=${vmtype}&purge=${purge}`,
+    { method: 'DELETE' },
+  )
+}
+
+/** Poll task status for an async Proxmox operation (identified by UPID). */
+export async function getTaskStatus(upid: string): Promise<TaskStatus> {
+  const { id } = await getRegisteredHost()
+  return request<TaskStatus>(
+    `/v1/proxmox/hosts/${id}/tasks/${encodeURIComponent(upid)}/status`,
+    { method: 'GET' },
+  )
+}
+
 export const vm = {
   /**
    * List qemu VMs on the registered host (v1, direct API). The `node` arg is
@@ -313,10 +337,13 @@ export const vm = {
   },
 
   /**
-   * Delete a VM
+   * Delete a VM (v1).
    */
-  async delete(request: VmActionRequest): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/vms/vm_id/delete', { ...ANSIBLE_DEFAULTS, ...request })
+  async delete(
+    vmId: number | string,
+    options: { vmtype?: 'qemu' | 'lxc'; purge?: boolean } = {},
+  ): Promise<VmActionResult> {
+    return vmDelete(vmId, { vmtype: 'qemu', ...options })
   },
 
   /**
@@ -478,10 +505,13 @@ export const lxc = {
   },
 
   /**
-   * Delete an LXC container
+   * Delete an LXC container (v1).
    */
-  async delete(node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/lxc/delete', { proxmox_node: node, vm_id: vmId })
+  async delete(
+    vmId: number | string,
+    options: { purge?: boolean } = {},
+  ): Promise<VmActionResult> {
+    return vmDelete(vmId, { vmtype: 'lxc', ...options })
   },
 }
 
