@@ -4,7 +4,7 @@
  * activity. Docks beside the Problems panel below the canvas. Supports source
  * filtering (all / proxmox / deploy), clearing the session log, and closing.
  */
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '../../i18n'
 import { useActivityLogStore } from '@/stores/activityLogStore'
@@ -27,6 +27,16 @@ const levelClass = (level) => ({
   info: 'text-base-content/70',
 })[level] || 'text-base-content/70'
 
+const logBodyRef = ref(null)
+watch(
+  () => visible.value.length,
+  () => {
+    nextTick(() => {
+      if (logBodyRef.value) logBodyRef.value.scrollTop = logBodyRef.value.scrollHeight
+    })
+  },
+)
+
 onMounted(() => {
   ensureNamespaces(['project'])
 })
@@ -36,7 +46,7 @@ onMounted(() => {
   <section
     class="activity-terminal bg-base-100 border-t border-base-300"
     role="region"
-    aria-label="Activity"
+    :aria-label="t('project.activityTerminal.title')"
     data-testid="activity-terminal"
   >
     <header class="flex items-center justify-between px-4 py-2 border-b border-base-300">
@@ -75,7 +85,7 @@ onMounted(() => {
       </div>
     </header>
 
-    <div v-if="visible.length" class="max-h-56 overflow-y-auto font-mono text-xs p-2 space-y-0.5">
+    <div v-if="visible.length" ref="logBodyRef" class="max-h-56 overflow-y-auto font-mono text-xs p-2 space-y-0.5">
       <div v-for="e in visible" :key="e.id" :class="levelClass(e.level)">
         <span class="opacity-50">[{{ e.source }}]</span>
         <span class="font-semibold"> {{ e.target }}</span>

@@ -46,4 +46,9 @@ describe('ActivityTerminal', () => {
     await w.find('[data-testid="activity-clear"]').trigger('click')
     expect(s.entries).toHaveLength(0)
   })
+
+  it('section aria-label resolves via i18n', () => {
+    const w = mount(ActivityTerminal, { global: { plugins: [makeI18n()] } })
+    expect(w.find('[data-testid="activity-terminal"]').attributes('aria-label')).toBe('Activity')
+  })
 })
