@@ -115,7 +115,7 @@ jobs:
           if [[ "$TS_OUT" == "__TS_UNAVAILABLE__" || "$PY_OUT" == "__PY_UNAVAILABLE__" ]]; then
             echo "::warning::Cross-compare runner unavailable (TS=$TS_OUT PY=$PY_OUT) — app.overlay not yet implemented; relying on vitest parity."
           else
-            if [[ "$TS_OUT" != "$PY_OUT" ]]; then
+            if [[ "$(echo "$TS_OUT" | jq -c .)" != "$(echo "$PY_OUT" | jq -c .)" ]]; then
               echo "::error::TS vs Python divergence on compose/01_identity.json"
               diff <(echo "$TS_OUT") <(echo "$PY_OUT") || true
               exit 1
