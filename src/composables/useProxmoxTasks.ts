@@ -51,6 +51,7 @@ export function useProxmoxTasks(opts: ProxmoxTasksOptions = {}) {
   }
 
   async function launch(action: string, o: LaunchOptions): Promise<void> {
+    if (o.node.data.pendingAction) return // an action is already in flight for this node
     const prevStatus = o.node.data.status as string | undefined
     const entryId = log.push({
       source: 'proxmox',

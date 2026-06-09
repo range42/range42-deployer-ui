@@ -28,17 +28,26 @@ describe('useProxmoxTasks.launch', () => {
     const log = useActivityLogStore()
     const tasks = useProxmoxTasks({ setTimeoutFn: immediateTimeout })
 
-    let confirmed = null
+    const onSuccess = vi.fn()
     await tasks.launch('stop', {
       node, vmId: 4001, vmtype: 'qemu',
       apiCall: async () => ({ upid: 'U' }),
-      onSuccess: () => { confirmed = 'stopped'; node.data.status = 'stopped' },
+      onSuccess,
     })
 
-    expect(confirmed).toBe('stopped')
+    expect(onSuccess).toHaveBeenCalledOnce()
     expect(node.data.pendingAction).toBeFalsy()
-    expect(node.data.status).toBe('stopped')
+    expect(node.data.status).toBe('stopped') // written by the composable, not onSuccess
     expect(log.entries.some((e) => e.level === 'success')).toBe(true)
+  })
+
+  it('ignores a second launch while an action is already in flight', async () => {
+    const node = makeNode('running')
+    node.data.pendingAction = 'stop' // simulate in-flight
+    const apiCall = vi.fn(async () => ({ upid: 'U' }))
+    const tasks = useProxmoxTasks({ setTimeoutFn: immediateTimeout })
+    await tasks.launch('start', { node, vmId: 4001, vmtype: 'qemu', apiCall, onSuccess: vi.fn() })
+    expect(apiCall).not.toHaveBeenCalled()
   })
 
   it('delete OK calls onSuccess (node removal) and logs success', async () => {
