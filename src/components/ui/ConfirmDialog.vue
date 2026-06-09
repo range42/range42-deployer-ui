@@ -55,7 +55,7 @@ watch(
   <Teleport to="body">
     <FocusTrap v-if="visible" :active="visible" :initial-focus="() => confirmBtn">
       <div
-        class="modal modal-open z-[200]"
+        class="modal modal-open z-[1000]"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-title"

@@ -21,7 +21,7 @@ const isRunning = computed(() => props.node?.data?.status === 'running')
   <Teleport to="body">
     <div
       v-if="open"
-      class="modal modal-open z-[200]"
+      class="modal modal-open z-[1000]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-node-title"
