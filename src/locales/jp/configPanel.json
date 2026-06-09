@@ -5,6 +5,52 @@
     "missing": "⚠ 必須フィールドが不足しています"
   },
   "save": "構成を保存",
+  "saving": "保存中…",
+  "close": "閉じる",
+  "delete": "削除",
+  "subtitle": {
+    "deployed": "デプロイ済み",
+    "design": "設計"
+  },
+  "a11y": {
+    "dialog": "ノードの構成",
+    "close": "構成パネルを閉じる",
+    "delete": "ノードを削除",
+    "removeTag": "タグ {tag} を削除",
+    "revertField": "{field} をデプロイ値に戻す",
+    "refreshTemplates": "Proxmox からテンプレートを更新"
+  },
+  "tags": {
+    "label": "タグ",
+    "add": "タグを追加…"
+  },
+  "vmid": "VMID {id}",
+  "liveStatus": "ライブステータス",
+  "metrics": {
+    "cpu": "CPU",
+    "ram": "RAM"
+  },
+  "power": {
+    "label": "電源"
+  },
+  "deployedFields": {
+    "name": "名前",
+    "cores": "CPU コア数",
+    "memory": "メモリ (MB)",
+    "description": "説明"
+  },
+  "lifecycle": {
+    "start": "開始",
+    "resume": "再開",
+    "pause": "一時停止",
+    "stop": "停止"
+  },
+  "pending": {
+    "title": "未保存の変更",
+    "count": "{n} 件の変更",
+    "discardAll": "すべて破棄",
+    "apply": "適用"
+  },
   "fields": {
     "name": "名前",
     "cpu": "CPU コア数",

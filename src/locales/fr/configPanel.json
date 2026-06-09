@@ -5,6 +5,52 @@
     "missing": "⚠ Champs requis manquants"
   },
   "save": "Enregistrer la configuration",
+  "saving": "Enregistrement…",
+  "close": "Fermer",
+  "delete": "Supprimer",
+  "subtitle": {
+    "deployed": "Déployé",
+    "design": "Conception"
+  },
+  "a11y": {
+    "dialog": "Configuration du nœud",
+    "close": "Fermer le panneau de configuration",
+    "delete": "Supprimer le nœud",
+    "removeTag": "Retirer l'étiquette {tag}",
+    "revertField": "Rétablir {field} à la valeur déployée",
+    "refreshTemplates": "Actualiser les modèles depuis Proxmox"
+  },
+  "tags": {
+    "label": "Étiquettes",
+    "add": "Ajouter une étiquette…"
+  },
+  "vmid": "VMID {id}",
+  "liveStatus": "État en direct",
+  "metrics": {
+    "cpu": "CPU",
+    "ram": "RAM"
+  },
+  "power": {
+    "label": "Alimentation"
+  },
+  "deployedFields": {
+    "name": "Nom",
+    "cores": "Cœurs CPU",
+    "memory": "Mémoire (Mo)",
+    "description": "Description"
+  },
+  "lifecycle": {
+    "start": "Démarrer",
+    "resume": "Reprendre",
+    "pause": "Suspendre",
+    "stop": "Arrêter"
+  },
+  "pending": {
+    "title": "Modifications non enregistrées",
+    "count": "{n} modification | {n} modifications",
+    "discardAll": "Tout annuler",
+    "apply": "Appliquer"
+  },
   "fields": {
     "name": "Nom",
     "cpu": "Cœurs CPU",

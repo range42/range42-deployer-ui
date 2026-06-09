@@ -5,6 +5,52 @@
     "missing": "⚠ Missing required fields"
   },
   "save": "Save Configuration",
+  "saving": "Saving…",
+  "close": "Close",
+  "delete": "Delete",
+  "subtitle": {
+    "deployed": "Deployed",
+    "design": "Design"
+  },
+  "a11y": {
+    "dialog": "Node configuration",
+    "close": "Close configuration panel",
+    "delete": "Delete node",
+    "removeTag": "Remove tag {tag}",
+    "revertField": "Revert {field} to deployed value",
+    "refreshTemplates": "Refresh templates from Proxmox"
+  },
+  "tags": {
+    "label": "Tags",
+    "add": "Add tag…"
+  },
+  "vmid": "VMID {id}",
+  "liveStatus": "Live status",
+  "metrics": {
+    "cpu": "CPU",
+    "ram": "RAM"
+  },
+  "power": {
+    "label": "Power"
+  },
+  "deployedFields": {
+    "name": "Name",
+    "cores": "CPU Cores",
+    "memory": "Memory (MB)",
+    "description": "Description"
+  },
+  "lifecycle": {
+    "start": "Start",
+    "resume": "Resume",
+    "pause": "Pause",
+    "stop": "Stop"
+  },
+  "pending": {
+    "title": "Unsaved changes",
+    "count": "{n} change | {n} changes",
+    "discardAll": "Discard all",
+    "apply": "Apply"
+  },
   "fields": {
     "name": "Name",
     "cpu": "CPU Cores",

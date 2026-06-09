@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, inject } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n/index.js'
 import FormField from '@/components/ui/FormField.vue'
@@ -23,6 +23,11 @@ const { t } = useI18n({ useScope: 'global' })
 const tasks = useProxmoxTasks()
 const showDeleteModal = ref(false)
 
+// Modal shell refs — focus is moved into the panel on open (mirrors
+// ConfirmDialog's pattern) and Escape closes via the root keydown handler.
+const modalBox = ref(null)
+const titleId = 'config-panel-title'
+
 const props = defineProps({
   node: {
     type: Object,
@@ -41,6 +46,41 @@ const emit = defineEmits(['close', 'update', 'delete', 'update:attachments'])
 
 const statusView = computed(() =>
   resolveNodeStatus(props.node?.data?.status, props.node?.data?.pendingAction),
+)
+
+// Maps the status dot color to its badge/dot Tailwind utility so the header
+// pill and live-status dot stay visually in sync with the canvas legend.
+const STATUS_DOT_CLASS = {
+  green: 'bg-success',
+  red: 'bg-error',
+  orange: 'bg-warning',
+  blue: 'bg-info',
+  gray: 'bg-base-content/30',
+}
+const STATUS_BADGE_CLASS = {
+  green: 'badge-success',
+  red: 'badge-error',
+  orange: 'badge-warning',
+  blue: 'badge-info',
+  gray: 'badge-ghost',
+}
+const statusDotClass = computed(() => STATUS_DOT_CLASS[statusView.value.dotColor] || STATUS_DOT_CLASS.gray)
+const statusBadgeClass = computed(() => STATUS_BADGE_CLASS[statusView.value.dotColor] || STATUS_BADGE_CLASS.gray)
+
+// Header type icon — kept identical to the prior inline ternary, just hoisted.
+const typeIcon = computed(() => {
+  switch (props.node?.type) {
+    case 'vm': return 'monitor'
+    case 'lxc': return 'cube'
+    case 'network-segment': return 'link'
+    case 'router': return 'router'
+    default: return 'gear'
+  }
+})
+
+const typeLabel = computed(() => (props.node?.type || '').replace('-', ' '))
+const subtitleState = computed(() =>
+  props.node?.data?.deployed ? t('configPanel.subtitle.deployed') : t('configPanel.subtitle.design'),
 )
 
 
@@ -116,6 +156,11 @@ onMounted(async () => {
 
   // Load i18n namespaces used by this panel
   ensureNamespaces(['configPanel', 'project', 'common'])
+
+  // Move focus into the panel on open so keyboard/AT users land inside the
+  // dialog (mirrors ConfirmDialog). The box is focusable via tabindex="-1".
+  await nextTick()
+  modalBox.value?.focus()
 })
 
 // Add validation
@@ -304,7 +349,10 @@ async function handleVmAction(action) {
   })
 }
 
+const saving = ref(false)
 const handleSave = () => {
+  if (saving.value) return
+  saving.value = true
   const newStatus = isValid.value ? 'orange' : 'gray'
   const payload = {
     config: config.value,
@@ -361,6 +409,12 @@ const handleBackdropClick = (event) => {
   }
 }
 
+const onEscape = () => {
+  // Defer to nested dialogs: only close the panel when no overlay is open.
+  if (showDeleteModal.value || showApplyDialog.value) return
+  emit('close')
+}
+
 watch(() => props.node, (newNode) => {
   if (newNode) {
     config.value = { ...newNode.data.config }
@@ -391,23 +445,63 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
 <template>
   <div class="modal modal-open" @click="handleBackdropClick">
-    <div class="modal-box w-full max-w-4xl max-h-[90vh] overflow-y-auto" @click.stop>
-      <!-- Header -->
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="node.data?.deployed ? 'bg-primary/10' : 'bg-base-200'">
-            <AppIcon :name="node.type === 'vm' ? 'monitor' : node.type === 'lxc' ? 'cube' : node.type === 'network-segment' ? 'link' : node.type === 'router' ? 'router' : 'gear'" class="w-6 h-6" />
-          </div>
-          <div>
-            <h3 class="text-xl font-bold">{{ config.name || node.type.replace('-', ' ') }}</h3>
-            <p class="text-xs text-base-content/50 uppercase tracking-wider">{{ node.data?.deployed ? 'Deployed' : 'Design' }} · {{ node.type.replace('-', ' ') }}</p>
-          </div>
+    <div
+      ref="modalBox"
+      class="modal-box flex max-h-[90vh] w-11/12 max-w-3xl flex-col gap-0 overflow-hidden p-0"
+      role="dialog"
+      aria-modal="true"
+      :aria-labelledby="titleId"
+      tabindex="-1"
+      @click.stop
+      @keydown.esc.stop.prevent="onEscape"
+    >
+      <!-- Header (sticky) -->
+      <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-4">
+        <div
+          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+          :class="node.data?.deployed ? 'bg-primary/10 text-primary' : 'bg-base-200'"
+        >
+          <AppIcon :name="typeIcon" class="h-6 w-6" />
         </div>
-        <button class="btn btn-sm btn-circle btn-ghost" @click="emit('close')">✕</button>
-      </div>
+        <div class="min-w-0 flex-1">
+          <h3 :id="titleId" class="truncate text-lg font-semibold leading-tight">
+            {{ config.name || typeLabel }}
+          </h3>
+          <p class="text-xs uppercase tracking-wide opacity-60">
+            {{ subtitleState }} · {{ typeLabel }}
+          </p>
+        </div>
 
-      <!-- Content -->
-      <div class="space-y-6">
+        <!-- Deployed-node status pill + VMID chip -->
+        <template v-if="node.data?.deployed">
+          <span
+            class="badge gap-1.5 border-0 font-medium capitalize"
+            :class="statusBadgeClass"
+          >
+            <span
+              class="h-2 w-2 rounded-full bg-current/80"
+              :class="{ 'animate-pulse': statusView.pulse }"
+            ></span>
+            {{ statusView.label }}
+          </span>
+          <span v-if="node.data.vmId" class="badge badge-ghost shrink-0 font-mono text-xs">
+            {{ t('configPanel.vmid', { id: node.data.vmId }) }}
+          </span>
+        </template>
+
+        <button
+          class="btn btn-circle btn-ghost btn-sm shrink-0"
+          :aria-label="t('configPanel.a11y.close')"
+          @click="emit('close')"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </header>
+
+      <!-- Content (scrolls between sticky header/footer) -->
+      <div class="flex-1 space-y-5 overflow-y-auto px-6 py-5">
         <!-- Common Fields -->
         <FormSection icon="" title="" :columns="1">
           <FormField
@@ -421,26 +515,45 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
         </FormSection>
 
         <!-- Tag Editor (VM and LXC) -->
-        <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2 mb-4">
-          <label class="text-xs font-semibold uppercase tracking-wider text-base-content/50">Tags</label>
-          <div class="flex gap-1.5 flex-wrap min-h-[24px]">
-            <span v-for="tag in (node.data.tags || [])" :key="tag"
-              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-              :style="{ backgroundColor: getTagColor(tag).hex }">
+        <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2">
+          <label class="text-xs font-medium uppercase tracking-wide opacity-60">
+            {{ t('configPanel.tags.label') }}
+          </label>
+          <div v-if="(node.data.tags || []).length" class="flex min-h-[24px] flex-wrap gap-1.5">
+            <span
+              v-for="tag in (node.data.tags || [])"
+              :key="tag"
+              class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+              :style="{ backgroundColor: getTagColor(tag).hex }"
+            >
               {{ tag }}
-              <button @click="removeTag(tag)" class="opacity-70 hover:opacity-100 ml-0.5">&times;</button>
+              <button
+                class="ml-0.5 leading-none opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                :aria-label="t('configPanel.a11y.removeTag', { tag })"
+                @click="removeTag(tag)"
+              >&times;</button>
             </span>
           </div>
           <div class="relative">
-            <input v-model="tagInput" @keydown.enter.prevent="addTag" @focus="showTagDropdown = true"
-              @blur="setTimeout(() => showTagDropdown = false, 200)" placeholder="Add tag..."
-              class="input input-sm input-bordered w-full" />
-            <div v-if="showTagDropdown && filteredPredefinedTags.length"
-              class="absolute z-10 mt-1 w-full bg-base-200 border border-base-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-              <button v-for="tag in filteredPredefinedTags" :key="tag.name"
+            <input
+              v-model="tagInput"
+              :placeholder="t('configPanel.tags.add')"
+              class="input input-bordered input-sm w-full rounded-lg"
+              @keydown.enter.prevent="addTag"
+              @focus="showTagDropdown = true"
+              @blur="setTimeout(() => showTagDropdown = false, 200)"
+            />
+            <div
+              v-if="showTagDropdown && filteredPredefinedTags.length"
+              class="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-base-300 bg-base-100 shadow-lg"
+            >
+              <button
+                v-for="tag in filteredPredefinedTags"
+                :key="tag.name"
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-base-200"
                 @mousedown.prevent="addPredefinedTag(tag.name)"
-                class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-300 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: tag.hex }"></span>
+              >
+                <span class="h-2 w-2 rounded-full" :style="{ backgroundColor: tag.hex }"></span>
                 {{ tag.name }}
               </button>
             </div>
@@ -471,22 +584,107 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
         <!-- Deployed VM Status View -->
         <template v-if="node.type === 'vm' && node.data?.deployed">
-          <!-- Editable Config Fields -->
-          <div class="space-y-3">
+          <!-- Live status + metrics card -->
+          <div class="space-y-3 rounded-box bg-base-200/40 p-4">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-medium uppercase tracking-wide opacity-60">
+                {{ t('configPanel.liveStatus') }}
+              </span>
+              <span class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium capitalize">
+                <span
+                  class="h-2.5 w-2.5 rounded-full"
+                  :class="[statusDotClass, { 'animate-pulse': statusView.pulse }]"
+                ></span>
+                {{ statusView.label }}
+              </span>
+            </div>
+
+            <div v-if="node.data.liveMetrics" class="grid grid-cols-2 gap-2">
+              <div class="rounded-lg bg-base-100 px-3 py-2">
+                <div class="text-[10px] uppercase tracking-wide opacity-50">{{ t('configPanel.metrics.cpu') }}</div>
+                <div class="text-sm font-semibold tabular-nums">{{ Math.round(node.data.liveMetrics.cpu) }}%</div>
+              </div>
+              <div class="rounded-lg bg-base-100 px-3 py-2">
+                <div class="text-[10px] uppercase tracking-wide opacity-50">{{ t('configPanel.metrics.ram') }}</div>
+                <div class="text-sm font-semibold tabular-nums">{{ node.data.liveMetrics.memPercent }}%</div>
+              </div>
+            </div>
+
+            <!-- Lifecycle actions — gated by live status so we never offer an
+                 action that doesn't apply (e.g. Start on a running VM). -->
+            <div class="space-y-1.5">
+              <span class="text-xs font-medium uppercase tracking-wide opacity-60">
+                {{ t('configPanel.power.label') }}
+              </span>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-if="node.data.status !== 'running' && node.data.status !== 'paused'"
+                  class="btn btn-success btn-sm gap-1.5"
+                  :disabled="!!node.data.pendingAction"
+                  @click="handleVmAction('start')"
+                >
+                  <span v-if="node.data.pendingAction === 'start'" class="loading loading-xs"></span>
+                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  {{ t('configPanel.lifecycle.start') }}
+                </button>
+                <button
+                  v-if="node.data.status === 'paused'"
+                  class="btn btn-success btn-sm gap-1.5"
+                  :disabled="!!node.data.pendingAction"
+                  @click="handleVmAction('resume')"
+                >
+                  <span v-if="node.data.pendingAction === 'resume'" class="loading loading-xs"></span>
+                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  {{ t('configPanel.lifecycle.resume') }}
+                </button>
+                <button
+                  v-if="node.data.status === 'running'"
+                  class="btn btn-info btn-sm gap-1.5"
+                  :disabled="!!node.data.pendingAction"
+                  @click="handleVmAction('pause')"
+                >
+                  <span v-if="node.data.pendingAction === 'pause'" class="loading loading-xs"></span>
+                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+                  </svg>
+                  {{ t('configPanel.lifecycle.pause') }}
+                </button>
+                <button
+                  v-if="node.data.status === 'running' || node.data.status === 'paused'"
+                  class="btn btn-warning btn-sm gap-1.5"
+                  :disabled="!!node.data.pendingAction"
+                  @click="handleVmAction('stop')"
+                >
+                  <span v-if="node.data.pendingAction === 'stop'" class="loading loading-xs"></span>
+                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 6h12v12H6z" />
+                  </svg>
+                  {{ t('configPanel.lifecycle.stop') }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Editable config fields (with diff/revert affordance) -->
+          <div class="space-y-4">
             <!-- Name -->
             <div class="form-control">
-              <label class="label py-0.5">
-                <span class="label-text text-xs">Name</span>
+              <div class="label pb-1">
+                <span class="label-text font-medium">{{ t('configPanel.deployedFields.name') }}</span>
                 <button
                   v-if="node.data.desiredConfig?.name !== node.data.actualConfig?.name"
                   class="btn btn-ghost btn-xs text-warning"
-                  title="Revert to actual"
+                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.name') })"
                   @click="revertField('name')"
                 >&#x21A9;</button>
-              </label>
+              </div>
               <input
                 type="text"
-                class="input input-sm input-bordered w-full"
+                class="input input-bordered input-sm w-full rounded-lg"
                 :class="{ 'border-warning': node.data.desiredConfig?.name !== node.data.actualConfig?.name }"
                 :value="node.data.desiredConfig?.name || ''"
                 @input="updateDesired('name', $event.target.value)"
@@ -495,20 +693,20 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
             <!-- CPU Cores -->
             <div class="form-control">
-              <label class="label py-0.5">
-                <span class="label-text text-xs">CPU Cores</span>
+              <div class="label pb-1">
+                <span class="label-text font-medium">{{ t('configPanel.deployedFields.cores') }}</span>
                 <button
                   v-if="node.data.desiredConfig?.cores !== node.data.actualConfig?.cores"
                   class="btn btn-ghost btn-xs text-warning"
-                  title="Revert to actual"
+                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.cores') })"
                   @click="revertField('cores')"
                 >&#x21A9;</button>
-              </label>
+              </div>
               <input
                 type="number"
                 min="1"
                 max="128"
-                class="input input-sm input-bordered w-full"
+                class="input input-bordered input-sm w-full rounded-lg"
                 :class="{ 'border-warning': node.data.desiredConfig?.cores !== node.data.actualConfig?.cores }"
                 :value="node.data.desiredConfig?.cores || 1"
                 @input="updateDesired('cores', Number($event.target.value))"
@@ -517,20 +715,20 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
             <!-- Memory -->
             <div class="form-control">
-              <label class="label py-0.5">
-                <span class="label-text text-xs">Memory (MB)</span>
+              <div class="label pb-1">
+                <span class="label-text font-medium">{{ t('configPanel.deployedFields.memory') }}</span>
                 <button
                   v-if="node.data.desiredConfig?.memory !== node.data.actualConfig?.memory"
                   class="btn btn-ghost btn-xs text-warning"
-                  title="Revert to actual"
+                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.memory') })"
                   @click="revertField('memory')"
                 >&#x21A9;</button>
-              </label>
+              </div>
               <input
                 type="number"
                 min="128"
                 step="256"
-                class="input input-sm input-bordered w-full"
+                class="input input-bordered input-sm w-full rounded-lg"
                 :class="{ 'border-warning': node.data.desiredConfig?.memory !== node.data.actualConfig?.memory }"
                 :value="node.data.desiredConfig?.memory || 0"
                 @input="updateDesired('memory', Number($event.target.value))"
@@ -539,85 +737,23 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
             <!-- Description -->
             <div class="form-control">
-              <label class="label py-0.5">
-                <span class="label-text text-xs">Description</span>
+              <div class="label pb-1">
+                <span class="label-text font-medium">{{ t('configPanel.deployedFields.description') }}</span>
                 <button
                   v-if="(node.data.desiredConfig?.description || '') !== (node.data.actualConfig?.description || '')"
                   class="btn btn-ghost btn-xs text-warning"
-                  title="Revert to actual"
+                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.description') })"
                   @click="revertField('description')"
                 >&#x21A9;</button>
-              </label>
+              </div>
               <textarea
-                class="textarea textarea-sm textarea-bordered w-full"
+                class="textarea textarea-bordered textarea-sm w-full rounded-lg"
                 :class="{ 'border-warning': (node.data.desiredConfig?.description || '') !== (node.data.actualConfig?.description || '') }"
                 rows="2"
                 :value="node.data.desiredConfig?.description || ''"
                 @input="updateDesired('description', $event.target.value)"
               ></textarea>
             </div>
-          </div>
-
-          <!-- Live Status Section -->
-          <div class="divider text-xs text-base-content/40 my-2">Live Status</div>
-
-          <div class="flex items-center gap-2 mb-2">
-            <div
-              class="w-2.5 h-2.5 rounded-full"
-              :class="{
-                'bg-success': statusView.dotColor === 'green',
-                'bg-error': statusView.dotColor === 'red',
-                'bg-warning': statusView.dotColor === 'orange',
-                'bg-info': statusView.dotColor === 'blue',
-                'bg-base-content/30': statusView.dotColor === 'gray',
-                'animate-pulse': statusView.pulse,
-              }"
-            ></div>
-            <span class="text-sm font-medium capitalize">{{ statusView.label }}</span>
-            <span v-if="node.data.vmId" class="text-xs text-base-content/50 ml-auto">VMID {{ node.data.vmId }}</span>
-          </div>
-
-          <div v-if="node.data.liveMetrics" class="grid grid-cols-2 gap-2 mb-3">
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-[10px] text-base-content/50">CPU</div>
-              <div class="text-sm font-bold">{{ Math.round(node.data.liveMetrics.cpu) }}%</div>
-            </div>
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-[10px] text-base-content/50">RAM</div>
-              <div class="text-sm font-bold">{{ node.data.liveMetrics.memPercent }}%</div>
-            </div>
-          </div>
-
-          <!-- VM Actions — gated by live status so we never offer an action
-               that doesn't apply (e.g. Start on an already-running VM). -->
-          <div class="flex gap-1 mb-3">
-            <button
-              v-if="node.data.status !== 'running' && node.data.status !== 'paused'"
-              class="btn btn-xs btn-success flex-1" :disabled="!!node.data.pendingAction"
-              @click="handleVmAction('start')"
-            >Start</button>
-            <button
-              v-if="node.data.status === 'paused'"
-              class="btn btn-xs btn-success flex-1" :disabled="!!node.data.pendingAction"
-              @click="handleVmAction('resume')"
-            >Resume</button>
-            <button
-              v-if="node.data.status === 'running'"
-              class="btn btn-xs btn-info flex-1" :disabled="!!node.data.pendingAction"
-              @click="handleVmAction('pause')"
-            >Pause</button>
-            <button
-              v-if="node.data.status === 'running' || node.data.status === 'paused'"
-              class="btn btn-xs btn-warning flex-1" :disabled="!!node.data.pendingAction"
-              @click="handleVmAction('stop')"
-            >Stop</button>
-          </div>
-
-          <!-- Pending Changes Actions -->
-          <div v-if="hasPendingChanges" class="flex items-center justify-between pt-2 border-t border-base-300">
-            <button class="btn btn-xs btn-ghost" @click="revertAll">Discard All</button>
-            <div class="text-[10px] text-base-content/50">{{ pendingCount }} change{{ pendingCount > 1 ? 's' : '' }}</div>
-            <button class="btn btn-xs btn-warning" @click="showApplyDialog = true">Apply</button>
           </div>
         </template>
 
@@ -1664,21 +1800,46 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
         </template>
       </div>
 
-      <!-- Actions -->
-      <div class="modal-action border-t border-base-300 pt-4 mt-6">
-        <div class="flex justify-between items-center w-full">
+      <!-- Footer (sticky) -->
+      <footer class="sticky bottom-0 z-10 border-t border-base-300 bg-base-100 shadow-[0_-1px_3px_rgba(0,0,0,0.06)]">
+        <!-- Pending-changes strip (deployed nodes with unsaved diffs) -->
+        <div
+          v-if="hasPendingChanges"
+          class="mx-4 mt-4 flex items-center gap-3 rounded-box border border-warning/30 bg-warning/10 px-3 py-2"
+        >
+          <svg class="h-4 w-4 shrink-0 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="text-sm font-medium">{{ t('configPanel.pending.title') }}</span>
+          <span class="text-xs opacity-60">{{ t('configPanel.pending.count', { n: pendingCount }, pendingCount) }}</span>
+          <div class="ml-auto flex items-center gap-2">
+            <button class="btn btn-ghost btn-xs" @click="revertAll">{{ t('configPanel.pending.discardAll') }}</button>
+            <button class="btn btn-warning btn-xs" @click="showApplyDialog = true">{{ t('configPanel.pending.apply') }}</button>
+          </div>
+        </div>
+
+        <!-- Action bar -->
+        <div class="flex items-center justify-between gap-3 px-6 py-4">
           <div class="flex items-center gap-3">
-            <button class="btn btn-error btn-outline btn-sm gap-1" @click="handleDelete">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button
+              class="btn btn-error btn-outline btn-sm gap-1.5"
+              :aria-label="t('configPanel.a11y.delete')"
+              @click="handleDelete"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
-              Delete
+              {{ t('configPanel.delete') }}
             </button>
-            <div v-if="!node.data?.deployed" class="flex items-center gap-2 px-3 py-1.5 rounded-lg" :class="isValid ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'">
-              <svg v-if="isValid" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div
+              v-if="!node.data?.deployed"
+              class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5"
+              :class="isValid ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'"
+            >
+              <svg v-if="isValid" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
               </svg>
-              <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
               <span class="text-sm font-medium">
@@ -1687,17 +1848,18 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
             </div>
           </div>
           <div v-if="!node.data?.deployed" class="flex gap-2">
-            <button class="btn btn-ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
-            <button class="btn btn-primary gap-1" @click="handleSave">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('common.cancel') }}</button>
+            <button class="btn btn-primary btn-sm gap-1.5" :disabled="saving" @click="handleSave">
+              <span v-if="saving" class="loading loading-xs"></span>
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
               </svg>
-              {{ t('configPanel.save') }}
+              {{ saving ? t('configPanel.saving') : t('configPanel.save') }}
             </button>
           </div>
-          <button v-else class="btn btn-ghost" @click="emit('close')">Close</button>
+          <button v-else class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('configPanel.close') }}</button>
         </div>
-      </div>
+      </footer>
     </div>
   </div>
 
