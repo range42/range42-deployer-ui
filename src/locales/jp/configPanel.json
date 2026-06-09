@@ -47,7 +47,7 @@
   },
   "pending": {
     "title": "未保存の変更",
-    "count": "{n} 件の変更",
+    "count": "{n} 件の変更 | {n} 件の変更",
     "discardAll": "すべて破棄",
     "apply": "適用"
   },

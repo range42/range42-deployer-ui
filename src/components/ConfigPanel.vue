@@ -368,6 +368,9 @@ const handleSave = () => {
   }
   emit('update', props.node.id, payload)
   emit('close')
+  // Reset defensively — the panel normally unmounts on close, but don't leave
+  // Save permanently disabled if the parent keeps it alive.
+  saving.value = false
 }
 
 const handleDelete = () => {
