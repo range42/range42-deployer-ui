@@ -11,12 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout deployer-ui
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: range42-deployer-ui
 
       - name: Checkout backend-api (for cross-compare + pydantic drift)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: range42/range42-backend-api
           path: range42-backend-api
@@ -24,7 +24,7 @@ jobs:
         continue-on-error: true
 
       - name: Setup Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -59,7 +59,7 @@ jobs:
         run: npm run build
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
