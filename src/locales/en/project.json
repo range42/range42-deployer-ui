@@ -38,5 +38,16 @@
     "inline": { "label": "Inline YAML" },
     "file": { "label": "Upload file (≤ 256 KB)", "size_error": "File exceeds the 256 KB limit" },
     "git": { "url_label": "Repository URL", "sha_label": "Commit SHA (required)", "ref_label": "Subpath (optional)", "security_note": "Content is fetched at deploy time on the target — use only trusted, pinned sources." }
+  },
+  "deleteNode": {
+    "title": "Delete node",
+    "promptProxmox": "Delete \"{name}\" — what should happen on Proxmox?",
+    "promptCanvas": "Remove \"{name}\" from the canvas?",
+    "deleteFromProxmox": "Delete from Proxmox",
+    "removeCanvasOnly": "Remove from canvas only",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "mustStopFirst": "This VM is running — stop it before deleting from Proxmox.",
+    "destroyWarning": "This permanently destroys the VM and its disks."
   }
 }

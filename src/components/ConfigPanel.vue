@@ -14,14 +14,14 @@ import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
 import { useTagSync } from '@/composables/useTagSync'
 import { usePendingChanges } from '@/composables/usePendingChanges'
 import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
-import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import { useToast } from '@/composables/useToast'
+import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
+import { useProxmoxTasks } from '@/composables/useProxmoxTasks'
 import NodeAttachmentsSection from '@/components/project/attachments/NodeAttachmentsSection.vue'
 import { resolveNodeStatus } from '@/composables/useNodeStatus'
 
 const { t } = useI18n({ useScope: 'global' })
-const { confirm } = useConfirmDialog()
-const { showToast } = useToast()
+const tasks = useProxmoxTasks()
+const showDeleteModal = ref(false)
 
 const props = defineProps({
   node: {
@@ -273,66 +273,34 @@ function removeTag(tagToRemove) {
 }
 
 
-// VM actions for deployed nodes
-const actionLoading = ref(null)
-
-// Map a successful lifecycle action to the node's displayed status so the
-// canvas badge reflects the new state immediately, without re-importing (#80).
-const ACTION_RESULT_STATUS = {
-  start: 'running',
-  resume: 'running',
-  restart: 'running',
-  stop: 'stopped',
-  'force-stop': 'stopped',
-  pause: 'paused',
+// VM lifecycle actions for deployed nodes. These no longer flip status
+// optimistically — they route through the task core, which marks the node
+// transitional (data.pendingAction), polls the Proxmox task, then confirms or
+// reverts the status on real completion.
+const VM_ACTION_API = {
+  start: 'start',
+  stop: 'stop',
+  pause: 'pause',
+  resume: 'resume',
+  'force-stop': 'stopForce',
 }
 
 async function handleVmAction(action) {
   const vmId = props.node?.data?.vmId || config.value.vmid
   if (!vmId) return
 
-  const node = getProxmoxNode()
+  const method = VM_ACTION_API[action]
+  if (!method) return
 
-  actionLoading.value = action
-  try {
-    const request = { proxmox_node: node, vm_id: String(vmId) }
-    switch (action) {
-      case 'start': await proxmoxApi.vm.start(request); break
-      case 'stop': await proxmoxApi.vm.stop(request); break
-      case 'pause': await proxmoxApi.vm.pause(request); break
-      case 'resume': await proxmoxApi.vm.resume(request); break
-      case 'restart':
-        await proxmoxApi.vm.stop(request)
-        await new Promise(r => setTimeout(r, 3000))
-        await proxmoxApi.vm.start(request)
-        break
-      case 'force-stop': await proxmoxApi.vm.stopForce(request); break
-      case 'delete': {
-        const ok = await confirm({
-          title: 'Delete VM',
-          message: `Delete VM ${config.value.name} (VMID ${vmId}) from Proxmox? This is permanent.`,
-          confirmText: 'Delete',
-          confirmClass: 'btn-error',
-        })
-        if (!ok) return
-        await proxmoxApi.vm.delete(request)
-        emit('delete', props.node.id)
-        return
-      }
-    }
-    // Optimistically update the node badge to the post-action status so it
-    // reflects the new state immediately (badge reads node.data.status).
-    const nextStatus = ACTION_RESULT_STATUS[action]
-    if (nextStatus && props.node?.data) {
-      props.node.data.status = nextStatus // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
-    }
-    // Refresh status
-    proxmoxCache.invalidate()
-  } catch (e) {
-    showToast(`Action failed: ${e.message || e}`, 'error')
-  } finally {
-    actionLoading.value = null
-  }
+  const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
+  const request = { proxmox_node: getProxmoxNode(), vm_id: vmId }
+  await tasks.launch(action, {
+    node: props.node,
+    vmId,
+    vmtype,
+    apiCall: () => proxmoxApi.vm[method](request),
+    onSuccess: () => {},
+  })
 }
 
 const handleSave = () => {
@@ -353,17 +321,37 @@ const handleSave = () => {
   emit('close')
 }
 
-const handleDelete = async () => {
-  const ok = await confirm({
-    title: 'Delete Node',
-    message: `Are you sure you want to delete "${config.value.name || props.node.type}"?`,
-    confirmText: 'Delete',
-    confirmClass: 'btn-error',
+const handleDelete = () => {
+  showDeleteModal.value = true
+}
+
+const onDeleteProxmox = async () => {
+  showDeleteModal.value = false
+  const vmId = props.node.data?.vmId
+  if (!vmId) return
+  const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
+  await tasks.launch('delete', {
+    node: props.node,
+    vmId,
+    vmtype,
+    apiCall: () => props.node.type === 'lxc'
+      ? proxmoxApi.lxc.delete(vmId)
+      : proxmoxApi.vm.delete(vmId, { vmtype: 'qemu' }),
+    onSuccess: () => {
+      emit('delete', props.node.id)
+      emit('close')
+    },
   })
-  if (ok) {
-    emit('delete', props.node.id)
-    emit('close')
-  }
+}
+
+const onRemoveCanvas = () => {
+  showDeleteModal.value = false
+  emit('delete', props.node.id)
+  emit('close')
+}
+
+const onDeleteCancel = () => {
+  showDeleteModal.value = false
 }
 
 const handleBackdropClick = (event) => {
@@ -604,22 +592,22 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           <div class="flex gap-1 mb-3">
             <button
               v-if="node.data.status !== 'running' && node.data.status !== 'paused'"
-              class="btn btn-xs btn-success flex-1" :disabled="actionLoading"
+              class="btn btn-xs btn-success flex-1" :disabled="!!node.data.pendingAction"
               @click="handleVmAction('start')"
             >Start</button>
             <button
               v-if="node.data.status === 'paused'"
-              class="btn btn-xs btn-success flex-1" :disabled="actionLoading"
+              class="btn btn-xs btn-success flex-1" :disabled="!!node.data.pendingAction"
               @click="handleVmAction('resume')"
             >Resume</button>
             <button
               v-if="node.data.status === 'running'"
-              class="btn btn-xs btn-info flex-1" :disabled="actionLoading"
+              class="btn btn-xs btn-info flex-1" :disabled="!!node.data.pendingAction"
               @click="handleVmAction('pause')"
             >Pause</button>
             <button
               v-if="node.data.status === 'running' || node.data.status === 'paused'"
-              class="btn btn-xs btn-warning flex-1" :disabled="actionLoading"
+              class="btn btn-xs btn-warning flex-1" :disabled="!!node.data.pendingAction"
               @click="handleVmAction('stop')"
             >Stop</button>
           </div>
@@ -1718,5 +1706,13 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
     :pending-changes="pendingChanges"
     @close="showApplyDialog = false"
     @applied="showApplyDialog = false"
+  />
+
+  <DeleteNodeModal
+    :open="showDeleteModal"
+    :node="node"
+    @deleteProxmox="onDeleteProxmox"
+    @removeCanvas="onRemoveCanvas"
+    @cancel="onDeleteCancel"
   />
 </template>

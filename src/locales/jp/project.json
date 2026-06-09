@@ -38,5 +38,16 @@
     "inline": { "label": "インラインYAML" },
     "file": { "label": "ファイルをアップロード（≤ 256 KB）", "size_error": "ファイルが256 KBの上限を超えています" },
     "git": { "url_label": "リポジトリURL", "sha_label": "コミットSHA（必須）", "ref_label": "サブパス（任意）", "security_note": "コンテンツはデプロイ時にターゲットで取得されます。信頼できる固定されたソースのみを使用してください。" }
+  },
+  "deleteNode": {
+    "title": "ノードを削除",
+    "promptProxmox": "「{name}」を削除します — Proxmox 上でどうしますか？",
+    "promptCanvas": "「{name}」をキャンバスから削除しますか？",
+    "deleteFromProxmox": "Proxmox から削除",
+    "removeCanvasOnly": "キャンバスからのみ削除",
+    "cancel": "キャンセル",
+    "remove": "削除",
+    "mustStopFirst": "この VM は実行中です。Proxmox から削除する前に停止してください。",
+    "destroyWarning": "VM とそのディスクを完全に破棄します。"
   }
 }

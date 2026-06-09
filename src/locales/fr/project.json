@@ -38,5 +38,16 @@
     "inline": { "label": "YAML en ligne" },
     "file": { "label": "Téléverser un fichier (≤ 256 Ko)", "size_error": "Le fichier dépasse la limite de 256 Ko" },
     "git": { "url_label": "URL du dépôt", "sha_label": "SHA du commit (requis)", "ref_label": "Sous-chemin (optionnel)", "security_note": "Le contenu est récupéré au moment du déploiement sur la cible — n'utilisez que des sources fiables et épinglées." }
+  },
+  "deleteNode": {
+    "title": "Supprimer le nœud",
+    "promptProxmox": "Supprimer « {name} » — que faire sur Proxmox ?",
+    "promptCanvas": "Retirer « {name} » du canevas ?",
+    "deleteFromProxmox": "Supprimer de Proxmox",
+    "removeCanvasOnly": "Retirer du canevas uniquement",
+    "cancel": "Annuler",
+    "remove": "Retirer",
+    "mustStopFirst": "Cette VM est en cours d'exécution — arrêtez-la avant de la supprimer de Proxmox.",
+    "destroyWarning": "Ceci détruit définitivement la VM et ses disques."
   }
 }

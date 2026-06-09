@@ -24,7 +24,7 @@ describe('ConfirmDialog a11y', () => {
 
   it('renders role=alertdialog + aria-modal + labelledby/describedby when open', async () => {
     const { confirm } = useConfirmDialog();
-    const wrapper = mount(ConfirmDialog, { attachTo: document.body });
+    const wrapper = mount(ConfirmDialog, { attachTo: document.body, global: { stubs: { teleport: true } } });
     // Kick off the dialog; ignore the returned promise for the assertion.
     void confirm({ title: 'Delete?', message: 'sure?' });
     await flushPromises();
@@ -44,7 +44,7 @@ describe('ConfirmDialog a11y', () => {
 
   it('Escape key resolves the dialog with false', async () => {
     const { confirm } = useConfirmDialog();
-    const wrapper = mount(ConfirmDialog, { attachTo: document.body });
+    const wrapper = mount(ConfirmDialog, { attachTo: document.body, global: { stubs: { teleport: true } } });
     const promise = confirm({ title: 'x', message: 'y' });
     await flushPromises();
     const dialog = wrapper.find('[role="alertdialog"]');
@@ -63,7 +63,7 @@ describe('ConfirmDialog a11y', () => {
     expect(document.activeElement).toBe(btn);
 
     const { confirm, resolve } = useConfirmDialog();
-    const wrapper = mount(ConfirmDialog, { attachTo: document.body });
+    const wrapper = mount(ConfirmDialog, { attachTo: document.body, global: { stubs: { teleport: true } } });
     void confirm({ title: 't', message: 'm' });
     await flushPromises();
     resolve(false);
