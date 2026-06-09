@@ -12,6 +12,15 @@
     "none": "問題はありません。",
     "open": "問題を開く"
   },
+  "activityTerminal": {
+    "title": "アクティビティ",
+    "empty": "まだアクティビティはありません。",
+    "filterAll": "すべて",
+    "filterProxmox": "Proxmox",
+    "filterDeploy": "デプロイ",
+    "clear": "クリア",
+    "close": "アクティビティ端末を閉じる"
+  },
   "palette": {
     "placeholder": "ノードを検索…",
     "empty": "一致するノードがありません。"

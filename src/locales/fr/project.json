@@ -12,6 +12,15 @@
     "none": "Aucun problème détecté.",
     "open": "Ouvrir le problème"
   },
+  "activityTerminal": {
+    "title": "Activité",
+    "empty": "Aucune activité pour le moment.",
+    "filterAll": "Tout",
+    "filterProxmox": "Proxmox",
+    "filterDeploy": "Déploiement",
+    "clear": "Effacer",
+    "close": "Fermer le terminal d'activité"
+  },
   "palette": {
     "placeholder": "Rechercher des nœuds…",
     "empty": "Aucun nœud ne correspond à votre recherche."

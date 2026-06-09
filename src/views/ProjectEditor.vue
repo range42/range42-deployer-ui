@@ -27,6 +27,7 @@ import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 import TemplateBrowser from '../components/TemplateBrowser.vue'
 import ProblemsPanel from '../components/project/ProblemsPanel.vue'
+import ActivityTerminal from '../components/project/ActivityTerminal.vue'
 import CommandPalette from '../components/project/CommandPalette.vue'
 import ConfigTab from '../components/project/ConfigTab.vue'
 import HistoryTab from '../components/project/HistoryTab.vue'
@@ -37,6 +38,7 @@ import { ensureNamespaces } from '../i18n'
 import { useCanvasHistory } from '../composables/useCanvasHistory'
 import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
+import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
 import { useHotkeys } from '../composables/useHotkeys'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
@@ -135,6 +137,11 @@ const attachmentsRef = computed(() =>
 )
 const { problems: problemList } = useProblems(liveNodes, liveEdges, attachmentsRef)
 const showProblemsPanel = ref(true)
+
+// Unified activity terminal — Proxmox + deploy feed. The bridge forwards
+// deployment SSE events into the shared activity log (cleans up on unmount).
+const showActivityTerminal = ref(true)
+useDeploymentActivityBridge()
 
 // Command palette (Ctrl/Cmd-P).
 const showCommandPalette = ref(false)
@@ -1291,6 +1298,14 @@ const handleInfrastructureImport = (result) => {
         class="shrink-0"
         @jumpTo="handleJumpTo"
         @close="showProblemsPanel = false"
+      />
+
+      <!-- Activity terminal — unified Proxmox + deploy feed, docked beside Problems -->
+      <ActivityTerminal
+        v-if="showActivityTerminal"
+        v-show="tab === 'canvas'"
+        class="shrink-0"
+        @close="showActivityTerminal = false"
       />
 
       <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->

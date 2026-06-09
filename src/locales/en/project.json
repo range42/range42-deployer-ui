@@ -12,6 +12,15 @@
     "none": "No problems detected.",
     "open": "Open problem"
   },
+  "activityTerminal": {
+    "title": "Activity",
+    "empty": "No activity yet.",
+    "filterAll": "All",
+    "filterProxmox": "Proxmox",
+    "filterDeploy": "Deploy",
+    "clear": "Clear",
+    "close": "Close activity terminal"
+  },
   "palette": {
     "placeholder": "Search nodes…",
     "empty": "No nodes match your search."
