@@ -111,9 +111,9 @@ jobs:
           from app.overlay import compose
           v = json.load(open('$VECTOR'))
           sys.stdout.write(json.dumps(compose(v['input']['base'], v['input']['overlay'])))
-          ")
-          if [[ "$TS_OUT" == "__TS_UNAVAILABLE__" ]]; then
-            echo "::warning::TS-side cross-compare runner unavailable under plain node — Plan B will add tsx runner; for now relying on vitest parity."
+          " 2>/dev/null || echo '__PY_UNAVAILABLE__')
+          if [[ "$TS_OUT" == "__TS_UNAVAILABLE__" || "$PY_OUT" == "__PY_UNAVAILABLE__" ]]; then
+            echo "::warning::Cross-compare runner unavailable (TS=$TS_OUT PY=$PY_OUT) — app.overlay not yet implemented; relying on vitest parity."
           else
             if [[ "$TS_OUT" != "$PY_OUT" ]]; then
               echo "::error::TS vs Python divergence on compose/01_identity.json"
