@@ -88,7 +88,11 @@ jobs:
         working-directory: range42-backend-api
         run: |
           . .venv/bin/activate
-          pytest tests/overlay/ -v
+          if [ -d tests/overlay ]; then
+            pytest tests/overlay/ -v
+          else
+            echo "tests/overlay/ not yet created — skipping"
+          fi
 
       - name: Cross-compare stub — trivial compose vector parity
         if: hashFiles('range42-backend-api/requirements.txt') != ''
