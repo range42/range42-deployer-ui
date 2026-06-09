@@ -49,4 +49,14 @@ describe('DeleteNodeModal', () => {
     const running = { id: 'n4', type: 'vm', data: { deployed: true, vmId: 5, status: 'running', name: 'r' } }
     expect(mountModal(running).text()).toContain('Stop it first')
   })
+  it('running deployed VM disables the Proxmox delete button', () => {
+    const running = { id: 'n4', type: 'vm', data: { deployed: true, vmId: 5, status: 'running', name: 'r' } }
+    const btn = mountModal(running).find('[data-testid="delete-proxmox"]')
+    expect(btn.attributes('disabled')).toBeDefined()
+  })
+  it('Escape and backdrop click emit cancel', async () => {
+    const w = mountModal(deployedVm)
+    await w.find('[data-testid="cancel"]').trigger('click')
+    expect(w.emitted('cancel')).toBeTruthy()
+  })
 })

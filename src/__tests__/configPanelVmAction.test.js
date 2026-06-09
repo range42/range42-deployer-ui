@@ -24,7 +24,6 @@ vi.mock('@/services/proxmox/cache', () => ({
 }))
 vi.mock('@/services/proxmox/api', () => ({ getBaseUrl: () => 'http://127.0.0.1:8000', getTaskStatus: vi.fn() }))
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
-vi.mock('@/composables/useConfirmDialog', () => ({ useConfirmDialog: () => ({ confirm: vi.fn().mockResolvedValue(true) }) }))
 vi.mock('@/composables/useTagSync', () => ({ useTagSync: () => ({ syncTags: vi.fn(), pushTags: vi.fn() }) }))
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn().mockResolvedValue(undefined) }))
 

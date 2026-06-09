@@ -19,9 +19,17 @@ const isRunning = computed(() => props.node?.data?.status === 'running')
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal modal-open z-[200]" role="dialog" aria-modal="true">
+    <div
+      v-if="open"
+      class="modal modal-open z-[200]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-node-title"
+      tabindex="-1"
+      @keydown.esc.prevent="emit('cancel')"
+    >
       <div class="modal-box">
-        <h3 class="font-semibold text-lg">{{ t('project.deleteNode.title') }}</h3>
+        <h3 id="delete-node-title" class="font-semibold text-lg">{{ t('project.deleteNode.title') }}</h3>
         <p class="py-2 text-sm">
           {{ canProxmoxDelete ? t('project.deleteNode.promptProxmox', { name }) : t('project.deleteNode.promptCanvas', { name }) }}
         </p>
@@ -47,6 +55,7 @@ const isRunning = computed(() => props.node?.data?.status === 'running')
           </button>
         </div>
       </div>
+      <div class="modal-backdrop" @click="emit('cancel')"></div>
     </div>
   </Teleport>
 </template>

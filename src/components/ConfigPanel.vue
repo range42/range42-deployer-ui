@@ -282,7 +282,6 @@ const VM_ACTION_API = {
   stop: 'stop',
   pause: 'pause',
   resume: 'resume',
-  'force-stop': 'stopForce',
 }
 
 async function handleVmAction(action) {
@@ -298,6 +297,8 @@ async function handleVmAction(action) {
     node: props.node,
     vmId,
     vmtype,
+    // NOTE: lifecycle buttons only render for deployed VMs today, so vm.* is correct.
+    // When deployed-LXC lifecycle UI lands, route LXC through proxmoxApi.lxc.* here.
     apiCall: () => proxmoxApi.vm[method](request),
     onSuccess: () => {},
   })
@@ -336,7 +337,7 @@ const onDeleteProxmox = async () => {
     vmtype,
     apiCall: () => props.node.type === 'lxc'
       ? proxmoxApi.lxc.delete(vmId)
-      : proxmoxApi.vm.delete(vmId, { vmtype: 'qemu' }),
+      : proxmoxApi.vm.delete(vmId),
     onSuccess: () => {
       emit('delete', props.node.id)
       emit('close')
