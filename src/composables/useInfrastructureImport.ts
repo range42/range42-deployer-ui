@@ -58,23 +58,31 @@ export function parseNetworkInterfaces(config: Record<string, unknown>): Network
     const netValue = config[`net${i}`] as string | undefined
     if (!netValue) continue
     const iface: NetworkInterface = { name: `net${i}`, bridge: '' }
+    // LXC NICs carry ip/gw inline in netN; QEMU NICs carry them in ipconfigN.
     for (const part of netValue.split(',')) {
       const [key, value] = part.split('=')
       if (key === 'bridge') iface.bridge = value
       else if (key === 'firewall') iface.firewall = value === '1'
-      else if (key && key.includes(':')) iface.mac = key
+      else if (key === 'hwaddr') iface.mac = value
+      else if (key === 'ip' && value && value !== 'dhcp') {
+        const [addr, prefix] = value.split('/')
+        iface.ip = addr
+        if (prefix) iface.cidr = cidrNetwork(addr, parseInt(prefix, 10))
+      } else if (key === 'gw') {
+        iface.gateway = value
+      }
     }
     if (!iface.bridge) continue
-    // ipconfigN (cloud-init) carries the real address/gateway for netN.
+    // QEMU: fill address/gateway from ipconfigN if not already set inline.
     const ipcfg = config[`ipconfig${i}`] as string | undefined
     if (ipcfg) {
       for (const part of ipcfg.split(',')) {
         const [key, value] = part.split('=')
-        if (key === 'ip' && value && value !== 'dhcp') {
+        if (key === 'ip' && value && value !== 'dhcp' && !iface.ip) {
           const [addr, prefix] = value.split('/')
           iface.ip = addr
           if (prefix) iface.cidr = cidrNetwork(addr, parseInt(prefix, 10))
-        } else if (key === 'gw') {
+        } else if (key === 'gw' && !iface.gateway) {
           iface.gateway = value
         }
       }
@@ -232,8 +240,19 @@ export function useInfrastructureImport() {
   /**
    * Fetch detailed config for an LXC (no-op if LXC endpoint unavailable)
    */
-  async function fetchLxcConfig(_vmid: number): Promise<Record<string, unknown> | null> {
-    return null
+  async function fetchLxcConfig(vmid: number): Promise<Record<string, unknown> | null> {
+    try {
+      const lxc = lxcs.value.find(l => l.vmid === vmid)
+      const summary: Record<string, unknown> = lxc
+        ? { vmid, name: lxc.name, status: lxc.status, node: proxmoxNode.value }
+        : { vmid }
+      // LXC config carries cores/memory + net0 with inline ip/gw/bridge.
+      const cfg = await proxmoxApi.vm.getConfig(vmid, 'lxc')
+      return { ...summary, ...cfg }
+    } catch (err) {
+      console.warn(`[useInfrastructureImport] no config for LXC ${vmid}:`, err)
+      return null
+    }
   }
 
   /**

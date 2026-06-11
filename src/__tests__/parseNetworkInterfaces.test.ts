@@ -34,6 +34,27 @@ describe('parseNetworkInterfaces', () => {
     expect(ifaces[0].gateway).toBeUndefined()
   })
 
+  it('parses LXC inline ip/gw from netN (no ipconfig)', () => {
+    const ifaces = parseNetworkInterfaces({
+      net0: 'name=eth0,bridge=vmbr142,hwaddr=AA:BB:CC:DD:EE:FF,ip=192.168.142.50/24,gw=192.168.142.1,type=veth',
+    })
+    expect(ifaces).toHaveLength(1)
+    expect(ifaces[0]).toMatchObject({
+      name: 'net0',
+      bridge: 'vmbr142',
+      ip: '192.168.142.50',
+      cidr: '192.168.142.0/24',
+      gateway: '192.168.142.1',
+    })
+  })
+
+  it('treats ip=dhcp (LXC) as dhcp with no cidr', () => {
+    const ifaces = parseNetworkInterfaces({ net0: 'name=eth0,bridge=vmbr0,ip=dhcp' })
+    expect(ifaces[0].bridge).toBe('vmbr0')
+    expect(ifaces[0].ip).toBeUndefined()
+    expect(ifaces[0].cidr).toBeUndefined()
+  })
+
   it('skips NICs without a bridge and handles multiple interfaces', () => {
     const ifaces = parseNetworkInterfaces({
       net0: 'virtio=AA,bridge=vmbr142',
