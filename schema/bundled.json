@@ -280,6 +280,10 @@
           "type": "string",
           "description": "Bridge name template, e.g., vmbr{{ bridge_base + team_id }} (network kind only)"
         },
+        "gateway_template": {
+          "type": "string",
+          "description": "Gateway IP template, e.g., 192.168.{{ bridge_base + team_id }}.1 (network kind only)"
+        },
         "vlan_tag": {
           "type": [
             "integer",
