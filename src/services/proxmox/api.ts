@@ -12,7 +12,6 @@ import type {
   ProxmoxNode,
   // VM types
   VmCreateRequest,
-  VmConfig,
   VmListItem,
   VmActionRequest,
   VmCloneRequest,
@@ -341,13 +340,6 @@ export const vm = {
     vmtype: 'qemu' | 'lxc' = 'qemu',
   ): Promise<Record<string, unknown>> {
     return getHostVmConfig(vmId, vmtype)
-  },
-
-  /**
-   * Get VM configuration
-   */
-  async getConfig(node: ProxmoxNode, vmId: number): Promise<VmConfig> {
-    return query('/v0/admin/proxmox/vms/vm_id/config/vm_get_config', { proxmox_node: node, vm_id: String(vmId) })
   },
 
   /**
