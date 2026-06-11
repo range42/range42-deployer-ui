@@ -129,6 +129,18 @@
           "type": "string",
           "description": "Gateway IP template, e.g., 192.168.{{ bridge_base + team_id }}.1 (network kind only)"
         },
+        "cidr": {
+          "type": "string",
+          "description": "Rendered CIDR (by expand_replication) or static custom CIDR (network kind only)"
+        },
+        "bridge": {
+          "type": "string",
+          "description": "Rendered bridge name or static bridge (network kind only)"
+        },
+        "gateway": {
+          "type": "string",
+          "description": "Rendered gateway IP or static gateway (network kind only)"
+        },
         "vlan_tag": {
           "type": ["integer", "null"],
           "minimum": 1,

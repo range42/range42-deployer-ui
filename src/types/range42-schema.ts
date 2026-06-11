@@ -75,6 +75,10 @@ export interface Node {
   children?: Node[];
   cidr_template?: string;
   bridge_template?: string;
+  gateway_template?: string;
+  cidr?: string;
+  bridge?: string;
+  gateway?: string;
   vlan_tag?: number | null;
   template_vmid?: number;
 }
