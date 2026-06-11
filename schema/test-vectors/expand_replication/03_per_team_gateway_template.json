@@ -1,18 +1,18 @@
 {
-  "name": "per_team network with cidr_template + gateway_template — both rendered per team id",
+  "name": "per_team network with node-level cidr/bridge/gateway templates (canonical Jinja form)",
   "operator": "expand_replication",
   "input": {
     "document": {
       "schema_version": "1.0",
       "kind": "gamenet",
       "name": "per-team network gateway fixture",
+      "bridge_base": 140,
       "nodes": [
         { "id": "net-lab", "kind": "network",
           "replication": { "scope": "per_team" },
-          "config": {
-            "cidr_template": "192.168.{140+team_id}.0/24",
-            "gateway_template": "192.168.{140+team_id}.1"
-          } }
+          "cidr_template": "192.168.{{ bridge_base + team_id }}.0/24",
+          "bridge_template": "vmbr{{ bridge_base + team_id }}",
+          "gateway_template": "192.168.{{ bridge_base + team_id }}.1" }
       ]
     },
     "team_count": 2
@@ -24,13 +24,14 @@
       "schema_version": "1.0",
       "kind": "gamenet",
       "name": "per-team network gateway fixture",
+      "bridge_base": 140,
       "nodes": [
         { "id": "net-lab__team_1", "kind": "network",
-          "replication": { "scope": "per_team" },
-          "config": { "cidr": "192.168.141.0/24", "gateway": "192.168.141.1" } },
+          "replication": { "scope": "per_team" }, "config": {},
+          "cidr": "192.168.141.0/24", "bridge": "vmbr141", "gateway": "192.168.141.1" },
         { "id": "net-lab__team_2", "kind": "network",
-          "replication": { "scope": "per_team" },
-          "config": { "cidr": "192.168.142.0/24", "gateway": "192.168.142.1" } }
+          "replication": { "scope": "per_team" }, "config": {},
+          "cidr": "192.168.142.0/24", "bridge": "vmbr142", "gateway": "192.168.142.1" }
       ]
     }
   }

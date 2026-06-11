@@ -24,10 +24,38 @@ export interface ExpandResult {
   document: CatalogEntry;
 }
 
+// Canonical schema form: Jinja-ish `{{ bridge_base + team_id }}`.
+const JINJA_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+// Legacy single-brace numeric form: `{140+team_id}` (still accepted).
 const TEMPLATE_RE = /\{(\d*)\s*([+\-*])?\s*team_id\s*\}/g;
+const TOKEN_RE = /\d+|team_id|bridge_base|[+\-*]/g;
 
-function renderTemplate(tpl: string, teamId: number): string {
-  return tpl.replace(TEMPLATE_RE, (_m, basePart: string, opPart: string | undefined) => {
+// Minimal left-to-right integer expression over `team_id` and `bridge_base`
+// with `+ - *` (no operator precedence). Kept simple for Python parity.
+function evalExpr(expr: string, teamId: number, bridgeBase: number): string {
+  const tokens = expr.match(TOKEN_RE);
+  if (!tokens || tokens.length === 0) return expr;
+  const val = (tok: string): number => {
+    if (tok === 'team_id') return teamId;
+    if (tok === 'bridge_base') return bridgeBase;
+    return parseInt(tok, 10);
+  };
+  let acc = val(tokens[0]);
+  for (let i = 1; i < tokens.length - 1; i += 2) {
+    const op = tokens[i];
+    const operand = val(tokens[i + 1]);
+    if (op === '+') acc += operand;
+    else if (op === '-') acc -= operand;
+    else if (op === '*') acc *= operand;
+  }
+  return String(acc);
+}
+
+function renderTemplate(tpl: string, teamId: number, bridgeBase = 140): string {
+  const jinja = tpl.replace(JINJA_RE, (_m, inner: string) =>
+    evalExpr(inner, teamId, bridgeBase),
+  );
+  return jinja.replace(TEMPLATE_RE, (_m, basePart: string, opPart: string | undefined) => {
     const base = basePart ? parseInt(basePart, 10) : 0;
     const op = opPart || '+';
     if (op === '+') return String(base + teamId);
@@ -45,40 +73,41 @@ function applyOffsets(
   teamId: number,
   idOffset: Dict | null,
   namespaceSink: string[],
+  bridgeBase: number,
 ): Dict {
   const out = deepClone(node) as Dict;
   out.id = `${String(node.id)}__team_${teamId}`;
   const cfgRaw = out.config;
   const cfg: Dict = (cfgRaw && typeof cfgRaw === 'object' ? cfgRaw : {}) as Dict;
   if (typeof cfg.name_template === 'string') {
-    cfg.name = renderTemplate(cfg.name_template as string, teamId);
+    cfg.name = renderTemplate(cfg.name_template as string, teamId, bridgeBase);
     delete cfg.name_template;
   }
-  if (typeof cfg.bridge_template === 'string') {
-    cfg.bridge = renderTemplate(cfg.bridge_template as string, teamId);
-    delete cfg.bridge_template;
-  }
   if (typeof cfg.vlan_template === 'string') {
-    cfg.vlan = parseInt(renderTemplate(cfg.vlan_template as string, teamId), 10);
+    cfg.vlan = parseInt(renderTemplate(cfg.vlan_template as string, teamId, bridgeBase), 10);
     delete cfg.vlan_template;
-  }
-  if (typeof cfg.cidr_template === 'string') {
-    cfg.cidr = renderTemplate(cfg.cidr_template as string, teamId);
-    delete cfg.cidr_template;
-  }
-  if (typeof cfg.gateway_template === 'string') {
-    cfg.gateway = renderTemplate(cfg.gateway_template as string, teamId);
-    delete cfg.gateway_template;
   }
   if (idOffset && typeof idOffset.vmid === 'number' && cfg.vm_id !== undefined) {
     cfg.vm_id = Number(cfg.vm_id) + (idOffset.vmid as number) * teamId;
   }
   out.config = cfg;
+  // Network templates live at node level per the canonical schema
+  // (cidr_template/bridge_template/gateway_template, network kind only).
+  for (const [tkey, okey] of [
+    ['cidr_template', 'cidr'],
+    ['bridge_template', 'bridge'],
+    ['gateway_template', 'gateway'],
+  ] as const) {
+    if (typeof out[tkey] === 'string') {
+      out[okey] = renderTemplate(out[tkey] as string, teamId, bridgeBase);
+      delete out[tkey];
+    }
+  }
   const networks = out.networks;
   if (Array.isArray(networks)) {
     for (const nw of networks as Dict[]) {
       if (typeof nw.ip_template === 'string') {
-        nw.ip = renderTemplate(nw.ip_template as string, teamId);
+        nw.ip = renderTemplate(nw.ip_template as string, teamId, bridgeBase);
         delete nw.ip_template;
       }
     }
@@ -108,6 +137,7 @@ function walkAndExpand(
   nodes: Dict[],
   teamCount: number,
   namespaceSink: string[],
+  bridgeBase: number,
 ): Dict[] {
   const result: Dict[] = [];
   for (const n of nodes) {
@@ -116,7 +146,7 @@ function walkAndExpand(
     if (scope === 'shared') {
       if (n.kind === 'group' && Array.isArray(n.children)) {
         const nn = deepClone(n) as Dict;
-        nn.children = walkAndExpand(n.children as Dict[], teamCount, namespaceSink);
+        nn.children = walkAndExpand(n.children as Dict[], teamCount, namespaceSink, bridgeBase);
         result.push(nn);
       } else {
         result.push(deepClone(n) as Dict);
@@ -128,7 +158,7 @@ function walkAndExpand(
     for (let tid = 1; tid <= teamCount; tid++) {
       if (n.kind === 'group' && Array.isArray(n.children)) {
         const expandedChildren = (n.children as Dict[]).map((c) =>
-          applyOffsets(c, tid, idOffset, namespaceSink),
+          applyOffsets(c, tid, idOffset, namespaceSink, bridgeBase),
         );
         const grp = deepClone(n) as Dict;
         grp.id = `${String(n.id)}__team_${tid}`;
@@ -136,7 +166,7 @@ function walkAndExpand(
         grp.replication = { scope: 'shared' };
         result.push(grp);
       } else {
-        result.push(applyOffsets(n, tid, idOffset, namespaceSink));
+        result.push(applyOffsets(n, tid, idOffset, namespaceSink, bridgeBase));
       }
     }
   }
@@ -152,10 +182,15 @@ export function expand_replication(
   }
   const out = deepClone(document) as unknown as Dict;
   const namespaceSink: string[] = [];
+  const bridgeBase =
+    typeof (document as unknown as Dict).bridge_base === 'number'
+      ? ((document as unknown as Dict).bridge_base as number)
+      : 140;
   out.nodes = walkAndExpand(
     ((document.nodes ?? []) as unknown as Dict[]).map((n) => n),
     team_count,
     namespaceSink,
+    bridgeBase,
   );
   return {
     plays_per_team: team_count,
