@@ -30,8 +30,58 @@ export interface NetworkInterface {
   name: string
   bridge: string
   ip?: string
+  cidr?: string
+  gateway?: string
   mac?: string
   firewall?: boolean
+}
+
+/** Network address for ip/prefix, e.g. 192.168.142.123 + /24 -> 192.168.142.0/24. */
+function cidrNetwork(ip: string, prefix: number): string | undefined {
+  const o = ip.split('.').map(Number)
+  if (o.length !== 4 || o.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return undefined
+  if (prefix < 0 || prefix > 32) return undefined
+  const ipInt = ((o[0] << 24) >>> 0) + (o[1] << 16) + (o[2] << 8) + o[3]
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0
+  const net = (ipInt & mask) >>> 0
+  return `${(net >>> 24) & 255}.${(net >>> 16) & 255}.${(net >>> 8) & 255}.${net & 255}/${prefix}`
+}
+
+/**
+ * Parse a Proxmox guest config into network interfaces, deriving each NIC's
+ * subnet/gateway from the matching ipconfigN. Pure (no side effects) so the
+ * import flow can reconstruct network nodes + edges (#79).
+ */
+export function parseNetworkInterfaces(config: Record<string, unknown>): NetworkInterface[] {
+  const interfaces: NetworkInterface[] = []
+  for (let i = 0; i < 10; i++) {
+    const netValue = config[`net${i}`] as string | undefined
+    if (!netValue) continue
+    const iface: NetworkInterface = { name: `net${i}`, bridge: '' }
+    for (const part of netValue.split(',')) {
+      const [key, value] = part.split('=')
+      if (key === 'bridge') iface.bridge = value
+      else if (key === 'firewall') iface.firewall = value === '1'
+      else if (key && key.includes(':')) iface.mac = key
+    }
+    if (!iface.bridge) continue
+    // ipconfigN (cloud-init) carries the real address/gateway for netN.
+    const ipcfg = config[`ipconfig${i}`] as string | undefined
+    if (ipcfg) {
+      for (const part of ipcfg.split(',')) {
+        const [key, value] = part.split('=')
+        if (key === 'ip' && value && value !== 'dhcp') {
+          const [addr, prefix] = value.split('/')
+          iface.ip = addr
+          if (prefix) iface.cidr = cidrNetwork(addr, parseInt(prefix, 10))
+        } else if (key === 'gw') {
+          iface.gateway = value
+        }
+      }
+    }
+    interfaces.push(iface)
+  }
+  return interfaces
 }
 
 export interface ImportResult {
@@ -187,40 +237,6 @@ export function useInfrastructureImport() {
   }
 
   /**
-   * Extract network interfaces from VM/LXC config
-   */
-  function extractNetworkInterfaces(config: Record<string, unknown>): NetworkInterface[] {
-    const interfaces: NetworkInterface[] = []
-    
-    // VM network format: net0, net1, etc.
-    // Format: "virtio=XX:XX:XX:XX:XX:XX,bridge=vmbr0,firewall=1"
-    for (let i = 0; i < 10; i++) {
-      const netKey = `net${i}`
-      const netValue = config[netKey] as string | undefined
-      
-      if (netValue) {
-        const iface: NetworkInterface = { name: netKey, bridge: '' }
-        
-        const parts = netValue.split(',')
-        for (const part of parts) {
-          const [key, value] = part.split('=')
-          if (key === 'bridge') iface.bridge = value
-          if (key === 'ip') iface.ip = value
-          if (key === 'firewall') iface.firewall = value === '1'
-          if (key.includes(':')) iface.mac = key // MAC address
-        }
-        
-        if (iface.bridge) {
-          bridges.value.add(iface.bridge)
-          interfaces.push(iface)
-        }
-      }
-    }
-
-    return interfaces
-  }
-
-  /**
    * Toggle selection of a resource
    */
   function toggleSelection(resourceId: string): void {
@@ -269,18 +285,48 @@ export function useInfrastructureImport() {
       return result
     }
 
-    // Track bridges for network segment creation
+    const spacing = 200
+
+    // Pass 1: fetch each guest's config and parse its NICs, so we know every
+    // bridge AND its subnet/gateway BEFORE building network nodes (#79).
+    interface Prepared {
+      resource: (typeof selected)[number]
+      config: Record<string, unknown>
+      interfaces: NetworkInterface[]
+    }
+    const prepared: Prepared[] = []
+    const bridgeMeta = new Map<string, { cidr: string; gateway: string }>()
+    for (const resource of selected) {
+      try {
+        const config = resource.type === 'vm'
+          ? await fetchVmConfig(resource.vmid!)
+          : await fetchLxcConfig(resource.vmid!)
+        if (!config) {
+          result.errors.push(`Failed to fetch config for ${resource.name}`)
+          continue
+        }
+        const interfaces = parseNetworkInterfaces(config)
+        for (const iface of interfaces) {
+          bridges.value.add(iface.bridge)
+          const meta = bridgeMeta.get(iface.bridge) ?? { cidr: '', gateway: '' }
+          if (!meta.cidr && iface.cidr) meta.cidr = iface.cidr
+          if (!meta.gateway && iface.gateway) meta.gateway = iface.gateway
+          bridgeMeta.set(iface.bridge, meta)
+        }
+        prepared.push({ resource, config, interfaces })
+      } catch (err) {
+        result.errors.push(`Error reading ${resource.name}: ${err}`)
+      }
+    }
+
+    // Pass 2: one network-segment node per discovered bridge, with the subnet
+    // and gateway derived from the imported VMs' ipconfig.
     const bridgeNodes = new Map<string, string>()
     let nodeX = 100
     let nodeY = 100
-    const spacing = 200
-
-    // Create network segment nodes for each bridge
-    const bridgeArray = Array.from(bridges.value)
-    for (const bridge of bridgeArray) {
+    for (const [bridge, meta] of bridgeMeta) {
       const nodeId = `imported-network-${bridge}`
       bridgeNodes.set(bridge, nodeId)
-      
       result.nodes.push({
         id: nodeId,
         type: 'network-segment',
@@ -289,97 +335,70 @@ export function useInfrastructureImport() {
         data: {
           type: 'network-segment',
           label: bridge,
-          config: {
-            name: bridge,
-            bridge: bridge,
-            cidr: '',
-            gateway: '',
-          }
-        }
+          config: { name: bridge, bridge, cidr: meta.cidr, gateway: meta.gateway },
+        },
       })
       nodeX += spacing
     }
 
-    // Reset position for VMs/LXCs
+    // Pass 3: VM/LXC nodes + edges to their bridges (carrying the NIC ip so the
+    // serializer records networks[].node_ref + ip).
     nodeX = 100
     nodeY = 300
+    for (const { resource, config, interfaces } of prepared) {
+      const nodeId = `imported-${resource.type}-${resource.vmid}`
+      const cachedVm = proxmoxCache.vmCache.value.find(v => v.vmid === resource.vmid)
+      const vmTags = cachedVm?.tags ? cachedVm.tags.split(';').filter(Boolean) : []
 
-    // Process selected VMs/LXCs
-    for (const resource of selected) {
-      try {
-        // Fetch detailed config
-        const config = resource.type === 'vm' 
-          ? await fetchVmConfig(resource.vmid!)
-          : await fetchLxcConfig(resource.vmid!)
-
-        if (!config) {
-          result.errors.push(`Failed to fetch config for ${resource.name}`)
-          continue
-        }
-
-        // Extract network interfaces
-        const interfaces = extractNetworkInterfaces(config)
-
-        // Create node
-        const nodeId = `imported-${resource.type}-${resource.vmid}`
-        // Look up tags from the cached VM list
-        const cachedVm = proxmoxCache.vmCache.value.find(v => v.vmid === resource.vmid)
-        const vmTags = cachedVm?.tags ? cachedVm.tags.split(';').filter(Boolean) : []
-
-        const initialConfig = {
-          name: resource.name,
-          cores: config.cores || 1,
-          memory: typeof config.memory === 'string' ? parseInt(config.memory) : (config.memory || 0),
-          tags: vmTags,
-          description: '',
-        }
-        result.nodes.push({
-          id: nodeId,
+      const initialConfig = {
+        name: resource.name,
+        cores: config.cores || 1,
+        memory: typeof config.memory === 'string' ? parseInt(config.memory) : (config.memory || 0),
+        tags: vmTags,
+        description: '',
+      }
+      result.nodes.push({
+        id: nodeId,
+        type: resource.type,
+        label: resource.name,
+        position: { x: nodeX, y: nodeY },
+        data: {
           type: resource.type,
           label: resource.name,
-          position: { x: nodeX, y: nodeY },
-          data: {
-            type: resource.type,
-            label: resource.name,
-            vmId: resource.vmid,
-            deployed: true,
-            status: resource.status === 'running' ? 'running' : 'stopped',
-            config: {
-              name: resource.name,
-              vmid: resource.vmid,
-              cores: config.cores || 1,
-              memory: String(config.memory || 0),
-              memUsed: config.memUsed || 0,
-              diskMax: config.diskMax || 0,
-              cpuUsage: config.cpuUsage || 0,
-              uptime: config.uptime || 0,
-              proxmoxNode: config.node || '',
-            },
-            desiredConfig: { ...initialConfig },
-            actualConfig: { ...initialConfig },
-          }
+          vmId: resource.vmid,
+          deployed: true,
+          status: resource.status === 'running' ? 'running' : 'stopped',
+          config: {
+            name: resource.name,
+            vmid: resource.vmid,
+            cores: config.cores || 1,
+            memory: String(config.memory || 0),
+            memUsed: config.memUsed || 0,
+            diskMax: config.diskMax || 0,
+            cpuUsage: config.cpuUsage || 0,
+            uptime: config.uptime || 0,
+            proxmoxNode: config.node || '',
+          },
+          desiredConfig: { ...initialConfig },
+          actualConfig: { ...initialConfig },
+        },
+      })
+
+      for (const iface of interfaces) {
+        const networkNodeId = bridgeNodes.get(iface.bridge)
+        if (!networkNodeId) continue
+        result.edges.push({
+          id: `edge-${nodeId}-${networkNodeId}`,
+          source: nodeId,
+          target: networkNodeId,
+          data: iface.ip ? { connection: { ipAddress: iface.ip } } : { useDhcp: true },
         })
+      }
 
-        // Create edges for each network interface
-        for (const iface of interfaces) {
-          const networkNodeId = bridgeNodes.get(iface.bridge)
-          if (networkNodeId) {
-            result.edges.push({
-              id: `edge-${nodeId}-${networkNodeId}`,
-              source: nodeId,
-              target: networkNodeId,
-            })
-          }
-        }
-
-        nodeX += spacing
-        if (nodeX > 700) {
-          nodeX = 100
-          nodeY += spacing
-        }
-
-      } catch (err) {
-        result.errors.push(`Error importing ${resource.name}: ${err}`)
+      nodeX += spacing
+      if (nodeX > 700) {
+        nodeX = 100
+        nodeY += spacing
       }
     }
 
