@@ -264,6 +264,20 @@ async function listHostVms(): Promise<V1Vm[]> {
   return raw.items ?? []
 }
 
+/** Fetch the raw PVE guest config (net0/net1/ipconfig*, ...) through v1. The
+ * v1 VM list omits per-NIC detail, so import uses this to rebuild edges (#79). */
+async function getHostVmConfig(
+  vmId: number | string,
+  vmtype: 'qemu' | 'lxc' = 'qemu',
+): Promise<Record<string, unknown>> {
+  const { id } = await getRegisteredHost()
+  const raw = await request<{ config?: Record<string, unknown> }>(
+    `/v1/proxmox/hosts/${id}/vms/${vmId}/config?vmtype=${vmtype}`,
+    { method: 'GET' },
+  )
+  return raw.config ?? {}
+}
+
 /** POST a Proxmox status action through v1 (host resolved internally). */
 async function vmStatusAction(
   vmId: number | string,
@@ -316,6 +330,17 @@ export const vm = {
    */
   async listUsage(node: ProxmoxNode): Promise<VmListItem[]> {
     return this.list(node)
+  },
+
+  /**
+   * Raw PVE guest config (net0/net1/ipconfig*, ...) for import NIC/edge
+   * reconstruction (#79). The v1 VM list omits per-NIC detail.
+   */
+  async getConfig(
+    vmId: number | string,
+    vmtype: 'qemu' | 'lxc' = 'qemu',
+  ): Promise<Record<string, unknown>> {
+    return getHostVmConfig(vmId, vmtype)
   },
 
   /**

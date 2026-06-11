@@ -150,21 +150,29 @@ export function useInfrastructureImport() {
         ? proxmoxCache.vmCache.value
         : await proxmoxCache.fetchVms(proxmoxNode.value)
       const vm = allVms.find(v => v.vmid === vmid)
-      if (vm) {
-        return {
-          vmid: vm.vmid,
-          name: vm.name,
-          cores: vm.maxcpu || 1,
-          memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 0,
-          memUsed: vm.mem ? Math.floor(vm.mem / 1024 / 1024) : 0,
-          diskMax: (vm as unknown as Record<string, unknown>).maxdisk || 0,
-          cpuUsage: vm.cpu || 0,
-          uptime: vm.uptime || 0,
-          status: vm.status,
-          node: vm.node || '',
-        }
+      if (!vm) return null
+      const summary: Record<string, unknown> = {
+        vmid: vm.vmid,
+        name: vm.name,
+        cores: vm.maxcpu || 1,
+        memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 0,
+        memUsed: vm.mem ? Math.floor(vm.mem / 1024 / 1024) : 0,
+        diskMax: (vm as unknown as Record<string, unknown>).maxdisk || 0,
+        cpuUsage: vm.cpu || 0,
+        uptime: vm.uptime || 0,
+        status: vm.status,
+        node: vm.node || '',
       }
-      return null
+      // #79: the v1 VM list has no per-NIC detail. Pull the real guest config
+      // so extractNetworkInterfaces() can rebuild bridge/network edges.
+      try {
+        const vmtype = vm.type === 'lxc' ? 'lxc' : 'qemu'
+        const cfg = await proxmoxApi.vm.getConfig(vmid, vmtype)
+        return { ...summary, ...cfg }
+      } catch (cfgErr) {
+        console.warn(`[useInfrastructureImport] no per-NIC config for VM ${vmid}:`, cfgErr)
+        return summary
+      }
     } catch (err) {
       console.error(`[useInfrastructureImport] Failed to fetch VM ${vmid} config:`, err)
       return null
