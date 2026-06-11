@@ -66,6 +66,10 @@ function applyOffsets(
     cfg.cidr = renderTemplate(cfg.cidr_template as string, teamId);
     delete cfg.cidr_template;
   }
+  if (typeof cfg.gateway_template === 'string') {
+    cfg.gateway = renderTemplate(cfg.gateway_template as string, teamId);
+    delete cfg.gateway_template;
+  }
   if (idOffset && typeof idOffset.vmid === 'number' && cfg.vm_id !== undefined) {
     cfg.vm_id = Number(cfg.vm_id) + (idOffset.vmid as number) * teamId;
   }
