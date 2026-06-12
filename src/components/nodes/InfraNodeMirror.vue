@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 
-const props = defineProps(['data', 'selected'])
+defineProps(['data', 'selected'])
 
 const health = ref(null)
 let pollInterval = null
