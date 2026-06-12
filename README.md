@@ -96,7 +96,7 @@ Configure the backend API URL in the settings modal once the app is running.
 ### Docker: Build & Push
 
 The multi-stage `Dockerfile` uses **Debian stable (bookworm)** for both the builder and runtime stages.
-Stage 1 installs the `range42-deployer` CLI into a Python venv before running the npm production build.
+Stage 1 runs `npm ci` + `npm run build` to produce the production bundle.
 Stage 2 serves the compiled SPA with nginx.
 
 **Build locally and validate:**
@@ -116,12 +116,6 @@ IMAGE=ghcr.io/range42/range42-deployer-ui
 TAG=$(git rev-parse --short HEAD)
 
 docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
-```
-
-**Pin a specific deployer CLI version (optional):**
-
-```bash
-docker build --build-arg DEPLOYER_CLI_VERSION=1.2.3 -t "${IMAGE}:${TAG}" .
 ```
 
 **Push to the registry:**
