@@ -54,41 +54,77 @@ function saveUserIdentity() {
 // the UI reads `/v1/proxmox/hosts` read-only from the configured backend.
 // ===========================================================================
 
-const backendForm = ref({
-  url: backendApi.url,
-  token: backendApi.token || '',
-})
+// A project selects ONE of these hosts (backend-api URL + its single Proxmox
+// node). Several can be registered; one is "active" for app-level reads.
+const backendHosts = computed(() => backendApi.hosts)
+const backendForm = ref({ id: null, label: '', url: '', token: '', nodeName: 'pve' })
 const backendError = ref('')
-const backendTesting = ref(false)
-const backendHealth = computed(() => backendApi.health)
+const backendTestingId = ref(null)
 
-function saveBackend() {
+function resetBackendForm() {
+  backendForm.value = { id: null, label: '', url: '', token: '', nodeName: 'pve' }
+  backendError.value = ''
+}
+
+function editHost(h) {
+  backendForm.value = {
+    id: h.id,
+    label: h.label,
+    url: h.url,
+    token: h.token || '',
+    nodeName: h.nodeName,
+  }
+  backendError.value = ''
+}
+
+function saveBackendHost() {
   backendError.value = ''
   const url = backendForm.value.url.trim()
   if (!/^https?:\/\//.test(url)) {
     backendError.value = 'Backend URL must start with http:// or https://'
     return
   }
-  backendApi.setUrl(url)
-  backendApi.setToken(backendForm.value.token.trim() || undefined)
-  showToast('Backend API saved', 'success')
+  const patch = {
+    label: backendForm.value.label.trim(),
+    url,
+    token: backendForm.value.token.trim() || undefined,
+    nodeName: backendForm.value.nodeName.trim() || 'pve',
+  }
+  if (backendForm.value.id) {
+    backendApi.updateHost(backendForm.value.id, patch)
+    showToast('Backend host updated', 'success')
+  } else {
+    backendApi.addHost(patch)
+    showToast('Backend host added', 'success')
+  }
+  resetBackendForm()
 }
 
-async function testBackend() {
+async function testHost(id) {
   backendError.value = ''
-  backendTesting.value = true
+  backendTestingId.value = id
   try {
-    // Apply the form values first so the probe hits what the user sees.
-    backendApi.setUrl(backendForm.value.url.trim())
-    backendApi.setToken(backendForm.value.token.trim() || undefined)
-    const result = await backendApi.testConnection()
+    const result = await backendApi.testConnection(id)
     if (result.status === 'ok') showToast(`Backend OK (${result.rtt_ms} ms)`, 'success')
     else if (result.status === 'degraded') showToast('Backend reachable but not ready', 'warning')
     else showToast('Backend unreachable', 'error')
   } catch (e) {
     backendError.value = e?.message || String(e)
   } finally {
-    backendTesting.value = false
+    backendTestingId.value = null
+  }
+}
+
+async function removeHostConfirm(h) {
+  const ok = await confirm({
+    title: 'Remove backend host',
+    message: `Remove "${h.label || h.url}"? Projects pointing at it will need a new host.`,
+    confirmText: 'Remove',
+    confirmClass: 'btn-error',
+  })
+  if (ok) {
+    backendApi.removeHost(h.id)
+    showToast('Backend host removed', 'success')
   }
 }
 
@@ -358,82 +394,85 @@ const clearAllData = async () => {
         </div>
       </div>
 
-      <!-- Backend API connection — the UI's only conduit to the platform.
-           Proxmox hosts are owned by the backend itself (env/config). -->
+      <!-- Backend API hosts — the UI's conduit to the platform. Register one or
+           more backend-api hosts (each paired with the single Proxmox node it
+           targets). A project selects one of these. Proxmox host credentials are
+           owned by the backend itself (env/config), not here. -->
       <div id="backend-api" class="card bg-base-100 shadow-md mb-6" data-testid="settings-backend-api">
         <div class="card-body">
-          <div class="flex items-center justify-between mb-2">
-            <h2 class="card-title">Backend API</h2>
-            <span
-              v-if="backendHealth?.status"
-              class="badge"
-              :class="{
-                'badge-success': backendHealth.status === 'ok',
-                'badge-warning': backendHealth.status === 'degraded',
-                'badge-error': backendHealth.status === 'unreachable',
-              }"
-            >
-              {{ backendHealth.status }}
-              <span v-if="backendHealth.rtt_ms != null"> — {{ backendHealth.rtt_ms }}ms</span>
-            </span>
-          </div>
+          <h2 class="card-title mb-2">Backend API hosts</h2>
           <p class="text-sm text-base-content/60 mb-4">
-            The backend API is the component that connects to Proxmox hypervisors. This UI
-            talks to exactly one backend at a time. Proxmox host credentials and routing are
-            configured <em>on the backend</em>, not here.
+            Each host is a backend-api URL paired with the single Proxmox node it deploys to.
+            Register as many as you need; a project picks one. Proxmox credentials and routing
+            are configured <em>on the backend</em>, not here.
           </p>
 
-          <div class="space-y-3">
-            <div class="form-control">
-              <label class="label"><span class="label-text">Backend URL</span></label>
-              <input
-                v-model="backendForm.url"
-                type="url"
-                class="input input-bordered"
-                placeholder="http://192.168.142.121:8000"
-                data-testid="backend-url"
-              />
-            </div>
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Bearer token (optional, Kong-gated)</span>
-              </label>
-              <input
-                v-model="backendForm.token"
-                type="password"
-                class="input input-bordered"
-                placeholder="leave empty for unauthenticated"
-                autocomplete="new-password"
-                data-testid="backend-token"
-              />
-            </div>
-            <div v-if="backendError" class="alert alert-error">
-              <span>{{ backendError }}</span>
-            </div>
-            <div
-              v-if="backendHealth?.checks"
-              class="text-xs text-base-content/60 space-y-1"
-              data-testid="backend-checks"
+          <!-- Registered hosts -->
+          <ul v-if="backendHosts.length" class="divide-y divide-base-200 mb-4" data-testid="backend-host-list">
+            <li
+              v-for="h in backendHosts"
+              :key="h.id"
+              class="flex items-center gap-3 py-3"
+              data-testid="backend-host-row"
             >
-              <div v-for="(v, k) in backendHealth.checks" :key="k">
-                <span :class="v.ok ? 'text-success' : 'text-error'">●</span>
-                <span class="ml-1 font-mono">{{ k }}</span>
-                <span v-if="!v.ok" class="ml-2 text-error">not ready</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium truncate">{{ h.label || h.url }}</span>
+                  <span
+                    v-if="h.health?.status"
+                    class="badge badge-sm"
+                    :class="{
+                      'badge-success': h.health.status === 'ok',
+                      'badge-warning': h.health.status === 'degraded',
+                      'badge-error': h.health.status === 'unreachable',
+                    }"
+                  >{{ h.health.status }}<span v-if="h.health.rtt_ms != null"> — {{ h.health.rtt_ms }}ms</span></span>
+                </div>
+                <div class="text-xs text-base-content/60 font-mono truncate">
+                  {{ h.url }} · node {{ h.nodeName }}
+                </div>
+              </div>
+              <button class="btn btn-ghost btn-xs" type="button" :disabled="backendTestingId === h.id" @click="testHost(h.id)">
+                {{ backendTestingId === h.id ? 'Testing…' : 'Test' }}
+              </button>
+              <button class="btn btn-ghost btn-xs" type="button" @click="editHost(h)">Edit</button>
+              <button class="btn btn-ghost btn-xs text-error" type="button" @click="removeHostConfirm(h)">Remove</button>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-base-content/50 italic mb-4" data-testid="backend-host-empty">
+            No backend-api hosts registered yet.
+          </p>
+
+          <!-- Add / edit form -->
+          <div class="space-y-3 border-t border-base-300 pt-4">
+            <h3 class="text-sm font-semibold">{{ backendForm.id ? 'Edit host' : 'Add a host' }}</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="form-control">
+                <label class="label"><span class="label-text">Label</span></label>
+                <input v-model="backendForm.label" type="text" class="input input-bordered" placeholder="lab" data-testid="backend-label" />
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Proxmox node</span></label>
+                <input v-model="backendForm.nodeName" type="text" class="input input-bordered" placeholder="pve" data-testid="backend-node" />
               </div>
             </div>
+            <div class="form-control">
+              <label class="label"><span class="label-text">Backend URL</span></label>
+              <input v-model="backendForm.url" type="url" class="input input-bordered" placeholder="http://192.168.142.121:8000" data-testid="backend-url" />
+            </div>
+            <div class="form-control">
+              <label class="label"><span class="label-text">Bearer token (optional, Kong-gated)</span></label>
+              <input v-model="backendForm.token" type="password" class="input input-bordered" placeholder="leave empty for unauthenticated" autocomplete="new-password" data-testid="backend-token" />
+            </div>
+            <div v-if="backendError" class="alert alert-error"><span>{{ backendError }}</span></div>
           </div>
 
           <div class="mt-4 flex gap-2">
-            <button class="btn btn-primary btn-sm" type="button" @click="saveBackend">
-              Save
+            <button class="btn btn-primary btn-sm" type="button" @click="saveBackendHost">
+              {{ backendForm.id ? 'Save changes' : 'Add host' }}
             </button>
-            <button
-              class="btn btn-ghost btn-sm"
-              type="button"
-              :disabled="backendTesting"
-              @click="testBackend"
-            >
-              {{ backendTesting ? 'Testing…' : 'Test connection' }}
+            <button v-if="backendForm.id" class="btn btn-ghost btn-sm" type="button" @click="resetBackendForm">
+              Cancel
             </button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
+import { useBackendApiStore } from '@/stores/backendApiStore.ts'
 import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
@@ -32,15 +33,34 @@ const {
   resetSettings
 } = useProxmoxSettings(computed(() => props.projectId))
 
+const backendApi = useBackendApiStore()
+const savedHosts = computed(() => backendApi.hosts)
+
 const formBaseUrl = ref('')
 const formDefaultNode = ref('')
+const selectedHostId = ref('')
 const isSaving = ref(false)
 const saveError = ref(null)
 
 const populateForm = () => {
   formBaseUrl.value = currentBaseUrl.value || DEFAULT_API_URL
   formDefaultNode.value = currentDefaultNode.value || ''
+  // Pre-select the saved host whose url+node match the current settings.
+  const match = savedHosts.value.find(
+    (h) => h.url === currentBaseUrl.value && h.nodeName === currentDefaultNode.value,
+  )
+  selectedHostId.value = match?.id || ''
   saveError.value = null
+}
+
+// Picking a saved host fills the URL + node fields.
+const applySavedHost = (id) => {
+  selectedHostId.value = id
+  const host = backendApi.getHost(id)
+  if (host) {
+    formBaseUrl.value = host.url
+    formDefaultNode.value = host.nodeName
+  }
 }
 
 const openDialog = async () => {
@@ -225,6 +245,24 @@ const formatDate = (isoString) => {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
         </svg>
         <span class="text-sm">Proxmox settings not configured. Please configure before using Proxmox operations.</span>
+      </div>
+
+      <!-- Pick from saved backend-api hosts (Settings → Backend API hosts) -->
+      <div v-if="savedHosts.length" class="form-control mb-4" data-testid="saved-host-picker">
+        <label class="label"><span class="label-text">Use a saved backend-api host</span></label>
+        <select
+          class="select select-bordered"
+          :value="selectedHostId"
+          @change="applySavedHost($event.target.value)"
+        >
+          <option value="">— Manual entry —</option>
+          <option v-for="h in savedHosts" :key="h.id" :value="h.id">
+            {{ h.label || h.url }} ({{ h.url }} · node {{ h.nodeName }})
+          </option>
+        </select>
+        <p class="text-xs text-base-content/60 mt-1">
+          Selecting a host fills the fields below. You can still edit them manually.
+        </p>
       </div>
 
       <!-- Form -->
