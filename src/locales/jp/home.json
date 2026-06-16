@@ -1,6 +1,16 @@
 {
   "welcome": "Range42へようこそ",
   "welcome_sub": "サイバーレンジ シナリオの構築を始めるには、いくつかのステップを完了してください。",
+  "banner": {
+    "title": "Range42のセットアップを完了",
+    "body": "デプロイを始めるにはGitソースとbackend-apiホストを追加してください。その間も構築を続けられます。",
+    "open": "セットアップを開く",
+    "dismiss": "閉じる"
+  },
+  "wizard": {
+    "title": "Range42をセットアップ",
+    "close": "閉じる"
+  },
   "checklist": {
     "done": "完了",
     "pending": "未完了",
@@ -9,9 +19,9 @@
       "title": "Gitソースを追加",
       "desc": "GitHub、GitLab、またはGiteaインスタンスを登録して、Range42がカタログエントリを読み込めるようにします。"
     },
-    "add_proxmox": {
-      "title": "Proxmoxホストを追加",
-      "desc": "Range42がシナリオをデプロイできるよう、Proxmox APIエンドポイントを指定します。"
+    "add_backend": {
+      "title": "backend-apiホストを追加",
+      "desc": "backend-apiホスト（そのURLと対象のProxmoxノード）を登録して、Range42がシナリオをデプロイできるようにします。"
     },
     "browse_catalog": {
       "title": "カタログを閲覧",

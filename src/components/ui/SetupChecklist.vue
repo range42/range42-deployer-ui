@@ -3,14 +3,16 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useInventoryStore } from '@/stores/inventoryStore'
-import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
+import { useBackendApiStore } from '@/stores/backendApiStore.ts'
 import { useProjectStore } from '@/stores/projectStore'
+
+const emit = defineEmits(['navigate'])
 
 const router = useRouter()
 const { t } = useI18n()
 
 const inv = useInventoryStore()
-const pve = useProxmoxSettingsStore()
+const backend = useBackendApiStore()
 const proj = useProjectStore()
 
 const steps = computed(() => [
@@ -22,11 +24,11 @@ const steps = computed(() => [
     done: inv.sources.length > 0,
   },
   {
-    id: 'proxmox',
-    title: t('home.checklist.add_proxmox.title'),
-    desc: t('home.checklist.add_proxmox.desc'),
-    href: '/settings#proxmox-hosts',
-    done: !!pve.settings?.baseUrl,
+    id: 'backend',
+    title: t('home.checklist.add_backend.title'),
+    desc: t('home.checklist.add_backend.desc'),
+    href: '/settings#backend-api',
+    done: backend.hosts.length > 0,
   },
   {
     id: 'catalog',
@@ -38,16 +40,13 @@ const steps = computed(() => [
 ])
 
 function go(href) {
+  emit('navigate')
   if (href.startsWith('/')) router.push(href)
 }
 </script>
 
 <template>
-  <section class="max-w-2xl mx-auto p-6" data-testid="setup-checklist">
-    <header class="mb-6 text-center">
-      <h1 class="text-2xl font-bold">{{ t('home.welcome') }}</h1>
-      <p class="text-sm text-base-content/70 mt-1">{{ t('home.welcome_sub') }}</p>
-    </header>
+  <section class="max-w-2xl mx-auto" data-testid="setup-checklist">
     <ol class="space-y-3">
       <li
         v-for="(step, index) in steps"

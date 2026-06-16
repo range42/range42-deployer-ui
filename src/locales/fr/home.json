@@ -1,6 +1,16 @@
 {
   "welcome": "Bienvenue sur Range42",
   "welcome_sub": "Quelques étapes pour commencer à construire vos scénarios de cyber range.",
+  "banner": {
+    "title": "Terminer la configuration de Range42",
+    "body": "Ajoutez une source Git et un hôte backend-api pour commencer à déployer. Vous pouvez continuer à construire entre-temps.",
+    "open": "Ouvrir la configuration",
+    "dismiss": "Ignorer"
+  },
+  "wizard": {
+    "title": "Configurer Range42",
+    "close": "Fermer"
+  },
   "checklist": {
     "done": "Terminé",
     "pending": "En attente",
@@ -9,9 +19,9 @@
       "title": "Ajouter une source Git",
       "desc": "Enregistrez une instance GitHub, GitLab ou Gitea pour que Range42 charge les entrées de catalogue."
     },
-    "add_proxmox": {
-      "title": "Ajouter un hôte Proxmox",
-      "desc": "Pointez Range42 vers un endpoint API Proxmox pour pouvoir déployer vos scénarios."
+    "add_backend": {
+      "title": "Ajouter un hôte backend-api",
+      "desc": "Enregistrez un hôte backend-api (son URL et le nœud Proxmox ciblé) pour que Range42 puisse déployer vos scénarios."
     },
     "browse_catalog": {
       "title": "Parcourir le catalogue",

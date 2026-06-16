@@ -1,24 +1,15 @@
 <script setup>
 defineOptions({ name: 'HomeView' })
 
-import { computed, onMounted } from 'vue'
-import { useInventoryStore } from '@/stores/inventoryStore'
-import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
+import { ref, onMounted } from 'vue'
 import { useProjectStore } from '@/stores/projectStore'
 import Dashboard from '@/views/Dashboard.vue'
-import SetupChecklist from '@/components/ui/SetupChecklist.vue'
+import SetupBanner from '@/components/ui/SetupBanner.vue'
+import SetupWizardModal from '@/components/ui/SetupWizardModal.vue'
 import { ensureNamespaces } from '@/i18n'
 
-const inv = useInventoryStore()
-const pve = useProxmoxSettingsStore()
 const proj = useProjectStore()
-
-const firstRun = computed(
-  () =>
-    inv.sources.length === 0 &&
-    !pve.settings?.baseUrl &&
-    proj.projects.length === 0,
-)
+const wizardOpen = ref(false)
 
 onMounted(async () => {
   await ensureNamespaces(['common', 'home', 'sources'])
@@ -27,6 +18,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SetupChecklist v-if="firstRun" />
-  <Dashboard v-else />
+  <!-- Dashboard ALWAYS renders. Onboarding is a non-blocking banner that can
+       open the guided steps in a modal — it never replaces the page. -->
+  <div>
+    <SetupBanner @open="wizardOpen = true" />
+    <Dashboard />
+    <SetupWizardModal :visible="wizardOpen" @close="wizardOpen = false" />
+  </div>
 </template>
