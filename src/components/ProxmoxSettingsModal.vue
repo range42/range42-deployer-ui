@@ -248,10 +248,10 @@ const formatDate = (isoString) => {
       </div>
 
       <!-- Pick from saved backend-api hosts (Settings → Backend API hosts) -->
-      <div v-if="savedHosts.length" class="form-control mb-4" data-testid="saved-host-picker">
-        <label class="label"><span class="label-text">Use a saved backend-api host</span></label>
+      <fieldset class="fieldset mb-4" data-testid="saved-host-picker">
+        <legend class="fieldset-legend">Use a saved backend-api host</legend>
         <select
-          class="select select-bordered"
+          class="select w-full"
           :value="selectedHostId"
           @change="applySavedHost($event.target.value)"
         >
@@ -260,10 +260,8 @@ const formatDate = (isoString) => {
             {{ h.label || h.url }} ({{ h.url }} · node {{ h.nodeName }})
           </option>
         </select>
-        <p class="text-xs text-base-content/60 mt-1">
-          Selecting a host fills the fields below. You can still edit them manually.
-        </p>
-      </div>
+        <p class="label">Selecting a host fills the fields below. You can still edit them manually.</p>
+      </fieldset>
 
       <!-- Form -->
       <FormSection variant="bordered" :columns="1" class="mb-4">

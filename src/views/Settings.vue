@@ -325,16 +325,14 @@ const clearAllData = async () => {
         <div class="card-body">
           <h2 class="card-title">Appearance</h2>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Theme</span>
-            </label>
-            <select v-model="settings.theme" class="select select-bordered w-full max-w-xs">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Theme</legend>
+            <select v-model="settings.theme" class="select w-full max-w-xs">
               <option value="light">Light</option>
               <option value="dark">Dark</option>
               <option value="cupcake">Cupcake</option>
             </select>
-          </div>
+          </fieldset>
         </div>
       </div>
 
@@ -347,27 +345,21 @@ const clearAllData = async () => {
             see who is editing a project.
           </p>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Display name</span>
-            </label>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Display name</legend>
             <input
               v-model="userForm.display_name"
               type="text"
-              class="input input-bordered"
+              class="input w-full"
               placeholder="e.g. alice-bob"
               data-testid="user-display-name"
               @blur="userNameError = validateDisplayName(userForm.display_name) || ''"
             />
-            <label v-if="userNameError" class="label">
-              <span class="label-text-alt text-error">{{ userNameError }}</span>
-            </label>
-          </div>
+            <p v-if="userNameError" class="label text-error">{{ userNameError }}</p>
+          </fieldset>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Color</span>
-            </label>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Color</legend>
             <div class="flex items-center gap-3">
               <input
                 v-model="userForm.color"
@@ -378,14 +370,12 @@ const clearAllData = async () => {
               <input
                 v-model="userForm.color"
                 type="text"
-                class="input input-bordered font-mono flex-1"
+                class="input font-mono flex-1"
                 placeholder="#3b82f6"
               />
             </div>
-            <label v-if="userColorError" class="label">
-              <span class="label-text-alt text-error">{{ userColorError }}</span>
-            </label>
-          </div>
+            <p v-if="userColorError" class="label text-error">{{ userColorError }}</p>
+          </fieldset>
 
           <div class="mt-4 flex items-center gap-2">
             <button class="btn btn-primary" type="button" @click="saveUserIdentity">Save identity</button>
@@ -444,28 +434,24 @@ const clearAllData = async () => {
           </p>
 
           <!-- Add / edit form -->
-          <div class="space-y-3 border-t border-base-300 pt-4">
-            <h3 class="text-sm font-semibold">{{ backendForm.id ? 'Edit host' : 'Add a host' }}</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div class="form-control">
-                <label class="label"><span class="label-text">Label</span></label>
-                <input v-model="backendForm.label" type="text" class="input input-bordered" placeholder="lab" data-testid="backend-label" />
+          <fieldset class="fieldset border-t border-base-300 pt-4">
+            <legend class="fieldset-legend">{{ backendForm.id ? 'Edit host' : 'Add a host' }}</legend>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+              <div>
+                <label class="label" for="backend-label">Label</label>
+                <input id="backend-label" v-model="backendForm.label" type="text" class="input w-full" placeholder="lab" data-testid="backend-label" />
               </div>
-              <div class="form-control">
-                <label class="label"><span class="label-text">Proxmox node</span></label>
-                <input v-model="backendForm.nodeName" type="text" class="input input-bordered" placeholder="pve" data-testid="backend-node" />
+              <div>
+                <label class="label" for="backend-node">Proxmox node</label>
+                <input id="backend-node" v-model="backendForm.nodeName" type="text" class="input w-full" placeholder="pve" data-testid="backend-node" />
               </div>
             </div>
-            <div class="form-control">
-              <label class="label"><span class="label-text">Backend URL</span></label>
-              <input v-model="backendForm.url" type="url" class="input input-bordered" placeholder="http://192.168.142.121:8000" data-testid="backend-url" />
-            </div>
-            <div class="form-control">
-              <label class="label"><span class="label-text">Bearer token (optional, Kong-gated)</span></label>
-              <input v-model="backendForm.token" type="password" class="input input-bordered" placeholder="leave empty for unauthenticated" autocomplete="new-password" data-testid="backend-token" />
-            </div>
-            <div v-if="backendError" class="alert alert-error"><span>{{ backendError }}</span></div>
-          </div>
+            <label class="label" for="backend-url">Backend URL</label>
+            <input id="backend-url" v-model="backendForm.url" type="url" class="input w-full" placeholder="http://192.168.142.121:8000" data-testid="backend-url" />
+            <label class="label" for="backend-token">Bearer token (optional, Kong-gated)</label>
+            <input id="backend-token" v-model="backendForm.token" type="password" class="input w-full" placeholder="leave empty for unauthenticated" autocomplete="new-password" data-testid="backend-token" />
+            <div v-if="backendError" class="alert alert-error mt-2"><span>{{ backendError }}</span></div>
+          </fieldset>
 
           <div class="mt-4 flex gap-2">
             <button class="btn btn-primary btn-sm" type="button" @click="saveBackendHost">
@@ -487,27 +473,27 @@ const clearAllData = async () => {
             snapshot taken in the <strong>last D days</strong>. Per-deployment overrides live on the
             deployment page.
           </p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label"><span class="label-text">Keep last N snapshots</span></label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">Keep last N snapshots</legend>
               <input
                 v-model.number="retention.keep_count"
                 type="number"
                 min="0"
-                class="input input-bordered"
+                class="input w-full"
                 data-testid="retention-keep-count"
               />
-            </div>
-            <div class="form-control">
-              <label class="label"><span class="label-text">Keep last D days</span></label>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">Keep last D days</legend>
               <input
                 v-model.number="retention.keep_days"
                 type="number"
                 min="0"
-                class="input input-bordered"
+                class="input w-full"
                 data-testid="retention-keep-days"
               />
-            </div>
+            </fieldset>
           </div>
           <div class="mt-3 flex items-center gap-3">
             <button
@@ -582,18 +568,16 @@ const clearAllData = async () => {
 
             <!-- Token Input -->
             <div v-if="showTokenInput" class="space-y-4">
-              <div class="form-control">
-                <label class="label">
-                  <span class="label-text font-medium">Personal Access Token (PAT)</span>
-                </label>
+              <fieldset class="fieldset">
+                <legend class="fieldset-legend">Personal Access Token (PAT)</legend>
                 <input
                   v-model="githubToken"
                   type="password"
-                  class="input input-bordered font-mono"
+                  class="input w-full font-mono"
                   placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                   @keyup.enter="saveGitHubToken"
                 />
-              </div>
+              </fieldset>
 
               <!-- How to create PAT -->
               <div class="collapse collapse-arrow bg-base-200 rounded-lg">
@@ -727,21 +711,17 @@ const clearAllData = async () => {
               <h3 class="text-lg font-bold mb-4">Add Inventory Repository</h3>
               
               <div class="space-y-4">
-                <div class="form-control">
-                  <label class="label">
-                    <span class="label-text font-medium">GitHub Repository URL</span>
-                  </label>
+                <fieldset class="fieldset">
+                  <legend class="fieldset-legend">GitHub Repository URL</legend>
                   <input
                     v-model="newRepoUrl"
                     type="text"
-                    class="input input-bordered"
+                    class="input w-full"
                     placeholder="https://github.com/owner/repo or owner/repo"
                     @keyup.enter="addRepo"
                   />
-                  <label class="label">
-                    <span class="label-text-alt">The repo must contain a manifest.json file</span>
-                  </label>
-                </div>
+                  <p class="label">The repo must contain a manifest.json file</p>
+                </fieldset>
 
                 <!-- Error message -->
                 <div v-if="addRepoError" class="alert alert-error">
@@ -782,33 +762,27 @@ const clearAllData = async () => {
         <div class="card-body">
           <h2 class="card-title">Editor</h2>
 
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">Auto-save projects</span>
-              <input v-model="settings.autoSave" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
+          <label class="flex items-center justify-between cursor-pointer py-2">
+            <span>Auto-save projects</span>
+            <input v-model="settings.autoSave" type="checkbox" class="toggle toggle-primary" />
+          </label>
 
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">Snap to grid</span>
-              <input v-model="settings.snapToGrid" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
+          <label class="flex items-center justify-between cursor-pointer py-2">
+            <span>Snap to grid</span>
+            <input v-model="settings.snapToGrid" type="checkbox" class="toggle toggle-primary" />
+          </label>
 
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Grid size</span>
-            </label>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Grid size</legend>
             <input
               v-model.number="settings.gridSize"
               type="range"
               min="10"
               max="50"
-              class="range range-primary"
+              class="range range-primary w-full"
             />
-            <div class="text-sm opacity-70 mt-1">{{ settings.gridSize }}px</div>
-          </div>
+            <p class="label">{{ settings.gridSize }}px</p>
+          </fieldset>
         </div>
       </div>
 
