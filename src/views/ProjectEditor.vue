@@ -59,17 +59,6 @@ import { useProjectStore } from '../stores/projectStore'
 
 ////
 
-import { useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/startStopPauseResumeVms'
-import { useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/delete'
-
-import { useBundleCoreProxmoxConfigureDefaultVms_createTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/create'
-
-
-import { useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/snapshots/revert'
-import { useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms } from '@/composables/runnerCalls/bundle/core/proxmox/configure/DefaultVms/snapshots/create'
-
-////
-
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -373,53 +362,6 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
     }
   }
 }, { deep: true })
-
-////
-
-// Bundle composables — only destructure loading/error for global state
-// Individual handlers will be destructured when the action panel UI is built
-const {
-  loading: loading_startStopPauseResumeDefaultVms,
-  error: error_startStopPauseResumeDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVms_startStopPauseResume(computed(() => currentProject.value?.id))
-
-const {
-  loading: loading_deleteDefaultVms,
-  error: error_deleteDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVms_deleteTargetVms(computed(() => currentProject.value?.id))
-
-const {
-  loading: createVms_loading,
-  error: error_createDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVms_createTargetVms(computed(() => currentProject.value?.id))
-
-const {
-  loading: loading_snapshotRevertDefaultVms,
-  error: error_snapshotRevertDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_revertSnapshotTargetVms(computed(() => currentProject.value?.id))
-
-const {
-  loading: loading_snapshotCreateDefaultVms,
-  error: error_snapshotCreateDefaultVms,
-} = useBundleCoreProxmoxConfigureDefaultVmsSnapshot_createSnapshotTargetVms(computed(() => currentProject.value?.id))
-
-////
-
-const _loading = computed(() => {
-  return loading_startStopPauseResumeDefaultVms.value ||
-    loading_deleteDefaultVms.value ||
-    createVms_loading.value ||
-    loading_snapshotRevertDefaultVms.value ||
-    loading_snapshotCreateDefaultVms.value
-})
-
-const error = computed(() => {
-  return error_startStopPauseResumeDefaultVms.value ||
-    error_deleteDefaultVms.value ||
-    error_createDefaultVms.value ||
-    error_snapshotRevertDefaultVms.value ||
-    error_snapshotCreateDefaultVms.value
-})
 
 ////
 
@@ -1276,16 +1218,6 @@ const handleInfrastructureImport = (result) => {
               </svg>
             </div>
             <p class="font-medium text-primary">Drop to add component</p>
-          </div>
-        </div>
-
-        <!-- Error Toast -->
-        <div v-if="error" class="absolute top-4 right-4 z-20">
-          <div class="alert alert-error shadow-lg max-w-sm">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <span class="text-sm">{{ error }}</span>
           </div>
         </div>
       </div>
