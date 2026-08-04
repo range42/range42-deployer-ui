@@ -29,6 +29,11 @@ const JINJA_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
 // Legacy single-brace numeric form: `{140+team_id}` (still accepted).
 const TEMPLATE_RE = /\{(\d*)\s*([+\-*])?\s*team_id\s*\}/g;
 const TOKEN_RE = /\d+|team_id|bridge_base|[+\-*]/g;
+// Only expressions built solely from the supported grammar are rendered;
+// anything else (`{{ inventory_hostname }}`, `{{ custom_id + 1 }}`) is a
+// plain Ansible template and must survive expansion untouched.
+const SUPPORTED_EXPR_RE =
+  /^\s*(?:\d+|team_id|bridge_base)(?:\s*[+\-*]\s*(?:\d+|team_id|bridge_base))*\s*$/;
 
 // Minimal left-to-right integer expression over `team_id` and `bridge_base`
 // with `+ - *` (no operator precedence). Kept simple for Python parity.
@@ -52,8 +57,8 @@ function evalExpr(expr: string, teamId: number, bridgeBase: number): string {
 }
 
 function renderTemplate(tpl: string, teamId: number, bridgeBase = 140): string {
-  const jinja = tpl.replace(JINJA_RE, (_m, inner: string) =>
-    evalExpr(inner, teamId, bridgeBase),
+  const jinja = tpl.replace(JINJA_RE, (m: string, inner: string) =>
+    SUPPORTED_EXPR_RE.test(inner) ? evalExpr(inner, teamId, bridgeBase) : m,
   );
   return jinja.replace(TEMPLATE_RE, (_m, basePart: string, opPart: string | undefined) => {
     const base = basePart ? parseInt(basePart, 10) : 0;
