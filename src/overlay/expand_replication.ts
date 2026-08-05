@@ -24,16 +24,19 @@ export interface ExpandResult {
   document: CatalogEntry;
 }
 
+// Character classes are spelled out rather than using \d and \s: Python
+// matches all Unicode digits and extra separators where JS matches [0-9]
+// and its own whitespace set, which would silently break TS/Python parity.
 // Canonical schema form: Jinja-ish `{{ bridge_base + team_id }}`.
-const JINJA_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+const JINJA_RE = /\{\{[ \t\n\r\f\v]*([^{}]+?)[ \t\n\r\f\v]*\}\}/g;
 // Legacy single-brace numeric form: `{140+team_id}` (still accepted).
-const TEMPLATE_RE = /\{(\d*)\s*([+\-*])?\s*team_id\s*\}/g;
-const TOKEN_RE = /\d+|team_id|bridge_base|[+\-*]/g;
+const TEMPLATE_RE = /\{([0-9]*)[ \t\n\r\f\v]*([+\-*])?[ \t\n\r\f\v]*team_id[ \t\n\r\f\v]*\}/g;
+const TOKEN_RE = /[0-9]+|team_id|bridge_base|[+\-*]/g;
 // Only expressions built solely from the supported grammar are rendered;
 // anything else (`{{ inventory_hostname }}`, `{{ custom_id + 1 }}`) is a
 // plain Ansible template and must survive expansion untouched.
 const SUPPORTED_EXPR_RE =
-  /^\s*(?:\d+|team_id|bridge_base)(?:\s*[+\-*]\s*(?:\d+|team_id|bridge_base))*\s*$/;
+  /^[ \t\n\r\f\v]*(?:[0-9]+|team_id|bridge_base)(?:[ \t\n\r\f\v]*[+\-*][ \t\n\r\f\v]*(?:[0-9]+|team_id|bridge_base))*[ \t\n\r\f\v]*$/;
 
 // Minimal left-to-right integer expression over `team_id` and `bridge_base`
 // with `+ - *` (no operator precedence). Kept simple for Python parity.

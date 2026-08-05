@@ -1,0 +1,33 @@
+{
+  "name": "bridge_base written as 200.0 renders identically — JSON Schema calls that an integer, JS parses a number, Python a float",
+  "operator": "expand_replication",
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "bridge_base float fixture",
+      "bridge_base": 200.0,
+      "nodes": [
+        { "id": "net", "kind": "network",
+          "replication": { "scope": "per_team" },
+          "bridge_template": "vmbr{{ bridge_base + team_id }}" }
+      ]
+    },
+    "team_count": 1
+  },
+  "expected": {
+    "plays_per_team": 1,
+    "handler_namespaces": [],
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "bridge_base float fixture",
+      "bridge_base": 200.0,
+      "nodes": [
+        { "id": "net__team_1", "kind": "network",
+          "replication": { "scope": "per_team" }, "config": {},
+          "bridge": "vmbr201" }
+      ]
+    }
+  }
+}
