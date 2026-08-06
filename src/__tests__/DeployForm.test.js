@@ -144,10 +144,17 @@ describe('<DeployForm>', () => {
     const body = JSON.parse(postCall[1].body)
     expect(body.codename).toBe('alpha')
     expect(body.scenario_label).toBe('demo_lab')
-    expect(body.target_host).toBe('host-1')
+    // Field names must match DeploymentCreate exactly — target_host (no _id)
+    // was rejected as a missing required field, so no deploy ever succeeded.
+    expect(body.target_host_id).toBe('host-1')
+    expect(body.target_host).toBeUndefined()
     expect(body.team_count).toBe(2)
     expect(body.catalog_sha).toBe('aabbccdd11223344')
     expect(body.project_sha).toBe('eeff0011aabb2233')
+    // The backend takes the vault password under `secrets`, and writes it to
+    // <workspace>/secrets/vault_pass.txt for the deploy run.
+    expect(body.secrets).toEqual({ vault_password: 's3cret' })
+    expect(body.vault_password).toBeUndefined()
     expect(pushSpy).toHaveBeenCalledWith({ name: 'deployment-detail', params: { id: 'dep-new' } })
   })
 
@@ -159,6 +166,52 @@ describe('<DeployForm>', () => {
     })
     await flushPromises()
     expect(wrapper.find('[data-testid="deploy-field-team-count"]').exists()).toBe(false)
+  })
+
+  it('sends team_count 1 for a non-gamenet deploy', async () => {
+    // The field is hidden, but DeploymentCreate requires team_count — omitting
+    // it made every non-gamenet deploy fail validation with a 422.
+    const fetchSpy = fetchMockHosts()
+    globalThis.fetch = fetchSpy
+    const router = makeRouter()
+    const wrapper = mount(DeployForm, {
+      props: baseProps({ gamenet: false }),
+      global: { plugins: [router, makeI18n()] },
+    })
+    await flushPromises()
+    await wrapper.find('[data-testid="deploy-field-codename"] input').setValue('alpha')
+    await wrapper.find('[data-testid="deploy-field-scenario"] input').setValue('demo_lab')
+    await wrapper.find('[data-testid="deploy-field-host"] select').setValue('host-1')
+    await wrapper.find('[data-testid="deploy-field-vault"] input').setValue('s3cret')
+    await wrapper.find('[data-testid="deploy-sha-ack"] input').setValue(true)
+    await flushPromises()
+    await wrapper.find('[data-testid="deploy-submit"]').trigger('click')
+    await flushPromises()
+    const postCall = fetchSpy.mock.calls.find(c =>
+      String(c[0]).endsWith('/v1/deployments') && c[1]?.method === 'POST')
+    expect(postCall).toBeTruthy()
+    expect(JSON.parse(postCall[1].body).team_count).toBe(1)
+  })
+
+  it('posts no body to /validate — the endpoint declares no request model', async () => {
+    const fetchSpy = fetchMockHosts()
+    globalThis.fetch = fetchSpy
+    const wrapper = mount(DeployForm, {
+      props: baseProps(),
+      global: { plugins: [makeRouter(), makeI18n()] },
+    })
+    await flushPromises()
+    await wrapper.find('[data-testid="deploy-field-codename"] input').setValue('alpha')
+    await wrapper.find('[data-testid="deploy-field-scenario"] input').setValue('demo_lab')
+    await wrapper.find('[data-testid="deploy-field-host"] select').setValue('host-1')
+    await wrapper.find('[data-testid="deploy-field-team-count"] input').setValue(2)
+    await wrapper.find('[data-testid="deploy-field-vault"] input').setValue('s3cret')
+    await flushPromises()
+    await wrapper.find('[data-testid="deploy-run-preflight"]').trigger('click')
+    await flushPromises()
+    const validateCall = fetchSpy.mock.calls.find(c => String(c[0]).includes('/validate'))
+    expect(validateCall).toBeTruthy()
+    expect(validateCall[1]?.body).toBeUndefined()
   })
 
   it('shows soft-warn checkbox and allows deploy only after ack', async () => {

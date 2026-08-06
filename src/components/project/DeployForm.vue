@@ -17,8 +17,11 @@
  *
  * On submit:
  *   POST /v1/deployments
- *     { project_id, codename, scenario_label, target_host,
- *       team_count?, vault_password, catalog_sha, project_sha }
+ *     { project_id, codename, scenario_label, target_host_id,
+ *       team_count, catalog_sha, project_sha, secrets: { vault_password } }
+ *   team_count is required by the backend, so non-gamenet deploys send 1.
+ *   The vault password goes in `secrets`; the backend writes it to
+ *   <workspace>/secrets/vault_pass.txt, which the deploy run reads.
  *   → redirects to /deployments/:id
  *
  * Props:
@@ -169,13 +172,10 @@ async function runPreflight() {
       {
         method: 'POST',
         credentials: 'same-origin',
+        // No body: /validate checks the project's stored base + overlay
+        // documents against the schema. It declares no request model, so the
+        // form values we used to send here were silently discarded.
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          codename: codename.value.trim(),
-          scenario_label: scenarioLabel.value.trim(),
-          target_host: targetHost.value,
-          team_count: props.gamenet ? Number(teamCount.value) : undefined,
-        }),
       },
     )
     if (!res.ok) {
@@ -206,12 +206,13 @@ async function submit() {
       project_id: props.projectId,
       codename: codename.value.trim(),
       scenario_label: scenarioLabel.value.trim(),
-      target_host: targetHost.value,
-      vault_password: vaultPassword.value,
+      target_host_id: targetHost.value,
       catalog_sha: props.catalogSha,
       project_sha: props.projectSha,
+      // Required by DeploymentCreate; a non-gamenet lab is a single team.
+      team_count: props.gamenet ? Number(teamCount.value) : 1,
+      secrets: { vault_password: vaultPassword.value },
     }
-    if (props.gamenet) body.team_count = Number(teamCount.value)
     const res = await fetch('/v1/deployments', {
       method: 'POST',
       credentials: 'same-origin',
