@@ -24,7 +24,7 @@ const backendLabel = computed(() => {
 
 async function fetchHealth() {
   try {
-    const res = await fetch('/v0/infra/mirror/health')
+    const res = await fetch('/v1/infra/mirror/health')
     health.value = await res.json()
   } catch {
     health.value = { status: 'offline' }
