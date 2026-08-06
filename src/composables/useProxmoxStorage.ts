@@ -59,6 +59,18 @@ export function useProxmoxStorage(options: UseProxmoxStorageOptions = {}) {
 
   const proxmoxNode = computed(() => settingsStore.defaultNode || 'pve')
 
+  /**
+   * Point this composable at a specific backend + node.
+   *
+   * Config is read from the settings store (see `isConfigured`), so a caller
+   * holding the host as props — TemplateBrowser does — has no other way to
+   * make itself configured. Without this the component threw on mount.
+   */
+  function setConfig(baseUrl: string, node: string) {
+    if (baseUrl) settingsStore.setBaseUrl(baseUrl)
+    if (node) settingsStore.setDefaultNode(node)
+  }
+
   const templateStorages = computed(() => {
     return storagePools.value.filter(s => 
       s.content?.includes('images') || s.content?.includes('vztmpl')
@@ -251,6 +263,7 @@ export function useProxmoxStorage(options: UseProxmoxStorageOptions = {}) {
     groupedTemplates,
 
     // Actions
+    setConfig,
     loadStoragePools,
     loadTemplates,
     loadIsos,
