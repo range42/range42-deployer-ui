@@ -92,7 +92,12 @@ function applyOffsets(
     delete cfg.name_template;
   }
   if (typeof cfg.vlan_template === 'string') {
-    cfg.vlan = parseInt(renderTemplate(cfg.vlan_template as string, teamId, bridgeBase), 10);
+    // An unsupported expression survives the grammar guard and lands here, so
+    // parseInt can return NaN. Store null instead: NaN serializes to null
+    // anyway, but in memory it fails every comparison and would make the
+    // Python side (which has no NaN) diverge before serialization.
+    const vlan = parseInt(renderTemplate(cfg.vlan_template as string, teamId, bridgeBase), 10);
+    cfg.vlan = Number.isNaN(vlan) ? null : vlan;
     delete cfg.vlan_template;
   }
   if (idOffset && typeof idOffset.vmid === 'number' && cfg.vm_id !== undefined) {

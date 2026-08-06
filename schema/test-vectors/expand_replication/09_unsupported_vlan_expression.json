@@ -1,0 +1,31 @@
+{
+  "name": "an unsupported vlan expression survives the grammar guard and yields null, not a crash",
+  "operator": "expand_replication",
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "unsupported vlan expression fixture",
+      "nodes": [
+        { "id": "vm", "kind": "vm",
+          "replication": { "scope": "per_team" },
+          "config": { "vlan_template": "{{ vlan_base + team_id }}" } }
+      ]
+    },
+    "team_count": 1
+  },
+  "expected": {
+    "plays_per_team": 1,
+    "handler_namespaces": [],
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "unsupported vlan expression fixture",
+      "nodes": [
+        { "id": "vm__team_1", "kind": "vm",
+          "replication": { "scope": "per_team" },
+          "config": { "vlan": null } }
+      ]
+    }
+  }
+}
