@@ -25,6 +25,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
+import type { RuntimeConfig } from '@/services/runtimeConfig.ts'
 
 const STORAGE_KEY = 'range42_backend_api'
 const DEFAULT_NODE = 'pve'
@@ -50,6 +51,12 @@ export interface BackendApiHost {
 interface BackendApiState {
   hosts: BackendApiHost[]
   activeHostId: string | null
+  /**
+   * Whether the deployment's `config.json` default has already been offered.
+   * Sticky, so deleting the seeded host stays deleted across reloads instead
+   * of being re-added on every boot.
+   */
+  seeded?: boolean
 }
 
 /** Counter-free local id (Date.now/Math.random are fine in the browser runtime). */
@@ -82,7 +89,7 @@ function loadState(): BackendApiState {
           parsed.activeHostId && hosts.some((h) => h.id === parsed.activeHostId)
             ? parsed.activeHostId
             : hosts[0]?.id ?? null
-        return { hosts, activeHostId }
+        return { hosts, activeHostId, seeded: Boolean(parsed.seeded) }
       }
       // Legacy single-config { url, token, health } → migrate into one host
       if (parsed && typeof parsed.url === 'string') {
@@ -99,6 +106,7 @@ function loadState(): BackendApiState {
             },
           ],
           activeHostId: id,
+          seeded: true,
         }
       }
     }
@@ -201,6 +209,22 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     state.value = { hosts: [], activeHostId: null }
   }
 
+  /**
+   * Register the backend the deployment shipped in its `config.json`, so a
+   * freshly deployed lab is usable without the operator retyping the URL.
+   *
+   * No-op once the operator has made a choice — either a host is already
+   * registered, or the default was offered before and dismissed. Their
+   * configuration always wins over the deployment's.
+   */
+  function seedDefaultHost(config: RuntimeConfig | null | undefined): void {
+    if (state.value.seeded || state.value.hosts.length) return
+    const url = normalizeUrl(config?.defaultBackendUrl ?? '')
+    if (!url) return
+    addHost({ url, nodeName: config?.defaultNodeName })
+    state.value.seeded = true
+  }
+
   function authHeaders(id?: string): Record<string, string> {
     const host = id ? getHost(id) : activeHost.value
     return host?.token ? { Authorization: `Bearer ${host.token}` } : {}
@@ -258,6 +282,7 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     isHealthy,
     // list ops
     getHost,
+    seedDefaultHost,
     addHost,
     updateHost,
     removeHost,
