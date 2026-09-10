@@ -85,6 +85,13 @@ describe('runtime Git save status', () => {
     expect(wrapper.find('[data-testid="runtime-git-save-attempt-1"]').exists()).toBe(false)
   })
 
+  it('does not add pending files to a different authored scenario in the registered project', async () => {
+    useProjectStore().updateProject(project.id, { scenario: { label: 'different' } })
+    await show({ newAttempt: attempt })
+    expect(useProjectStore().getProject(project.id).files).toEqual(project.files)
+    expect(save).not.toHaveBeenCalled()
+  })
+
   it('does not update a new repository binding or show stale status after a backend switch', async () => {
     let resolve
     save.mockImplementationOnce(() => new Promise(done => { resolve = done }))

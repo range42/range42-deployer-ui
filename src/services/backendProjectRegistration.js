@@ -12,6 +12,7 @@ function registrations() {
 
 /** Match the backend registration to one current browser repository binding. */
 export function registeredLocalProject(backendProjectId, projects, scope = getBackendScope()) {
+  if (typeof backendProjectId !== 'string' || !backendProjectId) return null
   const records = registrations()
   const matches = projects.filter(project => {
     const git = project?.git

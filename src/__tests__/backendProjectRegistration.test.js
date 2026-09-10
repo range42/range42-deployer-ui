@@ -76,5 +76,6 @@ describe('backend project registration', () => {
     const changed = { ...saved, git: { ...saved.git, repo_owner: 'other-fork' } }
     expect(registeredLocalProject(result.id, [changed], state.scope)).toBeNull()
     expect(registeredLocalProject(result.id, [saved, { ...saved }], state.scope)).toBeNull()
+    expect(registeredLocalProject(undefined, [saved], 'https://unregistered.test')).toBeNull()
   })
 })

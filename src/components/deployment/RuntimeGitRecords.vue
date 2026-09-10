@@ -12,7 +12,10 @@ const { t } = useI18n()
 const projects = useProjectStore()
 if (!projects.projects.length) projects.loadProjects()
 const context = computed(() => JSON.stringify([getBackendScope(), props.deployment.id]))
-const project = computed(() => registeredLocalProject(props.deployment.project_id, projects.projects))
+const project = computed(() => {
+  const selected = registeredLocalProject(props.deployment.project_id, projects.projects)
+  return selected?.scenario?.label === props.deployment.scenario_label ? selected : null
+})
 const status = ref({})
 const tried = new Set()
 const bindingKey = value => JSON.stringify(value?.git)
@@ -89,7 +92,7 @@ onMounted(() => ensureNamespaces(['runtime']))
       <li v-for="row in rows" :key="row.attempt.id" class="text-sm flex flex-wrap items-center justify-between gap-2">
         <div class="min-w-0 space-y-1">
           <p class="break-words">{{ t(`runtime.operations.${row.attempt.operation.request?.kind}`) }} · {{ row.attempt.id }}</p>
-          <p v-if="row.error || status[row.attempt.id]?.error" role="alert" class="text-error break-words">{{ row.error || status[row.attempt.id].error }}</p>
+          <p v-if="row.error || status[row.attempt.id]?.error" role="alert" class="text-base-content border-l-2 border-error pl-2 break-words">{{ row.error || status[row.attempt.id].error }}</p>
           <p v-if="status[row.attempt.id]?.cacheError" role="alert" class="break-words">{{ status[row.attempt.id].cacheError }}</p>
           <p v-if="row.saved || (status[row.attempt.id]?.sha && status[row.attempt.id].phase === row.record?.phase)" role="status">
             {{ t(`runtime.git.saved.${row.record.phase}`) }} · <code>{{ (row.saved || status[row.attempt.id].sha).slice(0, 12) }}</code>

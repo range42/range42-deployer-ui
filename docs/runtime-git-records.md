@@ -17,3 +17,5 @@ Pending records are retained in the local project before Git IO. Git failure is 
 - The displayed commit is the recorded revision, not a claim that another writer has never subsequently changed the branch.
 
 Focused tests cover exact binding, independent request/result records, partial outcomes, omitted secret-bearing metadata, atomic file-index merging, branch races, idempotence, local conflicts, quota failure, explicit historical saving, reload and backend/repository switches. Real provider and browser acceptance are recorded with release evidence.
+
+Real isolated branches on GitHub and GitLab verified request/result files, exact readback at the returned commit, idempotent retry, preserved remote metadata and excluded private runtime fields. GitHub result revision: `4a8024c8a331808f6d751891d80221f16c98c57d`; GitLab: `57ec58d6b99a8ca50738ea5b3ccbd2a966274c6d`. These were workstation provider tests, not a backend GitLab connectivity claim. Desktop1440px and mobile390px browser tests verified visible Git failures with no false saved status, page errors, overflow or axe violations in the runtime-record panel.
