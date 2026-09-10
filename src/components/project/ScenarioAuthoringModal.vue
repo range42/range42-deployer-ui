@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
+import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
 
 const props = defineProps({
   open: Boolean, project: { type: Object, required: true },
@@ -14,10 +15,12 @@ const preview = ref(null)
 const error = ref('')
 const focusReady = ref(false)
 const heading = ref(null)
+const bundleLibraryOpen = ref(false)
 const playbookHint = 'Ansible playbook — use hosts: "{{ global_vm_ssh_name }}"'
 
 watch(() => props.open, async open => {
   focusReady.value = false
+  bundleLibraryOpen.value = false
   if (!open) return
   draft.value = createScenarioDraft(props.project, props.nodes, props.edges)
   contentState.value = Object.fromEntries(draft.value.content.map(item => [item.id, {
@@ -31,6 +34,10 @@ watch(() => props.open, async open => {
 }, { immediate: true })
 
 function addContent(kind) {
+  if (kind === 'bundle') {
+    bundleLibraryOpen.value = true
+    return
+  }
   const id = crypto.randomUUID()
   const suffix = kind === 'script' ? 'sh' : kind === 'playbook' ? 'yml' : 'txt'
   draft.value.content.push({ id, kind, target_node: draft.value.vms[0]?.node_id || '',
@@ -42,6 +49,12 @@ function addContent(kind) {
       : kind === 'playbook' ? '- hosts: "{{ global_vm_ssh_name }}"\n  gather_facts: false\n  become: true\n  tasks: []\n' : '',
     varsText: '{}',
   }
+}
+
+function attachBundle(item) {
+  draft.value.content.push(item)
+  contentState.value[item.id] = { text: '', varsText: JSON.stringify(item.vars || {}, null, 2) }
+  bundleLibraryOpen.value = false
 }
 
 function review() {
@@ -64,7 +77,7 @@ function review() {
 
 <template>
   <Teleport to="body">
-    <FocusTrap v-if="open && draft" :active="focusReady"
+    <FocusTrap v-if="open && draft" :active="focusReady && !bundleLibraryOpen"
       :fallback-focus="() => heading" :escape-deactivates="false" :return-focus-on-deactivate="true">
       <div class="modal modal-open p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="scenario-authoring-title" @keydown.esc.prevent="emit('close')">
         <section class="modal-box max-w-5xl w-full max-h-[92vh] overflow-y-auto min-w-0">
@@ -126,10 +139,11 @@ function review() {
               <legend class="px-1 text-sm">{{ index + 1 }}. {{ item.kind }}</legend>
               <div class="grid gap-3 sm:grid-cols-2">
                 <label class="form-control gap-1"><span>Target VM</span><select v-model="item.target_node" class="select select-bordered w-full"><option v-for="vm in draft.vms" :key="vm.node_id" :value="vm.node_id">{{ vm.vm_name }}</option></select></label>
-                <label class="form-control gap-1"><span>{{ item.kind === 'bundle' ? 'Bundle path relative to bundles/' : 'File path relative to the scenario directory' }}</span><input v-model="item.path" class="input input-bordered w-full" data-testid="content-path" /></label>
+                <label class="form-control gap-1"><span>{{ item.kind === 'bundle' ? 'Verified bundle path' : 'File path relative to the scenario directory' }}</span><input v-model="item.path" :readonly="item.kind === 'bundle'" class="input input-bordered w-full" data-testid="content-path" /></label>
                 <label v-if="item.kind === 'file'" class="form-control gap-1"><span>Destination on guest</span><input v-model="item.destination" class="input input-bordered w-full" data-testid="content-destination" placeholder="/etc/example.conf" /></label>
                 <label v-if="item.kind === 'file'" class="form-control gap-1"><span>File mode</span><input v-model="item.mode" class="input input-bordered w-full" placeholder="0644" /></label>
               </div>
+              <p v-if="item.kind === 'bundle'" class="text-xs text-base-content/70 mt-2 break-all">{{ item.resolution ? `Source commit: ${item.resolution.source_sha} · Installed runtime: ${item.resolution.runtime.fingerprint}` : 'Remove this unverified attachment and select it from the bundle library.' }}</p>
               <label v-if="item.kind !== 'bundle'" class="form-control gap-1 mt-3"><span>{{ item.kind === 'playbook' ? playbookHint : 'Content' }}</span><textarea v-model="contentState[item.id].text" class="textarea textarea-bordered font-mono w-full min-h-36" data-testid="content-text" spellcheck="false" /></label>
               <label v-if="['bundle', 'playbook'].includes(item.kind)" class="form-control gap-1 mt-3"><span>Non-secret variables (JSON)</span><textarea v-model="contentState[item.id].varsText" class="textarea textarea-bordered font-mono w-full" spellcheck="false" /></label>
               <button type="button" class="btn btn-ghost btn-sm mt-2" @click="draft.content.splice(index, 1)">Remove item</button>
@@ -149,5 +163,6 @@ function review() {
         </section>
       </div>
     </FocusTrap>
+    <BundleLibraryModal v-if="open && draft" :open="bundleLibraryOpen" :vms="draft.vms" @selected="attachBundle" @close="bundleLibraryOpen = false" />
   </Teleport>
 </template>

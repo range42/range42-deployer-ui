@@ -1,4 +1,5 @@
 import { parse, stringify } from 'yaml'
+import { validateBundleParameters } from './bundleParameters.ts'
 
 const BUNDLES = "{{ lookup('env', 'RANGE42_BUNDLE_DIR') }}"
 const VAULT = "{{ lookup('env', 'RANGE42_ACTIVE_CONFIG_DIR') }}/secrets/default_vault.yml"
@@ -280,6 +281,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     })
   }))
   const configure = []
+  const bundleAttachments = []
   const content = scenario.content || []
   unique(content.map(item => item.id), 'content identifier')
   for (const item of content) {
@@ -287,16 +289,30 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(vm, `Select a VM for content ${item.id}`)
     safePath(item.path)
     requireValue(!item.vars || (typeof item.vars === 'object' && !Array.isArray(item.vars)), `Content variables must be a named object: ${item.id}`)
+    if (item.kind === 'bundle') {
+      const resolution = item.resolution
+      requireValue(resolution?.bundle_kind === 'VM' && resolution.proof_kind === 'content_match'
+        && resolution.entrypoint === item.path && resolution.path === `bundles/${item.path.replace(/\/main\.yml$/, '')}`
+        && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(resolution.source_sha || '')
+        && resolution.runtime?.fingerprint && resolution.runtime?.proof && Array.isArray(resolution.target_vars),
+      'Resolve this bundle from the library to obtain verified source and runtime provenance')
+      requireValue(item.path.endsWith('/main.yml'), 'Bundle path must end in /main.yml')
+      const targetValues = { global_vm_ssh_name: vm.vm_name, target_ansible_host: vm.vm_name, global_vm_ci_ip: vm.ip }
+      requireValue(resolution.target_vars.every(name => Object.hasOwn(targetValues, name)), 'Bundle target parameters are not supported by this scenario')
+      validateBundleParameters(resolution.params, item.vars || {}, resolution.target_vars)
+      requireValue(!bundleAttachments.some(attachment => attachment.vm_id === Number(vm.vm_id) && attachment.resolution.path === resolution.path), 'Duplicate bundle attachment for the same VM')
+      const parameters = item.vars || {}
+      bundleAttachments.push({ vm_id: Number(vm.vm_id), inventory_host: vm.vm_name, resolution, parameters })
+      configure.push(imported(`${BUNDLES}/${item.path}`, { ...parameters,
+        ...Object.fromEntries(resolution.target_vars.map(name => [name, targetValues[name]])),
+      }))
+      continue
+    }
     for (const name of Object.keys(item.vars || {})) {
       requireValue(!projectVariables.secretNames.has(name), `Secret variable ${name} must come from the backend workspace vault`)
       validateVariableName(name)
     }
     const vars = { ...projectVariables.values, ...(item.vars || {}), global_vm_ssh_name: vm.vm_name, global_vm_ci_ip: vm.ip }
-    if (item.kind === 'bundle') {
-      requireValue(item.path.endsWith('/main.yml'), 'Bundle path must end in /main.yml')
-      configure.push(imported(`${BUNDLES}/${item.path}`, vars))
-      continue
-    }
     requireValue(typeof files[`${base}/${item.path}`] === 'string', `Content file is missing: ${base}/${item.path}`)
     if (item.kind === 'playbook') {
       const plays = parse(files[`${base}/${item.path}`])
@@ -314,6 +330,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     }
   }
   write('configure.yml', configure.length ? configure : [{ name: 'No additional guest content configured', hosts: 'scenario_guests', gather_facts: false, tasks: [] }])
+  if (bundleAttachments.length) write('manifest/scenario_bundles.json', { version: 1, attachments: bundleAttachments }, json)
   write('main.yml', [
     ...(scenario.network_mode === 'sdn' ? [imported('00_networks.yml')] : []),
     imported('01_vm_bootstrap.yml'), imported('configure.yml'),

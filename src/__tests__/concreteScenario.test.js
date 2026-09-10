@@ -25,6 +25,32 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it('binds a verified bundle to its VM and saves exact source and runtime provenance', () => {
+    const input = fixture()
+    input.baseDoc = { env: [{ name: 'UNRELATED_PROJECT_VALUE', default: 'must not leak' }] }
+    const resolution = { source_id: 'sdn', source_sha: 'a'.repeat(40), path: 'bundles/generic/software.demo',
+      entrypoint: 'generic/software.demo/main.yml', bundle_kind: 'VM', proof_kind: 'content_match',
+      params: [{ name: 'PORT', type: 'int' }, { name: 'global_vm_ssh_name', target: true }],
+      target_vars: ['global_vm_ssh_name', 'global_vm_ci_ip'], runtime: { fingerprint: 'b'.repeat(64), proof: 'server-sealed-proof' } }
+    input.scenario.content.push({ id: 'bundle', kind: 'bundle', target_node: 'vm1', path: resolution.entrypoint, vars: { PORT: 8080 }, resolution })
+    const { files } = emitConcreteScenario(input)
+    expect(JSON.parse(files['scenarios/demo/manifest/scenario_bundles.json'])).toEqual({ version: 1, attachments: [
+      { vm_id: 3101, inventory_host: 'demo-vm', resolution, parameters: { PORT: 8080 } },
+    ] })
+    expect(parse(files['scenarios/demo/configure.yml']).at(-1)).toEqual({
+      'ansible.builtin.import_playbook': "{{ lookup('env', 'RANGE42_BUNDLE_DIR') }}/generic/software.demo/main.yml",
+      vars: { PORT: 8080, global_vm_ssh_name: 'demo-vm', global_vm_ci_ip: '10.42.10.10' },
+    })
+    input.scenario.content.at(-1).path = 'generic/something-else/main.yml'
+    expect(() => emitConcreteScenario(input)).toThrow(/resolve|provenance|verified/i)
+  })
+
+  it('requires resolving a bundle from the library before executing an installed path', () => {
+    const input = fixture()
+    input.scenario.content.push({ id: 'unverified', kind: 'bundle', target_node: 'vm1', path: 'generic/systems.baseline.default/main.yml' })
+    expect(() => emitConcreteScenario(input)).toThrow(/library|resolve|verified/i)
+  })
+
   it('compiles multiple NICs and explicit resource overrides while retaining the management address', () => {
     const input = fixture()
     input.nodes.push({ id: 'net2', type: 'network-segment', data: { config: {} } })

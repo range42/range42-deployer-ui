@@ -12,10 +12,23 @@ function modal(overrides = {}) {
     name: 'Demo', files: {}, scenario: { label: 'demo', network_mode: 'sdn', zone: 'r42lab',
       networks: [{ id: 'net', vnet: 'r42net1', subnet: '10.42.1.0/24', gateway: '10.42.1.1', snat: true }],
       vms: [{ node_id: 'vm', vm_id: 3101, vm_name: 'guest', template_vm_id: 9232, network_id: 'net', ip: '10.42.1.10', ssh_user: 'alice' }], content: [] },
-    }, ...overrides }, global: { stubs: { teleport: true, FocusTrap: { template: '<div><slot /></div>' } } } })
+    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, FocusTrap: { template: '<div><slot /></div>' } } } })
 }
 
 describe('scenario authoring review', () => {
+  it('opens the verified bundle library instead of adding an unchecked bundle path', async () => {
+    const wrapper = modal()
+    await flushPromises()
+    await wrapper.get('[data-testid="scenario-add-bundle"]').trigger('click')
+    const library = wrapper.findComponent({ name: 'BundleLibraryModal' })
+    expect(library.props('open')).toBe(true)
+    library.vm.$emit('selected', { id: 'resolved', kind: 'bundle', target_node: 'vm', path: 'generic/demo/main.yml', vars: { PORT: 80 },
+      resolution: { source_sha: 'a'.repeat(40), runtime: { fingerprint: 'b'.repeat(64) } } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="content-path"]').attributes('readonly')).toBeDefined()
+    expect(wrapper.findComponent({ name: 'BundleLibraryModal' }).props('open')).toBe(false)
+  })
+
   it('lets an operator set VM resources before reviewing the generated plan', async () => {
     const wrapper = modal()
     await flushPromises()
