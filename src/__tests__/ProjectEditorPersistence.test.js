@@ -4,9 +4,12 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ProjectEditor from '@/views/ProjectEditor.vue'
+import AppShell from '@/components/AppShell.vue'
 import CommandPalette from '@/components/project/CommandPalette.vue'
 import VariablesTab from '@/components/project/VariablesTab.vue'
 import ConfigTab from '@/components/project/ConfigTab.vue'
+import FileTree from '@/components/project/FileTree.vue'
+import TwoPaneEditor from '@/components/project/TwoPaneEditor.vue'
 import DeployForm from '@/components/project/DeployForm.vue'
 import Sidebar from '@/components/Sidebar.vue'
 import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
@@ -51,7 +54,7 @@ function project(overrides = {}) {
   }
 }
 
-async function editor(saved, { hydrate = true } = {}) {
+async function editor(saved, { hydrate = true, shell = false } = {}) {
   localStorage.setItem('range42_projects', JSON.stringify([saved]))
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -59,12 +62,12 @@ async function editor(saved, { hydrate = true } = {}) {
   if (hydrate) store.loadProjects()
   const router = createRouter({ history: createMemoryHistory(), routes: [
     { path: '/', component: { template: '<div>Home</div>' } },
-    { path: '/project/:id', component: ProjectEditor },
+    { path: '/project/:id', name: 'project-editor', component: ProjectEditor },
   ] })
   await router.push(`/project/${saved.id}`)
   await router.isReady()
   const errors = []
-  wrapper = shallowMount(ProjectEditor, { global: { stubs: { teleport: true }, config: { errorHandler: (error) => errors.push(error.message) }, plugins: [pinia, router,
+  wrapper = shallowMount(shell ? AppShell : ProjectEditor, { global: { stubs: { teleport: true, KeepAlive: false, ConfigTab: false, ...(shell ? { RouterView: false, ProjectEditor: false } : {}) }, config: { errorHandler: (error) => errors.push(error.message) }, plugins: [pinia, router,
     createI18n({ legacy: false, locale: 'en', messages: { en: { project: projectMessages, historyTab } } }),
   ] } })
   await flushPromises()
@@ -108,8 +111,28 @@ describe('ProjectEditor saved project integration', () => {
     expect(JSON.parse(localStorage.getItem('range42_projects'))[0].head_sha).toBe('a'.repeat(40))
   })
 
+  it('checkpoints pending variable edits when leaving the editor before the debounce', async () => {
+    const { store } = await editor(project())
+    await vi.advanceTimersByTimeAsync(1500)
+    pushToGit.mockClear()
+    const overlay = { param_overrides: { env: [{ name: 'GREETING', value: 'saved on exit' }] } }
+    wrapper.findComponent(VariablesTab).vm.$emit('update:overlay', overlay)
+    await flushPromises()
+    expect(pushToGit).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+    wrapper = undefined
+    await flushPromises()
+    expect(store.getProject('saved').overlay).toEqual(overlay)
+    expect(pushToGit).toHaveBeenCalledOnce()
+    expect(pushToGit.mock.calls[0][0].overlay).toEqual(overlay)
+    expect(JSON.parse(localStorage.getItem('range42_projects'))[0].head_sha).toBe('a'.repeat(40))
+  })
+
   it('keeps the launcher closed if files change while the deployment list loads after saving', async () => {
     await editor(project({ files: { 'scenarios/demo/main.yml': 'before' } }))
+    await wrapper.get('[data-testid="project-tab-config"]').trigger('click')
+    await flushPromises()
     await vi.advanceTimersByTimeAsync(1500)
     let finishLoad
     loadDeployments.mockImplementationOnce(() => new Promise(resolve => { finishLoad = resolve }))
@@ -122,6 +145,37 @@ describe('ProjectEditor saved project integration', () => {
     finishLoad()
     await flushPromises()
     expect(wrapper.findComponent(DeployForm).exists()).toBe(false)
+  })
+
+  it('loads a separate Config tab file system when navigating to another project', async () => {
+    const { store, router } = await editor(project({ files: { 'first.yml': 'first project' } }), { shell: true })
+    store.projects.push(project({ id: 'second', name: 'Second project', files: { 'second.yml': 'second project' } }))
+    await wrapper.get('[data-testid="project-tab-config"]').trigger('click')
+    await flushPromises()
+    const firstTab = wrapper.findComponent(ConfigTab)
+    const firstFs = firstTab.props('overlayFs')
+    expect((await firstFs.getFile('first.yml')).content).toBe('first project')
+    firstTab.findComponent(FileTree).vm.$emit('select', { path: 'first.yml', fsKind: 'overlay' })
+    await flushPromises()
+    firstTab.findComponent(TwoPaneEditor).vm.$emit('update:overlay-content', 'unsaved first draft')
+    await flushPromises()
+    expect(firstTab.findComponent(TwoPaneEditor).props('overlayContent')).toBe('unsaved first draft')
+
+    await wrapper.get('[data-testid="project-tab-canvas"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="project-tab-config"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findComponent(TwoPaneEditor).props('overlayContent')).toBe('unsaved first draft')
+
+    await router.push('/project/second?tab=config')
+    await flushPromises()
+    const secondTab = wrapper.findComponent(ConfigTab)
+    expect(secondTab.findComponent(TwoPaneEditor).props('path')).toBe('')
+    expect(secondTab.findComponent(TwoPaneEditor).props('overlayContent')).toBe('')
+    expect((await secondTab.props('overlayFs').getFile('second.yml')).content).toBe('second project')
+    await secondTab.props('overlayFs').putFile({ path: 'second.yml', content: 'edited second project' })
+    expect(store.getProject('saved').files).toEqual({ 'first.yml': 'first project' })
+    expect(store.getProject('second').files).toEqual({ 'second.yml': 'edited second project' })
   })
 
   it('registers the actual saved fork binding before opening the deployment launcher', async () => {

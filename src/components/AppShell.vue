@@ -79,7 +79,7 @@ const navItems = [
       </div>
       <main class="flex-1 overflow-auto min-w-0">
         <BackendAccessPanel />
-        <router-view />
+        <router-view :key="route.name === 'project-editor' ? `project:${route.params.id}` : undefined" />
       </main>
     </div>
     <MigrationWizard

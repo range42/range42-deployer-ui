@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, provide, nextTick, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, onUnmounted, watch, computed, provide, nextTick, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
@@ -460,6 +460,11 @@ function applyCanvasSnapshot(snapshot) {
     edges: snapshot.edges,
   })
 }
+
+onBeforeUnmount(() => {
+  // Capture this project's graph and Git write before another editor mounts.
+  if (autosaveTimer !== null) void manualSave({ quiet: true })
+})
 
 onUnmounted(() => {
   if (autosaveTimer !== null) clearTimeout(autosaveTimer)
@@ -1257,8 +1262,9 @@ const handleInfrastructureImport = (result) => {
 
       <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->
       <div v-show="tab === 'config'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
-        <KeepAlive>
+        <KeepAlive :max="1">
           <ConfigTab
+            :key="currentProject.id"
             v-if="currentProject && tab === 'config'"
             :overlay-fs="configOverlayFs"
             :base-fs="configBaseFs"
