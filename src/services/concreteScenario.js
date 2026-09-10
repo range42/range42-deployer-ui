@@ -291,13 +291,15 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(!item.vars || (typeof item.vars === 'object' && !Array.isArray(item.vars)), `Content variables must be a named object: ${item.id}`)
     if (item.kind === 'bundle') {
       const resolution = item.resolution
-      requireValue(resolution?.bundle_kind === 'VM' && resolution.proof_kind === 'content_match'
+      const singleVmScope = resolution?.bundle_kind === 'VM' || (resolution?.bundle_kind === 'GROUP' && resolution.target_kind === 'VM'
+        && Array.isArray(resolution.target_vars) && resolution.target_vars.includes('target_group'))
+      requireValue(singleVmScope && resolution.proof_kind === 'content_match'
         && resolution.entrypoint === item.path && resolution.path === `bundles/${item.path.replace(/\/main\.yml$/, '')}`
         && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(resolution.source_sha || '')
         && resolution.runtime?.fingerprint && resolution.runtime?.proof && Array.isArray(resolution.target_vars),
       'Resolve this bundle from the library to obtain verified source and runtime provenance')
       requireValue(item.path.endsWith('/main.yml'), 'Bundle path must end in /main.yml')
-      const targetValues = { global_vm_ssh_name: vm.vm_name, target_ansible_host: vm.vm_name, global_vm_ci_ip: vm.ip }
+      const targetValues = { global_vm_ssh_name: vm.vm_name, target_ansible_host: vm.vm_name, global_vm_ci_ip: vm.ip, target_group: vm.vm_name }
       requireValue(resolution.target_vars.every(name => Object.hasOwn(targetValues, name)), 'Bundle target parameters are not supported by this scenario')
       validateBundleParameters(resolution.params, item.vars || {}, resolution.target_vars)
       requireValue(!bundleAttachments.some(attachment => attachment.vm_id === Number(vm.vm_id) && attachment.resolution.path === resolution.path), 'Duplicate bundle attachment for the same VM')

@@ -45,6 +45,22 @@ describe('concrete scenario emitter', () => {
     expect(() => emitConcreteScenario(input)).toThrow(/resolve|provenance|verified/i)
   })
 
+  it('binds a verified group bundle to exactly one VM without exposing a group selector', () => {
+    const input = fixture()
+    const resolution = { source_id: 'sdn', source_sha: 'a'.repeat(40), path: 'bundles/firewall/in_vm/os_firewall.baseline.ssh',
+      entrypoint: 'firewall/in_vm/os_firewall.baseline.ssh/main.yml', bundle_kind: 'GROUP', target_kind: 'VM', proof_kind: 'content_match',
+      params: [{ name: 'target_group', type: 'string', target: true, required: true }], target_vars: ['target_group'],
+      runtime: { fingerprint: 'b'.repeat(64), proof: 'server-sealed-proof' } }
+    input.scenario.content = [{ id: 'firewall', kind: 'bundle', target_node: 'vm1', path: resolution.entrypoint, vars: {}, resolution }]
+    const result = emitConcreteScenario(input)
+    expect(parse(result.files['scenarios/demo/configure.yml'])[0].vars).toEqual({ target_group: 'demo-vm' })
+    expect(JSON.parse(result.files['scenarios/demo/manifest/scenario_bundles.json']).attachments[0].resolution.bundle_kind).toBe('GROUP')
+    input.scenario.content[0].vars.target_group = 'all'
+    expect(() => emitConcreteScenario(input)).toThrow(/managed/i)
+    delete input.scenario.content[0].vars.target_group
+    delete resolution.target_kind
+    expect(() => emitConcreteScenario(input)).toThrow(/verified|resolve/i)
+  })
   it('requires resolving a bundle from the library before executing an installed path', () => {
     const input = fixture()
     input.scenario.content.push({ id: 'unverified', kind: 'bundle', target_node: 'vm1', path: 'generic/systems.baseline.default/main.yml' })

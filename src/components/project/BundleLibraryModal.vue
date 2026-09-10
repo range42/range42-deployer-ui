@@ -85,8 +85,10 @@ async function choose(entry) {
     })
     if (!current(stamp)) return
     const expectedPath = entry.path.replace(/^bundles\//, '')
+    const singleVmScope = proof.bundle_kind === 'VM' || (proof.bundle_kind === 'GROUP' && proof.target_kind === 'VM'
+      && Array.isArray(proof.target_vars) && proof.target_vars.includes('target_group'))
     if (proof.source_id !== entry.source_id || proof.source_sha !== detail.sha || proof.path !== entry.path
-      || proof.bundle_kind !== 'VM' || proof.proof_kind !== 'content_match'
+      || !singleVmScope || proof.proof_kind !== 'content_match'
       || !['main.yml', 'main.yaml'].some(name => proof.entrypoint === `${expectedPath}/${name}`)
       || !proof.runtime?.fingerprint || !proof.runtime?.proof || !Array.isArray(proof.params) || !Array.isArray(proof.target_vars)) {
       throw new Error(t('bundles.invalidProof'))
@@ -165,6 +167,8 @@ onBeforeUnmount(() => { version += 1 })
             <div v-if="resolution" class="space-y-3 min-w-0">
               <h3 class="font-semibold">{{ selected.name }}</h3>
               <p class="text-success text-sm">{{ t('bundles.verified') }}</p>
+              <p v-if="resolution.bundle_kind === 'GROUP'" class="text-sm">{{ t('bundles.groupBound') }}</p>
+              <p v-if="resolution.entrypoint.startsWith('firewall/in_vm/os_firewall.baseline.')" class="text-sm font-medium" data-testid="bundle-firewall-reset">{{ t('bundles.firewallReset') }}</p>
               <p class="font-mono text-xs break-all">{{ resolution.source_sha }}</p>
               <details v-if="resolution.runtime.dependencies?.length" class="rounded border border-base-300 p-2 text-xs">
                 <summary class="cursor-pointer font-medium">{{ t('bundles.dependencies') }}</summary>

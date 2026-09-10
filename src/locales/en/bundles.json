@@ -19,9 +19,11 @@
   "disabled": "Disabled",
   "vaultManaged": "Required from the backend vault: {names}. These values are never saved to Git.",
   "attach": "Attach bundle to VM",
-  "selectHint": "Select a bundle to check its revision and runtime compatibility. This workflow supports VM bundles; other scopes need their own orchestration.",
+  "selectHint": "Select a bundle to verify its revision and compatibility with one VM. Only VM bundles and verified static group selectors can be attached.",
   "missingRevision": "The bundle has no pinned source revision. Refresh its repository and retry.",
   "invalidProof": "The backend did not return matching runtime provenance for this bundle.",
   "dependencies": "Installed dependencies",
-  "dependenciesHint": "These dependencies are pinned from the backend runtime. They may differ from the source repository’s original environment."
+  "dependenciesHint": "These dependencies are pinned from the backend runtime. They may differ from the source repository’s original environment.",
+  "groupBound": "This source is a group bundle. This verified attachment binds it to one selected VM; its group selector is managed automatically.",
+  "firewallReset": "This baseline resets existing guest firewall rules on Ubuntu before applying its policy. Review the allowed ports and configuration order before attaching it."
 }

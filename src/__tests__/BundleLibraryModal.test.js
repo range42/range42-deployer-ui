@@ -67,6 +67,20 @@ describe('executable bundle library', () => {
     expect(wrapper.emitted('selected')[0][0].vars).toEqual({ FLAG: 'YES', OPTIONS: { enabled: true } })
   })
 
+  it('attaches a group source only with sealed single-VM scope and hides its managed selector', async () => {
+    const firewall = { ...entry, path: 'bundles/firewall/in_vm/os_firewall.baseline.ssh' }
+    api.listEntries.mockResolvedValue([firewall]); api.getEntry.mockResolvedValue(firewall)
+    const bound = { ...resolution, path: firewall.path, entrypoint: 'firewall/in_vm/os_firewall.baseline.ssh/main.yml', bundle_kind: 'GROUP', target_kind: 'VM', target_vars: ['target_group'], params: [{ name: 'target_group', type: 'string', required: true, target: true }] }
+    api.backendRequest.mockResolvedValue(bound)
+    const wrapper = modal()
+    await flushPromises()
+    await wrapper.get('[data-testid="bundle-choice"]').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('one selected VM')
+    expect(wrapper.text()).toContain('resets existing guest firewall rules')
+    expect(wrapper.find('[data-testid="bundle-param-target_group"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="bundle-attach"]').trigger('click')
+    expect(wrapper.emitted('selected')[0][0]).toMatchObject({ vars: {}, resolution: bound })
+  })
   it('shows runtime mismatch errors without allowing an unverified attachment', async () => {
     api.backendRequest.mockRejectedValue(new Error('Bundle content does not match the installed runtime'))
     const wrapper = modal()
@@ -80,6 +94,7 @@ describe('executable bundle library', () => {
   it.each([
     { ...resolution, source_sha: 'c'.repeat(40) },
     { ...resolution, bundle_kind: 'GROUP' },
+    { ...resolution, bundle_kind: 'GROUP', target_kind: 'VM' },
     { ...resolution, runtime: { fingerprint: 'b'.repeat(64) } },
   ])('rejects a response without matching VM provenance', async result => {
     api.backendRequest.mockResolvedValue(result)

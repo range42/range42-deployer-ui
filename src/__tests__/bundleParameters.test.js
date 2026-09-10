@@ -39,6 +39,11 @@ describe('bundle descriptor parameters', () => {
     expect(bundleDefaults(params, ['global_vm_ssh_name'])).toEqual({})
     expect(bundleParameters(params, {}, ['global_vm_ssh_name'])).toEqual({})
   })
+  it.each(['ansible_host', 'ansible_connection', 'ansible_user', 'ansible_port'])('keeps %s under backend control even if the descriptor exposes it', name => {
+    const params = [{ name, type: 'string', required: true, default: 'never-export' }]
+    expect(bundleDefaults(params)).toEqual({})
+    expect(() => validateBundleParameters(params, { [name]: 'override' })).toThrow(/managed/i)
+  })
   it('rejects duplicated or invalid descriptor names and unsupported types', () => {
     expect(() => bundleDefaults([{ name: '__proto__', type: 'string' }])).toThrow(/name/i)
     expect(() => bundleDefaults([{ name: 'X' }, { name: 'X' }])).toThrow(/duplicate/i)

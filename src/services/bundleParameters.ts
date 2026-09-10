@@ -14,7 +14,7 @@ export interface BundleParameter {
 }
 
 export function managedBundleParameter(param: BundleParameter, targetVars: string[] = []): boolean {
-  return param.target === true || param.from_vault === true || targetVars.includes(param.name)
+  return param.target === true || param.from_vault === true || targetVars.includes(param.name) || /^ansible_/i.test(param.name)
 }
 
 function validateDescriptors(params: BundleParameter[]) {
@@ -129,4 +129,3 @@ export function validateBundleParameters(params: BundleParameter[], values: Reco
     }
   }
 }
-
