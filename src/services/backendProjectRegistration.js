@@ -10,6 +10,19 @@ function registrations() {
   } catch { return {} }
 }
 
+/** Match the backend registration to one current browser repository binding. */
+export function registeredLocalProject(backendProjectId, projects, scope = getBackendScope()) {
+  const records = registrations()
+  const matches = projects.filter(project => {
+    const git = project?.git
+    if (!git) return false
+    const key = JSON.stringify([scope, project.id, git.source_id,
+      git.branch_strategy, git.repo_owner, git.repo_name, git.subdir || ''])
+    return records[key]?.id === backendProjectId
+  })
+  return matches.length === 1 ? matches[0] : null
+}
+
 export function latestSavedProjectRevision(backendProjectId) {
   try {
     const projects = JSON.parse(localStorage.getItem('range42_projects') || '[]')

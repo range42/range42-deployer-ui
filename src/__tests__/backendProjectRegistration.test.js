@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ensureBackendProject, latestSavedProjectRevision } from '@/services/backendProjectRegistration'
+import { ensureBackendProject, latestSavedProjectRevision, registeredLocalProject } from '@/services/backendProjectRegistration'
 
 const { request, state } = vi.hoisted(() => ({ request: vi.fn(), state: { scope: 'https://backend-a.test' } }))
 vi.mock('@/services/backendApi', () => ({ backendRequest: request, getBackendScope: () => state.scope }))
@@ -66,5 +66,15 @@ describe('backend project registration', () => {
     saved.git.repo_name = 'other'
     localStorage.setItem('range42_projects', JSON.stringify([saved]))
     expect(latestSavedProjectRevision(result.id)).toBe('')
+  })
+
+  it('finds one exact registered local project, rejecting stale or ambiguous mappings', async () => {
+    const saved = project()
+    const result = await ensureBackendProject(saved)
+    expect(registeredLocalProject(result.id, [saved], state.scope)).toBe(saved)
+    expect(registeredLocalProject(result.id, [saved], 'https://backend-b.test')).toBeNull()
+    const changed = { ...saved, git: { ...saved.git, repo_owner: 'other-fork' } }
+    expect(registeredLocalProject(result.id, [changed], state.scope)).toBeNull()
+    expect(registeredLocalProject(result.id, [saved, { ...saved }], state.scope)).toBeNull()
   })
 })

@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useDeploymentStore } from '@/stores/deploymentStore.ts'
 import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
+import RuntimeGitRecords from '@/components/deployment/RuntimeGitRecords.vue'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
@@ -33,6 +34,7 @@ const backend = useBackendApiStore()
 let contextVersion = 0
 
 const attempts = ref([])
+const newRuntimeAttempt = ref(null)
 const attemptsError = ref(null)
 const meta = ref(null) // deployment metadata from the backend (non-live)
 const loading = ref(true)
@@ -308,7 +310,8 @@ async function loadMeta() {
   }
 }
 
-async function onRuntimeStarted() {
+async function onRuntimeStarted(attempt) {
+  newRuntimeAttempt.value = attempt
   maintenanceRecord.value = null
   maintenanceSnapshot.value = null
   await loadMeta()
@@ -448,6 +451,7 @@ watch([() => route.params.id, getBackendScope, () => backend.token], async ([id]
   if (previous?.[0]) store.unsubscribe(String(previous[0]))
   meta.value = null
   attempts.value = []
+  newRuntimeAttempt.value = null
   attemptsError.value = null
   preflight.value = null
   checkingPreflight.value = false
@@ -641,6 +645,7 @@ onBeforeUnmount(() => {
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
       <RuntimeControls v-if="meta && !supportsLegacyActions" :deployment-id="String(route.params.id)"
         :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
+      <RuntimeGitRecords v-if="meta && !supportsLegacyActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
       <div class="card card-compact bg-base-100 border border-base-300 mb-4">
         <div class="card-body p-4">
           <h2 class="card-title text-sm">{{ t('deployment.detail.overview.stateChainHeading') }}</h2>

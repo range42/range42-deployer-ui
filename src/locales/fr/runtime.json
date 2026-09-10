@@ -49,5 +49,21 @@
     "vm_firewall": "Pare-feu de la VM",
     "scenario_firewall": "Pare-feu du scénario",
     "sdn_snat": "NAT sortant"
+  },
+  "git": {
+    "title": "Changements en cours dans Git",
+    "description": "Les nouvelles demandes et leurs résultats sont enregistrés dans la branche de travail du projet connecté. Utilisez les actions du dépôt du projet pour les publier.",
+    "policyHint": "Ces fichiers conservent la demande et son résultat. Configurez le scénario pour appliquer une politique lors des prochains déploiements.",
+    "missingProject": "Ouvrez le projet enregistré pour ce déploiement et connectez son dépôt pour enregistrer ces changements dans Git.",
+    "openProject": "Ouvrir le projet : {name}",
+    "cacheError": "Enregistré dans Git, mais la copie du navigateur n’a pas pu être mise à jour : {message}",
+    "saved": {
+      "request": "Demande enregistrée",
+      "result": "Résultat enregistré"
+    },
+    "saving": "Enregistrement dans Git…",
+    "unsaved": "Pas encore enregistré dans Git",
+    "save": "Enregistrer dans Git",
+    "localConflict": "Ce fichier a été modifié localement. Vérifiez-le avant d’enregistrer l’opération."
   }
 }

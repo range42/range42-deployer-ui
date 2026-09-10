@@ -49,5 +49,21 @@
     "vm_firewall": "VM firewall",
     "scenario_firewall": "Scenario firewalls",
     "sdn_snat": "Outbound NAT"
+  },
+  "git": {
+    "title": "Runtime changes in Git",
+    "description": "New changes and their results are saved on the connected project’s working branch. Use the project’s repository actions to publish them.",
+    "policyHint": "These records retain the request and outcome. Configure the scenario to apply a policy on future deployments.",
+    "missingProject": "Open the project registered for this deployment and connect its repository to save these changes to Git.",
+    "openProject": "Open project: {name}",
+    "cacheError": "Saved in Git, but the browser copy could not be updated: {message}",
+    "saved": {
+      "request": "Saved request",
+      "result": "Saved result"
+    },
+    "saving": "Saving to Git…",
+    "unsaved": "Not yet saved to Git",
+    "save": "Save to Git",
+    "localConflict": "This runtime record was edited locally. Review the file before saving the recorded operation."
   }
 }

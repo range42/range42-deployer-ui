@@ -6,6 +6,7 @@ import { createI18n } from 'vue-i18n'
 import DeploymentDetail from '@/views/DeploymentDetail.vue'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
+import RuntimeGitRecords from '@/components/deployment/RuntimeGitRecords.vue'
 import runtimeEn from '@/locales/en/runtime.json'
 import deploymentEn from '@/locales/en/deployment.json'
 import { useDeploymentStore, applySseEvent } from '@/stores/deploymentStore.ts'
@@ -197,6 +198,7 @@ describe('<DeploymentDetail>', () => {
     running = true
     controls.vm.$emit('started', { id: 'runtime-1', scope: 'runtime', state: 'deploying' })
     await flushPromises()
+    expect(wrapper.getComponent(RuntimeGitRecords).props('newAttempt').id).toBe('runtime-1')
     expect(wrapper.text()).toContain('runtime-1')
     expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
   })

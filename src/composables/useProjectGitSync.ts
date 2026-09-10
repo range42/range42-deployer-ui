@@ -377,7 +377,7 @@ export function providerForBinding(binding: Pick<ProjectGitBinding, 'source_id' 
 const branchOperations = new Map<string, Promise<void>>()
 
 /** All callers share repository/branch queues, including editor autosave and publication. */
-function runOnBranch<T>(binding: ProjectGitBinding, branch: string, operation: () => Promise<T>): Promise<T> {
+export function runOnBranch<T>(binding: ProjectGitBinding, branch: string, operation: () => Promise<T>): Promise<T> {
   const key = JSON.stringify([
     binding.provider === 'generic' ? 'gitea' : binding.provider,
     binding.base_url.replace(/\/+$/, ''), binding.repo_owner, binding.repo_name, branch,
