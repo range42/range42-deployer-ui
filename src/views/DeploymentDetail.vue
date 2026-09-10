@@ -655,7 +655,7 @@ onBeforeUnmount(() => {
                 <summary class="cursor-pointer">{{ t('runtime.historyOperation') }} · {{ t(`runtime.operations.${att.operation.request.kind}`) }} · {{ t(att.operation.request.enabled ? 'runtime.enabled' : 'runtime.disabled') }} <span>{{ att.operation.request.vm_id || att.operation.request.vnet || '' }}</span></summary>
                 <div v-if="att.operation_result" class="space-y-1 py-2 text-xs" data-testid="runtime-result">
                   <p>{{ t(att.operation_result.desired_reached ? 'runtime.desiredConfirmed' : 'runtime.desiredUnconfirmed') }}</p>
-                  <p v-if="att.operation_result.partial" class="text-warning">{{ t('runtime.partialResult') }}</p>
+                  <p v-if="att.operation_result.partial" class="text-base-content border-l-2 border-warning pl-2">{{ t('runtime.partialResult') }}</p>
                   <p v-if="att.operation_result.missing_vmids?.length">{{ t('runtime.missingGuests', { ids: att.operation_result.missing_vmids.join(', ') }) }}</p>
                   <p v-if="att.operation_result.mismatched_vmids?.length">{{ t('runtime.mismatchedGuests', { ids: att.operation_result.mismatched_vmids.join(', ') }) }}</p>
                   <p v-if="att.operation_result.error" class="text-error break-words">{{ att.operation_result.error }}</p>

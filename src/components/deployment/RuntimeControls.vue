@@ -100,8 +100,8 @@ onBeforeUnmount(() => { version += 1 })
     <p v-if="queued" role="status" class="text-sm">{{ t('runtime.queued', { id: queued }) }}</p>
     <template v-if="state">
       <div class="flex flex-wrap gap-3 text-sm"><span>{{ t('runtime.datacenter') }}: {{ flag(state.firewall.datacenter_enabled) }}</span><span>{{ t('runtime.node', { name: state.node_name }) }}: {{ flag(state.firewall.node_enabled) }}</span></div>
-      <p v-if="!state.runtime?.available" class="text-sm text-warning">{{ state.runtime?.reason || t('runtime.unavailable') }}</p>
-      <p v-for="message in [...state.firewall.errors, ...state.sdn.errors]" :key="message" class="text-sm text-warning">{{ message }}</p>
+      <p v-if="!state.runtime?.available" class="text-sm text-base-content border-l-2 border-warning pl-2">{{ state.runtime?.reason || t('runtime.unavailable') }}</p>
+      <p v-for="message in [...state.firewall.errors, ...state.sdn.errors]" :key="message" class="text-sm text-base-content border-l-2 border-warning pl-2">{{ message }}</p>
       <div class="flex flex-wrap gap-2">
         <button type="button" class="btn btn-sm btn-outline" data-testid="runtime-scenario-enable" :disabled="busy || !canScenario" @click="review({ kind: 'scenario_firewall', enabled: true })">{{ t('runtime.enableScenario') }}</button>
         <button type="button" class="btn btn-sm btn-outline" :disabled="busy || !canScenario" @click="review({ kind: 'scenario_firewall', enabled: false })">{{ t('runtime.disableScenario') }}</button>
@@ -111,7 +111,7 @@ onBeforeUnmount(() => { version += 1 })
           <div class="min-w-0"><p class="text-sm font-medium break-words">{{ vm.name }} · {{ vm.vm_id }} · {{ t(`runtime.ownership.${vm.status}`) }}</p>
             <p class="text-sm">{{ t('runtime.vmFirewall') }}: {{ flag(vm.firewall_enabled) }}</p>
             <p v-for="nic in vm.nics" :key="nic.index" class="text-xs mt-1 break-words">net{{ nic.index }} · {{ nic.bridge }} · {{ flag(nic.firewall_enabled) }}</p>
-            <p v-if="vm.status === 'owned' && vm.filtering_configured !== true" class="text-xs mt-1 text-warning">{{ t('runtime.prerequisites') }}</p>
+            <p v-if="vm.status === 'owned' && vm.filtering_configured !== true" class="text-xs mt-1 text-base-content border-l-2 border-warning pl-2">{{ t('runtime.prerequisites') }}</p>
           </div>
           <button type="button" class="btn btn-sm btn-outline" :data-testid="`runtime-vm-${vm.vm_id}`"
             :disabled="busy || !supported('vm_firewall') || vm.status !== 'owned' || typeof vm.firewall_enabled !== 'boolean'"
