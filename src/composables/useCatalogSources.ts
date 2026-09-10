@@ -97,9 +97,9 @@ export function useCatalogSources() {
     return remember(source, scope)
   }
 
-  async function connectDefault(): Promise<GitSource> {
+  async function connectDefault(kind: 'catalog' | 'bundles' = 'catalog'): Promise<GitSource> {
     const scope = getBackendScope()
-    const source = await backendRequest<CatalogSourceResponse>('/v1/catalog/sources/default', { method: 'POST' })
+    const source = await backendRequest<CatalogSourceResponse>(`/v1/catalog/sources/default${kind === 'bundles' ? '?kind=bundles' : ''}`, { method: 'POST' })
     return remember(source, scope)
   }
 
