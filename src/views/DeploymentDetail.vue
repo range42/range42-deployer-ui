@@ -12,6 +12,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useDeploymentStore } from '@/stores/deploymentStore.ts'
+import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
@@ -287,12 +288,14 @@ const aggregateProgress = computed(() => {
 
 async function loadMeta() {
   const version = contextVersion
+  const cursor = live.value?.last_event_seq
   loading.value = true
   loadError.value = null
   try {
     const record = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}`)
     if (version === contextVersion) {
       meta.value = record
+      if (live.value && live.value.last_event_seq === cursor) live.value.state = record.state
       if (!maintenanceSha.value) maintenanceSha.value = latestSavedProjectRevision(record.project_id) || record.project_sha || ''
       await loadAttempts()
     }
@@ -303,6 +306,12 @@ async function loadMeta() {
   } finally {
     if (version === contextVersion) loading.value = false
   }
+}
+
+async function onRuntimeStarted() {
+  maintenanceRecord.value = null
+  maintenanceSnapshot.value = null
+  await loadMeta()
 }
 
 async function loadAttempts() {
@@ -432,7 +441,7 @@ function clearTeamFilter() {
   teamFilter.value = null
 }
 
-onMounted(() => { ensureNamespaces(['deployment', 'common']) })
+onMounted(() => { ensureNamespaces(['deployment', 'common', 'runtime']) })
 
 watch([() => route.params.id, getBackendScope, () => backend.token], async ([id], previous) => {
   const version = ++contextVersion
@@ -630,6 +639,8 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
+      <RuntimeControls v-if="meta && !supportsLegacyActions" :deployment-id="String(route.params.id)"
+        :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
       <div class="card card-compact bg-base-100 border border-base-300 mb-4">
         <div class="card-body p-4">
           <h2 class="card-title text-sm">{{ t('deployment.detail.overview.stateChainHeading') }}</h2>
@@ -640,6 +651,17 @@ onBeforeUnmount(() => {
               <span v-if="att.scope" class="ml-2 text-xs">{{ att.scope }}</span>
               <code v-if="att.project_sha" class="ml-2 text-xs break-all">{{ att.project_sha }}</code>
               <span v-if="att.started_at" class="ml-2 text-xs text-base-content/50">{{ att.started_at }}</span>
+              <details v-if="att.operation?.request" class="mt-1">
+                <summary class="cursor-pointer">{{ t('runtime.historyOperation') }} · {{ t(`runtime.operations.${att.operation.request.kind}`) }} · {{ t(att.operation.request.enabled ? 'runtime.enabled' : 'runtime.disabled') }} <span>{{ att.operation.request.vm_id || att.operation.request.vnet || '' }}</span></summary>
+                <div v-if="att.operation_result" class="space-y-1 py-2 text-xs" data-testid="runtime-result">
+                  <p>{{ t(att.operation_result.desired_reached ? 'runtime.desiredConfirmed' : 'runtime.desiredUnconfirmed') }}</p>
+                  <p v-if="att.operation_result.partial" class="text-warning">{{ t('runtime.partialResult') }}</p>
+                  <p v-if="att.operation_result.missing_vmids?.length">{{ t('runtime.missingGuests', { ids: att.operation_result.missing_vmids.join(', ') }) }}</p>
+                  <p v-if="att.operation_result.mismatched_vmids?.length">{{ t('runtime.mismatchedGuests', { ids: att.operation_result.mismatched_vmids.join(', ') }) }}</p>
+                  <p v-if="att.operation_result.error" class="text-error break-words">{{ att.operation_result.error }}</p>
+                  <p v-if="att.operation_result.live_forwarding_verified === false">{{ t('runtime.forwardingUnknown') }}</p>
+                </div>
+              </details>
             </li>
           </ol>
           <p v-else-if="attemptsError" class="text-sm text-error">{{ attemptsError }}</p>

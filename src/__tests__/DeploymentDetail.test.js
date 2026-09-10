@@ -5,8 +5,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import DeploymentDetail from '@/views/DeploymentDetail.vue'
 import { useBackendApiStore } from '@/stores/backendApiStore'
+import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
+import runtimeEn from '@/locales/en/runtime.json'
 import deploymentEn from '@/locales/en/deployment.json'
 import { useDeploymentStore, applySseEvent } from '@/stores/deploymentStore.ts'
+
+vi.mock('@/components/deployment/RuntimeControls.vue', () => ({ default: {
+  props: ['deploymentId', 'disabled'], emits: ['started'], template: '<section data-testid="runtime-stub" />',
+} }))
 
 enableAutoUnmount(afterEach)
 
@@ -15,7 +21,7 @@ function makeI18n() {
     legacy: false,
     locale: 'en',
     fallbackLocale: 'en',
-    messages: { en: { deployment: deploymentEn } },
+    messages: { en: { deployment: deploymentEn, runtime: runtimeEn } },
   })
 }
 
@@ -155,6 +161,44 @@ describe('<DeploymentDetail>', () => {
     expect(wrapper.text()).not.toContain('No attempts recorded yet')
     expect(wrapper.findAll('button').some(button => button.text() === 'Cancel deployment')).toBe(false)
     expect(wrapper.find('[data-testid="detail-teardown-open"]').exists()).toBe(false)
+  })
+
+  it('shows partial runtime results and missing guests in attempt history', async () => {
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [{ id: 'runtime-partial', scope: 'runtime', state: 'partial',
+        operation: { request: { kind: 'scenario_firewall', enabled: true } },
+        operation_result: { desired_reached: false, partial: true, missing_vmids: [3192], mismatched_vmids: [3193] },
+      }] } : { id: 'd-result', state: 'partial', project_sha: 'a'.repeat(40), scenario_label: 'demo' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-result')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    const result = wrapper.get('[data-testid="runtime-result"]')
+    expect(result.text()).toContain('Requested state was not fully confirmed')
+    expect(result.text()).toContain('Missing guests: 3192')
+    expect(result.text()).toContain('Guests with a different state: 3193')
+  })
+
+  it('refreshes history and blocks further changes when a runtime operation starts', async () => {
+    let running = false
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: running ? [{ id: 'runtime-1', scope: 'runtime', state: 'deploying' }] : [] }
+        : { id: 'd-runtime', state: running ? 'running_attempt' : 'succeeded', project_sha: 'a'.repeat(40), scenario_label: 'demo' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-runtime')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    const controls = wrapper.getComponent(RuntimeControls)
+    expect(controls.props('deploymentId')).toBe('d-runtime')
+    expect(controls.props('disabled')).toBe(false)
+    useDeploymentStore().deployments['d-runtime'].state = 'succeeded'
+    running = true
+    controls.vm.$emit('started', { id: 'runtime-1', scope: 'runtime', state: 'deploying' })
+    await flushPromises()
+    expect(wrapper.text()).toContain('runtime-1')
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
   })
 
   it('preflights and runs a chosen configure revision, invalidating the check after a revision edit', async () => {
