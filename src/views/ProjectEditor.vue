@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch, computed, provide, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, provide, nextTick, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
@@ -28,7 +28,6 @@ import TemplateBrowser from '../components/TemplateBrowser.vue'
 import ProblemsPanel from '../components/project/ProblemsPanel.vue'
 import ActivityTerminal from '../components/project/ActivityTerminal.vue'
 import CommandPalette from '../components/project/CommandPalette.vue'
-import ConfigTab from '../components/project/ConfigTab.vue'
 import HistoryTab from '../components/project/HistoryTab.vue'
 import VariablesTab from '../components/project/VariablesTab.vue'
 import { useDeploymentIndex } from '@/composables/useDeploymentIndex'
@@ -57,6 +56,8 @@ import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection, norma
 import { useTopologyResolver } from '../composables/useTopologyResolver'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
+const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
+
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useToast } from '../composables/useToast'
@@ -1256,15 +1257,17 @@ const handleInfrastructureImport = (result) => {
 
       <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->
       <div v-show="tab === 'config'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
-        <ConfigTab
-          v-if="currentProject"
-          :overlay-fs="configOverlayFs"
-          :base-fs="configBaseFs"
-          :attachments="attachmentsRef"
-          :nodes="liveNodes"
-          @update:attachments="handleAttachmentsUpdate"
-          @save="handleConfigSave"
-        />
+        <KeepAlive>
+          <ConfigTab
+            v-if="currentProject && tab === 'config'"
+            :overlay-fs="configOverlayFs"
+            :base-fs="configBaseFs"
+            :attachments="attachmentsRef"
+            :nodes="liveNodes"
+            @update:attachments="handleAttachmentsUpdate"
+            @save="handleConfigSave"
+          />
+        </KeepAlive>
       </div>
 
       <!-- Variables tab (C3.10) -->
