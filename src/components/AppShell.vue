@@ -1,26 +1,12 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router';
-import { computed, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { useHotkeys } from '@/composables/useHotkeys';
-import MigrationWizard from '@/components/MigrationWizard.vue';
 import LegacyStorageBanner from '@/components/LegacyStorageBanner.vue';
 import BackendAccessPanel from '@/components/ui/BackendAccessPanel.vue';
-import {
-  detectLegacyProjects,
-  isMigrationComplete,
-} from '@/services/projectRepo/migration.ts';
 
 const route = useRoute();
 const router = useRouter();
-
-// Migration wizard: auto-open on first v1 load when legacy data exists and
-// migration hasn't been completed yet (Plan C §C5.1).
-const showMigrationWizard = ref(false);
-onMounted(() => {
-  if (isMigrationComplete()) return;
-  if (detectLegacyProjects().length === 0) return;
-  showMigrationWizard.value = true;
-});
 
 // Rail shortcuts per spec §5. `n` routes to the Projects dashboard where the
 // user clicks "New project" — creating a draft requires picking a source +
@@ -82,11 +68,6 @@ const navItems = [
         <router-view :key="route.name === 'project-editor' ? `project:${route.params.id}` : undefined" />
       </main>
     </div>
-    <MigrationWizard
-      v-if="showMigrationWizard"
-      @close="showMigrationWizard = false"
-      @completed="showMigrationWizard = false"
-    />
   </div>
 </template>
 
