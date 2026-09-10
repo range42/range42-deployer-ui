@@ -6,7 +6,7 @@ export function getBackendScope(): string {
 }
 
 export class BackendApiError extends Error {
-  constructor(message: string, public status: number, public code?: string) {
+  constructor(message: string, public status: number, public code?: string, public details: Array<{ field: string; reason: string }> = []) {
     super(message)
     this.name = 'BackendApiError'
   }
@@ -35,6 +35,10 @@ async function backendResponse(path: string, init: RequestInit = {}): Promise<Re
       response.status === 401 ? 'Connect with your backend API token to continue.' : body?.message || `Backend request failed (${response.status})`,
       response.status,
       body?.code,
+      Array.isArray(body?.details) ? body.details
+        .filter((detail: unknown): detail is { field: string; reason: string } => !!detail && typeof detail === 'object'
+          && 'field' in detail && typeof detail.field === 'string' && 'reason' in detail && typeof detail.reason === 'string')
+        .map(({ field, reason }: { field: string; reason: string }) => ({ field, reason })) : [],
     )
   }
   return response

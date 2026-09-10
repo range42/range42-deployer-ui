@@ -52,6 +52,7 @@ const props = defineProps({
   catalogSha: { type: String, default: '' },
   projectSha: { type: String, default: '' },
   existingCodenames: { type: Array, default: () => [] },
+  allocation: { type: Object, default: null },
 })
 
 const emit = defineEmits(['close', 'created'])
@@ -68,6 +69,9 @@ const codename = ref('')
 const scenarioLabel = ref(props.initialScenarioLabel)
 const usesPinnedScenario = computed(() => !!props.projectSha && scenarioLabel.value.trim() !== '_universal')
 const targetHost = ref('')
+const allocationBackendMatches = computed(() => props.allocation?.backend_url === getBackendScope())
+const allocationTargetChanged = computed(() => props.allocation && (!allocationBackendMatches.value
+  || props.allocation.target_host_id !== targetHost.value))
 const teamCount = ref(1)
 const vaultPassword = ref('')
 const vaultOverride = ref(false)
@@ -176,6 +180,9 @@ async function loadHosts() {
       if (items.length === 0 || offset >= page.total || page.total == null) break
     }
     hosts.value = loaded
+    if (allocationBackendMatches.value && loaded.some(host => host.id === props.allocation?.target_host_id)) {
+      targetHost.value = props.allocation.target_host_id
+    }
   } catch (err) {
     if (current()) hostsError.value = err?.message || String(err)
   } finally {
@@ -370,6 +377,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
             </button>
           </div>
           <p v-if="errHost" class="text-xs text-error mt-1">{{ errHost }}</p>
+          <p v-if="allocationTargetChanged" class="text-xs text-warning mt-1" data-testid="deploy-allocation-warning">{{ t('deployment.deploy.allocationTargetChanged') }}</p>
         </div>
 
         <!-- Team count (gamenet only) -->

@@ -106,6 +106,29 @@ describe('<DeployForm>', () => {
     expect(deployBtn.attributes('disabled')).toBeDefined()
   })
 
+  it('prefers the scenario reservation target only on its original backend', async () => {
+    globalThis.fetch = fetchMockHosts()
+    const allocation = { target_host_id: 'host-2', backend_url: '', reservation: { expires_at: '2099-01-01T00:00:00Z' } }
+    const wrapper = mount(DeployForm, { props: baseProps({ allocation }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="deploy-field-host"] select').element.value).toBe('host-2')
+    await wrapper.get('[data-testid="deploy-field-host"] select').setValue('host-1')
+    expect(wrapper.get('[data-testid="deploy-allocation-warning"]').text()).toContain('reserve again')
+    await wrapper.setProps({ visible: false })
+    await wrapper.setProps({ visible: true, allocation: { ...allocation, backend_url: 'https://other-backend.test' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="deploy-field-host"] select').element.value).toBe('')
+    expect(wrapper.get('[data-testid="deploy-allocation-warning"]').text()).toContain('reserve again')
+  })
+
+  it('does not select an unavailable reservation target', async () => {
+    globalThis.fetch = fetchMockHosts()
+    const wrapper = mount(DeployForm, { props: baseProps({ allocation: { target_host_id: 'removed-host', backend_url: '' } }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="deploy-field-host"] select').element.value).toBe('')
+    expect(wrapper.get('[data-testid="deploy-allocation-warning"]').text()).toContain('reserve again')
+  })
+
   it('flags collision against existingCodenames', async () => {
     globalThis.fetch = fetchMockHosts()
     const wrapper = mount(DeployForm, {

@@ -159,7 +159,8 @@
       "blocking": "La validation du projet a signalé des problèmes bloquants. Corrigez-les avant le déploiement.",
       "acknowledge": "Accepter les avertissements préalables.",
       "description": "Valide les documents du projet enregistrés. Les réseaux, VM et ressources sont vérifiés avant le déploiement."
-    }
+    },
+    "allocationTargetChanged": "Ces valeurs ont été réservées pour une autre cible ou un autre backend. Revenez à la configuration du scénario et réservez à nouveau avant de les utiliser ici."
   },
   "teardown": {
     "title": "Démanteler le déploiement",

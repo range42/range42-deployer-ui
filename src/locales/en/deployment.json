@@ -159,7 +159,8 @@
       "blocking": "Project validation reported blocking issues. Fix them before deploying.",
       "acknowledge": "Acknowledge preflight warnings.",
       "description": "Validates the stored project documents. Network, VM and resource checks run in deployment preflight."
-    }
+    },
+    "allocationTargetChanged": "These values were reserved for another target or backend. Return to scenario configuration and reserve again before using them here."
   },
   "teardown": {
     "title": "Teardown deployment",
