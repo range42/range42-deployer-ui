@@ -1362,6 +1362,7 @@ const handleInfrastructureImport = (result) => {
       :project-id="registeredProjectId || currentProject.id"
       :project-name="currentProject.name"
       :initial-scenario-label="currentProject.scenario?.label || ''"
+      :allocation="currentProject.scenario?.allocation || null"
       :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
       :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
       :existing-codenames="existingCodenames"

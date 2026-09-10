@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
+import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
 
 const props = defineProps({
@@ -57,6 +58,18 @@ function attachBundle(item) {
   bundleLibraryOpen.value = false
 }
 
+function applyAllocation({ reservation, vms, target_host_id, backend_url }) {
+  draft.value.vms = vms
+  draft.value.allocation = { reservation, target_host_id, backend_url }
+}
+
+function releaseAllocation({ reservation_id, target_host_id, backend_url }) {
+  const saved = draft.value.allocation
+  if (saved?.reservation?.reservation_id === reservation_id && saved.target_host_id === target_host_id && saved.backend_url === backend_url) {
+    delete draft.value.allocation
+  }
+}
+
 function review() {
   error.value = ''
   try {
@@ -109,6 +122,9 @@ function review() {
               </div>
               <label v-if="draft.network_mode === 'sdn'" class="flex items-center gap-2 mt-3"><input v-model="network.snat" type="checkbox" class="checkbox checkbox-sm" /> Outbound NAT</label>
             </fieldset>
+
+            <ScenarioAllocationPanel v-if="project.id" :project-id="project.id" :vms="draft.vms" :networks="draft.networks"
+              @reserved="applyAllocation" @released="releaseAllocation" />
 
             <h3 class="font-semibold mt-5 mb-2">Virtual machines</h3>
             <p v-if="!draft.vms.length" class="text-sm text-warning">No VM nodes found. Add a VM to the canvas and connect it to a network.</p>

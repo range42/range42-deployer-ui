@@ -9,10 +9,10 @@ const nodes = [{ id: 'vm', type: 'vm', data: { config: { name: 'guest' } } },
 const edges = [{ source: 'vm', target: 'net' }]
 function modal(overrides = {}) {
   return mount(ScenarioAuthoringModal, { props: { open: true, nodes, edges, project: {
-    name: 'Demo', files: {}, scenario: { label: 'demo', network_mode: 'sdn', zone: 'r42lab',
+    id: 'local-project', name: 'Demo', files: {}, scenario: { label: 'demo', network_mode: 'sdn', zone: 'r42lab',
       networks: [{ id: 'net', vnet: 'r42net1', subnet: '10.42.1.0/24', gateway: '10.42.1.1', snat: true }],
       vms: [{ node_id: 'vm', vm_id: 3101, vm_name: 'guest', template_vm_id: 9232, network_id: 'net', ip: '10.42.1.10', ssh_user: 'alice' }], content: [] },
-    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, FocusTrap: { template: '<div><slot /></div>' } } } })
+    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, ScenarioAllocationPanel: true, FocusTrap: { template: '<div><slot /></div>' } } } })
 }
 
 describe('scenario authoring review', () => {
@@ -27,6 +27,27 @@ describe('scenario authoring review', () => {
     await flushPromises()
     expect(wrapper.get('[data-testid="content-path"]').attributes('readonly')).toBeDefined()
     expect(wrapper.findComponent({ name: 'BundleLibraryModal' }).props('open')).toBe(false)
+  })
+
+  it('applies reviewed allocations and preserves their target without storing an ownership token', async () => {
+    const wrapper = modal()
+    await flushPromises()
+    const panel = wrapper.getComponent({ name: 'ScenarioAllocationPanel' })
+    expect(panel.props('projectId')).toBe('local-project')
+    const vms = JSON.parse(JSON.stringify(panel.props('vms')))
+    vms[0].vm_id = 3195
+    vms[0].ip = '10.42.1.15'
+    vms[0].nics[0].ip = '10.42.1.15'
+    const reservation = { reservation_id: 'lease-one', expires_at: '2026-09-11T00:00:00Z', assignments: [] }
+    panel.vm.$emit('reserved', { reservation, vms, target_host_id: 'host-one', backend_url: 'https://backend.test', token: 'never-persist-this' })
+    await flushPromises()
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const generated = wrapper.emitted('generated')[0][0]
+    expect(generated.scenario.allocation).toEqual({ reservation, target_host_id: 'host-one', backend_url: 'https://backend.test' })
+    const manifest = JSON.parse(generated.files['scenarios/demo/manifest/scenario_vms.json'])
+    expect(manifest.vms[0]).toMatchObject({ vm_id: 3195, ip: '10.42.1.15' })
+    expect(JSON.stringify(generated)).not.toContain('never-persist-this')
   })
 
   it('lets an operator set VM resources before reviewing the generated plan', async () => {
