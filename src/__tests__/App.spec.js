@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia } from 'pinia'
+import { createI18n } from 'vue-i18n'
 import App from '../App.vue'
 
 const router = createRouter({
@@ -18,7 +19,7 @@ describe('App', () => {
 
     const wrapper = mount(App, {
       global: {
-        plugins: [createPinia(), router],
+        plugins: [createPinia(), router, createI18n({ legacy: false, locale: 'en' })],
       },
     })
 
