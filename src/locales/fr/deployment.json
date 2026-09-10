@@ -28,10 +28,15 @@
   "maintenance": {
     "title": "Mettre à jour le contenu ou supprimer les VM",
     "description": "La configuration exécute le playbook configure sur les VM existantes. La suppression vérifie leur appartenance au déploiement et conserve les réseaux partagés.",
-    "action": "Action", "configure": "Appliquer le contenu et la configuration enregistrés", "teardown": "Supprimer les VM du déploiement",
-    "revision": "Commit enregistré du projet", "revisionHint": "Utilise par défaut le dernier commit enregistré du projet associé dans ce navigateur. Les VM, l’inventaire et les réseaux doivent rester identiques au déploiement initial.",
+    "action": "Action",
+    "configure": "Appliquer le contenu et la configuration enregistrés",
+    "teardown": "Supprimer les VM du déploiement",
+    "revision": "Commit enregistré du projet",
+    "revisionHint": "Utilise par défaut le dernier commit enregistré du projet associé dans ce navigateur. Les VM, l’inventaire et les réseaux doivent rester identiques au déploiement initial.",
     "invalidSha": "Saisissez le SHA complet du commit enregistré, de 40 ou 64 caractères.",
-    "confirm": "Saisissez {codename} pour confirmer la suppression des VM", "preflight": "Vérifier l’action choisie", "start": "Exécuter l’action vérifiée"
+    "confirm": "Saisissez {codename} pour confirmer la suppression des VM",
+    "preflight": "Vérifier l’action choisie",
+    "start": "Exécuter l’action vérifiée"
   },
   "detail": {
     "prepareDescription": "Vérifiez les réseaux et les ressources, puis lancez ce déploiement.",
@@ -42,16 +47,6 @@
     "cancel": "Annuler le déploiement",
     "pause": "Pause",
     "teardown": "Démanteler…",
-    "overview": "Vue d'ensemble",
-    "teams": "Équipes",
-    "logs": "Logs",
-    "preflight": "Préalable",
-    "preflightLink": "Voir le rapport préalable",
-    "tabs": {
-      "overview": "Vue d'ensemble",
-      "teams": "Équipes",
-      "logs": "Logs"
-    },
     "overview": {
       "stateChainHeading": "Machine à états",
       "phaseHeading": "Phase actuelle",
@@ -78,7 +73,15 @@
       "download": "Télécharger events.jsonl",
       "empty": "Aucune ligne de log reçue pour l'instant.",
       "teamFilter": "Affichage des logs de l'équipe {id}",
-      "clearTeamFilter": "Retirer le filtre d'équipe"
+      "clearTeamFilter": "Retirer le filtre d'équipe",
+      "showRoutine": "Afficher les tâches ignorées et incluses"
+    },
+    "preflight": "Préalable",
+    "preflightLink": "Voir le rapport préalable",
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "teams": "Équipes",
+      "logs": "Logs"
     },
     "notFound": "Déploiement introuvable."
   },

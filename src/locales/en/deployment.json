@@ -28,10 +28,15 @@
   "maintenance": {
     "title": "Update content or remove deployment VMs",
     "description": "Configuration runs the scenario's configure playbook on existing VMs. Teardown verifies ownership and removes deployment VMs while preserving shared networks.",
-    "action": "Action", "configure": "Apply saved content and configuration", "teardown": "Remove deployment VMs",
-    "revision": "Saved project commit", "revisionHint": "Defaults to the linked project's latest saved commit in this browser. VM, inventory and network definitions must match the original deployment.",
+    "action": "Action",
+    "configure": "Apply saved content and configuration",
+    "teardown": "Remove deployment VMs",
+    "revision": "Saved project commit",
+    "revisionHint": "Defaults to the linked project's latest saved commit in this browser. VM, inventory and network definitions must match the original deployment.",
     "invalidSha": "Enter the full 40- or 64-character saved commit SHA.",
-    "confirm": "Type {codename} to confirm VM removal", "preflight": "Check selected action", "start": "Run checked action"
+    "confirm": "Type {codename} to confirm VM removal",
+    "preflight": "Check selected action",
+    "start": "Run checked action"
   },
   "detail": {
     "prepareDescription": "Check network and resource readiness, then start this deployment.",
@@ -42,16 +47,6 @@
     "cancel": "Cancel deployment",
     "pause": "Pause",
     "teardown": "Teardown…",
-    "overview": "Overview",
-    "teams": "Teams",
-    "logs": "Logs",
-    "preflight": "Preflight",
-    "preflightLink": "View preflight record",
-    "tabs": {
-      "overview": "Overview",
-      "teams": "Teams",
-      "logs": "Logs"
-    },
     "overview": {
       "stateChainHeading": "State machine",
       "phaseHeading": "Current phase",
@@ -78,7 +73,15 @@
       "download": "Download events.jsonl",
       "empty": "No log lines received yet.",
       "teamFilter": "Showing logs for team {id}",
-      "clearTeamFilter": "Clear team filter"
+      "clearTeamFilter": "Clear team filter",
+      "showRoutine": "Show skipped and included tasks"
+    },
+    "preflight": "Preflight",
+    "preflightLink": "View preflight record",
+    "tabs": {
+      "overview": "Overview",
+      "teams": "Teams",
+      "logs": "Logs"
     },
     "notFound": "Deployment not found."
   },

@@ -28,10 +28,15 @@
   "maintenance": {
     "title": "コンテンツ更新またはデプロイVMの削除",
     "description": "構成では既存VMでconfigureプレイブックを実行します。削除ではデプロイの所有情報を確認し、共有ネットワークを保持します。",
-    "action": "操作", "configure": "保存済みコンテンツと構成を適用", "teardown": "デプロイVMを削除",
-    "revision": "保存済みプロジェクトコミット", "revisionHint": "このブラウザー内で関連プロジェクトの最新保存コミットを初期値に使用します。VM、インベントリー、ネットワークは元のデプロイと一致する必要があります。",
+    "action": "操作",
+    "configure": "保存済みコンテンツと構成を適用",
+    "teardown": "デプロイVMを削除",
+    "revision": "保存済みプロジェクトコミット",
+    "revisionHint": "このブラウザー内で関連プロジェクトの最新保存コミットを初期値に使用します。VM、インベントリー、ネットワークは元のデプロイと一致する必要があります。",
     "invalidSha": "保存済みコミットの完全な40文字または64文字のSHAを入力してください。",
-    "confirm": "VM削除の確認として{codename}を入力", "preflight": "選択した操作を確認", "start": "確認済み操作を実行"
+    "confirm": "VM削除の確認として{codename}を入力",
+    "preflight": "選択した操作を確認",
+    "start": "確認済み操作を実行"
   },
   "detail": {
     "prepareDescription": "ネットワークとリソースを確認してからデプロイを開始してください。",
@@ -42,16 +47,6 @@
     "cancel": "デプロイをキャンセル",
     "pause": "一時停止",
     "teardown": "撤去…",
-    "overview": "概要",
-    "teams": "チーム",
-    "logs": "ログ",
-    "preflight": "事前チェック",
-    "preflightLink": "事前チェックを表示",
-    "tabs": {
-      "overview": "概要",
-      "teams": "チーム",
-      "logs": "ログ"
-    },
     "overview": {
       "stateChainHeading": "ステートマシン",
       "phaseHeading": "現在のフェーズ",
@@ -78,7 +73,15 @@
       "download": "events.jsonl をダウンロード",
       "empty": "ログはまだ受信されていません。",
       "teamFilter": "チーム {id} のログを表示中",
-      "clearTeamFilter": "チームフィルタを解除"
+      "clearTeamFilter": "チームフィルタを解除",
+      "showRoutine": "スキップ・インクルードされたタスクを表示"
+    },
+    "preflight": "事前チェック",
+    "preflightLink": "事前チェックを表示",
+    "tabs": {
+      "overview": "概要",
+      "teams": "チーム",
+      "logs": "ログ"
     },
     "notFound": "デプロイが見つかりません。"
   },

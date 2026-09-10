@@ -17,7 +17,8 @@ import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
 import SnapshotCreateModal from '@/components/SnapshotCreateModal.vue'
 import RollbackModal from '@/components/RollbackModal.vue'
-import { backendRequest, getBackendScope } from '@/services/backendApi'
+import { backendRequest, backendBlob, getBackendScope } from '@/services/backendApi'
+import { visibleDeploymentLogs } from '@/services/deploymentLogs'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import PreflightReport from '@/components/ui/PreflightReport.vue'
 import { useToast } from '@/composables/useToast'
@@ -36,6 +37,8 @@ const meta = ref(null) // deployment metadata from the backend (non-live)
 const loading = ref(true)
 const loadError = ref(null)
 const logFilter = ref('')
+const showRoutineLogs = ref(false)
+const downloadingLogs = ref(false)
 const teamFilter = ref(null)
 const showTeardown = ref(false)
 const actionError = ref(null)
@@ -238,10 +241,30 @@ const filteredLogs = computed(() => {
   const src = teamFilter.value
     ? (live.value.teams[teamFilter.value]?.latest_logs || [])
     : live.value.logs
-  if (!logFilter.value) return src
-  const needle = logFilter.value.toLowerCase()
-  return src.filter(l => (l.text || '').toLowerCase().includes(needle))
+  return visibleDeploymentLogs(src, { query: logFilter.value, showRoutine: showRoutineLogs.value })
 })
+
+async function downloadLogs() {
+  const version = contextVersion
+  downloadingLogs.value = true
+  actionError.value = null
+  try {
+    const blob = await backendBlob(`/v1/deployments/${encodeURIComponent(String(route.params.id))}/events/download`)
+    if (version !== contextVersion) return
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'events.jsonl'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) {
+    if (version === contextVersion) actionError.value = error.message
+  } finally {
+    downloadingLogs.value = false
+  }
+}
 
 const aggregateProgress = computed(() => {
   const state = effectiveState.value
@@ -674,11 +697,16 @@ onBeforeUnmount(() => {
           :placeholder="t('deployment.detail.logs.filterPlaceholder')"
           class="input input-bordered input-sm flex-1 min-w-0"
         />
-        <a
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="showRoutineLogs" type="checkbox" class="checkbox checkbox-sm" data-testid="logs-show-routine" />
+          {{ t('deployment.detail.logs.showRoutine') }}
+        </label>
+        <button
+          type="button"
           class="btn btn-sm btn-ghost"
-          :href="`/v1/deployments/${encodeURIComponent(String(route.params.id))}/events?format=raw`"
-          download="events.jsonl"
-        >{{ t('deployment.detail.logs.download') }}</a>
+          data-testid="logs-download" :disabled="downloadingLogs"
+          @click="downloadLogs"
+        >{{ t('deployment.detail.logs.download') }}</button>
       </div>
       <div v-if="teamFilter" class="text-xs text-base-content/70 mb-2 flex items-center gap-2">
         <span>{{ t('deployment.detail.logs.teamFilter', { id: teamFilter }) }}</span>

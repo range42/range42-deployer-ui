@@ -54,6 +54,23 @@ describe('<DeploymentDetail>', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('offers a quiet log view and a protected finite download', async () => {
+    globalThis.fetch = fetchMock({ id: 'd-logs', codename: 'LOGS', state: 'succeeded' })
+    const router = makeRouter()
+    await router.push('/deployments/d-logs?tab=logs')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    const live = useDeploymentStore().deployments['d-logs']
+    applySseEvent(live, { event_type: 'log_line', event_seq: 1, payload: { text: 'included noisy tasks', ansible_event: 'playbook_on_include' } })
+    applySseEvent(live, { event_type: 'log_line', event_seq: 2, payload: { text: 'useful output', ansible_event: 'verbose' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="logs-list"]').text()).toContain('useful output')
+    expect(wrapper.get('[data-testid="logs-list"]').text()).not.toContain('included noisy tasks')
+    await wrapper.get('[data-testid="logs-show-routine"]').setValue(true)
+    expect(wrapper.get('[data-testid="logs-list"]').text()).toContain('included noisy tasks')
+    expect(wrapper.get('[data-testid="logs-download"]').element.tagName).toBe('BUTTON')
+  })
+
   it('routes metadata and cancel to the selected authenticated backend', async () => {
     useBackendApiStore().addHost({ url: 'https://backend.test', token: 'gateway' })
     globalThis.fetch = fetchMock({ id: 'd-1', codename: 'ALPHA', state: 'deploying' })

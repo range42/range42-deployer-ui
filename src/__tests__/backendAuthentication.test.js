@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useBackendApiStore } from '@/stores/backendApiStore'
-import { backendRequest } from '@/services/backendApi'
+import { backendRequest, backendBlob } from '@/services/backendApi'
 
 const response = (status, body = {}) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json' },
@@ -19,6 +19,20 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('backend authentication', () => {
+  it('downloads protected JSONL as a blob with the selected backend token', async () => {
+    backend.setToken('operator-secret')
+    fetchMock.mockResolvedValue(new Response('{"event_seq":1}\n', { headers: { 'Content-Type': 'application/x-ndjson' } }))
+    const blob = await backendBlob('/v1/deployments/dep/events/download')
+    const text = await new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.readAsText(blob)
+    })
+    expect(text).toBe('{"event_seq":1}\n')
+    expect(fetchMock.mock.calls[0][0]).toBe('https://lab.test/v1/deployments/dep/events/download')
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get('Authorization')).toBe('Bearer operator-secret')
+  })
+
   it('identifies a missing token separately from backend readiness', async () => {
     fetchMock.mockResolvedValue(response(401))
     expect((await backend.testConnection()).status).toBe('unauthorized')

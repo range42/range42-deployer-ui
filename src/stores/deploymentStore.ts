@@ -48,6 +48,8 @@ export interface LogLine {
   text: string
   team_id?: string
   host?: string
+  ansible_event?: string
+  task_action?: string
 }
 
 export interface TeamSlice {
@@ -183,6 +185,8 @@ export function applySseEvent(record: DeploymentRecord, event: SseEvent): void {
         text: typeof payload.text === 'string' ? payload.text : '',
         team_id: payload.team_id as string | undefined,
         host: payload.host as string | undefined,
+        ansible_event: payload.ansible_event as string | undefined,
+        task_action: payload.task_action as string | undefined,
       }
       if (line.team_id) {
         const team = ensureTeam(record, line.team_id)

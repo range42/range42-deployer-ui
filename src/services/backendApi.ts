@@ -13,7 +13,7 @@ export class BackendApiError extends Error {
 }
 
 /** App-level v1 requests use the selected backend and its gateway credentials. */
-export async function backendRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function backendResponse(path: string, init: RequestInit = {}): Promise<Response> {
   if (!path.startsWith('/v1/')) throw new Error('Expected a v1 API path')
   const backend = useBackendApiStore()
   const host = backend.activeHost ? { ...backend.activeHost } : null
@@ -37,6 +37,15 @@ export async function backendRequest<T>(path: string, init: RequestInit = {}): P
       body?.code,
     )
   }
+  return response
+}
+
+export async function backendRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await backendResponse(path, init)
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
+}
+
+export async function backendBlob(path: string): Promise<Blob> {
+  return (await backendResponse(path)).blob()
 }
