@@ -127,7 +127,10 @@
       "host": "Target Proxmox host",
       "hostPlaceholder": "Select a host",
       "teamCount": "Team count",
-      "vault": "Vault password"
+      "vault": "Vault password",
+      "backendCredentials": "Use the credentials configured on the backend. No vault password is needed here.",
+      "vaultOverride": "Use a custom vault password for this deployment",
+      "vaultOverrideHint": "This replaces the backend credential template, including its saved SSH and Proxmox credentials. The scenario must supply the matching encrypted credentials."
     },
     "err": {
       "teamCountRange": "Team count must be a whole number from 1 to 64.",

@@ -127,7 +127,10 @@
       "host": "Hôte Proxmox cible",
       "hostPlaceholder": "Sélectionner un hôte",
       "teamCount": "Nombre d'équipes",
-      "vault": "Mot de passe Vault"
+      "vault": "Mot de passe Vault",
+      "backendCredentials": "Utilisez les identifiants configurés sur le backend. Aucun mot de passe Vault n’est nécessaire ici.",
+      "vaultOverride": "Utiliser un mot de passe Vault personnalisé pour ce déploiement",
+      "vaultOverrideHint": "Cela remplace le modèle d’identifiants du backend, y compris ses identifiants SSH et Proxmox. Le scénario doit fournir les identifiants chiffrés correspondants."
     },
     "err": {
       "teamCountRange": "Le nombre d’équipes doit être un entier de 1 à 64.",

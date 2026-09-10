@@ -127,7 +127,10 @@
       "host": "対象 Proxmox ホスト",
       "hostPlaceholder": "ホストを選択",
       "teamCount": "チーム数",
-      "vault": "Vault パスワード"
+      "vault": "Vault パスワード",
+      "backendCredentials": "バックエンドに設定された認証情報を使用します。ここで Vault パスワードを入力する必要はありません。",
+      "vaultOverride": "このデプロイにカスタム Vault パスワードを使用する",
+      "vaultOverrideHint": "保存された SSH と Proxmox の認証情報を含む、バックエンドの認証情報テンプレートを置き換えます。シナリオには対応する暗号化済み認証情報が必要です。"
     },
     "err": {
       "teamCountRange": "チーム数は1から64までの整数で指定してください。",

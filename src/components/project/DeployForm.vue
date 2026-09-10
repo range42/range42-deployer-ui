@@ -18,10 +18,10 @@
  * On submit:
  *   POST /v1/deployments
  *     { project_id, codename, scenario_label, target_host_id,
- *       team_count, catalog_sha, project_sha, secrets: { vault_password } }
+ *       team_count, catalog_sha, project_sha, secrets?: { vault_password } }
  *   team_count is required by the backend, so non-gamenet deploys send 1.
- *   The vault password goes in `secrets`; the backend writes it to
- *   <workspace>/secrets/vault_pass.txt, which the deploy run reads.
+ *   Omitted secrets inherit the backend operator credential template. An
+ *   explicit custom vault override replaces that template for this deployment.
  *   → redirects to /deployments/:id
  *
  * Props:
@@ -70,6 +70,7 @@ const usesPinnedScenario = computed(() => !!props.projectSha && scenarioLabel.va
 const targetHost = ref('')
 const teamCount = ref(1)
 const vaultPassword = ref('')
+const vaultOverride = ref(false)
 const shaAck = ref(false)
 const warnAck = ref(false)
 
@@ -116,7 +117,7 @@ const errTeamCount = computed(() => {
 })
 
 const errVault = computed(() => {
-  if (!vaultPassword.value) return t('deployment.deploy.err.vaultRequired')
+  if (vaultOverride.value && !vaultPassword.value.trim()) return t('deployment.deploy.err.vaultRequired')
   return null
 })
 
@@ -226,7 +227,7 @@ async function submit() {
       project_sha: props.projectSha,
       // Required by DeploymentCreate; a non-gamenet lab is a single team.
       team_count: props.gamenet ? Number(teamCount.value) : 1,
-      secrets: { vault_password: vaultPassword.value },
+      ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }
     const created = await backendRequest('/v1/deployments', {
       method: 'POST',
@@ -266,6 +267,7 @@ watch(
     submitting.value = false
     warnAck.value = false
     shaAck.value = false
+    vaultOverride.value = false
     vaultPassword.value = ''
     if (visible) loadHosts()
   },
@@ -280,6 +282,8 @@ watch([() => props.catalogSha, () => props.projectSha], () => {
   warnAck.value = false
   shaAck.value = false
 })
+
+watch(vaultOverride, enabled => { if (!enabled) vaultPassword.value = '' })
 
 onBeforeUnmount(() => { sessionVersion += 1 })
 </script>
@@ -385,18 +389,28 @@ onBeforeUnmount(() => { sessionVersion += 1 })
           <p v-if="errTeamCount" class="text-xs text-error mt-1">{{ errTeamCount }}</p>
         </div>
 
-        <!-- Vault password -->
-        <div class="form-control" data-testid="deploy-field-vault">
-          <label class="label pb-1">
-            <span class="label-text font-medium">{{ t('deployment.deploy.fields.vault') }}<span class="text-error ml-0.5">*</span></span>
+        <!-- Backend credentials are inherited unless explicitly overridden. -->
+        <div class="form-control space-y-2" data-testid="deploy-field-vault">
+          <p class="text-sm text-base-content/70">{{ t('deployment.deploy.fields.backendCredentials') }}</p>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="vaultOverride" type="checkbox" class="checkbox checkbox-sm" data-testid="deploy-vault-override" />
+            <span>{{ t('deployment.deploy.fields.vaultOverride') }}</span>
           </label>
-          <input
-            v-model="vaultPassword"
-            type="password"
-            class="input input-bordered input-sm"
-            autocomplete="new-password"
-          />
-          <p v-if="errVault" class="text-xs text-error mt-1">{{ errVault }}</p>
+          <template v-if="vaultOverride">
+            <p class="text-xs text-base-content/70">{{ t('deployment.deploy.fields.vaultOverrideHint') }}</p>
+            <label class="label pb-1" for="deploy-vault-password">
+              <span class="label-text font-medium">{{ t('deployment.deploy.fields.vault') }}<span class="text-error ml-0.5">*</span></span>
+            </label>
+            <input
+              id="deploy-vault-password"
+              v-model="vaultPassword"
+              type="password"
+              class="input input-bordered input-sm"
+              autocomplete="new-password"
+              :aria-invalid="errVault ? 'true' : 'false'"
+            />
+            <p v-if="errVault" class="text-xs text-error mt-1">{{ errVault }}</p>
+          </template>
         </div>
 
         <!-- SHA pin confirmation -->
