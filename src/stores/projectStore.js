@@ -1,3 +1,5 @@
+import { validateAuthoredFiles } from '@/services/projectFiles'
+
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 
@@ -43,15 +45,18 @@ export const useProjectStore = defineStore('projects', () => {
     return projects.value.find(p => p.id === id)
   }
 
+  function persistCandidate(nextProjects) {
+    try { localStorage.setItem('range42_projects', JSON.stringify(nextProjects)) }
+    catch { throw new Error('Browser storage is full or unavailable. Remove unused projects or use smaller files, then try again. No new files were saved.') }
+  }
+
   const updateProject = (id, updates) => {
     const index = projects.value.findIndex(p => p.id === id)
     if (index !== -1) {
-      Object.assign(
-        projects.value[index],
-        updates,
-        { modified: new Date().toISOString() }
-      )
-      saveProjects()
+      if (Object.hasOwn(updates, 'files')) validateAuthoredFiles(updates.files)
+      const next = { ...projects.value[index], ...updates, modified: new Date().toISOString() }
+      persistCandidate(projects.value.map((project, position) => position === index ? next : project))
+      Object.assign(projects.value[index], next)
     }
   }
 
@@ -111,8 +116,9 @@ export const useProjectStore = defineStore('projects', () => {
       throw new Error(`Project with ID ${project.id} already exists`)
     }
     
+    if (Object.hasOwn(project, 'files')) validateAuthoredFiles(project.files)
+    persistCandidate([...projects.value, project])
     projects.value.push(project)
-    saveProjects()
     return project
   }
 

@@ -17,11 +17,15 @@ export function encodeContentBase64(content: string | Uint8Array): string {
   return btoa(binary);
 }
 
-export function decodeContentBase64(b64: string): string {
+export function decodeBytesBase64(b64: string): Uint8Array {
   const binary = atob(b64.replace(/\s/g, ''));
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return new TextDecoder().decode(bytes);
+  return bytes;
+}
+
+export function decodeContentBase64(b64: string): string {
+  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(decodeBytesBase64(b64));
 }

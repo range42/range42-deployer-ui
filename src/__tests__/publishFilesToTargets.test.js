@@ -1,10 +1,11 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { assetFromBytes, fileBytes } from '@/services/projectFiles'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { getProvider } from '@/services/git'
-import { publishFilesToTargets, useProjectGitSync } from '@/composables/useProjectGitSync'
+import { publishFilesToTargets, useProjectGitSync, buildProjectFiles } from '@/composables/useProjectGitSync'
 
 vi.mock('@/services/git', () => ({ getProvider: vi.fn() }))
 
@@ -60,6 +61,32 @@ beforeEach(() => {
 })
 
 describe('publishFilesToTargets', () => {
+  it('rejects an oversized complete project before attempting a repository fork', async () => {
+    repos.github.provider.canWrite = async () => false
+    repos.github.provider.ensureFork = vi.fn(async () => ({ owner: 'fork', repo: 'project', default_branch: 'main' }))
+    const args = { projectId: 'too-large', binding, canvas: { nodes: [], edges: [], attachments: [] }, meta: { name: 'oversized' },
+      files: { 'content/a.txt': 'a'.repeat(1024 * 1024), 'content/b.txt': 'b'.repeat(1024 * 1024) } }
+    await expect(Promise.resolve().then(() => useProjectGitSync().pushToGit(args))).rejects.toThrow(/2 MiB/)
+    expect(repos.github.provider.ensureFork).not.toHaveBeenCalled()
+  })
+  it('protects generated manifest filenames when building authored project files', () => {
+    expect(() => buildProjectFiles({ projectId: 'bad', binding, canvas: { nodes: [], edges: [], attachments: [] }, meta: { name: 'bad' }, files: { 'meta.json': '{}' } })).toThrow(/reserved/i)
+  })
+
+  it('publishes the same captured binary bytes to public review and private main', async () => {
+    const asset = assetFromBytes(Uint8Array.from({ length: 256 }, (_, i) => i))
+    const expected = [...fileBytes(asset)]
+    const draft = { 'content/fixture.bin': asset }
+    const publishing = publishFilesToTargets({ projectId: 'binary', binding, files: draft, message: 'Binary snapshot' }, targets)
+    Object.assign(asset, assetFromBytes(Uint8Array.of(1, 2)))
+    const result = await publishing
+    expect(result.targets.every(target => target.status === 'published')).toBe(true)
+    for (const [kind, ref] of [['github', result.branch], ['gitlab', result.targets.find(target => target.target_id === 'public').branch], ['gitea', 'main']]) {
+      expect([...fileBytes(repos[kind].files.get(`${ref}:content/fixture.bin`).content)]).toEqual(expected)
+    }
+    expect(repos.gitlab.provider.createPullRequest).toHaveBeenCalledOnce()
+  })
+
   it('uses one atomic destination commit and never falls back to partial writes after rejection', async () => {
     const repo = repos.gitea
     const getFile = repo.provider.getFile

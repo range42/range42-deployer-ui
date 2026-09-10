@@ -1,3 +1,4 @@
+import type { ProjectFiles } from '@/services/projectFiles'
 /**
  * ProjectRepoAdapter — git-backed project state with IndexedDB offline cache.
  *
@@ -30,12 +31,14 @@ export interface SourceRecord {
 }
 
 export interface ProjectState {
+  /** Resolved read snapshot; load-only and never serialized into project metadata. */
+  revision?: { branch: string; commit_sha: string }
   overlay: string
   canvas_layout: string
   meta: Record<string, unknown>
   topology?: string
   /** Additional scenario or content files, relative to the project subdirectory. */
-  files?: Record<string, string>
+  files?: ProjectFiles
 }
 
 export interface LockInfo {
@@ -51,7 +54,7 @@ export interface ProjectRepoAdapter {
   autosave(projectId: string, state: ProjectState): Promise<void>
   /** Save checkpoints the working branch; publishing is always explicit. */
   save(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
-  stageFiles(projectId: string, files: Record<string, string>, message: string): Promise<void>
+  stageFiles(projectId: string, files: ProjectFiles, message: string): Promise<void>
   proposeMerge(projectId: string, message: string): Promise<{ pr_url: string }>
   publishDirect(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
   acquireLock(projectId: string): Promise<LockInfo>

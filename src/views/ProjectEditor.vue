@@ -539,11 +539,13 @@ function openPublishTargets() {
 
 function applyScenario(result) {
   if (!currentProject.value) return
-  projectStore.updateProject(currentProject.value.id, {
-    scenario: result.scenario, files: result.files, scenario_generated_paths: result.generatedPaths,
-  })
-  showScenarioAuthoring.value = false
-  void manualSave()
+  try {
+    projectStore.updateProject(currentProject.value.id, {
+      scenario: result.scenario, files: result.files, scenario_generated_paths: result.generatedPaths,
+    })
+    showScenarioAuthoring.value = false
+    void manualSave()
+  } catch (error) { showToast(error.message || String(error), 'error', 8000) }
 }
 
 function openRepositoryConnection() {
@@ -859,9 +861,8 @@ const configOverlayFs = computed(() =>
     files: overlayFiles.value || {},
     onChange: (files) => {
       if (!currentProject.value) return
-      currentProject.value.files = { ...files }
       projectStore.updateProject(currentProject.value.id, {
-        files: currentProject.value.files,
+        files: { ...files },
       })
       scheduleAutosave()
     },

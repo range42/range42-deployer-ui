@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { assetFromBytes } from '@/services/projectFiles'
+import FileAssetField from '@/components/project/FileAssetField.vue'
 import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
 
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn() }))
@@ -16,6 +18,21 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('reviews an uploaded file as binary metadata and keeps its bytes when applying the scenario', async () => {
+    const wrapper = modal()
+    await wrapper.get('[data-testid="scenario-add-file"]').trigger('click')
+    const asset = assetFromBytes(Uint8Array.of(0, 255, 128, 10))
+    wrapper.findComponent(FileAssetField).vm.$emit('update:modelValue', asset)
+    await flushPromises()
+    await wrapper.get('[data-testid="content-destination"]').setValue('/tmp/fixture.bin')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    expect(wrapper.text()).toContain('4 bytes')
+    expect(wrapper.text()).not.toContain(asset.content)
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(result.files['scenarios/demo/content/file-1.txt']).toEqual(asset)
+  })
+
   it('opens the verified bundle library instead of adding an unchecked bundle path', async () => {
     const wrapper = modal()
     await flushPromises()

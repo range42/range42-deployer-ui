@@ -1,0 +1,36 @@
+{
+  "provider": "gitea",
+  "started": "2026-09-10T15:17:47.363Z",
+  "checks": [
+    "actual decoded Git blob equals every original byte",
+    "same snapshot in public review and private main",
+    "UTF-8 BOM, accents and Japanese text preserved",
+    "binary text API reads rejected",
+    "unchanged republish reuses reviewed commit without rewriting binary"
+  ],
+  "repositories": {
+    "public": "r42binary/range42-binary-public",
+    "private": "r42binary/range42-binary-private"
+  },
+  "fixture": {
+    "path": "acceptance/binary-assets-20260910/fixture.bin",
+    "bytes": 1024,
+    "sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+  },
+  "publication": [
+    {
+      "target_id": "public",
+      "mode": "pull_request",
+      "branch": "range42-publish/binary-assets-gitea-20260910/public/main/%22%22",
+      "commit_sha": "56124a31af595815b3fce6d8ff8baaab39ac07b9",
+      "pr_url": "http://127.0.0.1:3301/r42binary/range42-binary-public/pulls/1",
+      "pr_number": 1
+    },
+    {
+      "target_id": "private",
+      "mode": "direct",
+      "branch": "main",
+      "commit_sha": "f85f1ff551e0db0181bdcc301d207d341c5fc27b"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "provider": "github",
+  "started": "2026-09-10T15:13:50.639Z",
+  "checks": [
+    "actual decoded Git blob equals every original byte",
+    "same snapshot in public review and private main",
+    "UTF-8 BOM, accents and Japanese text preserved",
+    "binary text API reads rejected",
+    "unchanged republish reuses reviewed commit without rewriting binary"
+  ],
+  "repositories": {
+    "public": "pparage/range42-acceptance-20260910-public-gh1",
+    "private": "pparage/range42-acceptance-20260910-private-gh1"
+  },
+  "fixture": {
+    "path": "acceptance/binary-assets-20260910/fixture.bin",
+    "bytes": 1024,
+    "sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+  },
+  "publication": [
+    {
+      "target_id": "public",
+      "mode": "pull_request",
+      "branch": "range42-publish/binary-assets-github-20260910/public/main/%22%22",
+      "commit_sha": "4e6ca4eb9aedcca2dbaefcd79ba29ac460737c04",
+      "pr_url": "https://github.com/pparage/range42-acceptance-20260910-public-gh1/pull/3",
+      "pr_number": 3
+    },
+    {
+      "target_id": "private",
+      "mode": "direct",
+      "branch": "main",
+      "commit_sha": "a1af56db8b8e6dc1db43c823f2695bd73caa36fb"
+    }
+  ]
+}

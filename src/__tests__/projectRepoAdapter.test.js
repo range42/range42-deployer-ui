@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
+import { assetFromBytes } from '@/services/projectFiles';
 import { createProjectRepoAdapter } from '../services/projectRepo';
 import { _resetProjectDbForTests, openProjectDb } from '../services/projectRepo/indexeddb';
 
 function makeMockProvider() {
   const calls = [];
   const files = new Map(); // key = `${branch}:${path}` -> { content, sha }
+  const snapshots = new Map();
+  const branches = new Set(['main']);
   const heads = new Map(); // branch -> latest commit sha (simulated)
   let shaCounter = 0;
   const nextSha = () => `sha-${++shaCounter}`;
@@ -20,7 +23,7 @@ function makeMockProvider() {
       async listRepos() { return []; },
       async getFile({ owner, repo, path, ref }) {
         calls.push({ op: 'getFile', owner, repo, path, ref });
-        const f = files.get(`${ref}:${path}`);
+        const f = snapshots.has(ref) ? snapshots.get(ref).get(path) : files.get(`${ref}:${path}`);
         if (!f) throw new Error(`404 not found: ${ref}:${path}`);
         return f;
       },
@@ -34,6 +37,7 @@ function makeMockProvider() {
       },
       async createBranch({ owner, repo, from, name }) {
         calls.push({ op: 'createBranch', owner, repo, from, name });
+        branches.add(name);
       },
       async createPullRequest({ owner, repo, from, to, title }) {
         calls.push({ op: 'createPullRequest', owner, repo, from, to, title });
@@ -42,7 +46,10 @@ function makeMockProvider() {
       async listTree() { return []; },
       async listCommits({ ref }) {
         calls.push({ op: 'listCommits', ref });
+        if (!branches.has(ref) && ![...files.keys()].some(key => key.startsWith(`${ref}:`))) throw new Error('404 not found');
         const sha = heads.get(ref) ?? 'commit-initial';
+        snapshots.set(sha, new Map([...files.entries()].filter(([key]) => key.startsWith(`${ref}:`))
+          .map(([key, value]) => [key.slice(ref.length + 1), JSON.parse(JSON.stringify(value))])));
         return [{ sha, message: 'm', author: 'a', date: 'd' }];
       },
       async health() { return { ok: true, rtt_ms: 1 }; },
@@ -67,6 +74,70 @@ function makeAdapter(provider, options = {}) {
 }
 
 describe('ProjectRepoAdapter', () => {
+  it('pins one working revision for metadata and assets even when the branch advances during loading', async () => {
+    const mock = makeMockProvider()
+    const original = assetFromBytes(Uint8Array.of(0, 255))
+    const changed = assetFromBytes(Uint8Array.of(128, 0))
+    let head = 'original-revision'
+    mock.impl.listCommits = vi.fn(async () => [{ sha: head }])
+    mock.impl.getFileContent = vi.fn(async ({ path, ref }) => {
+      if (path.endsWith('meta.json')) {
+        head = 'advanced-revision'
+        return { sha: 'meta', content: JSON.stringify({ ui_files: ['content/a.bin'], ui_binary_files: { 'content/a.bin': { encoding: 'base64', size: 2 } } }) }
+      }
+      if (path.endsWith('content/a.bin')) return { sha: 'asset', content: ref === 'original-revision' ? original : changed }
+      throw new Error('404 not found')
+    })
+    const loaded = await makeAdapter(mock).load('binary')
+    expect(loaded.files['content/a.bin'].content).toBe(original.content)
+    expect(loaded.revision).toEqual({ branch: 'draft-bi-123', commit_sha: 'original-revision' })
+    expect(mock.impl.listCommits).toHaveBeenCalledOnce()
+    expect(mock.impl.getFileContent.mock.calls.every(([options]) => options.ref === 'original-revision')).toBe(true)
+  })
+  it('does not resurrect a missing authored asset from the base branch', async () => {
+    const mock = makeMockProvider()
+    mock.impl.listCommits = async () => [{ sha: 'working-revision' }]
+    mock.impl.getFileContent = vi.fn(async ({ path, ref }) => {
+      if (path.endsWith('meta.json')) return { content: '{"ui_files":["content/a.bin"]}', sha: 'meta' }
+      if (ref === 'main' && path.endsWith('content/a.bin')) return { content: 'old asset', sha: 'old' }
+      throw new Error('404 not found')
+    })
+    await expect(makeAdapter(mock).load('binary')).rejects.toThrow(/authored file is missing/i)
+    expect(mock.impl.getFileContent.mock.calls.some(([options]) => options.ref === 'main')).toBe(false)
+  })
+  it('does not treat access denied as a missing working branch', async () => {
+    const mock = makeMockProvider()
+    mock.impl.listCommits = vi.fn(async () => { throw Object.assign(new Error('Repository not found'), { status: 401 }) })
+    await expect(makeAdapter(mock).load('binary')).rejects.toMatchObject({ status: 401 })
+    expect(mock.impl.listCommits).toHaveBeenCalledOnce()
+  })
+
+  it.each(['meta.json', 'overlay.json', 'canvas_layout.json', 'topology.json', '.lock'])('rejects authored %s before creating a branch or overwriting generated documents', async path => {
+    const mock = makeMockProvider()
+    await expect(makeAdapter(mock).autosave('bad', { overlay: '{}', canvas_layout: '{}', meta: {}, files: { [path]: '{}' } })).rejects.toThrow(/reserved/i)
+    expect(mock.calls).toEqual([])
+  })
+  it.each(['[]', '{bad json', '{"ui_files":"content/a.bin"}'])('rejects malformed saved metadata rather than loading an empty project', async content => {
+    const mock = makeMockProvider()
+    mock.files.set('main:projects/demo/meta.json', { content, sha: 'metadata' })
+    await expect(makeAdapter(mock).load('bad')).rejects.toThrow(/metadata|manifest/i)
+  })
+
+  it('roundtrips binary file metadata without duplicating its payload in meta.json', async () => {
+    const mock = makeMockProvider()
+    mock.impl.getFileContent = mock.impl.getFile
+    const asset = assetFromBytes(new TextEncoder().encode('ASCII uploaded as a binary asset'), 'application/test')
+    const state = { overlay: '{}', canvas_layout: '{}', meta: { name: 'assets' }, files: { 'content/a.bin': asset } }
+    const adapter = makeAdapter(mock)
+    await adapter.autosave('binary', state)
+    const metadata = JSON.parse(mock.files.get('draft-bi-123:projects/demo/meta.json').content)
+    expect(metadata.ui_binary_files['content/a.bin']).toEqual({ encoding: 'base64', size: asset.size, media_type: 'application/test' })
+    expect(JSON.stringify(metadata)).not.toContain(asset.content)
+    // A provider may identify printable UTF-8 bytes as text; metadata restores the upload format.
+    mock.files.set('draft-bi-123:projects/demo/content/a.bin', { content: 'ASCII uploaded as a binary asset', sha: 'blob' })
+    expect((await adapter.load('binary')).files).toEqual(state.files)
+  })
+
   beforeEach(async () => {
     _resetProjectDbForTests();
     // Delete any leftover IDB database between tests.

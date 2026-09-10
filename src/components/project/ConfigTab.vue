@@ -21,6 +21,8 @@
  * banner flags the drift and the file tree decorates the row with an
  * amber dot (`driftMap[path] === 'drift'`).
  */
+import FileAssetField from './FileAssetField.vue'
+import { isBinaryFile } from '@/services/projectFiles'
 import { computed, ref, watch } from 'vue'
 import FileTree from './FileTree.vue'
 import TwoPaneEditor from './TwoPaneEditor.vue'
@@ -46,8 +48,22 @@ const baseExists = ref(false)
 const overlayExists = ref(false)
 
 const loadError = ref(null)
+const binaryContent = computed(() => {
+  const value = selectedFsKind.value === 'base' ? baseContent.value : overlayExists.value ? overlayContent.value : baseContent.value
+  return isBinaryFile(value) ? value : null
+})
+let selectionRead = 0
+async function readFile(fs, path) {
+  try { return await (fs.getFileContent ? fs.getFileContent(path) : fs.getFile(path)) }
+  catch (error) {
+    if (/not found|404/i.test(error.message || String(error))) return null
+    throw error
+  }
+}
 
 async function loadSelected() {
+  const request = ++selectionRead
+  const path = selectedPath.value
   if (!selectedPath.value) {
     baseContent.value = ''
     overlayContent.value = ''
@@ -59,7 +75,8 @@ async function loadSelected() {
   }
   loadError.value = null
   try {
-    const b = await props.baseFs.getFile(selectedPath.value).catch(() => null)
+    const [b, o] = await Promise.all([readFile(props.baseFs, path), readFile(props.overlayFs, path)])
+    if (request !== selectionRead) return
     if (b) {
       baseContent.value = b.content ?? ''
       baseSha.value = b.sha ?? ''
@@ -69,7 +86,6 @@ async function loadSelected() {
       baseSha.value = ''
       baseExists.value = false
     }
-    const o = await props.overlayFs.getFile(selectedPath.value).catch(() => null)
     if (o) {
       overlayContent.value = o.content ?? ''
       overlaySha.value = o.sha ?? ''
@@ -84,7 +100,7 @@ async function loadSelected() {
   }
 }
 
-watch(selectedPath, () => loadSelected(), { immediate: false })
+watch([selectedPath, selectedFsKind], () => loadSelected(), { immediate: false })
 
 function onSelect({ path, fsKind }) {
   selectedPath.value = path
@@ -104,8 +120,11 @@ async function onSave(payload) {
       content: payload.content,
       message: `edit ${payload.path}`,
     })
-    overlaySha.value = res?.sha ?? overlaySha.value
-    overlayContent.value = payload.content
+    if (selectedPath.value === payload.path) {
+      overlaySha.value = res?.sha ?? overlaySha.value
+      overlayContent.value = payload.content
+      overlayExists.value = true
+    }
     emit('save', { ...payload, sha: overlaySha.value })
   } catch (e) {
     loadError.value = e
@@ -116,7 +135,7 @@ async function onSave(payload) {
 const driftMap = computed(() => {
   const map = {}
   if (!selectedPath.value) return map
-  if (!overlayExists.value || !baseExists.value) return map
+  if (!overlayExists.value || !baseExists.value || typeof overlayContent.value !== 'string') return map
   const storedSha = readForkHeaderSha(overlayContent.value)
   if (storedSha && baseSha.value && storedSha !== baseSha.value) {
     map[selectedPath.value] = 'drift'
@@ -135,7 +154,7 @@ const driftInfo = computed(() => {
 const yamlWarning = computed(() => {
   const p = (selectedPath.value || '').toLowerCase()
   if (!(p.endsWith('.yaml') || p.endsWith('.yml'))) return null
-  if (!overlayContent.value) return null
+  if (!overlayContent.value || typeof overlayContent.value !== 'string') return null
   try {
     const doc = parseYamlDoc(overlayContent.value)
     return hasAnchorsOrAliases(doc) ? { anchors: true } : null
@@ -146,8 +165,8 @@ const yamlWarning = computed(() => {
 </script>
 
 <template>
-  <div class="config-tab grid grid-cols-[minmax(180px,240px)_1fr_minmax(240px,320px)] gap-2 h-full min-h-0">
-    <div class="border-r border-base-300 h-full min-h-0 overflow-hidden">
+  <div class="config-tab flex flex-col lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_minmax(240px,320px)] gap-2 h-full min-h-0 overflow-y-auto lg:overflow-hidden">
+    <div class="border-b lg:border-b-0 lg:border-r border-base-300 h-40 lg:h-full min-h-0 shrink-0 overflow-hidden">
       <FileTree
         :overlay-fs="overlayFs"
         :base-fs="baseFs"
@@ -158,7 +177,7 @@ const yamlWarning = computed(() => {
       />
     </div>
 
-    <div class="flex flex-col min-w-0 min-h-0">
+    <div class="flex flex-col min-w-0 min-h-72 lg:min-h-0 shrink-0 lg:shrink">
       <div
         v-if="driftInfo"
         class="alert alert-warning py-1 px-2 text-xs rounded-none"
@@ -176,10 +195,12 @@ const yamlWarning = computed(() => {
         {{ $t ? $t('configTab.yamlAnchorsWarning') : 'This YAML uses anchors/aliases; round-trip may rewrite them.' }}
       </div>
       <div class="flex-1 min-h-0">
+        <FileAssetField v-if="binaryContent" :key="selectedPath" :model-value="binaryContent" :filename="selectedPath.split('/').at(-1)" :readonly="selectedFsKind === 'base'" class="p-4" @update:model-value="content => onSave({ path: selectedPath, content })" />
         <TwoPaneEditor
+          v-else
           :path="selectedPath"
-          :base-content="baseContent"
-          :overlay-content="overlayContent"
+          :base-content="typeof baseContent === 'string' ? baseContent : ''"
+          :overlay-content="typeof overlayContent === 'string' ? overlayContent : ''"
           :base-exists="baseExists"
           :overlay-exists="overlayExists"
           @update:overlay-content="(v) => (overlayContent = v)"
@@ -191,7 +212,7 @@ const yamlWarning = computed(() => {
       </div>
     </div>
 
-    <div class="border-l border-base-300 h-full min-h-0 overflow-y-auto">
+    <div class="border-t lg:border-t-0 lg:border-l border-base-300 h-60 lg:h-full min-h-0 min-w-0 shrink-0 overflow-auto">
       <AttachmentManager
         :attachments="attachments"
         :nodes="nodes"

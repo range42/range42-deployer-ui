@@ -1,4 +1,6 @@
 <script setup>
+import FileAssetField from '@/components/project/FileAssetField.vue'
+import { fileContentEquals } from '@/services/projectFiles'
 import { nextTick, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
@@ -25,7 +27,7 @@ watch(() => props.open, async open => {
   if (!open) return
   draft.value = createScenarioDraft(props.project, props.nodes, props.edges)
   contentState.value = Object.fromEntries(draft.value.content.map(item => [item.id, {
-    text: props.project.files?.[`scenarios/${draft.value.label}/${item.path}`] || '',
+    content: props.project.files?.[`scenarios/${draft.value.label}/${item.path}`] || '',
     varsText: JSON.stringify(item.vars || {}, null, 2),
   }]))
   preview.value = null
@@ -46,7 +48,7 @@ function addContent(kind) {
     ...(kind === 'file' ? { destination: '', mode: '0644' } : {}),
   })
   contentState.value[id] = {
-    text: kind === 'script' ? '#!/bin/sh\nset -eu\n# Add guest commands here.\n'
+    content: kind === 'script' ? '#!/bin/sh\nset -eu\n# Add guest commands here.\n'
       : kind === 'playbook' ? '- hosts: "{{ global_vm_ssh_name }}"\n  gather_facts: false\n  become: true\n  tasks: []\n' : '',
     varsText: '{}',
   }
@@ -54,7 +56,7 @@ function addContent(kind) {
 
 function attachBundle(item) {
   draft.value.content.push(item)
-  contentState.value[item.id] = { text: '', varsText: JSON.stringify(item.vars || {}, null, 2) }
+  contentState.value[item.id] = { content: '', varsText: JSON.stringify(item.vars || {}, null, 2) }
   bundleLibraryOpen.value = false
 }
 
@@ -75,8 +77,15 @@ function review() {
   try {
     const files = { ...(props.project.files || {}) }
     const scenario = JSON.parse(JSON.stringify(draft.value))
+    const written = new Map()
     for (const item of scenario.content) {
-      if (item.kind !== 'bundle') files[`scenarios/${scenario.label}/${item.path}`] = contentState.value[item.id].text
+      if (item.kind !== 'bundle') {
+        const path = `scenarios/${scenario.label}/${item.path}`
+        const value = contentState.value[item.id].content
+        if (written.has(path) && !fileContentEquals(written.get(path), value)) throw new Error(`Content items have different files at the same path: ${item.path}. Choose separate paths.`)
+        written.set(path, value)
+        files[path] = value
+      }
       const vars = JSON.parse(contentState.value[item.id].varsText || '{}')
       if (!vars || Array.isArray(vars) || typeof vars !== 'object') throw new Error('Content variables must be a JSON object')
       item.vars = vars
@@ -160,7 +169,8 @@ function review() {
                 <label v-if="item.kind === 'file'" class="form-control gap-1"><span>File mode</span><input v-model="item.mode" class="input input-bordered w-full" placeholder="0644" /></label>
               </div>
               <p v-if="item.kind === 'bundle'" class="text-xs text-base-content/70 mt-2 break-all">{{ item.resolution ? `Source commit: ${item.resolution.source_sha} · Installed runtime: ${item.resolution.runtime.fingerprint}` : 'Remove this unverified attachment and select it from the bundle library.' }}</p>
-              <label v-if="item.kind !== 'bundle'" class="form-control gap-1 mt-3"><span>{{ item.kind === 'playbook' ? playbookHint : 'Content' }}</span><textarea v-model="contentState[item.id].text" class="textarea textarea-bordered font-mono w-full min-h-36" data-testid="content-text" spellcheck="false" /></label>
+              <FileAssetField v-if="item.kind === 'file'" v-model="contentState[item.id].content" :filename="item.path.split('/').at(-1)" class="mt-3" />
+              <label v-if="item.kind !== 'bundle' && typeof contentState[item.id].content === 'string'" class="form-control gap-1 mt-3"><span>{{ item.kind === 'playbook' ? playbookHint : 'Content' }}</span><textarea v-model="contentState[item.id].content" class="textarea textarea-bordered font-mono w-full min-h-36" data-testid="content-text" spellcheck="false" /></label>
               <label v-if="['bundle', 'playbook'].includes(item.kind)" class="form-control gap-1 mt-3"><span>Non-secret variables (JSON)</span><textarea v-model="contentState[item.id].varsText" class="textarea textarea-bordered font-mono w-full" spellcheck="false" /></label>
               <button type="button" class="btn btn-ghost btn-sm mt-2" @click="draft.content.splice(index, 1)">Remove item</button>
             </fieldset>
@@ -172,7 +182,8 @@ function review() {
             <p class="mb-3">Review these files before adding them to the project. Saving the project checkpoints them on its working branch; deployment still requires backend preflight.</p>
             <details v-for="path in Object.keys(preview.files).sort()" :key="path" class="border border-base-300 rounded-lg p-3 mb-2 min-w-0">
               <summary class="font-mono text-sm cursor-pointer break-all">{{ path }}</summary>
-              <pre class="text-xs overflow-x-auto max-h-72 mt-3">{{ preview.files[path] }}</pre>
+              <pre v-if="typeof preview.files[path] === 'string'" class="text-xs overflow-x-auto max-h-72 mt-3">{{ preview.files[path] }}</pre>
+              <FileAssetField v-else :model-value="preview.files[path]" :filename="path.split('/').at(-1)" readonly class="mt-3" />
             </details>
             <footer class="flex flex-wrap justify-end gap-2 mt-5"><button type="button" class="btn btn-ghost" @click="preview = null">Back to configuration</button><button type="button" class="btn btn-primary" data-testid="scenario-apply" @click="emit('generated', preview)">Use scenario files</button></footer>
           </template>

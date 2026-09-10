@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
+import { assetFromBytes } from '@/services/projectFiles'
 import { emitConcreteScenario, createScenarioDraft } from '@/services/concreteScenario'
 
 function fixture() {
@@ -25,6 +26,24 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it('keeps binary file bytes outside YAML and copies the checked-out asset by source path', () => {
+    const input = fixture()
+    const asset = assetFromBytes(Uint8Array.of(0, 255, 128, 10))
+    input.files['scenarios/demo/content/message.txt'] = asset
+    const result = emitConcreteScenario(input)
+    expect(result.files['scenarios/demo/content/message.txt']).toEqual(asset)
+    expect(parse(result.files['scenarios/demo/configure.yml'])[0].tasks[0]['ansible.builtin.copy']).toEqual({
+      src: '{{ playbook_dir }}/content/message.txt', dest: '/tmp/message.txt', mode: '0644',
+    })
+    expect(result.files['scenarios/demo/configure.yml']).not.toContain(asset.content)
+  })
+  it.each(['script', 'playbook'])('rejects binary %s input rather than sending bytes to a text interpreter', kind => {
+    const input = fixture()
+    const item = input.scenario.content.find(item => item.kind === kind)
+    input.files[`scenarios/demo/${item.path}`] = assetFromBytes(Uint8Array.of(0, 255))
+    expect(() => emitConcreteScenario(input)).toThrow(/must be text/i)
+  })
+
   it('binds a verified bundle to its VM and saves exact source and runtime provenance', () => {
     const input = fixture()
     input.baseDoc = { env: [{ name: 'UNRELATED_PROJECT_VALUE', default: 'must not leak' }] }

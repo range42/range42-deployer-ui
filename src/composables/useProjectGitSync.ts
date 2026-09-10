@@ -1,3 +1,5 @@
+import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
+import { authoredFilesMetadata, validateAuthoredFiles, cloneFiles, fileContentEquals, validateFileMap, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
 /**
  * useProjectGitSync — on-demand "serialize canvas → push to git → pin SHA".
  *
@@ -44,7 +46,7 @@ export interface PushToGitArgs {
   canvas: CanvasModel
   meta: ProjectMeta
   message?: string
-  files?: Record<string, string>
+  files?: ProjectFiles
   overlay?: Record<string, unknown>
 }
 
@@ -62,7 +64,7 @@ export function buildPushArgs(
     gamenet?: boolean
     bridge_base?: number
     attachments?: unknown[]
-    files?: Record<string, string>
+    files?: ProjectFiles
     overlay?: Record<string, unknown>
   },
   nodes: unknown[],
@@ -94,13 +96,14 @@ export function useProjectGitSync() {
   function pushToGit(
     args: PushToGitArgs,
   ): Promise<{ commit_sha: string; branch: string; binding?: ProjectGitBinding }> {
+    validateFileMap(buildProjectFiles(args))
     const { projectId, canvas, meta, message } = args
     const binding = { ...args.binding }
     const provider = providerForBinding(binding)
     const branch = binding.working_branch ?? workingBranchForProject(projectId)
     const state = buildProjectState(canvas, meta)
     if (args.overlay !== undefined) state.overlay = JSON.stringify(args.overlay, null, 2)
-    if (args.files) state.files = { ...args.files }
+    if (args.files) state.files = cloneFiles(args.files)
     return withWritableCheckpoint(binding, branch, provider, async (actual, adapter) => {
       await adapter.autosave(projectId, state)
       const saved = await adapter.save(projectId, message ?? `Update ${meta.name}`)
@@ -169,12 +172,12 @@ export function workingBranchForProject(projectId: string): string {
 export async function publishFilesToTargets(args: {
   projectId: string
   binding: ProjectGitBinding
-  files: Record<string, string>
+  files: ProjectFiles
   message: string
   createOnly?: boolean
   componentPath?: string
 }, targets: ProjectPublishTarget[]): Promise<{commit_sha:string;branch:string;binding?:ProjectGitBinding;targets:ProjectPublishResult[]}> {
-  args = { ...args, binding: { ...args.binding }, files: { ...args.files } }
+  args = { ...args, binding: { ...args.binding }, files: cloneFiles(args.files) }
   const files = args.files
   validateFiles(files)
   if (!targets.length) throw new Error('Choose at least one publication destination')
@@ -274,24 +277,17 @@ function withWritableCheckpoint<T>(binding: ProjectGitBinding, branch: string, p
 }
 
 function isMissingFile(error: unknown) {
-  return /404|not found/i.test(error instanceof Error ? error.message : String(error))
+  return isGitNotFound(error)
 }
 
-function validatePath(path: string) {
-  if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..' || part === '.git')) {
-    throw new Error(`Invalid repository file path: ${path}`)
-  }
-}
+const validatePath = validateFilePath
 
-function validateFiles(files: Record<string, string>) {
+function validateFiles(files: ProjectFiles) {
   if (!Object.keys(files).length) throw new Error('There are no files to publish')
-  for (const [path, content] of Object.entries(files)) {
-    validatePath(path)
-    if (typeof content !== 'string') throw new Error(`Expected text file content: ${path}`)
-  }
+  validateFileMap(files)
 }
 
-function prefixFiles(files: Record<string, string>, subdir?: string) {
+function prefixFiles(files: ProjectFiles, subdir?: string) {
   const prefix = subdir?.replace(/\/+$/, '') || ''
   if (prefix) validatePath(prefix)
   return Object.fromEntries(Object.entries(files).map(([path, content]) => [prefix ? `${prefix}/${path}` : path, content]))
@@ -300,7 +296,7 @@ function prefixFiles(files: Record<string, string>, subdir?: string) {
 
 async function assertComponentAbsent(
   provider: ReturnType<typeof getProvider>, binding: ProjectGitBinding,
-  files: Record<string, string>, componentPath?: string, allowMatching = false,
+  files: ProjectFiles, componentPath?: string, allowMatching = false,
 ) {
   const ref = binding.branch || 'main'
   if (componentPath) {
@@ -318,8 +314,8 @@ async function assertComponentAbsent(
   }
   for (const path of Object.keys(files)) {
     try {
-      const existing = await provider.getFile({ owner: binding.repo_owner, repo: binding.repo_name, ref, path })
-      if (!allowMatching || existing.content !== files[path]) throw new Error(`Component file already exists: ${path}`)
+      const existing = await readFileContent(provider, { owner: binding.repo_owner, repo: binding.repo_name, ref, path })
+      if (!allowMatching || !fileContentEquals(existing.content, files[path])) throw new Error(`Component file already exists: ${path}`)
     } catch (error) {
       if (!isMissingFile(error)) throw error
     }
@@ -329,13 +325,13 @@ async function assertComponentAbsent(
 
 async function matchesCheckpoint(
   provider: ReturnType<typeof getProvider>, binding: ProjectGitBinding,
-  branch: string, files: Record<string, string>,
+  branch: string, files: ProjectFiles,
 ): Promise<boolean> {
   let matches = true
   for (const [path, content] of Object.entries(files)) {
     try {
-      const existing = await provider.getFile({ owner: binding.repo_owner, repo: binding.repo_name, path, ref: branch })
-      if (existing.content !== content) throw new Error(`Another draft already exists at ${branch}:${path}`)
+      const existing = await readFileContent(provider, { owner: binding.repo_owner, repo: binding.repo_name, path, ref: branch })
+      if (!fileContentEquals(existing.content, content)) throw new Error(`Another draft already exists at ${branch}:${path}`)
     } catch (error) {
       if (!isMissingFile(error)) throw error
       matches = false
@@ -346,12 +342,13 @@ async function matchesCheckpoint(
 
 
 /** Project-relative files shown in the publication preview. */
-export function buildProjectFiles(args: PushToGitArgs): Record<string, string> {
+export function buildProjectFiles(args: PushToGitArgs): ProjectFiles {
+  validateAuthoredFiles(args.files || {})
   const state = buildProjectState(args.canvas, args.meta)
   return {
     'overlay.json': args.overlay !== undefined ? JSON.stringify(args.overlay, null, 2) : state.overlay,
     'canvas_layout.json': state.canvas_layout,
-    'meta.json': JSON.stringify({ ...state.meta, ui_files: Object.keys(args.files || {}) }, null, 2),
+    'meta.json': JSON.stringify({ ...state.meta, ...authoredFilesMetadata(args.files) }, null, 2),
     'topology.json': state.topology || '',
     ...args.files,
   }

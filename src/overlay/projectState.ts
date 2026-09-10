@@ -37,7 +37,7 @@ function safeParse<T>(raw: string | undefined, fallback: T): T {
 }
 
 export function loadCanvasFromState(state: ProjectState): CanvasModel {
-  const doc = safeParse<CatalogEntry>(state.topology, { nodes: [] } as CatalogEntry);
+  const doc = safeParse<CatalogEntry>(state.topology, { schema_version: '1.0', kind: 'lab', name: 'untitled', nodes: [] });
   const layout = safeParse<CanvasLayout>(state.canvas_layout, { nodes: {}, edges: {}, unsupported: [] });
   return deserializeToCanvas(doc, layout);
 }

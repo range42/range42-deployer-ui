@@ -1,3 +1,4 @@
+import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
 import { validateBundleParameters } from './bundleParameters.ts'
 
@@ -176,6 +177,7 @@ function teardownPlay(vms) {
 
 /** Compile one explicitly configured canvas into the existing concrete runner contract. */
 export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay }) {
+  validateFileMap(files)
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
   requireValue(['sdn', 'existing_bridge'].includes(scenario.network_mode), 'Choose SDN or an existing bridge network')
   requireValue(!attachments.length, 'Existing canvas attachments must be moved into the scenario Content list before generating; they cannot be silently omitted')
@@ -315,7 +317,8 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
       validateVariableName(name)
     }
     const vars = { ...projectVariables.values, ...(item.vars || {}), global_vm_ssh_name: vm.vm_name, global_vm_ci_ip: vm.ip }
-    requireValue(typeof files[`${base}/${item.path}`] === 'string', `Content file is missing: ${base}/${item.path}`)
+    requireValue(Object.hasOwn(files, `${base}/${item.path}`), `Content file is missing: ${base}/${item.path}`)
+    requireValue(item.kind === 'file' || typeof files[`${base}/${item.path}`] === 'string', `${item.kind} content must be text: ${item.path}`)
     if (item.kind === 'playbook') {
       const plays = parse(files[`${base}/${item.path}`])
       requireValue(Array.isArray(plays) && plays.length > 0 && plays.every(play => play && ['{{ global_vm_ssh_name }}', vm.vm_name].includes(play.hosts)), `Playbook ${item.path} must contain plays with hosts: "{{ global_vm_ssh_name }}" (or ${vm.vm_name})`)

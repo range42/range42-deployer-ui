@@ -1,3 +1,5 @@
+import type { FileContent } from '@/services/projectFiles'
+
 /**
  * Git Provider Types
  * 
@@ -314,7 +316,7 @@ export interface CommitFilesOptions {
   branch: string
   message: string
   expectedHead: string
-  files: Array<{ path: string; content: string; sha?: string }>
+  files: Array<{ path: string; content: FileContent; sha?: string }>
 }
 
 export interface PullRequestRef {
@@ -351,6 +353,7 @@ export interface GitProviderV1 {
   mergePullRequest?(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }>
   ensureFork?(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef>
   commitFiles?(opts: CommitFilesOptions): Promise<{ sha: string }>
+  getFileContent?(opts: { owner: string; repo: string; path: string; ref?: string }): Promise<{ content: FileContent; sha: string }>
   listRepos(opts: { owner?: string }): Promise<RepoRef[]>
   getFile(opts: {
     owner: string
@@ -362,7 +365,7 @@ export interface GitProviderV1 {
     owner: string
     repo: string
     path: string
-    content: string
+    content: FileContent
     sha?: string
     message: string
     branch?: string

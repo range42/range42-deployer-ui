@@ -12,7 +12,7 @@ import { assertMergeable, assertReviewHead } from './review'
  */
 
 import type { GitProviderV1, RepoRef, CommitRef, CommitFilesOptions } from './types'
-import { encodeContentBase64, decodeContentBase64 } from './encoding'
+import { decodeGitFileContent, fileBase64, fileText, validateFileMap, type FileContent } from '@/services/projectFiles'
 import { ensurePersonalFork, type ForkRepository } from './personalFork'
 
 export interface GiteaProviderOpts {
@@ -54,7 +54,7 @@ export class GiteaProvider implements GitProviderV1 {
     const res = await this.fetchImpl(url, init)
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      throw new Error(`Gitea ${init?.method ?? 'GET'} ${url} -> ${res.status} ${body}`)
+      throw Object.assign(new Error(`Gitea ${init?.method ?? 'GET'} ${url} -> ${res.status} ${body}`), { status: res.status })
     }
     return (await res.json()) as T
   }
@@ -87,21 +87,26 @@ export class GiteaProvider implements GitProviderV1 {
     }))
   }
 
-  async getFile(opts: {
+  async getFile(opts: { owner: string; repo: string; path: string; ref?: string }): Promise<{ content: string; sha: string }> {
+    const file = await this.getFileContent(opts)
+    return { ...file, content: fileText(file.content) }
+  }
+
+  async getFileContent(opts: {
     owner: string
     repo: string
     path: string
     ref?: string
-  }): Promise<{ content: string; sha: string }> {
+  }): Promise<{ content: FileContent; sha: string }> {
     const ref = opts.ref ?? 'main'
     const url = this.url(
-      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents/${opts.path}?ref=${encodeURIComponent(ref)}`,
+      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents/${opts.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`,
     )
     const body = await this.json<{ content: string; sha: string; encoding: string }>(
       url,
       { headers: this.headers() },
     )
-    const content = body.encoding === 'base64' ? decodeContentBase64(body.content) : body.content
+    const content = decodeGitFileContent(body)
     return { content, sha: body.sha }
   }
 
@@ -109,16 +114,16 @@ export class GiteaProvider implements GitProviderV1 {
     owner: string
     repo: string
     path: string
-    content: string
+    content: FileContent
     sha?: string
     message: string
     branch?: string
   }): Promise<{ sha: string }> {
     const url = this.url(
-      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents/${opts.path}`,
+      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents/${opts.path.split('/').map(encodeURIComponent).join('/')}`,
     )
     const payload: Record<string, unknown> = {
-      content: encodeContentBase64(opts.content),
+      content: fileBase64(opts.content),
       message: opts.message,
     }
     if (opts.branch) payload.branch = opts.branch
@@ -139,11 +144,12 @@ export class GiteaProvider implements GitProviderV1 {
 
   async commitFiles(opts: CommitFilesOptions): Promise<{ sha: string }> {
     if (!opts.files.length) return { sha: opts.expectedHead }
+    validateFileMap(Object.fromEntries(opts.files.map(file => [file.path, file.content])))
     const result = await this.json<{ commit: { sha: string } }>(this.url(
       `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents`,
     ), { method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ branch: opts.branch, message: opts.message,
-        files: opts.files.map(file => ({ path: file.path, content: encodeContentBase64(file.content),
+        files: opts.files.map(file => ({ path: file.path, content: fileBase64(file.content),
           sha: file.sha, operation: file.sha ? 'update' : 'create' })),
       }),
     })

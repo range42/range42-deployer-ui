@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cloneFiles, type ProjectFiles } from '@/services/projectFiles'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
@@ -23,7 +24,7 @@ type TargetDraft = ProjectPublishTarget & { selected: boolean }
 interface Preview {
   projectId: string
   binding: ProjectGitBinding
-  files: Record<string, string>
+  files: ProjectFiles
   targets: ProjectPublishTarget[]
   message: string
   sourceSignatures: Record<string, string>
@@ -35,7 +36,7 @@ const props = withDefaults(defineProps<{
   open: boolean
   projectId: string
   binding?: ProjectGitBinding
-  files: Record<string, string>
+  files: ProjectFiles
   message: string
   initialTargets?: ProjectPublishTarget[]
   createOnly?: boolean
@@ -185,7 +186,7 @@ function review() {
       branch_strategy: primary.subdir ? 'shared_repo_subdir' : 'dedicated_repo',
       ...(primary.subdir ? { subdir: primary.subdir } : {}),
     }
-    const files = { ...props.files }
+    const files = cloneFiles(props.files)
     if (!Object.keys(files).length) throw new Error(t('publishing.no_files'))
     if (Object.keys(files).some((path) => !validPath(path))) throw new Error(t('publishing.invalid_path'))
     const sourceIds = new Set([binding.source_id, ...resolvedTargets.map((target) => target.source_id)])
@@ -338,7 +339,8 @@ function safeUrl(value?: string) {
           </div>
           <details v-for="(content, path) in preview.files" :key="path" class="rounded-lg bg-base-200 p-3">
             <summary class="cursor-pointer font-mono text-sm break-all">{{ path }}</summary>
-            <pre class="text-xs whitespace-pre-wrap break-words overflow-x-auto mt-3">{{ content }}</pre>
+            <pre v-if="typeof content === 'string'" class="text-xs whitespace-pre-wrap break-words overflow-x-auto mt-3">{{ content }}</pre>
+            <p v-else class="text-sm mt-3">Binary file · {{ content.size }} bytes · {{ content.media_type || 'application/octet-stream' }}. The same bytes will be published to each selected destination.</p>
           </details>
         </section>
         <section v-if="credentialSources.length" class="rounded-xl border border-base-300 p-4 mt-5 space-y-3">

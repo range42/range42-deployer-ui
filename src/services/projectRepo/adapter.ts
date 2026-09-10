@@ -1,3 +1,5 @@
+import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
+import { authoredFilesMetadata, validateAuthoredFilePath, validateAuthoredFiles, restoreBinaryFile, fileContentEquals, fileText, validateFileMap, type FileContent, type ProjectFiles } from '@/services/projectFiles'
 /**
  * ProjectRepoAdapter implementation (C1.10).
  *
@@ -120,31 +122,51 @@ class RepoAdapter implements ProjectRepoAdapter {
   // ---------------------------------------------------------------------------
 
   async load(_projectId: string): Promise<ProjectState> {
+    let branch = this.draftBranch
+    let revision: string
+    try { revision = await this.headCommitSha(branch) }
+    catch (error) {
+      if (!isGitNotFound(error)) throw error
+      branch = this.mainBranch
+      revision = await this.headCommitSha(branch)
+    }
     const [overlay, layout, meta, topology] = await Promise.all([
-      this.loadFile(overlayPath(this.projectPath)),
-      this.loadFile(layoutPath(this.projectPath)),
-      this.loadFile(metaPath(this.projectPath)),
-      this.loadFile(topologyPath(this.projectPath)),
+      this.safeGet(overlayPath(this.projectPath), revision),
+      this.safeGet(layoutPath(this.projectPath), revision),
+      this.safeGet(metaPath(this.projectPath), revision),
+      this.safeGet(topologyPath(this.projectPath), revision),
     ])
-    const metadata = meta ? safeParseJson(meta.content) : {}
+    let metadata: Record<string, unknown> = {}
+    try {
+      metadata = meta ? JSON.parse(fileText(meta.content)) : {}
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)
+        || (metadata.ui_files !== undefined && (!Array.isArray(metadata.ui_files) || metadata.ui_files.some(path => typeof path !== 'string')))
+        || (metadata.ui_binary_files !== undefined && (!metadata.ui_binary_files || typeof metadata.ui_binary_files !== 'object' || Array.isArray(metadata.ui_binary_files)))) throw new Error('Invalid manifest shape')
+    } catch { throw new Error('Saved project metadata is invalid. Repair meta.json before loading authored files.') }
     const authoredPaths = Array.isArray(metadata.ui_files) ? metadata.ui_files : []
+    const binaryMetadata = metadata.ui_binary_files && typeof metadata.ui_binary_files === 'object' ? metadata.ui_binary_files : {}
+    if (Object.keys(binaryMetadata).some(path => !authoredPaths.includes(path))) throw new Error('Binary file metadata refers to a file missing from the authored manifest')
     const authored = await Promise.all(authoredPaths.map(async (path: string) => {
-      const file = await this.loadFile(this.authoredFilePath(path))
+      const file = await this.safeGet(this.authoredFilePath(path), revision)
       if (!file) throw new Error(`Saved authored file is missing: ${path}`)
-      return [path, file.content]
+      return [path, Object.hasOwn(binaryMetadata, path) ? restoreBinaryFile(file.content, Reflect.get(binaryMetadata, path)) : file.content]
     }))
     delete metadata.ui_files
+    delete metadata.ui_binary_files
+    validateFileMap(Object.fromEntries(authored))
     return {
-      overlay: overlay?.content ?? '', canvas_layout: layout?.content ?? '',
-      meta: metadata, topology: topology?.content ?? '', files: Object.fromEntries(authored),
+      revision: { branch, commit_sha: revision },
+      overlay: overlay ? fileText(overlay.content) : '', canvas_layout: layout ? fileText(layout.content) : '',
+      meta: metadata, topology: topology ? fileText(topology.content) : '', files: Object.fromEntries(authored),
     }
   }
 
   async autosave(projectId: string, state: ProjectState): Promise<void> {
+    validateAuthoredFiles(state.files || {})
     const files = {
       [overlayPath(this.projectPath)]: state.overlay,
       [layoutPath(this.projectPath)]: state.canvas_layout,
-      [metaPath(this.projectPath)]: JSON.stringify({ ...state.meta, ui_files: Object.keys(state.files || {}) }, null, 2),
+      [metaPath(this.projectPath)]: JSON.stringify({ ...state.meta, ...authoredFilesMetadata(state.files) }, null, 2),
       [topologyPath(this.projectPath)]: state.topology ?? '',
       ...Object.fromEntries(Object.entries(state.files || {}).map(([path, content]) => [this.authoredFilePath(path), content])),
     }
@@ -172,7 +194,8 @@ class RepoAdapter implements ProjectRepoAdapter {
     }
   }
 
-  async stageFiles(projectId: string, files: Record<string, string>, message: string): Promise<void> {
+  async stageFiles(projectId: string, files: ProjectFiles, message: string): Promise<void> {
+    validateFileMap(files)
     if (!await this.provider.canWrite(this.owner, this.repo)) {
       throw new Error('Write permission is required for this repository')
     }
@@ -185,7 +208,7 @@ class RepoAdapter implements ProjectRepoAdapter {
     for (const [path, content] of Object.entries(files)) {
       const key = `${this.draftBranch}:${path}`
       const existing = await this.safeGet(path, this.draftBranch)
-      if (existing?.content === content) continue
+      if (fileContentEquals(existing?.content, content)) continue
       const sha = this.shaCache.get(key) ?? existing?.sha
       const result = await this.provider.putFile({
         owner: this.owner, repo: this.repo, path, content, sha,
@@ -212,14 +235,14 @@ class RepoAdapter implements ProjectRepoAdapter {
     try {
       if (this.provider.commitFiles) {
         const files = Object.fromEntries(await Promise.all(this.writtenPaths.map(async path => [path,
-          (await this.provider.getFile({ owner: this.owner, repo: this.repo, path, ref: this.draftBranch })).content,
+          (await readFileContent(this.provider, { owner: this.owner, repo: this.repo, path, ref: this.draftBranch })).content,
         ])))
         return { commit_sha: await this.writeAtomicSnapshot(this.mainBranch, files, message || `Publish ${projectId}`), branch: this.mainBranch }
       }
       for (const path of this.writtenPaths) {
-        const file = await this.provider.getFile({ owner: this.owner, repo: this.repo, path, ref: this.draftBranch })
+        const file = await readFileContent(this.provider, { owner: this.owner, repo: this.repo, path, ref: this.draftBranch })
         const existing = await this.safeGet(path, this.mainBranch)
-        if (existing?.content === file.content) continue
+        if (fileContentEquals(existing?.content, file.content)) continue
         await this.provider.putFile({
           owner: this.owner, repo: this.repo, path, content: file.content, sha: existing?.sha,
           message: message || `Publish ${projectId}`, branch: this.mainBranch,
@@ -236,12 +259,12 @@ class RepoAdapter implements ProjectRepoAdapter {
     }
   }
 
-  private async writeAtomicSnapshot(branch: string, files: Record<string, string>, message: string): Promise<string> {
+  private async writeAtomicSnapshot(branch: string, files: ProjectFiles, message: string): Promise<string> {
     const expectedHead = await this.headCommitSha(branch)
     const changes = []
     for (const [path, content] of Object.entries(files)) {
       const existing = await this.safeGet(path, expectedHead)
-      if (existing?.content !== content) changes.push({ path, content, sha: existing?.sha })
+      if (!fileContentEquals(existing?.content, content)) changes.push({ path, content, sha: existing?.sha })
     }
     if (!changes.length) return expectedHead
     const commit = await this.provider.commitFiles!({ owner: this.owner, repo: this.repo, branch, expectedHead, message, files: changes })
@@ -294,7 +317,7 @@ class RepoAdapter implements ProjectRepoAdapter {
   async checkLockOwnership(_projectId: string): Promise<'owner' | 'lost' | 'free'> {
     const existing = await this.safeGet(lockPath(this.projectPath))
     if (!existing) return 'free'
-    const info = safeParseJson<LockInfo>(existing.content)
+    const info = safeParseJson<LockInfo>(fileText(existing.content))
     if (!info || !info.browser_instance_id) return 'free'
     if (info.browser_instance_id === this.browserInstanceId) return 'owner'
     // Fire orphaned-draft callbacks so callers can prompt the user.
@@ -313,9 +336,7 @@ class RepoAdapter implements ProjectRepoAdapter {
   // ---------------------------------------------------------------------------
 
   private authoredFilePath(path: string): string {
-    if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..' || part === '.git')) {
-      throw new Error(`Invalid authored file path: ${path}`)
-    }
+    validateAuthoredFilePath(path)
     const prefix = this.projectPath.replace(/\/+$/, '')
     return prefix ? `${prefix}/${path}` : path
   }
@@ -337,22 +358,18 @@ class RepoAdapter implements ProjectRepoAdapter {
   private async safeGet(
     path: string,
     ref?: string,
-  ): Promise<{ content: string; sha: string } | null> {
+  ): Promise<{ content: FileContent; sha: string } | null> {
     try {
-      return await this.provider.getFile({
+      return await readFileContent(this.provider, {
         owner: this.owner,
         repo: this.repo,
         path,
         ref: ref ?? this.draftBranch,
       })
     } catch (error) {
-      if (/404|not found/i.test(error instanceof Error ? error.message : String(error))) return null
+      if (isGitNotFound(error)) return null
       throw error
     }
-  }
-
-  private async loadFile(path: string) {
-    return await this.safeGet(path, this.draftBranch) ?? await this.safeGet(path, this.mainBranch)
   }
 
   private async writeLock(info: LockInfo): Promise<void> {
