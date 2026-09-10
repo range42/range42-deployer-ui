@@ -25,7 +25,19 @@
       "noProject": "(no project)"
     }
   },
+  "maintenance": {
+    "title": "Update content or remove deployment VMs",
+    "description": "Configuration runs the scenario's configure playbook on existing VMs. Teardown verifies ownership and removes deployment VMs while preserving shared networks.",
+    "action": "Action", "configure": "Apply saved content and configuration", "teardown": "Remove deployment VMs",
+    "revision": "Saved project commit", "revisionHint": "Defaults to the linked project's latest saved commit in this browser. VM, inventory and network definitions must match the original deployment.",
+    "invalidSha": "Enter the full 40- or 64-character saved commit SHA.",
+    "confirm": "Type {codename} to confirm VM removal", "preflight": "Check selected action", "start": "Run checked action"
+  },
   "detail": {
+    "prepareDescription": "Check network and resource readiness, then start this deployment.",
+    "runPreflight": "Run deployment preflight",
+    "start": "Start deployment",
+    "startFailed": "Deployment setup failed: {reason}. Review the backend configuration before retrying.",
     "back": "Back to deployments",
     "cancel": "Cancel deployment",
     "pause": "Pause",
@@ -99,6 +111,11 @@
     }
   },
   "deploy": {
+    "pinnedPreflight": "Create the deployment to review its pinned scenario, network and resource checks before starting.",
+    "backend": "Backend: {backend}",
+    "backendSameOrigin": "Current site",
+    "hostsLoading": "Loading Proxmox hosts…",
+    "hostsEmpty": "No Proxmox hosts registered on this backend.",
     "title": "Deploy",
     "submit": "Deploy",
     "submitting": "Deploying…",
@@ -113,8 +130,9 @@
       "vault": "Vault password"
     },
     "err": {
+      "teamCountRange": "Team count must be a whole number from 1 to 64.",
       "codenameRequired": "Codename is required.",
-      "codenameShape": "Lowercase letters, digits, dashes only; 3–32 characters.",
+      "codenameShape": "Starts with a letter; letters, digits, underscores and dashes; 2–32 characters. Converted to uppercase.",
       "codenameTaken": "This codename is already used by another local deployment.",
       "scenarioRequired": "Scenario label is required.",
       "hostRequired": "Choose a target Proxmox host.",
@@ -129,11 +147,12 @@
       "ack": "I confirm deploying with these exact revisions."
     },
     "preflight": {
-      "heading": "Preflight",
-      "run": "Run preflight",
+      "heading": "Project validation",
+      "run": "Validate project",
       "running": "Running…",
-      "blocking": "Preflight reported blocking issues. Fix them before deploying.",
-      "acknowledge": "Acknowledge preflight warnings."
+      "blocking": "Project validation reported blocking issues. Fix them before deploying.",
+      "acknowledge": "Acknowledge preflight warnings.",
+      "description": "Validates the stored project documents. Network, VM and resource checks run in deployment preflight."
     }
   },
   "teardown": {

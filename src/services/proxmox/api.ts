@@ -6,6 +6,9 @@
  * to communicate with Proxmox.
  */
 
+import { getActivePinia } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+
 import type {
   ApiResponse,
   ApiError,
@@ -53,7 +56,7 @@ const ANSIBLE_DEFAULTS = { hosts: 'px-testing', inventory: 'hosts.yml' }
  */
 export function setBaseUrl(url: string): void {
   // Remove trailing slash if present
-  baseUrl = url.replace(/\/$/, '')
+  baseUrl = url.replace(/\/+$/, '')
   // The registered-host lookup is per-backend; a base-URL change may point at a
   // different backend, so the memoized host id must not leak across.
   _hostCache = null
@@ -92,7 +95,11 @@ async function request<T>(
 
   const url = `${baseUrl}${endpoint}`
   
+  const host = getActivePinia()
+    ? useBackendApiStore().hosts.find(candidate => candidate.url.replace(/\/+$/, '') === baseUrl)
+    : undefined
   const defaultHeaders: HeadersInit = {
+    ...(host?.token ? { Authorization: `Bearer ${host.token}` } : {}),
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   }
@@ -370,35 +377,35 @@ export const vm = {
    * Start a VM (v1).
    */
   async start(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'start')
+    return vmStatusAction(request.vm_id, 'start', request.vmtype)
   },
 
   /**
    * Stop a VM gracefully — ACPI shutdown (v1).
    */
   async stop(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'shutdown')
+    return vmStatusAction(request.vm_id, 'shutdown', request.vmtype)
   },
 
   /**
    * Force stop a VM — hard power-off (v1).
    */
   async stopForce(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'stop')
+    return vmStatusAction(request.vm_id, 'stop', request.vmtype)
   },
 
   /**
    * Pause (suspend) a VM (v1).
    */
   async pause(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'suspend')
+    return vmStatusAction(request.vm_id, 'suspend', request.vmtype)
   },
 
   /**
    * Resume a paused VM (v1).
    */
   async resume(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'resume')
+    return vmStatusAction(request.vm_id, 'resume', request.vmtype)
   },
 
   /**
@@ -461,33 +468,35 @@ export const vm = {
 // Snapshot API
 // =============================================================================
 
+async function snapshotPath(vmId: number | string, suffix = ''): Promise<string> {
+  const { id } = await getRegisteredHost()
+  return `/v1/proxmox/hosts/${id}/vms/${vmId}/snapshots${suffix}`
+}
+
 export const snapshot = {
-  /**
-   * Create a VM snapshot
-   */
-  async create(request: VmSnapshotRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/snapshot/create', request)
+  async create(input: VmSnapshotRequest): Promise<VmActionResult> {
+    return post(`${await snapshotPath(input.vm_id)}?vmtype=${input.vmtype ?? 'qemu'}`, {
+      snapname: input.vm_snapshot_name,
+      description: input.vm_snapshot_description,
+      vmstate: input.vmstate,
+    })
   },
 
-  /**
-   * List VM snapshots
-   */
-  async list(node: ProxmoxNode, vmId: number): Promise<unknown[]> {
-    return query('/v0/admin/proxmox/vms/vm_id/snapshot/list', { proxmox_node: node, vm_id: String(vmId) })
+  async list(_node: ProxmoxNode, vmId: number, vmtype: 'qemu' | 'lxc' = 'qemu'): Promise<unknown[]> {
+    const data = await request<{ items: unknown[] }>(
+      `${await snapshotPath(vmId)}?vmtype=${vmtype}`, { method: 'GET' },
+    )
+    return data.items ?? []
   },
 
-  /**
-   * Revert to a snapshot
-   */
-  async revert(request: VmSnapshotRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/snapshot/revert', request)
+  async revert(input: VmSnapshotRequest): Promise<VmActionResult> {
+    const suffix = `/${encodeURIComponent(input.vm_snapshot_name)}/rollback`
+    return post(`${await snapshotPath(input.vm_id, suffix)}?vmtype=${input.vmtype ?? 'qemu'}`)
   },
 
-  /**
-   * Delete a snapshot
-   */
-  async delete(request: VmSnapshotRequest): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/vms/vm_id/snapshot/delete', request)
+  async delete(input: VmSnapshotRequest): Promise<VmActionResult> {
+    const suffix = `/${encodeURIComponent(input.vm_snapshot_name)}`
+    return del(`${await snapshotPath(input.vm_id, suffix)}?vmtype=${input.vmtype ?? 'qemu'}`)
   },
 }
 
@@ -696,33 +705,37 @@ export const firewall = {
 // Storage API
 // =============================================================================
 
+async function storagePath(storageName?: string): Promise<string> {
+  const { id } = await getRegisteredHost()
+  return `/v1/proxmox/hosts/${id}/storage${storageName ? `/${encodeURIComponent(storageName)}` : ''}`
+}
+
+async function storageContent<T>(storageName: string, content: 'iso' | 'vztmpl'): Promise<T[]> {
+  const data = await request<{ items: T[] }>(
+    `${await storagePath(storageName)}/content?content=${content}`, { method: 'GET' },
+  )
+  return data.items ?? []
+}
+
 export const storage = {
-  /**
-   * List storage pools
-   */
-  async list(node: ProxmoxNode, storageName = 'local-zfs'): Promise<unknown[]> {
-    return query('/v0/admin/proxmox/storage/list', { proxmox_node: node, storage_name: storageName })
+  async list(_node: ProxmoxNode): Promise<unknown[]> {
+    const data = await request<{ items: unknown[] }>(await storagePath(), { method: 'GET' })
+    return data.items ?? []
   },
 
-  /**
-   * List ISOs in a storage
-   */
-  async listIsos(node: ProxmoxNode, storageName: string): Promise<IsoInfo[]> {
-    return query('/v0/admin/proxmox/storage/storage_name/list_iso', { proxmox_node: node, storage_name: storageName })
+  async listIsos(_node: ProxmoxNode, storageName: string): Promise<IsoInfo[]> {
+    return storageContent<IsoInfo>(storageName, 'iso')
   },
 
-  /**
-   * List templates in a storage
-   */
-  async listTemplates(node: ProxmoxNode, storageName: string): Promise<TemplateInfo[]> {
-    return query('/v0/admin/proxmox/storage/storage_name/list_template', { proxmox_node: node, storage_name: storageName })
+  async listTemplates(_node: ProxmoxNode, storageName: string): Promise<TemplateInfo[]> {
+    return storageContent<TemplateInfo>(storageName, 'vztmpl')
   },
 
-  /**
-   * Download an ISO from URL
-   */
-  async downloadIso(request: StorageDownloadIsoRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/storage/download_iso', request)
+  async downloadIso(input: StorageDownloadIsoRequest): Promise<VmActionResult> {
+    return post(`${await storagePath(input.storage)}/download-url`, {
+      content: 'iso', filename: input.filename, url: input.url,
+      checksum: input.checksum, checksum_algorithm: input.checksum_algorithm,
+    })
   },
 }
 

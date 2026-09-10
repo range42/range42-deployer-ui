@@ -39,6 +39,7 @@ describe('GitLabProvider', () => {
           jsonResponse({
             content: encodeContentBase64('body: ok'),
             blob_id: 'sha-1234',
+            last_commit_id: 'file-commit-1234',
             encoding: 'base64',
           }),
       },
@@ -61,7 +62,7 @@ describe('GitLabProvider', () => {
     expect(call[1].headers['PRIVATE-TOKEN']).toBe('glpat-xyz');
   });
 
-  it('putFile: PUTs when sha present, base64-encodes content, follows with GET for new sha', async () => {
+  it('putFile: resolves the file commit separately from its blob SHA before updating', async () => {
     let seenPut = null;
     fetchImpl = makeFetch([
       {
@@ -80,8 +81,9 @@ describe('GitLabProvider', () => {
           'https://gitlab.com/api/v4/projects/acme%2Flab/repository/files/range42.yaml?ref=draft-1',
         response: () =>
           jsonResponse({
-            content: encodeContentBase64('new: content'),
-            blob_id: 'sha-new',
+            content: encodeContentBase64(seenPut ? 'new: content' : 'old: content'),
+            blob_id: seenPut ? 'sha-new' : 'sha-old',
+            last_commit_id: seenPut ? 'file-commit-new' : 'file-commit-old',
             encoding: 'base64',
           }),
       },
@@ -100,8 +102,39 @@ describe('GitLabProvider', () => {
     expect(seenPut.branch).toBe('draft-1');
     expect(seenPut.encoding).toBe('base64');
     expect(seenPut.commit_message).toBe('update');
-    expect(seenPut.last_commit_id).toBe('sha-old');
+    expect(seenPut.last_commit_id).toBe('file-commit-old');
     expect(seenPut.content).toBe(encodeContentBase64('new: content'));
+  });
+
+  it('putFile: refuses a changed blob before sending any write', async () => {
+    fetchImpl = vi.fn(async () => jsonResponse({
+      content: encodeContentBase64('someone else changed this'),
+      blob_id: 'blob-concurrent', last_commit_id: 'commit-concurrent', encoding: 'base64',
+    }));
+    const provider = new GitLabProvider({ token: 't', fetchImpl });
+    await expect(provider.putFile({ owner: 'group/team', repo: 'catalog', path: 'tasks/main.yml',
+      content: 'my edit', sha: 'blob-before', branch: 'range42-ui/draft', message: 'Save',
+    })).rejects.toThrow(/changed/i);
+    expect(fetchImpl.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+    expect(fetchImpl.mock.calls[0][0]).toContain('ref=range42-ui%2Fdraft');
+  });
+
+  it('putFile: refuses missing commit metadata without sending a blob as last_commit_id', async () => {
+    fetchImpl = vi.fn(async () => jsonResponse({ content: '', blob_id: 'blob-before', encoding: 'base64' }));
+    const provider = new GitLabProvider({ token: 't', fetchImpl });
+    await expect(provider.putFile({ owner: 'acme', repo: 'catalog', path: 'tasks/main.yml',
+      content: 'my edit', sha: 'blob-before', branch: 'main', message: 'Save',
+    })).rejects.toThrow(/last_commit_id/i);
+    expect(fetchImpl.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+  });
+
+  it('putFile: propagates metadata permission failures without attempting a write', async () => {
+    fetchImpl = vi.fn(async () => jsonResponse({ message: 'Forbidden' }, 403));
+    const provider = new GitLabProvider({ token: 't', fetchImpl });
+    await expect(provider.putFile({ owner: 'acme', repo: 'catalog', path: 'tasks/main.yml',
+      content: 'my edit', sha: 'blob-before', branch: 'main', message: 'Save',
+    })).rejects.toThrow(/403/);
+    expect(fetchImpl.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
   });
 
   it('createBranch: POSTs to /repository/branches with branch + ref', async () => {

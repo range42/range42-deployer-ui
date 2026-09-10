@@ -25,7 +25,19 @@
       "noProject": "(sans projet)"
     }
   },
+  "maintenance": {
+    "title": "Mettre à jour le contenu ou supprimer les VM",
+    "description": "La configuration exécute le playbook configure sur les VM existantes. La suppression vérifie leur appartenance au déploiement et conserve les réseaux partagés.",
+    "action": "Action", "configure": "Appliquer le contenu et la configuration enregistrés", "teardown": "Supprimer les VM du déploiement",
+    "revision": "Commit enregistré du projet", "revisionHint": "Utilise par défaut le dernier commit enregistré du projet associé dans ce navigateur. Les VM, l’inventaire et les réseaux doivent rester identiques au déploiement initial.",
+    "invalidSha": "Saisissez le SHA complet du commit enregistré, de 40 ou 64 caractères.",
+    "confirm": "Saisissez {codename} pour confirmer la suppression des VM", "preflight": "Vérifier l’action choisie", "start": "Exécuter l’action vérifiée"
+  },
   "detail": {
+    "prepareDescription": "Vérifiez les réseaux et les ressources, puis lancez ce déploiement.",
+    "runPreflight": "Vérifier le déploiement",
+    "start": "Lancer le déploiement",
+    "startFailed": "Échec de préparation : {reason}. Vérifiez la configuration du backend avant de réessayer.",
     "back": "Retour aux déploiements",
     "cancel": "Annuler le déploiement",
     "pause": "Pause",
@@ -99,6 +111,11 @@
     }
   },
   "deploy": {
+    "pinnedPreflight": "Créez le déploiement pour vérifier la révision du scénario, les réseaux et les ressources avant de le lancer.",
+    "backend": "Backend : {backend}",
+    "backendSameOrigin": "Site actuel",
+    "hostsLoading": "Chargement des hôtes Proxmox…",
+    "hostsEmpty": "Aucun hôte Proxmox enregistré sur ce backend.",
     "title": "Déployer",
     "submit": "Déployer",
     "submitting": "Déploiement…",
@@ -113,8 +130,9 @@
       "vault": "Mot de passe Vault"
     },
     "err": {
+      "teamCountRange": "Le nombre d’équipes doit être un entier de 1 à 64.",
       "codenameRequired": "Le nom de code est obligatoire.",
-      "codenameShape": "Lettres minuscules, chiffres, tirets uniquement ; 3 à 32 caractères.",
+      "codenameShape": "Commence par une lettre ; lettres, chiffres, tirets et traits de soulignement ; 2 à 32 caractères. Conversion en majuscules.",
       "codenameTaken": "Ce nom de code est déjà utilisé par un autre déploiement local.",
       "scenarioRequired": "Le libellé du scénario est obligatoire.",
       "hostRequired": "Choisissez un hôte Proxmox cible.",
@@ -129,11 +147,12 @@
       "ack": "Je confirme le déploiement avec exactement ces révisions."
     },
     "preflight": {
-      "heading": "Préalable",
-      "run": "Lancer le préalable",
+      "heading": "Validation du projet",
+      "run": "Valider le projet",
       "running": "En cours…",
-      "blocking": "Le préalable a signalé des problèmes bloquants. Corrigez-les avant de déployer.",
-      "acknowledge": "Accepter les avertissements préalables."
+      "blocking": "La validation du projet a signalé des problèmes bloquants. Corrigez-les avant le déploiement.",
+      "acknowledge": "Accepter les avertissements préalables.",
+      "description": "Valide les documents du projet enregistrés. Les réseaux, VM et ressources sont vérifiés avant le déploiement."
     }
   },
   "teardown": {

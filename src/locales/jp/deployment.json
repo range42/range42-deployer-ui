@@ -25,7 +25,19 @@
       "noProject": "（プロジェクトなし）"
     }
   },
+  "maintenance": {
+    "title": "コンテンツ更新またはデプロイVMの削除",
+    "description": "構成では既存VMでconfigureプレイブックを実行します。削除ではデプロイの所有情報を確認し、共有ネットワークを保持します。",
+    "action": "操作", "configure": "保存済みコンテンツと構成を適用", "teardown": "デプロイVMを削除",
+    "revision": "保存済みプロジェクトコミット", "revisionHint": "このブラウザー内で関連プロジェクトの最新保存コミットを初期値に使用します。VM、インベントリー、ネットワークは元のデプロイと一致する必要があります。",
+    "invalidSha": "保存済みコミットの完全な40文字または64文字のSHAを入力してください。",
+    "confirm": "VM削除の確認として{codename}を入力", "preflight": "選択した操作を確認", "start": "確認済み操作を実行"
+  },
   "detail": {
+    "prepareDescription": "ネットワークとリソースを確認してからデプロイを開始してください。",
+    "runPreflight": "デプロイの事前チェック",
+    "start": "デプロイを開始",
+    "startFailed": "デプロイの準備に失敗しました: {reason}。バックエンド設定を確認してから再試行してください。",
     "back": "デプロイ一覧へ戻る",
     "cancel": "デプロイをキャンセル",
     "pause": "一時停止",
@@ -99,6 +111,11 @@
     }
   },
   "deploy": {
+    "pinnedPreflight": "デプロイを作成すると、開始前に固定リビジョンのシナリオ、ネットワーク、リソースを確認できます。",
+    "backend": "バックエンド: {backend}",
+    "backendSameOrigin": "現在のサイト",
+    "hostsLoading": "Proxmox ホストを読み込み中…",
+    "hostsEmpty": "このバックエンドに Proxmox ホストが登録されていません。",
     "title": "デプロイ",
     "submit": "デプロイ",
     "submitting": "デプロイ中…",
@@ -113,8 +130,9 @@
       "vault": "Vault パスワード"
     },
     "err": {
+      "teamCountRange": "チーム数は1から64までの整数で指定してください。",
       "codenameRequired": "コードネームは必須です。",
-      "codenameShape": "小文字、数字、ハイフンのみ、3〜32文字。",
+      "codenameShape": "英字で始まる2～32文字の英数字、ハイフン、アンダースコア。大文字に変換されます。",
       "codenameTaken": "このコードネームは既に使用されています。",
       "scenarioRequired": "シナリオ名は必須です。",
       "hostRequired": "Proxmox ホストを選択してください。",
@@ -129,11 +147,12 @@
       "ack": "これらの正確なリビジョンでデプロイすることを確認します。"
     },
     "preflight": {
-      "heading": "事前チェック",
-      "run": "事前チェック実行",
+      "heading": "プロジェクト検証",
+      "run": "プロジェクトを検証",
       "running": "実行中…",
-      "blocking": "事前チェックでブロックされる問題があります。修正してください。",
-      "acknowledge": "警告を了承する。"
+      "blocking": "プロジェクト検証で問題が見つかりました。デプロイ前に修正してください。",
+      "acknowledge": "警告を了承する。",
+      "description": "保存済みのプロジェクト文書を検証します。ネットワーク、VM、リソースはデプロイの事前チェックで検証されます。"
     }
   },
   "teardown": {

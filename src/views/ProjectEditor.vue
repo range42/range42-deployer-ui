@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed, provide, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -22,8 +23,6 @@ import ConfigPanel from '../components/ConfigPanel.vue'
 import EdgeConfigPanel from '../components/EdgeConfigPanel.vue'
 import ExportModal from '../components/ExportModal.vue'
 import ProxmoxSettingsModal from '../components/ProxmoxSettingsModal.vue'
-import DeploymentPanel from '../components/DeploymentPanel.vue'
-import DeployReconcileModal from '../components/DeployReconcileModal.vue'
 import InfrastructureImportModal from '../components/InfrastructureImportModal.vue'
 import TemplateBrowser from '../components/TemplateBrowser.vue'
 import ProblemsPanel from '../components/project/ProblemsPanel.vue'
@@ -32,6 +31,14 @@ import CommandPalette from '../components/project/CommandPalette.vue'
 import ConfigTab from '../components/project/ConfigTab.vue'
 import HistoryTab from '../components/project/HistoryTab.vue'
 import VariablesTab from '../components/project/VariablesTab.vue'
+import { useDeploymentIndex } from '@/composables/useDeploymentIndex'
+import { getBackendScope } from '@/services/backendApi'
+import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
+import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
+import ProjectRepositoryConnection from '@/components/ProjectRepositoryConnection.vue'
+import { emitConcreteScenario } from '@/services/concreteScenario'
+import { ensureBackendProject } from '@/services/backendProjectRegistration'
+import { buildProjectFiles } from '@/composables/useProjectGitSync'
 import DeployForm from '../components/project/DeployForm.vue'
 import { createMemoryFs } from '../services/projectRepo/memoryFs'
 import { ensureNamespaces } from '../i18n'
@@ -47,7 +54,7 @@ import { useCanvasLiveStatus } from '../composables/useCanvasLiveStatus'
 import { useDeploymentStore } from '../stores/deploymentStore.ts'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection, normalizeAttachment } from '../composables/useInfraBuilder'
-import { useDeployment } from '../composables/useDeployment'
+import { useTopologyResolver } from '../composables/useTopologyResolver'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useWebSocketStatus } from '../composables/useWebSocketStatus'
 // setBaseUrl is managed via useApiConfig composable
@@ -88,6 +95,14 @@ onNodesInitialized(() => { measureTick.value++ })
 
 const { showToast } = useToast()
 const gitSync = useProjectGitSync()
+const { t: translate } = useI18n({ useScope: 'global' })
+const gitSaving = ref(0)
+const gitSaveError = ref('')
+const showPublishTargets = ref(false)
+const publicationFiles = ref({})
+const showScenarioAuthoring = ref(false)
+const showRepositoryConnection = ref(false)
+const registeredProjectId = ref('')
 const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
@@ -95,22 +110,21 @@ const showConfigPanel = ref(false)
 const configPanelRef = ref(null)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
-const showDeploymentPanel = ref(false)
 // Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
 const showDeployForm = ref(false)
-const existingCodenames = ref([])
+const deploymentIndex = useDeploymentIndex()
+const existingCodenames = computed(() => deploymentIndex.items.value.map(item => item.codename))
 const showTemplateBrowser = ref(false)
 const showImportModal = ref(false)
 const showDeleteProjectModal = ref(false)
 const deleteConfirmName = ref('')
-const validationErrors = ref([])
 const currentProject = ref(null)
 
 // Project ID as computed ref for composables
 const projectId = computed(() => currentProject.value?.id || route.params.id)
 
 // Deployment composable - now auto-uses project settings
-const deployment = useDeployment(projectId)
+const topologyResolver = useTopologyResolver()
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
@@ -154,13 +168,15 @@ const paletteItems = computed(() => {
       jumpTo: { kind: 'attachment', id: a.id },
     })
   }
-  for (const f of (currentProject.value?.files || [])) {
+  const files = currentProject.value?.files || {}
+  const filePaths = Array.isArray(files) ? files.map(file => file.path).filter(Boolean) : Object.keys(files)
+  for (const path of filePaths) {
     items.push({
-      id: `file:${f.path}`,
+      id: `file:${path}`,
       kind: 'file',
-      label: (f.path || '').split('/').pop() || f.path,
-      subtitle: f.path,
-      jumpTo: { kind: 'file', id: f.path },
+      label: path.split('/').pop() || path,
+      subtitle: path,
+      jumpTo: { kind: 'file', id: path },
     })
   }
   return items
@@ -201,26 +217,20 @@ const autoLayout = useAutoLayout()
 // to its SSE stream, and mirrors per-node status into VueFlow node data.
 const deploymentStore = useDeploymentStore()
 const activeDeploymentId = ref(null)
-const TERMINAL_STATES_CANVAS = new Set(['deployed', 'failed', 'cancelled', 'torn_down'])
+const TERMINAL_STATES_CANVAS = new Set(['succeeded', 'deployed', 'failed', 'cancelled', 'torn_down'])
 
 async function refreshActiveDeployment() {
-  const pid = projectId.value
-  if (!pid) return
-  try {
-    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
-    if (!res.ok) return
-    const body = await res.json()
-    const items = Array.isArray(body) ? body : (body?.deployments || [])
-    const active = items.find(d => d.project_id === pid && !TERMINAL_STATES_CANVAS.has(d.state))
-    if (active?.id !== activeDeploymentId.value) {
-      if (activeDeploymentId.value) deploymentStore.unsubscribe(activeDeploymentId.value)
-      activeDeploymentId.value = active?.id || null
-      if (activeDeploymentId.value) deploymentStore.subscribe(activeDeploymentId.value)
-    }
-  } catch {
-    // Backend unavailable — silently skip; canvas falls back to WS status.
-  }
+  await deploymentIndex.load()
 }
+
+watch([deploymentIndex.items, projectId], ([items, pid]) => {
+  const active = items.find(d => d.project_id === pid && !TERMINAL_STATES_CANVAS.has(d.state))
+  if (active?.id !== activeDeploymentId.value) {
+    if (activeDeploymentId.value) deploymentStore.unsubscribe(activeDeploymentId.value)
+    activeDeploymentId.value = active?.id || null
+    if (activeDeploymentId.value) deploymentStore.subscribe(activeDeploymentId.value)
+  }
+}, { immediate: true })
 
 const liveRecord = computed(() => {
   const id = activeDeploymentId.value
@@ -366,6 +376,7 @@ watch(() => wsStatus.vmStatuses.value, (statuses) => {
 ////
 
 onMounted(() => {
+  if (!projectStore.projects.length) projectStore.loadProjects()
   const project = projectStore.getProject(route.params.id)
   if (!project) {
     router.push('/')
@@ -375,8 +386,6 @@ onMounted(() => {
   currentProject.value = project
   loadProjectData(project)
   ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common'])
-  // Plan C §C4.7 — attach live SSE to canvas when an active deployment exists.
-  refreshActiveDeployment()
 })
 
 onUnmounted(() => {
@@ -412,7 +421,8 @@ function scheduleAutosave() {
       nodes: nodes.value,
       edges: edges.value,
     })
-  }, 500)
+    if (currentProject.value.git && !showRepositoryConnection.value) void manualSave({ quiet: true })
+  }, 1500)
 }
 
 watch([nodes, edges], () => {
@@ -454,38 +464,104 @@ onUnmounted(() => {
   if (autosaveTimer !== null) clearTimeout(autosaveTimer)
 })
 
-const manualSave = async () => {
-  if (!currentProject.value) return
-  const nodesToSave = liveNodes.value
-  const edgesToSave = liveEdges.value
-  projectStore.updateProject(currentProject.value.id, {
-    nodes: nodesToSave,
-    edges: edgesToSave
-  })
+function currentPushArgs() {
+  const project = currentProject.value
+  const generated = project?.scenario ? emitConcreteScenario({
+    scenario: project.scenario, nodes: liveNodes.value, edges: liveEdges.value,
+    files: project.files, attachments: project.attachments,
+    baseDoc: project.baseDoc, overlay: project.overlay,
+    generatedPaths: project.scenario_generated_paths || [],
+  }) : null
+  return buildPushArgs(generated ? { ...project, files: generated.files } : project, liveNodes.value, liveEdges.value,
+    `Save ${currentProject.value?.name || 'project'}`)
+}
 
-  // When the project is bound to a git repo, also serialize the canvas into
-  // topology.json, push it, and pin the resulting commit so DeployForm can
-  // deploy the exact saved snapshot. Local-only projects stop after the store
-  // write above.
-  const pushArgs = buildPushArgs(
-    currentProject.value,
-    nodesToSave,
-    edgesToSave,
-    `Save ${currentProject.value.name}`,
-  )
-  if (!pushArgs) return
-  try {
-    const res = await gitSync.pushToGit(pushArgs)
-    if (res.commit_sha) {
-      currentProject.value.head_sha = res.commit_sha
-      projectStore.updateProject(currentProject.value.id, { head_sha: res.commit_sha })
-      showToast(`Saved to git · pinned ${res.commit_sha.slice(0, 7)}`, 'success')
-    } else if (res.pr_url) {
-      showToast('Saved as a pull request (awaiting merge before deploy)', 'info', 6000)
-    }
-  } catch (err) {
-    showToast(`Git save failed: ${err?.message || err}`, 'error', 6000)
+function recordCheckpoint(result, project = currentProject.value) {
+  if (!project?.git || !result.commit_sha) return
+  const git = { ...project.git, ...(result.binding || {}), working_branch: result.branch,
+    ...(result.targets ? { publish_results: result.targets } : {}) }
+  projectStore.updateProject(project.id, { head_sha: result.commit_sha, git })
+  if (currentProject.value?.id === project.id) {
+    currentProject.value.head_sha = result.commit_sha
+    currentProject.value.git = git
   }
+}
+
+function recordPublicationReview(result) {
+  const project = currentProject.value
+  if (!project?.git) return
+  const previous = project.git.publish_results || []
+  const results = previous.filter(item => item.target_id !== result.target_id)
+  projectStore.updateProject(project.id, { git: { ...project.git, publish_results: [...results, result] } })
+}
+
+const manualSave = async ({ quiet = false } = {}) => {
+  const project = currentProject.value
+  if (!project) return null
+  if (autosaveTimer !== null) {
+    clearTimeout(autosaveTimer)
+    autosaveTimer = null
+  }
+  projectStore.updateProject(project.id, { nodes: liveNodes.value, edges: liveEdges.value })
+  gitSaving.value += 1
+  gitSaveError.value = ''
+  try {
+    const args = currentPushArgs()
+    if (!args) return null
+    if (project.scenario) projectStore.updateProject(project.id, { files: args.files })
+    const result = await gitSync.pushToGit(args)
+    recordCheckpoint(result, project)
+    if (!quiet) showToast(translate('project.git.saved', { branch: result.branch, sha: result.commit_sha.slice(0, 7) }), 'success')
+    return result
+  } catch (error) {
+    gitSaveError.value = error?.message || String(error)
+    if (!quiet) showToast(translate('project.git.failed', { error: gitSaveError.value }), 'error', 6000)
+    return null
+  } finally {
+    gitSaving.value -= 1
+  }
+}
+
+function openPublishTargets() {
+  try {
+    const args = currentPushArgs()
+    if (!args) return
+    publicationFiles.value = buildProjectFiles(args)
+    showPublishTargets.value = true
+  } catch (error) { showToast(error.message || String(error), 'error', 6000) }
+}
+
+function applyScenario(result) {
+  if (!currentProject.value) return
+  projectStore.updateProject(currentProject.value.id, {
+    scenario: result.scenario, files: result.files, scenario_generated_paths: result.generatedPaths,
+  })
+  showScenarioAuthoring.value = false
+  void manualSave()
+}
+
+function openRepositoryConnection() {
+  if (gitSaving.value > 0) return
+  if (autosaveTimer !== null) { clearTimeout(autosaveTimer); autosaveTimer = null }
+  showRepositoryConnection.value = true
+}
+
+function connectProjectRepository(binding) {
+  if (!currentProject.value || gitSaving.value > 0) return
+  const identity = git => JSON.stringify([git?.source_id, git?.provider, git?.base_url,
+    git?.repo_owner, git?.repo_name, git?.branch || 'main', git?.subdir || ''])
+  const changed = identity(binding) !== identity(currentProject.value.git)
+  projectStore.updateProject(currentProject.value.id, {
+    git: binding, ...(changed ? { head_sha: '', project_sha: '' } : {}),
+  })
+  if (changed) registeredProjectId.value = ''
+  showRepositoryConnection.value = false
+}
+
+function updatePublicationTargets(targets) {
+  if (!currentProject.value?.git) return
+  currentProject.value.git = { ...currentProject.value.git, publish_targets: targets }
+  projectStore.updateProject(currentProject.value.id, { git: currentProject.value.git })
 }
 
 let layoutAnimationId = null
@@ -687,104 +763,32 @@ const closeProxmoxSettings = () => {
 }
 
 // Deployment handlers
-const showReconcileModal = ref(false)
 
 const handleOpenDeploy = async () => {
-  // Fetch known codenames from the backend deployments index so the
-  // DeployForm can flag local collisions client-instant.
+  const scope = getBackendScope()
   try {
-    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
-    if (res.ok) {
-      const body = await res.json()
-      const items = Array.isArray(body) ? body : (body?.deployments || [])
-      existingCodenames.value = items.map(d => d.codename).filter(Boolean)
+    const args = currentPushArgs()
+    const before = args ? JSON.stringify(buildProjectFiles(args)) : null
+    if (args) {
+      const saved = await manualSave()
+      if (!saved || scope !== getBackendScope()) return
+      const registered = await ensureBackendProject(currentProject.value)
+      if (scope !== getBackendScope()) return
+      registeredProjectId.value = registered.id
+    } else registeredProjectId.value = currentProject.value?.id || ''
+    await deploymentIndex.load()
+    if (scope !== getBackendScope()) return
+    const currentArgs = currentPushArgs()
+    if (before !== null && (!currentArgs || before !== JSON.stringify(buildProjectFiles(currentArgs)))) {
+      showToast(translate('project.git.changedDuringSave'), 'warning', 6000)
+      return
     }
-  } catch {
-    existingCodenames.value = []
-  }
-  showDeployForm.value = true
-}
-
-// Legacy canvas-reconcile path preserved for imported Proxmox VMs.
-// Kept for future re-wiring alongside the new DeployForm when canvas drift
-// detection lands (§C3.x). Prefixed with _ to satisfy linter until re-used.
-const _handleOpenLegacyDeploy = () => {
-  importApiConfig.configure()
-  if (!importApiConfig.isReady.value) {
-    showToast('Please configure Backend API settings first', 'warning')
-    showProxmoxSettings.value = true
-    return
-  }
-  showReconcileModal.value = true
-}
-
-const handleReconcileProceed = (toDelete, toImport) => {
-  showReconcileModal.value = false
-
-  // Import kept VMs to canvas
-  if (toImport && toImport.length > 0) {
-    const importNodes = toImport.map((vm, i) => ({
-      id: `imported-vm-${vm.vmid}`,
-      type: 'vm',
-      position: { x: 600, y: 100 + i * 120 },
-      data: {
-        type: 'vm',
-        label: vm.name,
-        vmId: vm.vmid,
-        deployed: true,
-        status: vm.status === 'running' ? 'running' : 'stopped',
-        config: {
-          name: vm.name,
-          vmid: vm.vmid,
-          cores: vm.maxcpu || 1,
-          memory: String(vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 0),
-        },
-      },
-    }))
-    vfAddNodes(JSON.parse(JSON.stringify(importNodes)))
-  }
-
-  // Warn about VMs marked for deletion (not yet automated)
-  if (toDelete && toDelete.length > 0) {
-    const vmNames = toDelete.map(vm => `${vm.name} (${vm.vmid})`).join(', ')
-    showToast(`${toDelete.length} VM(s) marked for deletion must be removed manually: ${vmNames}`, 'warning', 8000)
-  }
-
-  // Global preferences (not per-project connection config)
-  const storedSettings = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
-  const defaultStorage = storedSettings.defaultStorage || 'local-zfs'
-  const startVmId = parseInt(storedSettings.startVmId, 10) || 2000
-
-  // Now prepare and run deployment
-  const result = deployment.deploy(
-    liveNodes.value,
-    liveEdges.value,
-    {
-      projectName: currentProject.value?.name,
-      startVmId,
-      defaultStorage,
-    }
-  )
-
-  if (result.needsConfiguration) {
-    showToast('Please configure Backend API settings first', 'warning')
-    showProxmoxSettings.value = true
-    return
-  }
-
-  if (!result.success) {
-    validationErrors.value = result.errors
-    const errorSummary = result.errors.slice(0, 3).map(e => e.message).join('; ')
-    const suffix = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : ''
-    showToast(`Validation failed: ${errorSummary}${suffix}`, 'error', 6000)
-    return
-  }
-
-  showDeploymentPanel.value = true
+    showDeployForm.value = true
+  } catch (error) { showToast(error.message || String(error), 'error', 6000) }
 }
 
 const handleOpenValidate = () => {
-  const result = deployment.validateTopology(liveNodes.value, liveEdges.value)
+  const result = topologyResolver.validateTopology(liveNodes.value, liveEdges.value)
   
   if (result.valid) {
     showToast('Topology is valid! No errors found.', 'success')
@@ -793,10 +797,6 @@ const handleOpenValidate = () => {
     const suffix = result.errors.length > 3 ? ` (+${result.errors.length - 3} more)` : ''
     showToast(`Validation: ${errorSummary}${suffix}`, 'error', 6000)
   }
-}
-
-const closeDeploymentPanel = () => {
-  showDeploymentPanel.value = false
 }
 
 const confirmDeleteProject = () => {
@@ -857,15 +857,14 @@ const configOverlayFs = computed(() =>
       projectStore.updateProject(currentProject.value.id, {
         files: currentProject.value.files,
       })
+      scheduleAutosave()
     },
   }),
 )
 const configBaseFs = computed(() => createMemoryFs({ files: baseFiles.value }))
 
 function handleConfigSave() {
-  // onChange in memoryFs already persists; this hook exists so future git-
-  // backed adapters can trigger an autosave/commit here without touching
-  // the child component contract.
+  void manualSave()
 }
 
 function handleAttachmentsUpdate(next) {
@@ -874,6 +873,7 @@ function handleAttachmentsUpdate(next) {
   projectStore.updateProject(currentProject.value.id, {
     attachments: next,
   })
+  scheduleAutosave()
 }
 
 // HistoryTab wiring (C3.9). When the project is linked to a git source
@@ -918,6 +918,7 @@ function handleOverlayUpdate(nextOverlay) {
   projectStore.updateProject(currentProject.value.id, {
     overlay: nextOverlay,
   })
+  scheduleAutosave()
 }
 
 const historyLocator = computed(() => {
@@ -1016,8 +1017,8 @@ const handleInfrastructureImport = (result) => {
     <!-- Main Content -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Top Bar -->
-      <header class="h-14 px-4 flex items-center justify-between border-b border-base-300 bg-base-100 shrink-0">
-        <div class="flex items-center gap-3">
+      <header class="min-h-14 px-3 py-2 sm:px-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-base-300 bg-base-100 shrink-0">
+        <div class="flex w-full min-w-0 items-center gap-3 sm:w-auto">
           <!-- Mobile menu toggle -->
           <button
             type="button"
@@ -1048,7 +1049,7 @@ const handleInfrastructureImport = (result) => {
         </div>
 
         <!-- Right actions -->
-        <div class="flex items-center gap-2">
+        <div class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
           <!-- Organize layout button -->
           <button class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1058,13 +1059,20 @@ const handleInfrastructureImport = (result) => {
           </button>
 
           <!-- Save button -->
-          <button class="btn btn-ghost btn-sm gap-2" @click="manualSave" title="Save (Ctrl+S)">
+          <button type="button" class="btn btn-ghost btn-sm" data-testid="project-repository" :disabled="gitSaving > 0" @click="openRepositoryConnection">Repository</button>
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="showScenarioAuthoring = true">Scenario</button>
+          <button class="btn btn-ghost btn-sm gap-2" :disabled="gitSaving > 0" @click="manualSave()" title="Save (Ctrl+S)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
             </svg>
             <span class="hidden sm:inline">Save</span>
           </button>
           
+          <button v-if="currentProject?.git" type="button" class="btn btn-outline btn-sm"
+            data-testid="project-publish" :disabled="gitSaving > 0" @click="openPublishTargets">
+            {{ translate('project.git.publish') }}
+          </button>
+
           <!-- Settings dropdown -->
           <div class="dropdown dropdown-end">
             <label tabindex="0" class="btn btn-ghost btn-sm btn-square">
@@ -1113,6 +1121,12 @@ const handleInfrastructureImport = (result) => {
         </div>
       </header>
 
+
+      <div v-if="currentProject?.git" class="px-3 py-1 text-xs text-base-content/70" data-testid="project-git-status">
+        <span v-if="gitSaving">{{ translate('project.git.saving') }}</span>
+        <span v-else-if="gitSaveError" role="alert" class="text-error">{{ gitSaveError }}</span>
+        <span v-else-if="currentProject.head_sha">{{ translate('project.git.saved', { branch: currentProject.git.working_branch || '—', sha: currentProject.head_sha.slice(0, 7) }) }}</span>
+      </div>
 
       <!-- Tab strip -->
       <div role="tablist" class="tabs tabs-lift px-3 pt-1 border-b border-base-300" data-testid="project-tabs">
@@ -1324,21 +1338,34 @@ const handleInfrastructureImport = (result) => {
       @saved="closeProxmoxSettings"
     />
     
-    <DeploymentPanel
-      v-if="showDeploymentPanel"
-      @close="closeDeploymentPanel"
+
+    <ProjectRepositoryConnection v-if="showRepositoryConnection && currentProject" :open="showRepositoryConnection"
+      :binding="currentProject.git" @close="showRepositoryConnection = false" @connected="connectProjectRepository" />
+
+    <ScenarioAuthoringModal v-if="showScenarioAuthoring && currentProject" :open="showScenarioAuthoring"
+      :project="currentProject" :nodes="liveNodes" :edges="liveEdges"
+      @close="showScenarioAuthoring = false" @generated="applyScenario" />
+
+    <PublishTargetsModal
+      v-if="showPublishTargets && currentProject?.git"
+      :open="showPublishTargets" :project-id="currentProject.id" :binding="currentProject.git"
+      :files="publicationFiles" :message="`Publish ${currentProject.name}`"
+      :initial-targets="currentProject.git.publish_targets || []"
+      @close="showPublishTargets = false" @published="recordCheckpoint" @reviewed="recordPublicationReview"
+      @update:targets="updatePublicationTargets"
     />
 
     <!-- Plan C §C4.6 — DeployForm with inline preflight + SHA-pin -->
     <DeployForm
       v-if="showDeployForm && currentProject"
       :visible="showDeployForm"
-      :project-id="currentProject.id"
+      :project-id="registeredProjectId || currentProject.id"
       :project-name="currentProject.name"
+      :initial-scenario-label="currentProject.scenario?.label || ''"
       :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
       :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
       :existing-codenames="existingCodenames"
-      :gamenet="!!currentProject?.gamenet"
+      :gamenet="!currentProject.scenario && !!currentProject?.gamenet"
       @close="showDeployForm = false"
       @created="refreshActiveDeployment"
     />
@@ -1402,13 +1429,6 @@ const handleInfrastructureImport = (result) => {
       @import="handleInfrastructureImport"
     />
 
-    <DeployReconcileModal
-      v-if="showReconcileModal"
-      :canvas-vm-ids="new Set((liveNodes || []).filter(n => n.data?.vmId).map(n => n.data.vmId))"
-      :proxmox-node="importApiConfig.node.value || 'pve01'"
-      @proceed="handleReconcileProceed"
-      @cancel="showReconcileModal = false"
-    />
 
     <!-- Command palette (Ctrl/Cmd-P) — body-teleported by the component itself -->
     <CommandPalette

@@ -68,11 +68,13 @@ const resultBadge = (result) => {
   }
 }
 
-const overallCls = computed(() => {
-  if (props.record.blocking) return 'alert-error'
-  if (!props.record.ok) return 'alert-warning'
-  return 'alert-success'
+const overallResult = computed(() => {
+  if (props.record.blocking || props.record.checks?.some(check => check.result === 'block')) return 'block'
+  if (props.record.result) return props.record.result
+  if (props.record.ok) return 'pass'
+  return 'warn'
 })
+const overallCls = computed(() => ({ pass: 'alert-success', warn: 'alert-warning', block: 'alert-error' })[overallResult.value])
 </script>
 
 <template>
@@ -80,12 +82,12 @@ const overallCls = computed(() => {
     <div class="alert" :class="overallCls" role="status">
       <div class="flex-1">
         <h2 class="font-semibold">
-          <template v-if="record.blocking">{{ t('deployment.preflight.summary.block') }}</template>
-          <template v-else-if="!record.ok">{{ t('deployment.preflight.summary.warn') }}</template>
+          <template v-if="overallResult === 'block'">{{ t('deployment.preflight.summary.block') }}</template>
+          <template v-else-if="overallResult === 'warn'">{{ t('deployment.preflight.summary.warn') }}</template>
           <template v-else>{{ t('deployment.preflight.summary.ok') }}</template>
         </h2>
         <p class="text-xs opacity-80">
-          {{ t('deployment.preflight.generatedAt') }}: {{ record.generated_at }}
+          {{ t('deployment.preflight.generatedAt') }}: {{ record.ts || record.generated_at }}
           <span v-if="record.attempt_id"> · {{ t('deployment.preflight.attempt') }}: {{ record.attempt_id }}</span>
         </p>
       </div>

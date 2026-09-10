@@ -1,3 +1,5 @@
+import type { PullRequestRef, PullRequestReview, MergePullRequestOptions } from './types'
+import { assertMergeable } from './review'
 /**
  * GitLab Provider (v1 interface)
  *
@@ -7,8 +9,9 @@
  * Docs: https://docs.gitlab.com/ee/api/
  */
 
-import type { GitProviderV1, RepoRef, CommitRef } from './types'
+import type { GitProviderV1, RepoRef, CommitRef, CommitFilesOptions } from './types'
 import { encodeContentBase64, decodeContentBase64 } from './encoding'
+import { ensurePersonalFork, type ForkRepository } from './personalFork'
 
 export interface GitLabProviderOpts {
   baseUrl?: string       // e.g. https://gitlab.com
@@ -119,16 +122,32 @@ export class GitLabProvider implements GitProviderV1 {
       `/projects/${pid}/repository/files/${encodeURIComponent(opts.path)}`,
     )
     const branch = opts.branch ?? 'main'
+    let lastCommitId: string | undefined
+    if (opts.sha) {
+      // The shared provider contract uses blob SHAs, while GitLab's update
+      // guard requires the last commit that modified this file. Fetch both
+      // together so this remains correct across separate provider instances.
+      const current = await this.json<{ blob_id: string; last_commit_id?: string }>(
+        `${fileUrl}?ref=${encodeURIComponent(branch)}`,
+        { headers: this.headers() },
+      )
+      if (current.blob_id !== opts.sha) {
+        throw new Error(`GitLab file changed before update: ${opts.path}. Refresh before retrying.`)
+      }
+      if (typeof current.last_commit_id !== 'string' || !current.last_commit_id) {
+        throw new Error(`GitLab file metadata is missing last_commit_id: ${opts.path}. Cannot safely update this file.`)
+      }
+      lastCommitId = current.last_commit_id
+    }
     const payload = {
       branch,
       content: encodeContentBase64(opts.content),
       encoding: 'base64',
       commit_message: opts.message,
-      last_commit_id: opts.sha,
+      last_commit_id: lastCommitId,
     }
-    // GitLab uses PUT to update, POST to create. We attempt PUT first; on 400
-    // ("file does not exist") fall back to POST. Callers can disambiguate by
-    // passing sha (update) vs omitting (create), so we branch on that signal.
+    // GitLab uses PUT to update and POST to create. Never retry an update as
+    // creation: a failed concurrency or permission check must stay visible.
     const method = opts.sha ? 'PUT' : 'POST'
     const res = await this.fetchImpl(fileUrl, {
       method,
@@ -148,6 +167,29 @@ export class GitLabProvider implements GitProviderV1 {
       ref: branch,
     })
     return { sha: fresh.sha }
+  }
+
+  async commitFiles(opts: CommitFilesOptions): Promise<{ sha: string }> {
+    if (!opts.files.length) return { sha: opts.expectedHead }
+    const pid = this.projectId(opts.owner, opts.repo)
+    const actions = []
+    for (const file of opts.files) {
+      let lastCommitId: string | undefined
+      if (file.sha) {
+        const current = await this.json<{ blob_id: string; last_commit_id?: string }>(this.url(
+          `/projects/${pid}/repository/files/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(opts.expectedHead)}`,
+        ), { headers: this.headers() })
+        if (current.blob_id !== file.sha || !current.last_commit_id) throw new Error(`GitLab file changed or lacks commit metadata: ${file.path}`)
+        lastCommitId = current.last_commit_id
+      }
+      actions.push({ action: file.sha ? 'update' : 'create', file_path: file.path,
+        content: encodeContentBase64(file.content), encoding: 'base64', last_commit_id: lastCommitId })
+    }
+    const commit = await this.json<{ id: string }>(this.url(`/projects/${pid}/repository/commits`), {
+      method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ branch: opts.branch, commit_message: opts.message, actions }),
+    })
+    return { sha: commit.id }
   }
 
   async createBranch(opts: {
@@ -176,15 +218,20 @@ export class GitLabProvider implements GitProviderV1 {
     to: string
     title: string
     body?: string
+    source?: { owner: string; repo: string }
   }): Promise<{ url: string; number: number }> {
     // GitLab calls pull requests "merge requests".
-    const pid = this.projectId(opts.owner, opts.repo)
+    const targetId = opts.source ? (await this.json<{ id: number }>(
+      this.url(`/projects/${this.projectId(opts.owner, opts.repo)}`), { headers: this.headers() },
+    )).id : undefined
+    const pid = this.projectId(opts.source?.owner ?? opts.owner, opts.source?.repo ?? opts.repo)
     const url = this.url(`/projects/${pid}/merge_requests`)
     const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         source_branch: opts.from,
+        target_project_id: targetId,
         target_branch: opts.to,
         title: opts.title,
         description: opts.body,
@@ -196,6 +243,32 @@ export class GitLabProvider implements GitProviderV1 {
     }
     const mr = (await res.json()) as { web_url: string; iid: number }
     return { url: mr.web_url, number: mr.iid }
+  }
+
+  async getPullRequest(opts: PullRequestRef): Promise<PullRequestReview> {
+    const mr = await this.json<{
+      iid: number; web_url: string; state: string; sha: string; draft?: boolean;
+      user?: { can_merge?: boolean }; detailed_merge_status?: string; merge_status?: string;
+    }>(this.url(`/projects/${this.projectId(opts.owner, opts.repo)}/merge_requests/${opts.number}`), { headers: this.headers() })
+    return {
+      number: mr.iid, url: mr.web_url, head_sha: mr.sha,
+      state: mr.state === 'merged' ? 'merged' : mr.state === 'opened' ? 'open' : 'closed',
+      can_merge: mr.user?.can_merge === true,
+      mergeable: !mr.draft && (mr.detailed_merge_status === 'mergeable'
+        || (!mr.detailed_merge_status && mr.merge_status === 'can_be_merged')),
+    }
+  }
+
+  async mergePullRequest(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }> {
+    assertMergeable(await this.getPullRequest(opts), opts.expectedHead)
+    const result = await this.json<{ state: string; merge_commit_sha?: string; squash_commit_sha?: string }>(
+      this.url(`/projects/${this.projectId(opts.owner, opts.repo)}/merge_requests/${opts.number}/merge`), {
+        method: 'PUT', headers: this.headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ sha: opts.expectedHead, squash: opts.method === 'squash', should_remove_source_branch: false }),
+      },
+    )
+    if (result.state !== 'merged') throw new Error('GitLab did not confirm that the merge request was merged.')
+    return { merged: true, sha: result.merge_commit_sha || result.squash_commit_sha }
   }
 
   async listTree(opts: {
@@ -249,6 +322,24 @@ export class GitLabProvider implements GitProviderV1 {
       author: c.author_name,
       date: c.authored_date,
     }))
+  }
+
+  async ensureFork(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef> {
+    if (!this.token) throw new Error('Authentication is required to create a personal fork')
+    const map = (data: { id: number; path: string; namespace: { full_path: string }; default_branch?: string;
+      forked_from_project?: { id: number }; import_status?: string;
+      permissions?: { project_access?: { access_level: number }; group_access?: { access_level: number } } }): ForkRepository => ({
+      id: data.id, owner: data.namespace.full_path, repo: data.path, default_branch: data.default_branch || 'main',
+      parentId: data.forked_from_project?.id, importStatus: data.import_status,
+      writable: Math.max(data.permissions?.project_access?.access_level || 0, data.permissions?.group_access?.access_level || 0) >= 30,
+    })
+    return ensurePersonalFork({ upstream: opts, destination: opts.destination,
+      currentUser: async () => (await this.json<{ username: string }>(this.url('/user'), { headers: this.headers() })).username,
+      getRepository: async (owner, repo) => map(await this.json(this.url(`/projects/${this.projectId(owner, repo)}`), { headers: this.headers() })),
+      create: async () => map(await this.json(this.url(`/projects/${this.projectId(opts.owner, opts.repo)}/fork`), {
+        method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(opts.destination ? { namespace_path: opts.destination } : {}),
+      })),
+    })
   }
 
   async canWrite(owner: string, repo: string): Promise<boolean> {

@@ -91,7 +91,17 @@ docker compose up --build
 
 The UI is available at `http://localhost:3000` (configurable via `UI_PORT` in `.env`).
 
-Configure the backend API URL in the settings modal once the app is running.
+Configure and select the backend API URL in **Settings → Backend API hosts**,
+then open **Git Sources** to connect the recommended public Range42 catalog.
+No Git token is required for the default repository. See
+[catalog onboarding](docs/catalog-onboarding.md) for custom repositories,
+credentials, and deployment prerequisites.
+
+Git-bound projects save edits to a dedicated working branch. See the
+[Git authoring workflow](docs/git-authoring-workflow.md) for publishing the same
+snapshot to public and private repositories, creating Ansible roles, and the
+[concrete scenario authoring workflow](docs/concrete-scenario-authoring.md) for
+SDN, VM bootstrap, guest content updates and deployment VM teardown.
 
 ### Docker: Build & Push
 
@@ -163,4 +173,3 @@ To be defined.
 ## License
 
 - GPL-3.0 license
-

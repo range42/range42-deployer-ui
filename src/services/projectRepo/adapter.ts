@@ -6,10 +6,10 @@
  *  - autosave: write the current state to a per-browser `draft-<uuid>` branch
  *    and mirror the write to IndexedDB `pending_commits` (for recovery on
  *    connectivity loss).
- *  - save: fast-forward merge onto `main`; if the push can't fast-forward,
- *    open a PR from the draft branch to `main` and surface the URL.
+ *  - save: pin the saved working branch HEAD. Publication is a separate action
+ *    that either proposes a merge or explicitly copies the snapshot to a target branch.
  *  - acquireLock / heartbeat / checkLockOwnership: .lock file coordination
- *    against `main` so concurrent browser sessions can detect collisions.
+ *    against the working branch so concurrent browser sessions can detect collisions.
  */
 
 import type { GitProviderV1 } from '@/services/git/types'
@@ -39,19 +39,19 @@ function defaultBranchFor(_opts: AdapterConstructorOpts): string {
 }
 
 function overlayPath(projectPath: string): string {
-  return `${projectPath.replace(/\/+$/, '')}/overlay.json`
+  return `${projectPath ? projectPath.replace(/\/+$/, '') + '/' : ''}overlay.json`
 }
 
 function layoutPath(projectPath: string): string {
-  return `${projectPath.replace(/\/+$/, '')}/canvas_layout.json`
+  return `${projectPath ? projectPath.replace(/\/+$/, '') + '/' : ''}canvas_layout.json`
 }
 
 function metaPath(projectPath: string): string {
-  return `${projectPath.replace(/\/+$/, '')}/meta.json`
+  return `${projectPath ? projectPath.replace(/\/+$/, '') + '/' : ''}meta.json`
 }
 
 function lockPath(projectPath: string): string {
-  return `${projectPath.replace(/\/+$/, '')}/.lock`
+  return `${projectPath ? projectPath.replace(/\/+$/, '') + '/' : ''}.lock`
 }
 
 // Unlike the sibling *Path helpers, this intentionally omits the leading slash
@@ -91,11 +91,13 @@ class RepoAdapter implements ProjectRepoAdapter {
   private repo: string
   private mainBranch: string
   private draftBranch: string
+  private branchFrom: string
   private projectPath: string
   private browserInstanceId: string
   private orphanCbs: Array<(draftId: string) => void> = []
   private shaCache = new Map<string, string>()
   private heartbeatStarted = false
+  private writtenPaths: string[] = []
 
   constructor(opts: AdapterConstructorOpts) {
     this.provider = opts.provider
@@ -106,9 +108,11 @@ class RepoAdapter implements ProjectRepoAdapter {
     this.owner = firstRepo.owner
     this.repo = firstRepo.repo
     this.mainBranch = firstRepo.branch || defaultBranchFor(opts)
+    this.branchFrom = opts.branchFrom || this.mainBranch
     this.projectPath = opts.projectPath
     this.browserInstanceId = opts.browserInstanceId ?? uuid()
-    this.draftBranch = draftBranchFor(this.browserInstanceId)
+    this.draftBranch = opts.workingBranch || draftBranchFor(this.browserInstanceId)
+    if (this.draftBranch === this.mainBranch) throw new Error('Choose a dedicated working branch, separate from the base branch')
   }
 
   // ---------------------------------------------------------------------------
@@ -117,44 +121,34 @@ class RepoAdapter implements ProjectRepoAdapter {
 
   async load(_projectId: string): Promise<ProjectState> {
     const [overlay, layout, meta, topology] = await Promise.all([
-      this.safeGet(overlayPath(this.projectPath)),
-      this.safeGet(layoutPath(this.projectPath)),
-      this.safeGet(metaPath(this.projectPath)),
-      this.safeGet(topologyPath(this.projectPath)),
+      this.loadFile(overlayPath(this.projectPath)),
+      this.loadFile(layoutPath(this.projectPath)),
+      this.loadFile(metaPath(this.projectPath)),
+      this.loadFile(topologyPath(this.projectPath)),
     ])
+    const metadata = meta ? safeParseJson(meta.content) : {}
+    const authoredPaths = Array.isArray(metadata.ui_files) ? metadata.ui_files : []
+    const authored = await Promise.all(authoredPaths.map(async (path: string) => {
+      const file = await this.loadFile(this.authoredFilePath(path))
+      if (!file) throw new Error(`Saved authored file is missing: ${path}`)
+      return [path, file.content]
+    }))
+    delete metadata.ui_files
     return {
-      overlay: overlay?.content ?? '',
-      canvas_layout: layout?.content ?? '',
-      meta: meta ? safeParseJson(meta.content) : {},
-      topology: topology?.content ?? '',
+      overlay: overlay?.content ?? '', canvas_layout: layout?.content ?? '',
+      meta: metadata, topology: topology?.content ?? '', files: Object.fromEntries(authored),
     }
   }
 
   async autosave(projectId: string, state: ProjectState): Promise<void> {
-    // Ensure the draft branch exists before first write. Errors on "already
-    // exists" (422/400 shapes vary by provider) are tolerated — we only care
-    // that the branch is present.
-    await this.ensureDraftBranch()
-
-    const writes: Array<{ path: string; content: string }> = [
-      { path: overlayPath(this.projectPath), content: state.overlay },
-      { path: layoutPath(this.projectPath), content: state.canvas_layout },
-      { path: metaPath(this.projectPath), content: JSON.stringify(state.meta, null, 2) },
-      { path: topologyPath(this.projectPath), content: state.topology ?? '' },
-    ]
-    for (const w of writes) {
-      const sha = this.shaCache.get(`${this.draftBranch}:${w.path}`)
-      const res = await this.provider.putFile({
-        owner: this.owner,
-        repo: this.repo,
-        path: w.path,
-        content: w.content,
-        sha,
-        message: `autosave: ${projectId}`,
-        branch: this.draftBranch,
-      })
-      this.shaCache.set(`${this.draftBranch}:${w.path}`, res.sha)
+    const files = {
+      [overlayPath(this.projectPath)]: state.overlay,
+      [layoutPath(this.projectPath)]: state.canvas_layout,
+      [metaPath(this.projectPath)]: JSON.stringify({ ...state.meta, ui_files: Object.keys(state.files || {}) }, null, 2),
+      [topologyPath(this.projectPath)]: state.topology ?? '',
+      ...Object.fromEntries(Object.entries(state.files || {}).map(([path, content]) => [this.authoredFilePath(path), content])),
     }
+    await this.stageFiles(projectId, files, `autosave: ${projectId}`)
 
     // Mirror to IndexedDB `pending_commits` for crash recovery.
     try {
@@ -178,30 +172,81 @@ class RepoAdapter implements ProjectRepoAdapter {
     }
   }
 
-  async save(projectId: string, message: string): Promise<{ pr_url?: string; commit_sha?: string }> {
-    // Try fast-forward: rewrite the main-branch files from the latest draft
-    // files. We resolve each file by GETting the draft and PUTting onto main.
-    try {
-      await this.copyDraftIntoMain(projectId, message)
-      // Surface the resulting main-branch HEAD so callers can pin a deploy to
-      // the exact commit the backend will clone+checkout.
-      const commit_sha = await this.headCommitSha(this.mainBranch)
-      return commit_sha ? { commit_sha } : {}
-    } catch (err) {
-      // If the fast-forward PUT fails, fall back to opening a PR.
-      if (isConflictError(err)) {
-        const pr = await this.provider.createPullRequest({
-          owner: this.owner,
-          repo: this.repo,
-          from: this.draftBranch,
-          to: this.mainBranch,
-          title: message || `Save ${projectId}`,
-          body: 'Autogenerated by Range42 Deployer UI.',
-        })
-        return { pr_url: pr.url }
-      }
-      throw err
+  async stageFiles(projectId: string, files: Record<string, string>, message: string): Promise<void> {
+    if (!await this.provider.canWrite(this.owner, this.repo)) {
+      throw new Error('Write permission is required for this repository')
     }
+    await this.ensureDraftBranch()
+    this.writtenPaths = Object.keys(files)
+    if (this.provider.commitFiles) {
+      await this.writeAtomicSnapshot(this.draftBranch, files, message || `Save ${projectId}`)
+      return
+    }
+    for (const [path, content] of Object.entries(files)) {
+      const key = `${this.draftBranch}:${path}`
+      const existing = await this.safeGet(path, this.draftBranch)
+      if (existing?.content === content) continue
+      const sha = this.shaCache.get(key) ?? existing?.sha
+      const result = await this.provider.putFile({
+        owner: this.owner, repo: this.repo, path, content, sha,
+        message: message || `Save ${projectId}`, branch: this.draftBranch,
+      })
+      this.shaCache.set(key, result.sha)
+    }
+  }
+
+  async save(_projectId: string, _message: string): Promise<{ commit_sha: string; branch: string }> {
+    return { commit_sha: await this.headCommitSha(this.draftBranch), branch: this.draftBranch }
+  }
+
+  async proposeMerge(projectId: string, message: string): Promise<{ pr_url: string }> {
+    const pr = await this.provider.createPullRequest({
+      owner: this.owner, repo: this.repo, from: this.draftBranch, to: this.mainBranch,
+      title: message || `Save ${projectId}`, body: 'Changes prepared in Range42 Deployer UI.',
+    })
+    return { pr_url: pr.url }
+  }
+
+  async publishDirect(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }> {
+    let written = 0
+    try {
+      if (this.provider.commitFiles) {
+        const files = Object.fromEntries(await Promise.all(this.writtenPaths.map(async path => [path,
+          (await this.provider.getFile({ owner: this.owner, repo: this.repo, path, ref: this.draftBranch })).content,
+        ])))
+        return { commit_sha: await this.writeAtomicSnapshot(this.mainBranch, files, message || `Publish ${projectId}`), branch: this.mainBranch }
+      }
+      for (const path of this.writtenPaths) {
+        const file = await this.provider.getFile({ owner: this.owner, repo: this.repo, path, ref: this.draftBranch })
+        const existing = await this.safeGet(path, this.mainBranch)
+        if (existing?.content === file.content) continue
+        await this.provider.putFile({
+          owner: this.owner, repo: this.repo, path, content: file.content, sha: existing?.sha,
+          message: message || `Publish ${projectId}`, branch: this.mainBranch,
+        })
+        written += 1
+      }
+      return { commit_sha: await this.headCommitSha(this.mainBranch), branch: this.mainBranch }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      if (this.provider.commitFiles) {
+        throw Object.assign(new Error(`Atomic publication could not be confirmed for ${this.mainBranch}. ${reason}`), { partial: false })
+      }
+      throw Object.assign(new Error(`${written} file(s) already written to ${this.mainBranch}. ${reason}`), { partial: written > 0 })
+    }
+  }
+
+  private async writeAtomicSnapshot(branch: string, files: Record<string, string>, message: string): Promise<string> {
+    const expectedHead = await this.headCommitSha(branch)
+    const changes = []
+    for (const [path, content] of Object.entries(files)) {
+      const existing = await this.safeGet(path, expectedHead)
+      if (existing?.content !== content) changes.push({ path, content, sha: existing?.sha })
+    }
+    if (!changes.length) return expectedHead
+    const commit = await this.provider.commitFiles!({ owner: this.owner, repo: this.repo, branch, expectedHead, message, files: changes })
+    if (!commit.sha) throw new Error('The Git provider did not confirm the saved commit')
+    return commit.sha
   }
 
   // ---------------------------------------------------------------------------
@@ -267,12 +312,20 @@ class RepoAdapter implements ProjectRepoAdapter {
   // Internals
   // ---------------------------------------------------------------------------
 
+  private authoredFilePath(path: string): string {
+    if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..' || part === '.git')) {
+      throw new Error(`Invalid authored file path: ${path}`)
+    }
+    const prefix = this.projectPath.replace(/\/+$/, '')
+    return prefix ? `${prefix}/${path}` : path
+  }
+
   private async ensureDraftBranch(): Promise<void> {
     try {
       await this.provider.createBranch({
         owner: this.owner,
         repo: this.repo,
-        from: this.mainBranch,
+        from: this.branchFrom,
         name: this.draftBranch,
       })
     } catch (err) {
@@ -290,14 +343,20 @@ class RepoAdapter implements ProjectRepoAdapter {
         owner: this.owner,
         repo: this.repo,
         path,
-        ref: ref ?? this.mainBranch,
+        ref: ref ?? this.draftBranch,
       })
-    } catch {
-      return null
+    } catch (error) {
+      if (/404|not found/i.test(error instanceof Error ? error.message : String(error))) return null
+      throw error
     }
   }
 
+  private async loadFile(path: string) {
+    return await this.safeGet(path, this.draftBranch) ?? await this.safeGet(path, this.mainBranch)
+  }
+
   private async writeLock(info: LockInfo): Promise<void> {
+    await this.ensureDraftBranch()
     const path = lockPath(this.projectPath)
     const existing = await this.safeGet(path)
     await this.provider.putFile({
@@ -307,62 +366,20 @@ class RepoAdapter implements ProjectRepoAdapter {
       content: JSON.stringify(info, null, 2),
       sha: existing?.sha,
       message: `lock heartbeat: ${info.editor_id}`,
-      branch: this.mainBranch,
+      branch: this.draftBranch,
     })
   }
 
-  private async headCommitSha(ref: string): Promise<string | undefined> {
-    try {
-      const commits = await this.provider.listCommits({
-        owner: this.owner,
-        repo: this.repo,
-        ref,
-        perPage: 1,
-      })
-      return commits[0]?.sha
-    } catch {
-      // A missing HEAD SHA is non-fatal: the save itself succeeded, the caller
-      // simply won't get a pinned commit to pre-fill the deploy form.
-      return undefined
-    }
+  private async headCommitSha(ref: string): Promise<string> {
+    const commits = await this.provider.listCommits({ owner: this.owner, repo: this.repo, ref, perPage: 1 })
+    if (!commits[0]?.sha) throw new Error('Cannot pin the saved branch HEAD revision')
+    return commits[0].sha
   }
-
-  private async copyDraftIntoMain(projectId: string, message: string): Promise<void> {
-    const paths = [
-      overlayPath(this.projectPath),
-      layoutPath(this.projectPath),
-      metaPath(this.projectPath),
-      topologyPath(this.projectPath),
-    ]
-    for (const p of paths) {
-      const draftFile = await this.provider.getFile({
-        owner: this.owner,
-        repo: this.repo,
-        path: p,
-        ref: this.draftBranch,
-      })
-      const mainFile = await this.safeGet(p)
-      await this.provider.putFile({
-        owner: this.owner,
-        repo: this.repo,
-        path: p,
-        content: draftFile.content,
-        sha: mainFile?.sha,
-        message: `${message} (${projectId})`,
-        branch: this.mainBranch,
-      })
-    }
-  }
-}
-
-function isConflictError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /409|conflict|fast-forward|sha.*mismatch/i.test(msg)
 }
 
 function isBranchAlreadyExistsError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)
-  return /already exists|422|branch.*exists/i.test(msg)
+  return /already exists|branch.*exists/i.test(msg)
 }
 
 function safeParseJson<T = Record<string, unknown>>(s: string): T {

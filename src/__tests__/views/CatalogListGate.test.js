@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
@@ -11,6 +11,8 @@ import { useProjectStore } from '@/stores/projectStore'
 import catalogEn from '@/locales/en/catalog.json'
 import commonEn from '@/locales/en/common.json'
 import sourcesEn from '@/locales/en/sources.json'
+
+enableAutoUnmount(afterEach)
 
 const PAGE = {
   items: [

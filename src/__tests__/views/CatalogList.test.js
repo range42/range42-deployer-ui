@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
@@ -9,6 +9,8 @@ import { useInventoryStore } from '@/stores/inventoryStore'
 import catalogEn from '@/locales/en/catalog.json'
 import commonEn from '@/locales/en/common.json'
 import sourcesEn from '@/locales/en/sources.json'
+
+enableAutoUnmount(afterEach)
 
 // Two entries from the SAME source but DIFFERENT kinds, so that kind filtering
 // is exercised in isolation from source filtering.
@@ -43,14 +45,23 @@ function makeRouter() {
   })
 }
 
-async function mountList() {
+async function mountList(seedSource = true) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const inv = useInventoryStore()
-  inv.addSource({ id: 'src-a', provider: 'gitlab', base_url: 'https://gl.example', auth: { kind: 'none' }, repos: [] })
+  if (seedSource) inv.addSource({ id: 'src-a', provider: 'gitlab', base_url: 'https://gl.example', auth: { kind: 'none' }, repos: [] })
 
   const wrapper = mount(CatalogList, {
-    global: { plugins: [pinia, makeI18n(), makeRouter()] },
+    global: {
+      plugins: [pinia, makeI18n(), makeRouter()],
+      stubs: {
+        PublishTargetsModal: {
+          name: 'PublishTargetsModal',
+          props: ['open', 'projectId', 'files', 'message', 'createOnly', 'componentPath'],
+          template: '<div v-if="open" data-testid="publish-role-targets" />',
+        },
+      },
+    },
   })
   await flushPromises()
   return wrapper
@@ -89,6 +100,11 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     expect(url).not.toMatch(/[?&]source_id=/)
   })
 
+  it('shows backend entries on a fresh browser without a local source mirror', async () => {
+    const wrapper = await mountList(false)
+    expect(gridKinds(wrapper)).toEqual(['lab', 'container'])
+  })
+
   it('narrows to a single kind, then WIDENS to multiple without a refetch (the bug)', async () => {
     const wrapper = await mountList()
 
@@ -112,5 +128,26 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     await flushPromises()
     expect(gridKinds(wrapper)).toEqual(['container'])
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes reviewed new role files to the shared publisher with create-only protection', async () => {
+    const wrapper = await mountList()
+    await wrapper.get('[data-testid="new-catalog-role"]').trigger('click')
+    const role = wrapper.findComponent({ name: 'NewRoleModal' })
+    await role.get('[name="target"]').setValue('example')
+    await role.get('[name="description"]').setValue('Install example')
+    await role.get('[name="tasks"]').setValue('- name: Install example\n  ansible.builtin.package:\n    name: example\n')
+    await role.get('form').trigger('submit')
+    await role.get('[data-testid="role-continue"]').trigger('click')
+    const publisher = wrapper.findComponent({ name: 'PublishTargetsModal' })
+    expect(publisher.props('open')).toBe(true)
+    expect(publisher.props('createOnly')).toBe(true)
+    expect(publisher.props('componentPath')).toBe('02_ansible_layer/admin/roles/software.install.example')
+    expect(Object.keys(publisher.props('files'))).toHaveLength(4)
+    expect(publisher.props('projectId')).toMatch(/^catalog-role-/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    await publisher.vm.$emit('close')
+    await flushPromises()
+    expect(role.get('[name="target"]').element.value).toBe('example')
   })
 })

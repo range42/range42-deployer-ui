@@ -1,3 +1,5 @@
+import type { PullRequestRef, PullRequestReview, MergePullRequestOptions } from './types'
+import { assertMergeable } from './review'
 /**
  * GitHub Provider (v1 interface)
  *
@@ -16,8 +18,9 @@
  * Docs: https://docs.github.com/en/rest
  */
 
-import type { GitProviderV1, RepoRef, CommitRef } from './types'
+import type { GitProviderV1, RepoRef, CommitRef, CommitFilesOptions } from './types'
 import { encodeContentBase64, decodeContentBase64 } from './encoding'
+import { ensurePersonalFork, type ForkRepository } from './personalFork'
 
 export interface GitHubV1ProviderOpts {
   baseUrl?: string        // e.g. https://github.com or https://ghe.corp.example
@@ -139,6 +142,30 @@ export class GitHubV1Provider implements GitProviderV1 {
     return { sha: body.content.sha }
   }
 
+  async commitFiles(opts: CommitFilesOptions): Promise<{ sha: string }> {
+    if (!opts.files.length) return { sha: opts.expectedHead }
+    const root = `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/git`
+    const base = await this.json<{ tree: { sha: string } }>(this.url(`${root}/commits/${opts.expectedHead}`), { headers: this.headers() })
+    const existing = await this.json<{ tree: Array<{ path: string; mode: string }>; truncated?: boolean }>(
+      this.url(`${root}/trees/${base.tree.sha}?recursive=true`), { headers: this.headers() },
+    )
+    if (existing.truncated) throw new Error('Repository tree is too large to preserve file modes safely')
+    const modes = new Map(existing.tree.map(file => [file.path, file.mode]))
+    const tree = await this.json<{ sha: string }>(this.url(`${root}/trees`), {
+      method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ base_tree: base.tree.sha, tree: opts.files.map(file => ({ path: file.path, mode: modes.get(file.path) || '100644', type: 'blob', content: file.content })) }),
+    })
+    const commit = await this.json<{ sha: string }>(this.url(`${root}/commits`), {
+      method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ message: opts.message, tree: tree.sha, parents: [opts.expectedHead] }),
+    })
+    await this.json(this.url(`${root}/refs/heads/${encodeURIComponent(opts.branch)}`), {
+      method: 'PATCH', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ sha: commit.sha, force: false }),
+    })
+    return { sha: commit.sha }
+  }
+
   async createBranch(opts: {
     owner: string
     repo: string
@@ -147,7 +174,7 @@ export class GitHubV1Provider implements GitProviderV1 {
   }): Promise<void> {
     // GitHub has no single create-branch endpoint: resolve the source ref's
     // commit SHA, then create a new ref pointing at it.
-    const ref = await this.json<{ object: { sha: string } }>(
+    const ref = /^[a-f0-9]{40,64}$/i.test(opts.from) ? { object: { sha: opts.from } } : await this.json<{ object: { sha: string } }>(
       this.url(
         `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/git/ref/heads/${encodeURIComponent(opts.from)}`,
       ),
@@ -176,6 +203,7 @@ export class GitHubV1Provider implements GitProviderV1 {
     to: string
     title: string
     body?: string
+    source?: { owner: string; repo: string }
   }): Promise<{ url: string; number: number }> {
     const res = await this.fetchImpl(
       this.url(
@@ -185,7 +213,7 @@ export class GitHubV1Provider implements GitProviderV1 {
         method: 'POST',
         headers: this.headers({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
-          head: opts.from,
+          head: opts.source ? `${opts.source.owner}:${opts.from}` : opts.from,
           base: opts.to,
           title: opts.title,
           body: opts.body,
@@ -198,6 +226,30 @@ export class GitHubV1Provider implements GitProviderV1 {
     }
     const pr = (await res.json()) as { html_url: string; number: number }
     return { url: pr.html_url, number: pr.number }
+  }
+
+  async getPullRequest(opts: PullRequestRef): Promise<PullRequestReview> {
+    const pr = await this.json<{
+      number: number; html_url: string; state: string; head: { sha: string };
+      merged?: boolean; draft?: boolean; mergeable?: boolean; mergeable_state?: string;
+    }>(this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls/${opts.number}`), { headers: this.headers() })
+    return {
+      number: pr.number, url: pr.html_url, head_sha: pr.head?.sha,
+      state: pr.merged ? 'merged' : pr.state === 'open' ? 'open' : 'closed',
+      can_merge: await this.canWrite(opts.owner, opts.repo),
+      mergeable: !pr.draft && pr.mergeable === true && pr.mergeable_state === 'clean',
+    }
+  }
+
+  async mergePullRequest(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }> {
+    assertMergeable(await this.getPullRequest(opts), opts.expectedHead)
+    const url = this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls/${opts.number}/merge`)
+    const result = await this.json<{ merged: boolean; sha?: string; message?: string }>(url, {
+      method: 'PUT', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ sha: opts.expectedHead, merge_method: opts.method || 'merge' }),
+    })
+    if (!result.merged) throw new Error(result.message || 'GitHub did not confirm that the pull request was merged.')
+    return { merged: true, sha: result.sha }
   }
 
   async listTree(opts: {
@@ -253,6 +305,22 @@ export class GitHubV1Provider implements GitProviderV1 {
       author: c.commit.author.name,
       date: c.commit.author.date,
     }))
+  }
+
+  async ensureFork(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef> {
+    if (!this.token) throw new Error('Authentication is required to create a personal fork')
+    const map = (data: { id: number; name: string; owner: { login: string }; default_branch?: string;
+      parent?: { id: number }; permissions?: { push?: boolean; admin?: boolean } }): ForkRepository => ({
+      id: data.id, owner: data.owner.login, repo: data.name, default_branch: data.default_branch || 'main',
+      parentId: data.parent?.id, writable: Boolean(data.permissions?.push || data.permissions?.admin),
+    })
+    return ensurePersonalFork({ upstream: opts, destination: opts.destination,
+      currentUser: async () => (await this.json<{ login: string }>(this.url('/user'), { headers: this.headers() })).login,
+      getRepository: async (owner, repo) => map(await this.json(this.url(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`), { headers: this.headers() })),
+      create: async () => map(await this.json(this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/forks`), {
+        method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }), body: JSON.stringify({ default_branch_only: false, ...(opts.destination ? { organization: opts.destination } : {}) }),
+      })),
+    })
   }
 
   async canWrite(owner: string, repo: string): Promise<boolean> {

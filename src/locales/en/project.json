@@ -1,4 +1,11 @@
 {
+  "git": {
+    "saved": "Saved to {branch} · revision {sha}",
+    "failed": "Git save failed: {error}",
+    "publish": "Publish…",
+    "saving": "Saving to the working branch…",
+    "changedDuringSave": "The project changed while saving. Save the current changes before deploying."
+  },
   "tabs": {
     "canvas": "Canvas",
     "config": "Config",

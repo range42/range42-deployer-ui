@@ -1,5 +1,6 @@
 {
   "title": "カタログ",
+  "new_role": "Ansible ロールを作成",
   "subtitle": "複数のGitソースをまたいで、ラボ、ゲームネット、コンポーネントを閲覧できます。",
   "filters": {
     "kind": "種別",

@@ -308,8 +308,41 @@ export interface RepoRef {
   default_branch: string
 }
 
+export interface CommitFilesOptions {
+  owner: string
+  repo: string
+  branch: string
+  message: string
+  expectedHead: string
+  files: Array<{ path: string; content: string; sha?: string }>
+}
+
+export interface PullRequestRef {
+  owner: string
+  repo: string
+  number: number
+}
+
+export interface PullRequestReview {
+  number: number
+  url: string
+  state: 'open' | 'closed' | 'merged'
+  head_sha: string
+  can_merge: boolean
+  mergeable: boolean
+}
+
+export interface MergePullRequestOptions extends PullRequestRef {
+  expectedHead: string
+  method?: 'merge' | 'squash'
+}
+
 export interface GitProviderV1 {
   id: GitProviderV1Kind
+  getPullRequest?(opts: PullRequestRef): Promise<PullRequestReview>
+  mergePullRequest?(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }>
+  ensureFork?(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef>
+  commitFiles?(opts: CommitFilesOptions): Promise<{ sha: string }>
   listRepos(opts: { owner?: string }): Promise<RepoRef[]>
   getFile(opts: {
     owner: string
@@ -339,6 +372,7 @@ export interface GitProviderV1 {
     to: string
     title: string
     body?: string
+    source?: { owner: string; repo: string }
   }): Promise<{ url: string; number: number }>
   listTree(opts: {
     owner: string

@@ -34,6 +34,8 @@ export interface ProjectState {
   canvas_layout: string
   meta: Record<string, unknown>
   topology?: string
+  /** Additional scenario or content files, relative to the project subdirectory. */
+  files?: Record<string, string>
 }
 
 export interface LockInfo {
@@ -47,13 +49,11 @@ export type BranchStrategy = 'shared_repo_subdir' | 'dedicated_repo'
 export interface ProjectRepoAdapter {
   load(projectId: string): Promise<ProjectState>
   autosave(projectId: string, state: ProjectState): Promise<void>
-  /**
-   * Promote the draft onto the main branch. On a clean fast-forward, returns
-   * `commit_sha` — the main-branch HEAD commit the backend can clone+checkout.
-   * On conflict it opens a PR and returns `pr_url` (no deployable SHA until the
-   * PR merges).
-   */
-  save(projectId: string, message: string): Promise<{ pr_url?: string; commit_sha?: string }>
+  /** Save checkpoints the working branch; publishing is always explicit. */
+  save(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
+  stageFiles(projectId: string, files: Record<string, string>, message: string): Promise<void>
+  proposeMerge(projectId: string, message: string): Promise<{ pr_url: string }>
+  publishDirect(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
   acquireLock(projectId: string): Promise<LockInfo>
   heartbeat(projectId: string): Promise<void>
   /**
@@ -75,6 +75,8 @@ export interface AdapterConstructorOpts {
   branchStrategy: BranchStrategy
   projectPath: string
   browserInstanceId?: string
+  workingBranch?: string
+  branchFrom?: string
 }
 
 export { createProjectRepoAdapter } from './adapter'

@@ -1,3 +1,5 @@
+import type { PullRequestRef, PullRequestReview, MergePullRequestOptions } from './types'
+import { assertMergeable } from './review'
 /**
  * Gitea Provider (v1 interface)
  *
@@ -9,8 +11,9 @@
  * adapter simpler than GitLab's.
  */
 
-import type { GitProviderV1, RepoRef, CommitRef } from './types'
+import type { GitProviderV1, RepoRef, CommitRef, CommitFilesOptions } from './types'
 import { encodeContentBase64, decodeContentBase64 } from './encoding'
+import { ensurePersonalFork, type ForkRepository } from './personalFork'
 
 export interface GiteaProviderOpts {
   baseUrl?: string        // e.g. https://gitea.example.com
@@ -134,6 +137,19 @@ export class GiteaProvider implements GitProviderV1 {
     return { sha: body.content.sha }
   }
 
+  async commitFiles(opts: CommitFilesOptions): Promise<{ sha: string }> {
+    if (!opts.files.length) return { sha: opts.expectedHead }
+    const result = await this.json<{ commit: { sha: string } }>(this.url(
+      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents`,
+    ), { method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ branch: opts.branch, message: opts.message,
+        files: opts.files.map(file => ({ path: file.path, content: encodeContentBase64(file.content),
+          sha: file.sha, operation: file.sha ? 'update' : 'create' })),
+      }),
+    })
+    return { sha: result.commit.sha }
+  }
+
   async createBranch(opts: {
     owner: string
     repo: string
@@ -146,7 +162,7 @@ export class GiteaProvider implements GitProviderV1 {
     const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ new_branch_name: opts.name, old_branch_name: opts.from }),
+      body: JSON.stringify({ new_branch_name: opts.name, ...(/^[a-f0-9]{40,64}$/i.test(opts.from) ? { old_ref_name: opts.from } : { old_branch_name: opts.from }) }),
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -161,6 +177,7 @@ export class GiteaProvider implements GitProviderV1 {
     to: string
     title: string
     body?: string
+    source?: { owner: string; repo: string }
   }): Promise<{ url: string; number: number }> {
     const url = this.url(
       `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls`,
@@ -169,7 +186,7 @@ export class GiteaProvider implements GitProviderV1 {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        head: opts.from,
+        head: opts.source ? `${opts.source.owner}:${opts.from}` : opts.from,
         base: opts.to,
         title: opts.title,
         body: opts.body,
@@ -181,6 +198,31 @@ export class GiteaProvider implements GitProviderV1 {
     }
     const pr = (await res.json()) as { html_url: string; number: number }
     return { url: pr.html_url, number: pr.number }
+  }
+
+  async getPullRequest(opts: PullRequestRef): Promise<PullRequestReview> {
+    const pr = await this.json<{
+      number: number; html_url: string; state: string; head: { sha: string };
+      merged?: boolean; draft?: boolean; mergeable?: boolean; mergeable_state?: string;
+    }>(this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls/${opts.number}`), { headers: this.headers() })
+    return {
+      number: pr.number, url: pr.html_url, head_sha: pr.head?.sha,
+      state: pr.merged ? 'merged' : pr.state === 'open' ? 'open' : 'closed',
+      can_merge: await this.canWrite(opts.owner, opts.repo),
+      mergeable: !pr.draft && pr.mergeable === true,
+    }
+  }
+
+  async mergePullRequest(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }> {
+    assertMergeable(await this.getPullRequest(opts), opts.expectedHead)
+    const url = this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls/${opts.number}/merge`)
+    const response = await this.fetchImpl(url, {
+      method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ head_commit_id: opts.expectedHead, do: opts.method || 'merge',
+        force_merge: false, delete_branch_after_merge: false }),
+    })
+    if (!response.ok) throw new Error(`Gitea merge -> ${response.status} ${await response.text()}`)
+    return { merged: true }
   }
 
   async listTree(opts: {
@@ -241,6 +283,22 @@ export class GiteaProvider implements GitProviderV1 {
       author: c.commit.author.name,
       date: c.commit.author.date,
     }))
+  }
+
+  async ensureFork(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef> {
+    if (!this.token) throw new Error('Authentication is required to create a personal fork')
+    const map = (data: { id: number; name: string; owner: { login: string }; default_branch?: string;
+      parent?: { id: number }; permissions?: { push?: boolean; admin?: boolean } }): ForkRepository => ({
+      id: data.id, owner: data.owner.login, repo: data.name, default_branch: data.default_branch || 'main',
+      parentId: data.parent?.id, writable: Boolean(data.permissions?.push || data.permissions?.admin),
+    })
+    return ensurePersonalFork({ upstream: opts, destination: opts.destination,
+      currentUser: async () => (await this.json<{ login: string }>(this.url('/user'), { headers: this.headers() })).login,
+      getRepository: async (owner, repo) => map(await this.json(this.url(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`), { headers: this.headers() })),
+      create: async () => map(await this.json(this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/forks`), {
+        method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(opts.destination ? { organization: opts.destination } : {}),
+      })),
+    })
   }
 
   async canWrite(owner: string, repo: string): Promise<boolean> {

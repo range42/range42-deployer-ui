@@ -112,5 +112,12 @@
     "nameRequired": "Name is required",
     "cpuMin": "CPU cores must be at least 1",
     "memoryRequired": "Memory is required"
+  },
+  "context": {
+    "group": "Groups organize related infrastructure components together.",
+    "simulated-internet": "Simulated Internet provides fake public IPs and services for isolated training.",
+    "edge-firewall": "Edge Firewall connects your network segments.",
+    "vuln-target": "Vulnerable targets are intentionally insecure systems for training purposes.",
+    "shared-service": "Shared services are accessible from all Gamenets (Git, Chat, Wiki, Auth)."
   }
 }

@@ -16,6 +16,7 @@ function makeMockProvider() {
     heads,
     impl: {
       id: 'gitlab',
+      async canWrite() { return true; },
       async listRepos() { return []; },
       async getFile({ owner, repo, path, ref }) {
         calls.push({ op: 'getFile', owner, repo, path, ref });
@@ -49,7 +50,7 @@ function makeMockProvider() {
   };
 }
 
-function makeAdapter(provider) {
+function makeAdapter(provider, options = {}) {
   return createProjectRepoAdapter({
     provider: provider.impl,
     source: {
@@ -61,6 +62,7 @@ function makeAdapter(provider) {
     branchStrategy: 'shared_repo_subdir',
     projectPath: 'projects/demo',
     browserInstanceId: 'bi-123',
+    ...options,
   });
 }
 
@@ -109,79 +111,103 @@ describe('ProjectRepoAdapter', () => {
     expect(pending[0].branch).toBe('draft-bi-123');
   });
 
-  it('save: fast-forwards draft files onto main when no conflict', async () => {
+  it('roundtrips authored files under the shared project directory', async () => {
     const mock = makeMockProvider();
     const adapter = makeAdapter(mock);
-    // Seed main with an existing overlay so we exercise the sha-aware update.
-    mock.files.set('main:projects/demo/overlay.json', {
-      content: 'old',
-      sha: 'sha-main-0',
-    });
     await adapter.autosave('proj-1', {
-      overlay: 'new-overlay',
-      canvas_layout: 'layout',
-      meta: { name: 'demo' },
+      overlay: '', canvas_layout: '{}', meta: { name: 'Demo' },
+      files: { 'scenarios/content/main.yml': '- hosts: localhost', 'scripts/setup.sh': 'echo done' },
     });
-    mock.calls.length = 0; // reset call log
-
-    const res = await adapter.save('proj-1', 'manual save');
-    expect(res.pr_url).toBeUndefined();
-
-    const mainPuts = mock.calls.filter(
-      (c) => c.op === 'putFile' && c.branch === 'main',
-    );
-    expect(mainPuts.length).toBe(4);
-    const overlayPut = mainPuts.find((p) => p.path.endsWith('/overlay.json'));
-    expect(overlayPut.sha).toBe('sha-main-0');
+    expect(mock.files.get('draft-bi-123:projects/demo/scenarios/content/main.yml').content).toBe('- hosts: localhost');
+    expect(mock.files.has('draft-bi-123:scenarios/content/main.yml')).toBe(false);
+    const restored = await makeAdapter(mock).load('proj-1');
+    expect(restored.files).toEqual({ 'scenarios/content/main.yml': '- hosts: localhost', 'scripts/setup.sh': 'echo done' });
   });
 
-  it('save: returns the main HEAD commit_sha after a fast-forward (deployable SHA)', async () => {
+  it('skips unchanged file writes on repeated saves and direct publication', async () => {
     const mock = makeMockProvider();
     const adapter = makeAdapter(mock);
-    await adapter.autosave('proj-1', {
-      overlay: 'o',
-      canvas_layout: 'l',
-      meta: {},
-      topology: '{"schema_version":"1.0"}',
-    });
-
-    const res = await adapter.save('proj-1', 'manual save');
-    expect(res.pr_url).toBeUndefined();
-    expect(res.commit_sha).toBeTruthy();
-    // The returned SHA is the main branch HEAD the backend will check out.
-    expect(res.commit_sha).toBe(mock.heads.get('main'));
+    const state = { overlay: 'new', canvas_layout: '{}', meta: {} };
+    await adapter.autosave('proj-1', state);
+    await adapter.publishDirect('proj-1', 'Publish');
+    const before = mock.calls.filter(call => call.op === 'putFile').length;
+    await adapter.autosave('proj-1', state);
+    await adapter.publishDirect('proj-1', 'Publish');
+    expect(mock.calls.filter(call => call.op === 'putFile').length).toBe(before);
   });
 
-  it('save: falls back to createPullRequest on conflict error', async () => {
+  it('save: pins the dedicated branch and never writes the base branch', async () => {
     const mock = makeMockProvider();
-    // Wrap putFile so writes to main throw a conflict.
-    const underlying = mock.impl.putFile.bind(mock.impl);
-    mock.impl.putFile = async (opts) => {
-      if (opts.branch === 'main' && opts.path.endsWith('/overlay.json')) {
-        throw new Error('409 conflict: fast-forward not possible');
-      }
-      return underlying(opts);
-    };
     const adapter = makeAdapter(mock);
-    await adapter.autosave('proj-1', {
-      overlay: 'x',
-      canvas_layout: 'y',
-      meta: {},
+    mock.files.set('main:projects/demo/overlay.json', { content: 'old', sha: 'sha-main' });
+    await adapter.autosave('proj-1', { overlay: 'new', canvas_layout: '{}', meta: {} });
+    const result = await adapter.save('proj-1', 'save');
+    expect(mock.calls.filter(c => c.op === 'putFile' && c.branch === 'main')).toEqual([]);
+    expect(mock.files.get('main:projects/demo/overlay.json').content).toBe('old');
+    expect(result).toEqual({ commit_sha: mock.heads.get('draft-bi-123'), branch: 'draft-bi-123' });
+    expect(mock.calls.some(c => c.op === 'createPullRequest')).toBe(false);
+  });
+
+  it('proposeMerge: opens a PR explicitly while keeping the working revision deployable', async () => {
+    const mock = makeMockProvider();
+    const adapter = makeAdapter(mock);
+    await adapter.autosave('proj-1', { overlay: 'new', canvas_layout: '{}', meta: {} });
+    const saved = await adapter.save('proj-1', 'save');
+    const result = await adapter.proposeMerge('proj-1', 'Review this project');
+    expect(result.pr_url).toBe('https://gitlab.example.com/pr/1');
+    expect(saved.commit_sha).toBe(mock.heads.get('draft-bi-123'));
+    expect(mock.calls.find(c => c.op === 'createPullRequest')).toMatchObject({
+      from: 'draft-bi-123', to: 'main', title: 'Review this project',
     });
-    const res = await adapter.save('proj-1', 'save');
-    expect(res.pr_url).toBe('https://gitlab.example.com/pr/1');
-    // Changes are only on the draft branch (awaiting PR merge), so there is no
-    // deployable main-branch commit SHA yet.
-    expect(res.commit_sha).toBeUndefined();
-    const prCalls = mock.calls.filter((c) => c.op === 'createPullRequest');
-    expect(prCalls.length).toBe(1);
-    expect(prCalls[0].from).toBe('draft-bi-123');
-    expect(prCalls[0].to).toBe('main');
+    expect(mock.calls.some(c => c.op === 'putFile' && c.branch === 'main')).toBe(false);
+  });
+
+  it('autosave: reuses the existing working branch file SHA after a new editor session', async () => {
+    const mock = makeMockProvider();
+    const branch = 'range42-ui/project-1';
+    mock.impl.createBranch = async () => { throw new Error('Branch already exists'); };
+    mock.files.set(`${branch}:projects/demo/overlay.json`, { content: 'previous', sha: 'branch-sha' });
+    const adapter = makeAdapter(mock, { workingBranch: branch });
+    await adapter.autosave('proj-1', { overlay: 'next', canvas_layout: '{}', meta: {} });
+    expect(mock.calls.find(c => c.op === 'putFile' && c.path.endsWith('/overlay.json')))
+      .toMatchObject({ branch, sha: 'branch-sha' });
+  });
+
+  it('autosave: refuses to target the base branch directly', () => {
+    expect(() => makeAdapter(makeMockProvider(), { workingBranch: 'main' })).toThrow(/dedicated|base/i);
+  });
+
+  it('save: fails when the working branch HEAD cannot be pinned', async () => {
+    const mock = makeMockProvider();
+    mock.impl.listCommits = async () => [];
+    await expect(makeAdapter(mock).save('proj-1', 'save')).rejects.toThrow(/revision|HEAD/i);
+  });
+
+  it('autosave: refuses to write when repository permission is read-only', async () => {
+    const mock = makeMockProvider();
+    mock.impl.canWrite = async () => false;
+    await expect(makeAdapter(mock).autosave('proj-1', { overlay: '', canvas_layout: '{}', meta: {} }))
+      .rejects.toThrow(/write|permission/i);
+    expect(mock.calls).toEqual([]);
+  });
+
+  it('autosave: surfaces file read failures instead of treating them as missing files', async () => {
+    const mock = makeMockProvider();
+    mock.impl.getFile = async () => { throw new Error('401 unauthorised'); };
+    await expect(makeAdapter(mock).autosave('proj-1', { overlay: '', canvas_layout: '{}', meta: {} }))
+      .rejects.toThrow('401');
+    expect(mock.calls.some(c => c.op === 'putFile')).toBe(false);
+  });
+
+  it('heartbeat: writes its lock only on the dedicated branch', async () => {
+    const mock = makeMockProvider();
+    await makeAdapter(mock).heartbeat('proj-1');
+    expect(mock.calls.find(c => c.op === 'putFile')).toMatchObject({ branch: 'draft-bi-123' });
   });
 
   it('checkLockOwnership: owner when .lock matches browser_instance_id', async () => {
     const mock = makeMockProvider();
-    mock.files.set('main:projects/demo/.lock', {
+    mock.files.set('draft-bi-123:projects/demo/.lock', {
       content: JSON.stringify({
         editor_id: 'proj-1',
         browser_instance_id: 'bi-123',
@@ -196,7 +222,7 @@ describe('ProjectRepoAdapter', () => {
 
   it('checkLockOwnership: lost + fires onOrphanedDraft when mismatch', async () => {
     const mock = makeMockProvider();
-    mock.files.set('main:projects/demo/.lock', {
+    mock.files.set('draft-bi-123:projects/demo/.lock', {
       content: JSON.stringify({
         editor_id: 'proj-1',
         browser_instance_id: 'other-bi',

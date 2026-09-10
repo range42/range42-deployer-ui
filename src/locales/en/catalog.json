@@ -1,5 +1,6 @@
 {
   "title": "Catalog",
+  "new_role": "New Ansible role",
   "subtitle": "Browse labs, gamenets, and components across your Git sources.",
   "filters": {
     "kind": "Kind",

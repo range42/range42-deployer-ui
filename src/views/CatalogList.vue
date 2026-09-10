@@ -8,6 +8,8 @@ import { useProjectStore } from '@/stores/projectStore'
 import { getProvider } from '@/services/git'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import NewRoleModal from '@/components/catalog/NewRoleModal.vue'
+import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { ensureNamespaces } from '@/i18n'
 
 const { t } = useI18n()
@@ -26,6 +28,27 @@ const selectedOs = ref('')
 const selectedDifficulty = ref('')
 const tagInput = ref('')
 const searchQuery = ref('')
+const newRoleOpen = ref(false)
+const rolePublisherOpen = ref(false)
+const roleDraft = ref(null)
+const roleDraftId = ref('')
+
+function openNewRole() {
+  roleDraftId.value = `catalog-role-${crypto.randomUUID()}`
+  roleDraft.value = null
+  newRoleOpen.value = true
+}
+
+function publishRole(draft) {
+  roleDraft.value = draft
+  newRoleOpen.value = false
+  rolePublisherOpen.value = true
+}
+
+function closeRolePublisher() {
+  rolePublisherOpen.value = false
+  newRoleOpen.value = true
+}
 
 // Fork modal state
 const forkEntry = ref(null)
@@ -202,13 +225,29 @@ async function submitFork() {
 
 <template>
   <section class="max-w-6xl mx-auto p-6">
-    <header class="mb-6">
-      <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
-      <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
+    <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
+        <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm shrink-0" data-testid="new-catalog-role" @click="openNewRole">{{ t('catalog.new_role') }}</button>
     </header>
 
-    <!-- Empty state when no sources -->
-    <div v-if="inv.sources.length === 0">
+    <NewRoleModal :key="roleDraftId" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
+    <PublishTargetsModal
+      v-if="roleDraft"
+      :open="rolePublisherOpen"
+      :project-id="roleDraftId"
+      :files="roleDraft.files"
+      :message="`Add Ansible role ${roleDraft.name}`"
+      :create-only="true"
+      :component-path="roleDraft.path"
+      @close="closeRolePublisher"
+      @published="refresh"
+    />
+
+    <!-- Backend entries remain browsable before this browser loads its source mirror. -->
+    <div v-if="inv.sources.length === 0 && entries.length === 0 && !loading && !loadError">
       <EmptyState
         :title="t('catalog.empty.no_sources_title')"
         :description="t('catalog.empty.no_sources_desc')"

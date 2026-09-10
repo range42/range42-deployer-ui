@@ -16,8 +16,8 @@
     "pending": "En attente",
     "go": "Aller",
     "add_source": {
-      "title": "Ajouter une source Git",
-      "desc": "Enregistrez une instance GitHub, GitLab ou Gitea pour que Range42 charge les entrées de catalogue."
+      "title": "Connecter le catalogue public",
+      "desc": "Connectez et indexez le catalogue Range42 par défaut sans jeton Git, ou ajoutez votre propre dépôt."
     },
     "add_backend": {
       "title": "Ajouter un hôte backend-api",

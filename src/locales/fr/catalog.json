@@ -1,5 +1,6 @@
 {
   "title": "Catalogue",
+  "new_role": "Nouveau rôle Ansible",
   "subtitle": "Parcourez labs, gamenets et composants sur l'ensemble de vos sources Git.",
   "filters": {
     "kind": "Type",

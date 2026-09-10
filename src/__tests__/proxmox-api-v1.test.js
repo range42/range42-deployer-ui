@@ -64,6 +64,14 @@ describe('proxmox api — v1 migration', () => {
     ).toBe(true)
   })
 
+  it('honors an explicit LXC type on the shared lifecycle request', async () => {
+    const calls = install(defaultHandler)
+    for (const method of ['start', 'stop', 'stopForce', 'pause', 'resume']) {
+      await vm[method]({ vm_id: 200, vmtype: 'lxc' })
+    }
+    expect(calls.filter(([method]) => method === 'POST').every(([, url]) => url.endsWith('?vmtype=lxc'))).toBe(true)
+  })
+
   it('maps stop->shutdown (graceful), stopForce->stop, pause->suspend, resume->resume', async () => {
     const cases = [
       [() => vm.stop({ vm_id: 1 }), '/vms/1/status/shutdown?vmtype=qemu'],
