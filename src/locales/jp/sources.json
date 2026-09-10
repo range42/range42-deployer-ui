@@ -33,7 +33,7 @@
   "connect": "リポジトリを接続",
   "connecting": "接続中…",
   "recommended": "推奨デフォルト",
-  "public_no_token": "公開 · トークン不要",
+  "public_no_token": "公開 · Gitトークン不要",
   "default_title": "Range42カタログ",
   "default_description": "インフラコンポーネント、Ansibleロール、コンテナ定義を含む共有Range42リポジトリから始めましょう。接続後に更新すると、カタログの項目を確認できます。",
   "connect_default": "Range42カタログを接続",

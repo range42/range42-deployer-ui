@@ -33,7 +33,7 @@
   "connect": "Connecter le dépôt",
   "connecting": "Connexion…",
   "recommended": "Choix par défaut recommandé",
-  "public_no_token": "Public · aucun jeton requis",
+  "public_no_token": "Public · aucun jeton Git requis",
   "default_title": "Catalogue Range42",
   "default_description": "Commencez avec le dépôt partagé Range42 : composants d’infrastructure, rôles Ansible et définitions de conteneurs. Connectez-le, puis actualisez pour découvrir ses entrées.",
   "connect_default": "Connecter le catalogue Range42",

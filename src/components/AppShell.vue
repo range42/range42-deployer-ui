@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useHotkeys } from '@/composables/useHotkeys';
 import MigrationWizard from '@/components/MigrationWizard.vue';
 import LegacyStorageBanner from '@/components/LegacyStorageBanner.vue';
+import BackendAccessPanel from '@/components/ui/BackendAccessPanel.vue';
 import {
   detectLegacyProjects,
   isMigrationComplete,
@@ -77,6 +78,7 @@ const navItems = [
         <span>{{ route.meta?.title ?? 'Range42' }}</span>
       </div>
       <main class="flex-1 overflow-auto min-w-0">
+        <BackendAccessPanel />
         <router-view />
       </main>
     </div>

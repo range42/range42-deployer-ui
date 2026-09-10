@@ -33,7 +33,7 @@
   "connect": "Connect repository",
   "connecting": "Connecting…",
   "recommended": "Recommended default",
-  "public_no_token": "Public · no token required",
+  "public_no_token": "Public · no Git token required",
   "default_title": "Range42 catalog",
   "default_description": "Start with the shared Range42 repository for infrastructure components, Ansible roles and container definitions. Connect it once, then refresh to discover its catalog entries.",
   "connect_default": "Connect Range42 catalog",

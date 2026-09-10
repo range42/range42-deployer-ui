@@ -16,6 +16,7 @@ export class BackendApiError extends Error {
 export async function backendRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!path.startsWith('/v1/')) throw new Error('Expected a v1 API path')
   const backend = useBackendApiStore()
+  const host = backend.activeHost ? { ...backend.activeHost } : null
   const headers = {
     Accept: 'application/json',
     ...(init.body ? { 'Content-Type': 'application/json' } : {}),
@@ -28,9 +29,10 @@ export async function backendRequest<T>(path: string, init: RequestInit = {}): P
     headers,
   })
   if (!response.ok) {
+    if (response.status === 401 && host) backend.recordAuthFailure(host.id, host.url, host.token)
     const body = await response.json().catch(() => null)
     throw new BackendApiError(
-      body?.message || `Backend request failed (${response.status})`,
+      response.status === 401 ? 'Connect with your backend API token to continue.' : body?.message || `Backend request failed (${response.status})`,
       response.status,
       body?.code,
     )

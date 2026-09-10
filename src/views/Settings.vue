@@ -87,7 +87,7 @@ function saveBackendHost() {
   const patch = {
     label: backendForm.value.label.trim(),
     url,
-    token: backendForm.value.token.trim() || undefined,
+    token: backendForm.value.token.trim(),
     nodeName: backendForm.value.nodeName.trim() || 'pve',
   }
   if (backendForm.value.id) {
@@ -106,6 +106,8 @@ async function testHost(id) {
   try {
     const result = await backendApi.testConnection(id)
     if (result.status === 'ok') showToast(`Backend OK (${result.rtt_ms} ms)`, 'success')
+    else if (result.status === 'unauthorized') showToast('Backend authentication required. Enter the backend API token.', 'warning')
+    else if (result.status === 'forbidden') showToast('Access denied. Check the backend token permissions.', 'error')
     else if (result.status === 'degraded') showToast('Backend reachable but not ready', 'warning')
     else showToast('Backend unreachable', 'error')
   } catch (e) {
@@ -414,9 +416,9 @@ const clearAllData = async () => {
                     :class="{
                       'badge-success': h.health.status === 'ok',
                       'badge-warning': h.health.status === 'degraded',
-                      'badge-error': h.health.status === 'unreachable',
+                      'badge-error': ['unreachable', 'unauthorized', 'forbidden'].includes(h.health.status),
                     }"
-                  >{{ h.health.status }}<span v-if="h.health.rtt_ms != null"> — {{ h.health.rtt_ms }}ms</span></span>
+                  >{{ h.health.status === 'unauthorized' ? 'Authentication required' : h.health.status === 'forbidden' ? 'Access denied' : h.health.status }}<span v-if="h.health.rtt_ms != null"> — {{ h.health.rtt_ms }}ms</span></span>
                 </div>
                 <div class="text-xs text-base-content/60 font-mono truncate">
                   {{ h.url }} · node {{ h.nodeName }}
@@ -448,8 +450,9 @@ const clearAllData = async () => {
             </div>
             <label class="label" for="backend-url">Backend URL</label>
             <input id="backend-url" v-model="backendForm.url" type="url" class="input w-full" placeholder="http://192.168.142.121:8000" data-testid="backend-url" />
-            <label class="label" for="backend-token">Bearer token (optional, Kong-gated)</label>
-            <input id="backend-token" v-model="backendForm.token" type="password" class="input w-full" placeholder="leave empty for unauthenticated" autocomplete="new-password" data-testid="backend-token" />
+            <label class="label" for="backend-token">Backend API bearer token</label>
+            <input id="backend-token" v-model="backendForm.token" type="password" class="input w-full" placeholder="Token provided by your backend operator" autocomplete="new-password" data-testid="backend-token" />
+            <p class="text-xs text-base-content/70 mt-1">Required for secured backends. This is separate from a Git provider token. Leave empty only for an explicitly unauthenticated development backend.</p>
             <div v-if="backendError" class="alert alert-error mt-2"><span>{{ backendError }}</span></div>
           </fieldset>
 

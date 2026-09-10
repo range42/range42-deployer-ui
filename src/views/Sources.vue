@@ -25,7 +25,7 @@ const rotatingId = ref(null)
 const rotateToken = ref('')
 const rotateError = ref('')
 const rotating = ref(false)
-const busy = computed(() => api.loading.value || saving.value || rotating.value || busyId.value !== null)
+const busy = computed(() => backend.requiresAuthentication || api.loading.value || saving.value || rotating.value || busyId.value !== null)
 const sources = computed(() => inv.sources.filter((source) => source.backend_url === getBackendScope()))
 const defaultSource = computed(() => sources.value.find((source) =>
   source.provider === 'github' && source.auth.kind === 'none' &&
@@ -48,7 +48,7 @@ async function reload() {
   }
 }
 
-watch(getBackendScope, () => {
+watch([getBackendScope, () => backend.token], () => {
   addModalOpen.value = false
   rotatingId.value = null
   rotateToken.value = ''

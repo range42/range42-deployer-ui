@@ -43,11 +43,11 @@ const isSaving = ref(false)
 const saveError = ref(null)
 
 const populateForm = () => {
-  formBaseUrl.value = currentBaseUrl.value || DEFAULT_API_URL
-  formDefaultNode.value = currentDefaultNode.value || ''
+  formBaseUrl.value = currentBaseUrl.value || backendApi.activeHost?.url || DEFAULT_API_URL
+  formDefaultNode.value = currentDefaultNode.value || backendApi.activeHost?.nodeName || ''
   // Pre-select the saved host whose url+node match the current settings.
   const match = savedHosts.value.find(
-    (h) => h.url === currentBaseUrl.value && h.nodeName === currentDefaultNode.value,
+    (h) => h.url === formBaseUrl.value && h.nodeName === formDefaultNode.value,
   )
   selectedHostId.value = match?.id || ''
   saveError.value = null
@@ -127,22 +127,31 @@ const connectionStatus = ref(null) // null | 'testing' | 'success' | 'error'
 const connectionInfo = ref('')
 
 const testConnection = async () => {
-  const url = formBaseUrl.value.trim()
+  const url = formBaseUrl.value.trim().replace(/\/+$/, '')
   if (!url) return
 
   connectionStatus.value = 'testing'
   connectionInfo.value = 'Testing connection...'
 
   try {
-    const resp = await fetch(url + '/docs/openapi.json', { method: 'GET', signal: AbortSignal.timeout(8000) })
+    const matchedHost = backendApi.hosts.find(host => host.url === url)
+    const hostToken = matchedHost?.token
+    const resp = await fetch(url + '/v1/health/ready', {
+      method: 'GET', signal: AbortSignal.timeout(8000),
+      headers: { Accept: 'application/json', ...(matchedHost ? backendApi.authHeaders(matchedHost.id) : {}) },
+    })
     if (resp.ok) {
       const data = await resp.json()
-      const routes = Object.keys(data.paths || {}).length
-      connectionStatus.value = 'success'
-      connectionInfo.value = 'Connected — ' + (data.info?.title || 'API') + ' ' + (data.info?.version || '') + ' (' + routes + ' routes)'
+      connectionStatus.value = data.ready ? 'success' : 'error'
+      connectionInfo.value = data.ready ? 'Backend ready' : 'Backend reachable but not ready. Check its health in Settings.'
     } else {
       connectionStatus.value = 'error'
-      connectionInfo.value = 'Server returned HTTP ' + resp.status
+      if (resp.status === 401) {
+        if (matchedHost) backendApi.recordAuthFailure(matchedHost.id, url, hostToken)
+        connectionInfo.value = 'A backend API token is required. Close this dialog and connect to the backend, or edit its token in Settings.'
+      } else {
+        connectionInfo.value = resp.status === 403 ? 'Access denied. Check the backend token permissions.' : 'Server returned HTTP ' + resp.status
+      }
     }
   } catch (e) {
     connectionStatus.value = 'error'

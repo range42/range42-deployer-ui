@@ -11,7 +11,7 @@
  *   - `id`        — stable local id
  *   - `label`     — human label (defaults to the URL)
  *   - `url`       — base URL of the backend API (e.g. http://192.168.142.121:8000)
- *   - `token`     — optional bearer token for when Kong lands upstream
+ *   - `token`     — bearer token required by secured backend installations
  *   - `nodeName`  — the Proxmox node this backend deploys to (e.g. pve)
  *   - `health`    — last health-probe result
  *
@@ -31,7 +31,7 @@ const STORAGE_KEY = 'range42_backend_api'
 const DEFAULT_NODE = 'pve'
 
 export interface BackendApiHealth {
-  status: 'ok' | 'degraded' | 'unreachable'
+  status: 'ok' | 'degraded' | 'unreachable' | 'unauthorized' | 'forbidden'
   rtt_ms?: number
   backend_version?: string
   ready?: boolean
@@ -130,6 +130,7 @@ export const useBackendApiStore = defineStore('backendApi', () => {
   const token = computed(() => activeHost.value?.token)
   const health = computed(() => activeHost.value?.health)
   const isHealthy = computed(() => activeHost.value?.health?.status === 'ok')
+  const requiresAuthentication = computed(() => health.value?.status === 'unauthorized')
 
   watch(
     state,
@@ -172,6 +173,8 @@ export const useBackendApiStore = defineStore('backendApi', () => {
   ): void {
     const host = state.value.hosts.find((h) => h.id === id)
     if (!host) return
+    if ((patch.url !== undefined && normalizeUrl(patch.url) !== host.url) ||
+        (patch.token !== undefined && (patch.token || undefined) !== host.token)) host.health = undefined
     if (patch.url !== undefined) host.url = normalizeUrl(patch.url)
     if (patch.label !== undefined) host.label = patch.label.trim() || host.url
     if (patch.token !== undefined) host.token = patch.token || undefined
@@ -230,6 +233,38 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     return host?.token ? { Authorization: `Bearer ${host.token}` } : {}
   }
 
+  function recordAuthFailure(id: string, url: string, token?: string): void {
+    const host = getHost(id)
+    if (host?.url === url && host.token === token) {
+      updateHost(id, { health: { status: 'unauthorized', ts: new Date().toISOString() } })
+    }
+  }
+
+  async function connectToken(candidate: string): Promise<void> {
+    const host = activeHost.value
+    if (!host) throw new Error('Select a backend before connecting.')
+    const token = candidate.trim()
+    if (!token) throw new Error('Enter the backend API token.')
+    const snapshot = { id: host.id, url: host.url, token: host.token }
+    const start = performance.now()
+    const res = await fetch(`${host.url}/v1/health/ready`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (res.status === 401) throw new Error('The backend API token was rejected. Check it and try again.')
+    if (res.status === 403) throw new Error('This token does not have access to the backend.')
+    if (!res.ok) throw new Error(`Could not verify the backend connection (HTTP ${res.status}).`)
+    const body = await res.json()
+    if (typeof body?.ready !== 'boolean') throw new Error('The server did not return a backend readiness result.')
+    if (activeHost.value?.id !== snapshot.id || host.url !== snapshot.url || host.token !== snapshot.token) {
+      throw new Error('The backend connection changed. Try again for the selected backend.')
+    }
+    updateHost(host.id, { token, health: {
+      status: body.ready ? 'ok' : 'degraded', ready: body.ready, checks: body.checks,
+      rtt_ms: Math.round(performance.now() - start), ts: new Date().toISOString(),
+    } })
+  }
+
   /**
    * Probe a host's readiness. Hits `/v1/health/ready` and records the structured
    * result on that host. Defaults to the active host.
@@ -241,17 +276,21 @@ export const useBackendApiStore = defineStore('backendApi', () => {
       return { status: 'unreachable', ts }
     }
     const base = normalizeUrl(host.url)
+    const originalToken = host.token
+    const record = (next: BackendApiHealth) => {
+      if (getHost(host.id)?.url === base && getHost(host.id)?.token === originalToken) updateHost(host.id, { health: next })
+      return next
+    }
     const start = performance.now()
     try {
       const res = await fetch(`${base}/v1/health/ready`, {
         method: 'GET',
         headers: { Accept: 'application/json', ...authHeaders(host.id) },
+        signal: AbortSignal.timeout(10000),
       })
       const rtt_ms = Math.round(performance.now() - start)
       if (!res.ok) {
-        const next: BackendApiHealth = { status: 'degraded', rtt_ms, ts }
-        updateHost(host.id, { health: next })
-        return next
+        return record({ status: res.status === 401 ? 'unauthorized' : res.status === 403 ? 'forbidden' : 'degraded', rtt_ms, ts })
       }
       const body = await res.json().catch(() => ({}))
       const next: BackendApiHealth = {
@@ -261,13 +300,11 @@ export const useBackendApiStore = defineStore('backendApi', () => {
         checks: body?.checks,
         ts,
       }
-      updateHost(host.id, { health: next })
-      return next
+      return record(next)
     } catch {
       const rtt_ms = Math.round(performance.now() - start)
       const next: BackendApiHealth = { status: 'unreachable', rtt_ms, ts }
-      updateHost(host.id, { health: next })
-      return next
+      return record(next)
     }
   }
 
@@ -280,6 +317,7 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     token,
     health,
     isHealthy,
+    requiresAuthentication,
     // list ops
     getHost,
     seedDefaultHost,
@@ -293,6 +331,8 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     clear,
     authHeaders,
     testConnection,
+    connectToken,
+    recordAuthFailure,
   }
 })
 

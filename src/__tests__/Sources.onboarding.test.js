@@ -46,6 +46,21 @@ afterEach(() => {
 })
 
 describe('catalog source onboarding', () => {
+  it('blocks source writes after a 401 and reloads after the backend token is supplied', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://lab.test' })
+    fetchMock.mockResolvedValueOnce(response({}, 401))
+    await mountPage()
+    expect(wrapper.get('[data-testid="connect-default-source"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('header button').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('backend API token')
+    fetchMock.mockResolvedValueOnce(response(page([source])))
+    backend.setToken('operator-token')
+    await flushPromises()
+    expect(wrapper.find('[data-source-id="catalog-public"]').exists()).toBe(true)
+    expect(new Headers(fetchMock.mock.calls.at(-1)[1].headers).get('Authorization')).toBe('Bearer operator-token')
+  })
+
   it('loads backend Page.items and displays the repository and branch', async () => {
     fetchMock.mockResolvedValueOnce(response(page([source])))
     await mountPage()
