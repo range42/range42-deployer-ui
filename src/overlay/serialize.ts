@@ -10,11 +10,59 @@ import type {
   Attachment, CatalogEntry, CatalogKind, NetworkAttachment, Node, NodeKind, NodeRole, ReplicationScope,
 } from '@/types/range42-schema';
 import { getTeamScopeAncestorId, normalizeAttachment } from '@/composables/useInfraBuilder';
+import type { Dimensions, XYPosition } from '@vue-flow/core';
+
+export interface CanvasNodeData {
+  type?: string;
+  kind?: string;
+  label?: string;
+  status?: string;
+  config?: Record<string, unknown>;
+  host_ref?: unknown;
+  [key: string]: unknown;
+}
+
+/** Persisted canvas fields; additional visual metadata stays outside topology. */
+export interface CanvasNode {
+  id: string;
+  type?: string;
+  parentNode?: string;
+  parent?: string;
+  position?: XYPosition;
+  dimensions?: Dimensions;
+  style?: unknown;
+  data?: CanvasNodeData;
+  [key: string]: unknown;
+}
+
+export interface CanvasEdge {
+  id: string;
+  type?: string;
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  data?: {
+    connection?: Record<string, unknown>;
+    useDhcp?: boolean;
+    synthetic?: boolean;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+/** Both legacy aliases and runtime inheritance markers are normalized on save. */
+export interface CanvasAttachment extends Attachment {
+  node_id?: string;
+  order?: number;
+  inherited?: boolean;
+  inherited_from?: string;
+}
 
 export interface CanvasModel {
-  nodes: any[];
-  edges: any[];
-  attachments: any[];
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  attachments: CanvasAttachment[];
 }
 
 export interface ProjectMeta {
@@ -29,8 +77,8 @@ const TYPE_TO_KIND: Record<string, NodeKind> = {
   'edge-firewall': 'firewall', group: 'group', skin: 'skin',
 };
 
-export function mapKind(vueFlowType: string): NodeKind | null {
-  return TYPE_TO_KIND[vueFlowType] ?? null;
+export function mapKind(vueFlowType: string | undefined): NodeKind | null {
+  return vueFlowType ? TYPE_TO_KIND[vueFlowType] ?? null : null;
 }
 
 export function sanitizeNamingPrefix(name: string): string {
@@ -44,14 +92,14 @@ export function sanitizeNamingPrefix(name: string): string {
   return s || 'lab';
 }
 
-function parentOf(node: any): string | null {
+function parentOf(node: CanvasNode): string | null {
   return node.parentNode ?? node.parent ?? null;
 }
 
-function attachmentsByNode(attachments: any[]): Map<string, Attachment[]> {
+function attachmentsByNode(attachments: CanvasAttachment[]): Map<string, Attachment[]> {
   const byNode = new Map<string, Attachment[]>();
   for (const raw of attachments || []) {
-    const a = normalizeAttachment(raw);
+    const a: CanvasAttachment = normalizeAttachment(raw);
     if (!a?.target_node) continue;
     // Strip serialization-layer keys before embedding under the node:
     // `target_node` becomes implicit (the node it nests under); `inherited` /
@@ -59,7 +107,7 @@ function attachmentsByNode(attachments: any[]): Map<string, Attachment[]> {
     // computeEffectiveAttachments and never part of the persisted schema.
     const { target_node: _t, inherited: _i, inherited_from: _if, ...rest } = a;
     if (!byNode.has(_t)) byNode.set(_t, []);
-    byNode.get(_t)!.push(rest as Attachment);
+    byNode.get(_t)!.push(rest);
   }
   return byNode;
 }
@@ -68,8 +116,8 @@ function buildNodeTree(canvas: CanvasModel): Node[] {
   const supported = (canvas.nodes || []).filter((n) => mapKind(n.type) !== null);
   const supportedIds = new Set(supported.map((n) => n.id));
   const attMap = attachmentsByNode(canvas.attachments);
-  const childrenByParent = new Map<string, any[]>();
-  const roots: any[] = [];
+  const childrenByParent = new Map<string, CanvasNode[]>();
+  const roots: CanvasNode[] = [];
   for (const n of supported) {
     const p = parentOf(n);
     if (p && supportedIds.has(p)) {
@@ -86,7 +134,7 @@ function buildNodeTree(canvas: CanvasModel): Node[] {
   // Nodes that form a pure cycle (no root ancestor) never appear in roots and
   // would be silently dropped; detect them explicitly before recursing.
   const visited = new Set<string>();
-  const build = (raw: any): Node => {
+  const build = (raw: CanvasNode): Node => {
     if (visited.has(raw.id)) {
       throw new Error(`buildNodeTree: cycle detected at node '${raw.id}'`);
     }
@@ -134,17 +182,17 @@ export function serializeToCatalogEntry(
 const HOST_KINDS = new Set<NodeKind>(['vm', 'lxc', 'docker']);
 const DROP_CONFIG_KEYS = new Set(['template', 'ipAddress', 'vmId', 'role', 'host_ref', 'vlan']);
 
-export function inferRole(node: any, allNodes: any[]): NodeRole {
+export function inferRole(node: CanvasNode, allNodes: CanvasNode[]): NodeRole {
   return getTeamScopeAncestorId(node, allNodes) ? 'team' : 'admin';
 }
 
-function isNetwork(nodeId: string, allNodes: any[]): boolean {
+function isNetwork(nodeId: string, allNodes: CanvasNode[]): boolean {
   const n = allNodes.find((x) => x.id === nodeId);
   return n?.type === 'network-segment';
 }
 
 export function buildNetworks(
-  nodeId: string, edges: any[], allNodes: any[],
+  nodeId: string, edges: CanvasEdge[], allNodes: CanvasNode[],
 ): NetworkAttachment[] {
   if (isNetwork(nodeId, allNodes)) return [];
   const byRef = new Map<string, NetworkAttachment>();
@@ -167,7 +215,7 @@ export function buildNetworks(
 export interface CanvasLayout {
   nodes: Record<string, {
     position?: { x: number; y: number };
-    dimensions?: unknown;
+    dimensions?: Dimensions;
     style?: unknown;
     label?: string;
   }>;
@@ -175,11 +223,11 @@ export interface CanvasLayout {
     id: string;
     source: string;
     target: string;
-    sourceHandle?: string;
-    targetHandle?: string;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
     connection?: Record<string, unknown>;
   }>;
-  unsupported: any[];
+  unsupported: CanvasNode[];
 }
 
 export function edgeKey(source: string, target: string): string {
@@ -233,9 +281,9 @@ const KIND_TO_TYPE: Record<NodeKind, string> = {
 export function deserializeToCanvas(
   doc: CatalogEntry, layout: CanvasLayout,
 ): CanvasModel {
-  const nodes: any[] = [];
-  const edges: any[] = [];
-  const attachments: any[] = [];
+  const nodes: CanvasNode[] = [];
+  const edges: CanvasEdge[] = [];
+  const attachments: CanvasAttachment[] = [];
 
   const walk = (n: Node, parentId: string | null) => {
     const type = KIND_TO_TYPE[n.kind];
@@ -248,7 +296,7 @@ export function deserializeToCanvas(
     if (n.template_vmid != null) config.template = String(n.template_vmid);
     if (n.kind === 'network' && n.vlan_tag != null) config.vlan = n.vlan_tag;
 
-    const data: Record<string, unknown> = { type, config, status: 'gray' };
+    const data: CanvasNodeData = { type, config, status: 'gray' };
     if (lay.label) data.label = lay.label;
     if (n.kind === 'group') data.kind = n.replication?.scope === 'per_team' ? 'team_scope' : 'topology_group';
     if (n.kind === 'docker' && n.host_ref) data.host_ref = n.host_ref;
@@ -257,7 +305,7 @@ export function deserializeToCanvas(
     // A missing layout entry defaults to origin — so the layout round-trip is
     // "≈" not "==" for nodes that never had a position. Real VueFlow nodes
     // always carry one.
-    const node: any = { id: n.id, type, position: lay.position ?? { x: 0, y: 0 }, data };
+    const node: CanvasNode = { id: n.id, type, position: lay.position ?? { x: 0, y: 0 }, data };
     if (parentId) { node.parentNode = parentId; node.extent = 'parent'; }
     if (lay.dimensions) node.dimensions = lay.dimensions;
     if (lay.style) node.style = lay.style;
@@ -289,7 +337,11 @@ export function deserializeToCanvas(
   return { nodes, edges, attachments };
 }
 
-export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
+function isNodeRole(value: unknown): value is NodeRole {
+  return value === 'admin' || value === 'team' || value === 'trainee' || value === 'shared';
+}
+
+export function buildNode(node: CanvasNode, allNodes: CanvasNode[], edges: CanvasEdge[]): Node {
   const kind = mapKind(node.type);
   if (kind === null) {
     throw new Error(`buildNode: unsupported node type '${node.type}' (id=${node.id})`);
@@ -304,7 +356,9 @@ export function buildNode(node: any, allNodes: any[], edges: any[]): Node {
   if (Object.keys(config).length > 0) out.config = config;
 
   if (HOST_KINDS.has(kind)) {
-    out.role = (rawConfig.role as NodeRole) ?? inferRole(node, allNodes);
+    const role = rawConfig.role;
+    if (role != null && !isNodeRole(role)) throw new Error(`buildNode: invalid role for node '${node.id}'`);
+    out.role = role ?? inferRole(node, allNodes);
     const tpl = Number(rawConfig.template);
     // Proxmox reserves VMIDs below 100; only accept real user template IDs.
     if (Number.isFinite(tpl) && tpl >= 100) out.template_vmid = tpl;

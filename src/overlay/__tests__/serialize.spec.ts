@@ -20,7 +20,7 @@ describe('range42-schema mirror — node-level fields', () => {
   });
 });
 
-import { mapKind, sanitizeNamingPrefix, serializeToCatalogEntry } from '@/overlay/serialize';
+import { mapKind, sanitizeNamingPrefix, serializeToCatalogEntry, type CanvasModel } from '@/overlay/serialize';
 
 describe('mapKind', () => {
   it('maps VueFlow types to schema kinds', () => {
@@ -103,6 +103,10 @@ describe('buildNode — host kinds', () => {
     const vm = { id: 'v', type: 'vm', data: { config: { role: 'trainee' } } };
     expect(buildNode(vm, [vm], []).role).toBe('trainee');
   });
+  it.each(['operator', false, 42])('rejects an invalid imported role %s before producing a canonical document', role => {
+    const vm = { id: 'v', type: 'vm', data: { config: { role } } };
+    expect(() => buildNode(vm, [vm], [])).toThrow(/invalid.*role/i);
+  });
   it('docker: emits host_ref from data.host_ref', () => {
     const d = { id: 'd', type: 'docker', data: { host_ref: 'vm1', config: { image: 'nginx' } } };
     const node = buildNode(d, [d], []);
@@ -171,7 +175,7 @@ describe('buildNode — network node config passthrough', () => {
 
 describe('serializeToCatalogEntry — attachments', () => {
   it('nests flat attachments under their target node, dropping target_node', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [{ id: 'vm1', type: 'vm', data: { config: { role: 'admin' } } }],
       edges: [],
       attachments: [
@@ -186,7 +190,7 @@ describe('serializeToCatalogEntry — attachments', () => {
     expect(vm.attachments![0].source.ref).toBe('software.install.wazuh');
   });
   it('silently drops attachments targeting a non-existent node', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [{ id: 'vm1', type: 'vm', data: { config: { role: 'admin' } } }],
       edges: [],
       attachments: [
@@ -201,7 +205,7 @@ describe('serializeToCatalogEntry — attachments', () => {
     expect(doc.nodes!.every((n) => !n.attachments)).toBe(true);
   });
   it('nests group_inherited attachments on the group node', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [{ id: 'g', type: 'group', data: { kind: 'topology_group' } }],
       edges: [],
       attachments: [
@@ -218,7 +222,7 @@ describe('serializeToCatalogEntry — attachments', () => {
 
 describe('serializeToCatalogEntry — grouping & replication', () => {
   it('recurses through nested groups (team_scope > topology_group > vm)', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'team', type: 'group', data: { kind: 'team_scope' } },
         { id: 'inner', type: 'group', parentNode: 'team', data: { kind: 'topology_group' } },
@@ -234,7 +238,7 @@ describe('serializeToCatalogEntry — grouping & replication', () => {
     expect(inner.children!.map((c) => c.id)).toEqual(['vm']);
   });
   it('throws on a cyclic parentNode reference', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'a', type: 'group', parentNode: 'b', data: { kind: 'topology_group' } },
         { id: 'b', type: 'group', parentNode: 'a', data: { kind: 'topology_group' } },
@@ -244,7 +248,7 @@ describe('serializeToCatalogEntry — grouping & replication', () => {
     expect(() => serializeToCatalogEntry(canvas, { name: 'r' })).toThrow(/cycle detected/);
   });
   it('folds parentNode into children and sets replication scope', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'team', type: 'group', data: { kind: 'team_scope' } },
         { id: 'topo', type: 'group', data: { kind: 'topology_group' } },
@@ -269,7 +273,7 @@ import { deserializeToCanvas } from '@/overlay/serialize';
 
 describe('deserializeToCanvas', () => {
   it('rebuilds flat nodes (kind→type), restores positions, edges from networks', () => {
-    const doc = {
+    const doc: CatalogEntry = {
       schema_version: '1.0', kind: 'lab', name: 'r', naming_prefix: 'r', bridge_base: 140,
       nodes: [
         { id: 'team', kind: 'group', replication: { scope: 'per_team' },
@@ -277,7 +281,7 @@ describe('deserializeToCanvas', () => {
                         networks: [{ node_ref: 'net1', ip: '10.0.0.5' }] }] },
         { id: 'net1', kind: 'network', config: { bridge: 'vmbr143' } },
       ],
-    } as any;
+    };
     const layout = {
       nodes: { vm1: { position: { x: 1, y: 2 } } },
       edges: { 'vm1|net1': { id: 'e1', source: 'vm1', target: 'net1', sourceHandle: 'out-0', connection: { interfaceModel: 'e1000' } } },
@@ -288,15 +292,15 @@ describe('deserializeToCanvas', () => {
     expect(vm1.type).toBe('vm');
     expect(vm1.parentNode).toBe('team');
     expect(vm1.position).toEqual({ x: 1, y: 2 });
-    expect(vm1.data.config.template).toBe('9001');
+    expect(vm1.data?.config?.template).toBe('9001');
     const e = canvas.edges.find((x) => x.source === 'vm1' && x.target === 'net1')!;
     expect(e.type).toBe('network');
-    expect(e.data.connection.ipAddress).toBe('10.0.0.5');
-    expect(e.data.connection.interfaceModel).toBe('e1000');
+    expect(e.data?.connection?.ipAddress).toBe('10.0.0.5');
+    expect(e.data?.connection?.interfaceModel).toBe('e1000');
     expect(e.sourceHandle).toBe('out-0');
   });
   it('round-trips: serialize → deserialize preserves node ids, kinds, attachments', () => {
-    const canvas0 = {
+    const canvas0: CanvasModel = {
       nodes: [
         { id: 'g', type: 'group', data: { kind: 'team_scope' } },
         { id: 'vm1', type: 'vm', parentNode: 'g', position: { x: 3, y: 4 }, data: { config: { role: 'team', name: 'web', cores: 2 } } },
@@ -313,10 +317,10 @@ describe('deserializeToCanvas', () => {
     expect(canvas1.attachments).toHaveLength(1);
     expect(canvas1.attachments[0].target_node).toBe('vm1');
     const rtVm = canvas1.nodes.find((n) => n.id === 'vm1')!;
-    expect(rtVm.data.config).toMatchObject({ role: 'team', name: 'web', cores: 2 });
+    expect(rtVm.data?.config).toMatchObject({ role: 'team', name: 'web', cores: 2 });
     const rtEdge = canvas1.edges.find((e) => e.source === 'vm1' && e.target === 'net1')!;
     expect(rtEdge).toBeTruthy();
-    expect(rtEdge.data.connection.ipAddress).toBe('10.0.0.9');
+    expect(rtEdge.data?.connection?.ipAddress).toBe('10.0.0.9');
   });
 });
 
@@ -325,7 +329,7 @@ import type { ProjectOverlay } from '@/types/range42-schema';
 
 describe('serialize → compose identity (full-snapshot)', () => {
   it('a no-op empty overlay leaves the serialized doc unchanged', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'vm1', type: 'vm', data: { config: { role: 'admin', template: '9001', cores: 2 } } },
         { id: 'net1', type: 'network-segment', data: { config: { bridge: 'vmbr142' } } },
@@ -348,7 +352,7 @@ import { extractLayout } from '@/overlay/serialize';
 
 describe('extractLayout', () => {
   it('captures node positions and unsupported (switch) nodes', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'vm1', type: 'vm', position: { x: 10, y: 20 }, data: { label: 'Web' } },
         { id: 'sw1', type: 'switch', position: { x: 5, y: 5 }, data: {} },
@@ -364,10 +368,10 @@ describe('extractLayout', () => {
     expect(layout.nodes.vm1.label).toBe('Web');
     expect(layout.unsupported.map((n) => n.id)).toEqual(['sw1']);
     expect(layout.edges['vm1|net1'].sourceHandle).toBe('out-0');
-    expect(layout.edges['vm1|net1'].connection.interfaceModel).toBe('e1000');
+    expect(layout.edges['vm1|net1'].connection?.interfaceModel).toBe('e1000');
   });
   it('keys compute↔network edges as compute|network regardless of draw direction', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'vm1', type: 'vm', position: { x: 0, y: 0 }, data: {} },
         { id: 'net1', type: 'network-segment', position: { x: 0, y: 0 }, data: {} },
@@ -378,14 +382,14 @@ describe('extractLayout', () => {
     };
     const layout = extractLayout(canvas);
     expect(layout.edges['vm1|net1']).toBeTruthy();
-    expect(layout.edges['vm1|net1'].connection.interfaceModel).toBe('virtio');
+    expect(layout.edges['vm1|net1'].connection?.interfaceModel).toBe('virtio');
     expect(layout.edges['net1|vm1']).toBeUndefined();
   });
 });
 
 describe('serialize/deserialize — broader kind coverage', () => {
   it('round-trips router, firewall, and skin nodes', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'r1', type: 'router', position: { x: 1, y: 1 }, data: { config: { applianceType: 'vyos' } } },
         { id: 'fw1', type: 'edge-firewall', position: { x: 2, y: 2 }, data: { config: { applianceType: 'pfsense' } } },
@@ -399,7 +403,7 @@ describe('serialize/deserialize — broader kind coverage', () => {
     expect(back.nodes.map((n) => [n.id, n.type])).toEqual([['r1','router'],['fw1','edge-firewall'],['sk1','skin']]);
   });
   it('round-trips a compute node attached to two distinct networks', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'vm1', type: 'vm', position: { x: 0, y: 0 }, data: { config: { role: 'admin' } } },
         { id: 'lan', type: 'network-segment', position: { x: 0, y: 0 }, data: {} },
@@ -418,7 +422,7 @@ describe('serialize/deserialize — broader kind coverage', () => {
     expect(back.edges.filter((e) => e.source === 'vm1')).toHaveLength(2);
   });
   it('preserves an unsupported (switch) node through a full round-trip', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'vm1', type: 'vm', position: { x: 0, y: 0 }, data: { config: { role: 'admin' } } },
         { id: 'sw1', type: 'switch', position: { x: 5, y: 5 }, data: { label: 'L2' } },
@@ -431,7 +435,7 @@ describe('serialize/deserialize — broader kind coverage', () => {
     expect(back.nodes.find((n) => n.id === 'sw1')).toBeTruthy(); // restored from layout.unsupported
   });
   it('round-trips a docker node host_ref', () => {
-    const canvas = {
+    const canvas: CanvasModel = {
       nodes: [
         { id: 'host', type: 'vm', position: { x: 0, y: 0 }, data: { config: { role: 'admin' } } },
         { id: 'c1', type: 'docker', position: { x: 1, y: 1 }, data: { host_ref: 'host', config: { image: 'nginx' } } },
@@ -441,6 +445,6 @@ describe('serialize/deserialize — broader kind coverage', () => {
     const doc = serializeToCatalogEntry(canvas, { name: 'r' });
     expect(doc.nodes!.find((n) => n.id === 'c1')!.host_ref).toBe('host');
     const back = deserializeToCanvas(doc, extractLayout(canvas));
-    expect(back.nodes.find((n) => n.id === 'c1')!.data.host_ref).toBe('host');
+    expect(back.nodes.find((n) => n.id === 'c1')!.data?.host_ref).toBe('host');
   });
 });
