@@ -189,7 +189,7 @@ const validateConfig = () => {
   // Add type-specific validations
   switch (props.node?.type) {
     case 'vm':
-      if (!config.value.cpu || config.value.cpu < 1) {
+      if (!Number.isInteger(Number(config.value.cores ?? config.value.cpu)) || Number(config.value.cores ?? config.value.cpu) < 1) {
         errors.value.push(t('configPanel.validation.cpuMin'))
       }
       if (!String(config.value.memory || '').trim()) {

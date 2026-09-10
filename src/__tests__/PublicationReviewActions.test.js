@@ -3,8 +3,8 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import PublicationReviewActions from '@/components/PublicationReviewActions.vue'
 import publishing from '@/locales/en/publishing.json'
-const { getPullRequest, mergePullRequest } = vi.hoisted(() => ({ getPullRequest: vi.fn(), mergePullRequest: vi.fn() }))
-vi.mock('@/composables/useProjectGitSync', () => ({ providerForBinding: () => ({ getPullRequest, mergePullRequest }) }))
+const { getPullRequest, mergePullRequest, updatePullRequestBranch } = vi.hoisted(() => ({ getPullRequest: vi.fn(), mergePullRequest: vi.fn(), updatePullRequestBranch: vi.fn() }))
+vi.mock('@/composables/useProjectGitSync', () => ({ providerForBinding: () => ({ getPullRequest, mergePullRequest, updatePullRequestBranch }) }))
 enableAutoUnmount(afterEach)
 const head = 'a'.repeat(40)
 const destination = { id: 'public', source_id: 's', provider: 'github', base_url: 'https://github.com', repo_owner: 'org', repo_name: 'repo', base_branch: 'main', mode: 'pull_request' }
@@ -40,6 +40,19 @@ describe('publication review actions', () => {
     expect(wrapper.get('[data-testid="merge-publication"]').attributes('disabled')).toBeDefined()
     expect(mergePullRequest).not.toHaveBeenCalled()
   })
+  it('updates a contribution independently of permission to merge upstream', async () => {
+    getPullRequest.mockResolvedValue({ ...review, can_merge: false })
+    updatePullRequestBranch.mockResolvedValue({ status: 'review_required', review_url: 'https://git.test/fork/review/8' })
+    const wrapper = modal()
+    await wrapper.get('[data-testid="check-publication"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="update-contribution"]').trigger('click')
+    await flushPromises()
+    expect(updatePullRequestBranch).toHaveBeenCalledWith({ owner: 'org', repo: 'repo', number: 7, expectedHead: head })
+    expect(wrapper.get('a[href="https://git.test/fork/review/8"]').text()).toContain('synchronization')
+    expect(mergePullRequest).not.toHaveBeenCalled()
+  })
+
   it('shows policy failures and preserves the publication as unmerged', async () => {
     mergePullRequest.mockRejectedValue(new Error('Required approval missing'))
     const wrapper = modal()

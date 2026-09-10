@@ -51,8 +51,8 @@
   "review_error": "Could not prepare the publication preview.",
   "publish_error": "Publication failed. Check the source connection and repository permissions, then retry.",
   "fork_policy": "Contribution repository",
-  "fork_auto": "Use my personal fork if upstream is read-only",
-  "fork_always": "Always use my personal fork",
+  "fork_auto": "Use a fork if upstream is read-only",
+  "fork_always": "Always use a fork",
   "fork_never": "Use upstream only (requires write access)",
   "checkpoint_fork_hint": "If this working repository is read-only, Save creates or reuses a verified fork in the connected personal account. Its working branch and commit become the deployment source.",
   "fork_result": "Contribution saved in {repository}",
@@ -72,5 +72,11 @@
   "merge_reviewed": "Merge reviewed commit",
   "previous_publications": "Previous publications",
   "fork_owner": "Fork organization or namespace (optional)",
-  "fork_owner_hint": "Leave empty for your personal account. The selected namespace must allow you to create and write forks."
+  "fork_owner_hint": "Leave empty for your personal account. The selected namespace must allow you to create and write forks.",
+  "backend_clone_credential": "Allow this backend to clone private repositories using this token",
+  "backend_clone_hint": "This also updates the selected catalog source credential on the backend. Enable this only when that backend needs private repository access.",
+  "update_contribution": "Update contribution from upstream",
+  "sync_requested": "Upstream update requested. Refresh the review status when it completes; review and publish the new snapshot before merging.",
+  "sync_review_required": "A synchronization review was prepared in your contribution repository. Resolve conflicts and merge it there, then review and publish the updated snapshot.",
+  "open_sync_review": "Open synchronization review"
 }

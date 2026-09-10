@@ -1,0 +1,171 @@
+{
+  "kind": "gitlab",
+  "suffix": "gl2",
+  "started": "2026-09-10T13:36:44.934Z",
+  "repositories": [
+    {
+      "name": "range42-acceptance-20260910-public-gl2",
+      "owner": "phparage",
+      "private": false,
+      "id": 165,
+      "url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2"
+    },
+    {
+      "name": "range42-acceptance-20260910-private-gl2",
+      "owner": "phparage",
+      "private": true,
+      "id": 166,
+      "url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-private-gl2"
+    }
+  ],
+  "checks": [
+    {
+      "name": "same saved snapshot published to public review and private main",
+      "status": "passed",
+      "evidence": [
+        {
+          "commit_sha": "7451a9b13c402e8424c7de004cae1c25340514a8",
+          "pr_url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/1",
+          "mode": "pull_request"
+        },
+        {
+          "commit_sha": "3eb6e0a0d7e03f202d8187c829b14deea9a98af5",
+          "mode": "direct"
+        }
+      ]
+    },
+    {
+      "name": "atomic multi-file contribution commit",
+      "status": "passed",
+      "evidence": {
+        "sha": "7451a9b13c402e8424c7de004cae1c25340514a8",
+        "parentCount": 1
+      }
+    },
+    {
+      "name": "unchanged republish reuses exact open review and commit",
+      "status": "passed",
+      "evidence": {
+        "number": 1
+      }
+    },
+    {
+      "name": "upstream contribution synchronization preserves history",
+      "status": "passed",
+      "evidence": {
+        "status": "review_required",
+        "review_url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/2",
+        "old": "7451a9b13c402e8424c7de004cae1c25340514a8",
+        "updated": "2b5b2ed0ac272713d3aa98680ce44175f07d7aee"
+      }
+    },
+    {
+      "name": "stale reviewed SHA blocks final merge",
+      "status": "passed"
+    },
+    {
+      "name": "reviewed current SHA merged successfully",
+      "status": "passed",
+      "evidence": {
+        "merged": true,
+        "sha": "86d5b08fa34d3a8a96fa9b739e1a90140bf4709a"
+      }
+    },
+    {
+      "name": "conflicting update preserves both branch heads",
+      "status": "passed",
+      "evidence": {
+        "contribution": "3076bf69627904e0bb88b356bf40146d3382ba42",
+        "main": "f648786cb42a44bd06c47393de372cbc430b7f70",
+        "review": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/3"
+      }
+    },
+    {
+      "name": "verified organization fork created",
+      "status": "passed",
+      "evidence": {
+        "owner": "range42-acceptance-20260910-gl2",
+        "repo": "range42-acceptance-20260910-public-gl2",
+        "default_branch": "main"
+      }
+    },
+    {
+      "name": "cross-repository review and exact fork review reuse",
+      "status": "passed",
+      "evidence": {
+        "url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/5",
+        "number": 5
+      }
+    },
+    {
+      "name": "organization fork updated and merged without rewriting history",
+      "status": "passed",
+      "evidence": {
+        "update": {
+          "status": "review_required",
+          "review_url": "https://gitlab-ph.srv.office.lhc.lu/range42-acceptance-20260910-gl2/range42-acceptance-20260910-public-gl2/-/merge_requests/1"
+        },
+        "merged": {
+          "merged": true,
+          "sha": "43a81e1be68744e4cbcd7666bf524b0fa0b00e69"
+        }
+      }
+    }
+  ],
+  "owner": "phparage",
+  "baseUrl": "https://gitlab-ph.srv.office.lhc.lu",
+  "publication": {
+    "commit_sha": "c97a56d2830c03a8334dccbed0faa0addff8bce4",
+    "branch": "range42-ui/acceptance-gitlab-gl2",
+    "targets": [
+      {
+        "target_id": "public",
+        "status": "published",
+        "mode": "pull_request",
+        "destination": {
+          "source_id": "acceptance-gitlab",
+          "provider": "gitlab",
+          "base_url": "https://gitlab-ph.srv.office.lhc.lu",
+          "repo_owner": "phparage",
+          "id": "public",
+          "repo_name": "range42-acceptance-20260910-public-gl2",
+          "base_branch": "main",
+          "mode": "pull_request",
+          "fork_policy": "upstream"
+        },
+        "commit_sha": "7451a9b13c402e8424c7de004cae1c25340514a8",
+        "branch": "range42-publish/acceptance-gitlab-gl2/public/main/%22%22",
+        "pr_url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/1",
+        "pr_number": 1
+      },
+      {
+        "target_id": "private",
+        "status": "published",
+        "mode": "direct",
+        "destination": {
+          "source_id": "acceptance-gitlab",
+          "provider": "gitlab",
+          "base_url": "https://gitlab-ph.srv.office.lhc.lu",
+          "repo_owner": "phparage",
+          "id": "private",
+          "repo_name": "range42-acceptance-20260910-private-gl2",
+          "base_branch": "main",
+          "mode": "direct"
+        },
+        "commit_sha": "3eb6e0a0d7e03f202d8187c829b14deea9a98af5",
+        "branch": "main"
+      }
+    ]
+  },
+  "organization": {
+    "name": "range42-acceptance-20260910-gl2",
+    "id": 264
+  },
+  "fork": {
+    "owner": "range42-acceptance-20260910-gl2",
+    "repo": "range42-acceptance-20260910-public-gl2",
+    "default_branch": "main"
+  },
+  "finished": "2026-09-10T13:37:12.691Z",
+  "status": "passed"
+}

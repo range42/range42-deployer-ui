@@ -1,5 +1,5 @@
-import type { PullRequestRef, PullRequestReview, MergePullRequestOptions } from './types'
-import { assertMergeable } from './review'
+import type { PullRequestRef, PullRequestReview, MergePullRequestOptions, UpdateBranchResult } from './types'
+import { assertMergeable, assertReviewHead } from './review'
 /**
  * GitLab Provider (v1 interface)
  *
@@ -239,6 +239,21 @@ export class GitLabProvider implements GitProviderV1 {
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
+      if (res.status === 409 || res.status === 422) {
+        const source = await this.json<{ id: number }>(this.url(`/projects/${pid}`), { headers: this.headers() })
+        for (let page = 1; ; page++) {
+          const query = new URLSearchParams({ state: 'opened', source_branch: opts.from,
+            target_branch: opts.to, per_page: '50', page: String(page) })
+          const reviews = await this.json<Array<{
+            iid: number; web_url: string; state: string; source_project_id: number;
+            source_branch: string; target_branch: string;
+          }>>(this.url(`/projects/${this.projectId(opts.owner, opts.repo)}/merge_requests?${query}`), { headers: this.headers() })
+          const existing = reviews.find(review => review.state === 'opened'
+            && review.source_project_id === source.id && review.source_branch === opts.from && review.target_branch === opts.to)
+          if (existing) return { url: existing.web_url, number: existing.iid }
+          if (reviews.length < 50) break
+        }
+      }
       throw new Error(`GitLab POST ${url} -> ${res.status} ${body}`)
     }
     const mr = (await res.json()) as { web_url: string; iid: number }
@@ -248,15 +263,38 @@ export class GitLabProvider implements GitProviderV1 {
   async getPullRequest(opts: PullRequestRef): Promise<PullRequestReview> {
     const mr = await this.json<{
       iid: number; web_url: string; state: string; sha: string; draft?: boolean;
+      source_project_id?: number; source_branch?: string; target_branch?: string;
       user?: { can_merge?: boolean }; detailed_merge_status?: string; merge_status?: string;
     }>(this.url(`/projects/${this.projectId(opts.owner, opts.repo)}/merge_requests/${opts.number}`), { headers: this.headers() })
+    const source = mr.source_project_id ? await this.json<{ path: string; namespace: { full_path: string } }>(
+      this.url(`/projects/${mr.source_project_id}`), { headers: this.headers() },
+    ) : undefined
     return {
+      ...(source && mr.source_branch ? { source: { owner: source.namespace.full_path, repo: source.path, branch: mr.source_branch } } : {}),
+      target_branch: mr.target_branch,
       number: mr.iid, url: mr.web_url, head_sha: mr.sha,
       state: mr.state === 'merged' ? 'merged' : mr.state === 'opened' ? 'open' : 'closed',
       can_merge: mr.user?.can_merge === true,
       mergeable: !mr.draft && (mr.detailed_merge_status === 'mergeable'
         || (!mr.detailed_merge_status && mr.merge_status === 'can_be_merged')),
     }
+  }
+
+  async updatePullRequestBranch(opts: PullRequestRef & { expectedHead: string }): Promise<UpdateBranchResult> {
+    const review = await this.getPullRequest(opts)
+    assertReviewHead(review, opts.expectedHead)
+    const source = review.source
+    if (!source || !review.target_branch) throw new Error('GitLab did not return the contribution branch identity.')
+    if (!await this.canWrite(source.owner, source.repo)) throw new Error('Write permission is required for the contribution repository.')
+    // A new upstream commit may not exist in the fork's object database yet.
+    // Let GitLab review the upstream branch directly into the writable fork;
+    // no imported refs, empty commits, resets or upstream branches are needed.
+    const proposal = await this.createPullRequest({ owner: source.owner, repo: source.repo,
+      from: review.target_branch, to: source.branch, source: { owner: opts.owner, repo: opts.repo },
+      title: `Update contribution from ${opts.owner}/${opts.repo}:${review.target_branch}`,
+      body: 'Review upstream changes and resolve any conflicts before merging this synchronization request.',
+    })
+    return { status: 'review_required', review_url: proposal.url }
   }
 
   async mergePullRequest(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }> {

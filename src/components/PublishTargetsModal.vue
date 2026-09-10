@@ -14,6 +14,7 @@ import {
 } from '@/composables/useProjectGitSync'
 import PublishRepositoryFields from '@/components/PublishRepositoryFields.vue'
 import PublicationReviewActions from '@/components/PublicationReviewActions.vue'
+import ForkDestinationField from '@/components/ForkDestinationField.vue'
 
 type PublishResult = Awaited<ReturnType<typeof publishFilesToTargets>>
 type TargetResult = PublishResult['targets'][number]
@@ -161,7 +162,12 @@ function review() {
     const resolvedTargets: ProjectPublishTarget[] = selected.map((target) => ({
       id: target.id, ...resolveRepository(target), mode: target.mode,
       ...(target.fork_policy ? { fork_policy: target.fork_policy } : {}),
+      ...(target.mode === 'pull_request' && target.fork_policy !== 'upstream' && target.fork_owner?.trim() ? { fork_owner: target.fork_owner.trim() } : {}),
     }))
+    for (const target of resolvedTargets) {
+      if (target.fork_owner && (!target.fork_owner.split('/').every(part => /^[\w][\w.-]*$/.test(part))
+        || (target.provider !== 'gitlab' && target.fork_owner.includes('/')))) throw new Error(t('publishing.invalid_repo'))
+    }
     const identities = resolvedTargets.map((target) => JSON.stringify([
       target.base_url, target.repo_owner, target.repo_name, target.base_branch, target.subdir || '',
     ]))
@@ -286,6 +292,7 @@ function safeUrl(value?: string) {
                 <option value="upstream">{{ t('publishing.fork_never') }}</option>
               </select>
             </label>
+            <ForkDestinationField v-if="target.mode === 'pull_request' && target.fork_policy !== 'upstream'" v-model="target.fork_owner" />
           </section>
           <button type="button" class="btn btn-outline btn-sm" data-testid="add-target" :disabled="!sources.length" @click="addTarget">{{ t('publishing.add_destination') }}</button>
           <p class="text-sm text-base-content/70">{{ t('publishing.permission_hint') }}</p>
@@ -313,6 +320,7 @@ function safeUrl(value?: string) {
             <p class="font-semibold break-all">{{ target.base_url }}/{{ target.repo_owner }}/{{ target.repo_name }}</p>
             <p>{{ t(target.mode === 'direct' ? 'publishing.direct' : 'publishing.pull_request') }} → <code>{{ target.base_branch }}</code></p>
             <p v-if="target.mode === 'pull_request'">{{ t(target.fork_policy === 'fork' ? 'publishing.fork_always' : target.fork_policy === 'upstream' ? 'publishing.fork_never' : 'publishing.fork_auto') }}</p>
+            <p v-if="target.fork_owner" class="break-all">{{ t('publishing.fork_owner') }}: {{ target.fork_owner }}</p>
             <ul class="list-disc pl-5 break-all">
               <li v-for="path in Object.keys(preview.files)" :key="path">{{ target.subdir ? `${target.subdir}/${path}` : path }}</li>
             </ul>

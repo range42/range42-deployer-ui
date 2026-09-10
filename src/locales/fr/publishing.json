@@ -51,8 +51,8 @@
   "review_error": "Impossible de préparer l’aperçu de publication.",
   "publish_error": "Échec de la publication. Vérifiez la connexion à la source et les permissions du dépôt, puis réessayez.",
   "fork_policy": "Dépôt de contribution",
-  "fork_auto": "Utiliser mon fork personnel si le dépôt amont est en lecture seule",
-  "fork_always": "Toujours utiliser mon fork personnel",
+  "fork_auto": "Utiliser un fork si le dépôt amont est en lecture seule",
+  "fork_always": "Toujours utiliser un fork",
   "fork_never": "Utiliser uniquement le dépôt amont (accès en écriture requis)",
   "checkpoint_fork_hint": "Si ce dépôt est en lecture seule, Enregistrer crée ou réutilise un fork vérifié dans le compte personnel connecté. Sa branche de travail et son commit deviennent la source du déploiement.",
   "fork_result": "Contribution enregistrée dans {repository}",
@@ -72,5 +72,11 @@
   "merge_reviewed": "Fusionner le commit vérifié",
   "previous_publications": "Publications précédentes",
   "fork_owner": "Organisation ou espace de noms du fork (facultatif)",
-  "fork_owner_hint": "Laissez vide pour votre compte personnel. L’espace choisi doit vous autoriser à créer et modifier des forks."
+  "fork_owner_hint": "Laissez vide pour votre compte personnel. L’espace choisi doit vous autoriser à créer et modifier des forks.",
+  "backend_clone_credential": "Autoriser ce backend à cloner des dépôts privés avec ce jeton",
+  "backend_clone_hint": "Cela met aussi à jour le jeton de la source de catalogue sélectionnée sur le backend. Activez cette option si ce backend doit accéder aux dépôts privés.",
+  "update_contribution": "Mettre à jour depuis le dépôt amont",
+  "sync_requested": "Mise à jour demandée. Actualisez l’état après son exécution, puis vérifiez et publiez le nouvel instantané avant de fusionner.",
+  "sync_review_required": "Une demande de synchronisation a été préparée dans votre dépôt de contribution. Résolvez les conflits et fusionnez-la, puis vérifiez et publiez l’instantané mis à jour.",
+  "open_sync_review": "Ouvrir la demande de synchronisation"
 }

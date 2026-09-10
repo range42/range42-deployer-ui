@@ -328,6 +328,8 @@ export interface PullRequestReview {
   url: string
   state: 'open' | 'closed' | 'merged'
   head_sha: string
+  source?: { owner: string; repo: string; branch: string }
+  target_branch?: string
   can_merge: boolean
   mergeable: boolean
 }
@@ -337,8 +339,14 @@ export interface MergePullRequestOptions extends PullRequestRef {
   method?: 'merge' | 'squash'
 }
 
+export interface UpdateBranchResult {
+  status: 'updated' | 'queued' | 'review_required'
+  review_url?: string
+}
+
 export interface GitProviderV1 {
   id: GitProviderV1Kind
+  updatePullRequestBranch?(opts: PullRequestRef & { expectedHead: string }): Promise<UpdateBranchResult>
   getPullRequest?(opts: PullRequestRef): Promise<PullRequestReview>
   mergePullRequest?(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }>
   ensureFork?(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef>

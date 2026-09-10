@@ -1,5 +1,5 @@
-import type { PullRequestRef, PullRequestReview, MergePullRequestOptions } from './types'
-import { assertMergeable } from './review'
+import type { PullRequestRef, PullRequestReview, MergePullRequestOptions, UpdateBranchResult } from './types'
+import { assertMergeable, assertReviewHead } from './review'
 /**
  * Gitea Provider (v1 interface)
  *
@@ -194,6 +194,23 @@ export class GiteaProvider implements GitProviderV1 {
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
+      if (res.status === 409 || res.status === 422) {
+        const source = opts.source ?? opts
+        for (let page = 1; ; page++) {
+          const query = new URLSearchParams({ state: 'open', per_page: '50', limit: '50', page: String(page),
+            head: `${source.owner}:${opts.from}`, base: opts.to })
+          const reviews = await this.json<Array<{
+            number: number; html_url: string; state: string;
+            head: { ref: string; repo?: { name: string; owner?: { login: string } } };
+            base: { ref: string };
+          }>>(this.url(`/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls?${query}`), { headers: this.headers() })
+          const existing = reviews.find(review => review.state === 'open'
+            && review.head?.ref === opts.from && review.base?.ref === opts.to
+            && review.head.repo?.name === source.repo && review.head.repo.owner?.login === source.owner)
+          if (existing) return { url: existing.html_url, number: existing.number }
+          if (reviews.length < 50) break
+        }
+      }
       throw new Error(`Gitea POST ${url} -> ${res.status} ${body}`)
     }
     const pr = (await res.json()) as { html_url: string; number: number }
@@ -211,6 +228,17 @@ export class GiteaProvider implements GitProviderV1 {
       can_merge: await this.canWrite(opts.owner, opts.repo),
       mergeable: !pr.draft && pr.mergeable === true,
     }
+  }
+
+  async updatePullRequestBranch(opts: PullRequestRef & { expectedHead: string }): Promise<UpdateBranchResult> {
+    assertReviewHead(await this.getPullRequest(opts), opts.expectedHead)
+    const response = await this.fetchImpl(this.url(
+      `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls/${opts.number}/update?style=merge`,
+    ), {
+      method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
+    })
+    if (!response.ok) throw new Error(`Gitea contribution update -> ${response.status} ${await response.text()}`)
+    return { status: 'updated' }
   }
 
   async mergePullRequest(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }> {

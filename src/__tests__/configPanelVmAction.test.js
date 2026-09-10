@@ -115,6 +115,12 @@ describe('ConfigPanel — lifecycle actions route through task core (no optimist
     expect(wrapper.emitted('update')[0][1].config.vlans).toHaveLength(1)
   })
 
+  it('recognizes CPU cores from the current VM form when calculating validity', async () => {
+    const wrapper = mountPanel({ id: 'vm', type: 'vm', data: { config: { name: 'Guest', cores: 2, memory: 2048 } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Configuration valid')
+  })
+
   it('uses the translated refresh-templates label for keyboard and pointer users', async () => {
     const wrapper = mountPanel({ id: 'vm', type: 'vm', data: { config: { name: 'Guest' } } })
     await flushPromises()

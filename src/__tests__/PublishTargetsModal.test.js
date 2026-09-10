@@ -66,7 +66,7 @@ describe('explicit Git publication', () => {
     await wrapper.findAll('[data-testid="target-selected"]')[0].setValue(true)
     await wrapper.findAll('[data-testid="fork-policy"]')[0].setValue('fork')
     await wrapper.get('[data-testid="review-publish"]').trigger('click')
-    expect(wrapper.get('[data-testid="publish-preview"]').text()).toContain('Always use my personal fork')
+    expect(wrapper.get('[data-testid="publish-preview"]').text()).toContain('Always use a fork')
     const forkBinding = { ...binding, repo_owner: 'me', fork_policy: 'upstream' }
     publishFilesToTargets.mockResolvedValueOnce({ binding: forkBinding, branch: binding.working_branch, commit_sha: 'abc',
       targets: [{ target_id: 'target-0', mode: 'pull_request', status: 'failed', error: 'Try again' }] })
@@ -79,6 +79,18 @@ describe('explicit Git publication', () => {
     await flushPromises()
     expect(publishFilesToTargets.mock.calls[1][0].binding).toEqual(forkBinding)
   })
+  it('reviews and forwards the selected fork namespace for a public destination', async () => {
+    const { wrapper } = modal()
+    await wrapper.findAll('[data-testid="target-selected"]')[0].setValue(true)
+    await wrapper.findAll('[data-testid="fork-destination"]')[0].setValue('training-team')
+    await wrapper.get('[data-testid="review-publish"]').trigger('click')
+    expect(wrapper.get('[data-testid="publish-preview"]').text()).toContain('training-team')
+    publishFilesToTargets.mockResolvedValueOnce({ commit_sha: 'a'.repeat(40), branch: binding.working_branch, targets: [] })
+    await wrapper.get('[data-testid="confirm-publish"]').trigger('click')
+    await flushPromises()
+    expect(publishFilesToTargets.mock.calls[0][1][0].fork_owner).toBe('training-team')
+  })
+
   it('offers persisted publication reviews without publishing again', async () => {
     const saved = { target_id: targets[0].id, mode: 'pull_request', status: 'published', pr_number: 7,
       commit_sha: 'a'.repeat(40), pr_url: 'https://github.com/range42/catalog/pull/7', destination: targets[0] }

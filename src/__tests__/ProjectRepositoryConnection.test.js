@@ -7,7 +7,8 @@ import { useInventoryStore } from '@/stores/inventoryStore'
 import publishing from '@/locales/en/publishing.json'
 
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn() }))
-vi.mock('@/composables/useCatalogSources', () => ({ useCatalogSources: () => ({ loadSources: vi.fn(), loading: false }) }))
+const { rotateToken } = vi.hoisted(() => ({ rotateToken: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/composables/useCatalogSources', () => ({ useCatalogSources: () => ({ loadSources: vi.fn(), rotateToken, loading: false }) }))
 vi.mock('focus-trap-vue', () => ({ FocusTrap: { template: '<div><slot /></div>' } }))
 enableAutoUnmount(afterEach)
 
@@ -39,6 +40,43 @@ describe('project repository connection', () => {
     expect(JSON.stringify(binding)).not.toContain('secret-test-token')
     expect(wrapper.get('[data-testid="repository-credential"]').element.value).toBe('')
   })
+  it('persists an explicitly selected organization fork namespace', async () => {
+    const { wrapper } = modal()
+    await wrapper.get('[data-testid="repository-source"]').setValue('github')
+    await wrapper.get('[data-testid="fork-destination"]').setValue('training-team')
+    await wrapper.get('[data-testid="connect-project-repository"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('connected')[0][0].fork_owner).toBe('training-team')
+  })
+  it('sends a private-clone credential to the selected backend only when explicitly enabled', async () => {
+    const { wrapper, inventory } = modal()
+    inventory.sources[0].backend_url = ''
+    await wrapper.get('[data-testid="repository-source"]').setValue('github')
+    await wrapper.get('[data-testid="repository-credential"]').setValue('private-test-token')
+    await wrapper.get('[data-testid="backend-clone-credential"]').setValue(true)
+    await wrapper.get('[data-testid="connect-project-repository"]').trigger('click')
+    await flushPromises()
+    expect(rotateToken).toHaveBeenCalledWith('github', 'private-test-token')
+    expect(JSON.stringify(wrapper.emitted('connected'))).not.toContain('private-test-token')
+  })
+
+  it('does not save a browser token or connection if the source changes during backend credential storage', async () => {
+    const { wrapper, inventory } = modal()
+    inventory.sources[0].backend_url = ''
+    let finish
+    rotateToken.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await wrapper.get('[data-testid="repository-source"]').setValue('github')
+    await wrapper.get('[data-testid="repository-credential"]').setValue('private-test-token')
+    await wrapper.get('[data-testid="backend-clone-credential"]').setValue(true)
+    await wrapper.get('[data-testid="connect-project-repository"]').trigger('click')
+    inventory.sources[0].base_url = 'https://different.test'
+    finish()
+    await flushPromises()
+    expect(wrapper.emitted('connected')).toBeUndefined()
+    expect(inventory.getToken('github')).toBeFalsy()
+    expect(wrapper.get('[role="alert"]').text()).toContain('changed')
+  })
+
   it('blocks invalid branch and directory paths before saving credentials', async () => {
     const { wrapper, inventory } = modal()
     expect(wrapper.find('[data-testid="repository-source"]').exists()).toBe(true)

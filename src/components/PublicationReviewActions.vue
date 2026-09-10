@@ -12,6 +12,8 @@ const busy = ref(false)
 const error = ref('')
 const method = ref<'merge' | 'squash'>('merge')
 const merged = ref(false)
+const syncMessage = ref('')
+const syncReviewUrl = ref('')
 let provider: GitProviderV1 | undefined
 const eligible = computed(() => review.value?.state === 'open' && review.value.can_merge
   && review.value.mergeable && review.value.head_sha === props.result.commit_sha)
@@ -19,16 +21,41 @@ const changed = computed(() => review.value && review.value.head_sha !== props.r
 watch(() => props.result, () => { review.value = null; merged.value = Boolean(props.result.merged) }, { immediate: true })
 
 async function check() {
-  const target = props.result.destination
+  const result = props.result
+  const target = result.destination
   if (!target || !props.result.pr_number || busy.value) return
   busy.value = true
   error.value = ''
   try {
     provider = providerForBinding(target)
     if (!provider.getPullRequest) throw new Error(t('publishing.review_unsupported'))
-    review.value = await provider.getPullRequest({ owner: target.repo_owner, repo: target.repo_name, number: props.result.pr_number })
+    const current = await provider.getPullRequest({ owner: target.repo_owner, repo: target.repo_name, number: result.pr_number! })
+    if (props.result !== result) return
+    review.value = current
     merged.value = review.value.state === 'merged'
     if (merged.value) emit('updated', { ...props.result, merged: true })
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : t('publishing.review_error') }
+  finally { busy.value = false }
+}
+
+async function updateBranch() {
+  const result = props.result
+  const target = result.destination
+  if (!target || !result.pr_number || !result.commit_sha || busy.value || changed.value) return
+  busy.value = true
+  error.value = ''
+  syncMessage.value = ''
+  try {
+    provider = providerForBinding(target)
+    if (!provider.updatePullRequestBranch) throw new Error(t('publishing.review_unsupported'))
+    const outcome = await provider.updatePullRequestBranch({ owner: target.repo_owner, repo: target.repo_name,
+      number: result.pr_number, expectedHead: result.commit_sha })
+    syncMessage.value = t(outcome.status === 'review_required' ? 'publishing.sync_review_required' : 'publishing.sync_requested')
+    if (outcome.review_url) {
+      const url = new URL(outcome.review_url)
+      if (['https:', 'http:'].includes(url.protocol)) syncReviewUrl.value = url.href
+    }
+    review.value = null
   } catch (cause) { error.value = cause instanceof Error ? cause.message : t('publishing.review_error') }
   finally { busy.value = false }
 }
@@ -62,6 +89,8 @@ async function merge() {
       <button type="button" class="btn btn-outline btn-sm" data-testid="check-publication" :disabled="busy" @click="check">{{ t('publishing.check_merge') }}</button>
       <template v-if="review">
         <p class="text-sm" role="status">{{ t(changed ? 'publishing.review_changed' : eligible ? 'publishing.merge_ready' : 'publishing.merge_blocked') }}</p>
+        <button v-if="review.state === 'open'" type="button" class="btn btn-outline btn-sm" data-testid="update-contribution"
+          :disabled="busy || changed" @click="updateBranch">{{ t('publishing.update_contribution') }}</button>
         <div class="flex flex-wrap items-end gap-2">
           <label>
             <span class="label text-sm">{{ t('publishing.merge_method') }}</span>
@@ -74,6 +103,8 @@ async function merge() {
         </div>
       </template>
     </template>
+    <p v-if="syncMessage" class="text-sm" role="status">{{ syncMessage }}</p>
+    <a v-if="syncReviewUrl" :href="syncReviewUrl" class="link text-sm" target="_blank" rel="noopener noreferrer">{{ t('publishing.open_sync_review') }}</a>
     <p v-if="error" class="text-error text-sm" role="alert">{{ error }}</p>
   </div>
 </template>
