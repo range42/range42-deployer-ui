@@ -34,6 +34,26 @@ function unique(values, label) {
 }
 function nodeConfig(node) { return node.data?.config || {} }
 
+function normalizedVms(rows) {
+  return rows.map(vm => {
+    requireValue(vm.nics === undefined || (Array.isArray(vm.nics) && vm.nics.length > 0 && vm.nics.length <= 32), `Choose 1–32 NICs for ${vm.vm_name}`)
+    const nics = (vm.nics || [{ network_id: vm.network_id, ip: vm.ip }]).map(nic => ({ ...nic }))
+    const value = { ...vm, nics, network_id: nics[0].network_id, ip: nics[0].ip }
+    for (const [key, label, min, max] of [['cores', 'CPU cores', 1, 128], ['memory_mb', 'memory (MiB)', 128, 1048576], ['disk_gb', 'disk size (GiB)', 1, 65536]]) {
+      if (value[key] === undefined || value[key] === null || value[key] === '') delete value[key]
+      else {
+        value[key] = Number(value[key])
+        requireValue(Number.isInteger(value[key]) && value[key] >= min && value[key] <= max, `Invalid ${label} for ${vm.vm_name}: choose ${min}–${max}`)
+      }
+    }
+    if (value.disk_gb !== undefined) {
+      value.disk_device ||= 'scsi0'
+      requireValue(/^(?:scsi(?:[0-9]|[12][0-9]|30)|virtio(?:[0-9]|1[0-5])|sata[0-5])$/.test(value.disk_device), `Choose a VM disk device, not a CD-ROM, for ${vm.vm_name}`)
+    }
+    return value
+  })
+}
+
 function validateVariableName(name) {
   requireValue(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name), `Invalid Ansible variable name: ${name}`)
   requireValue(!/^(?:ansible_|proxmox_|r42_|global_vm_|global_template_|BUNDLE_SDN_|default_admin_vm_ci_|deployer_cli_|INFRASTRUCTURE_)/i.test(name)
@@ -85,17 +105,35 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
     }),
     content: [],
   }
-  return saved ? { ...saved,
-    vms: draft.vms.map(vm => saved.vms?.find(old => old.node_id === vm.node_id) || vm),
+  const result = saved ? { ...saved,
     networks: draft.networks.map(network => saved.networks?.find(old => old.id === network.id) || network),
   } : draft
+  result.vms = draft.vms.map(vm => {
+    const previous = saved?.vms?.find(old => old.node_id === vm.node_id)
+    const configured = previous || vm
+    const oldNics = configured.nics || [{ network_id: configured.network_id, ip: configured.ip }]
+    const connected = edges.filter(edge => edge.source === vm.node_id || edge.target === vm.node_id)
+      .map(edge => ({ edge, id: edge.source === vm.node_id ? edge.target : edge.source }))
+      .filter(connection => networks.some(network => network.id === connection.id))
+    // Keep the management connection first if the canvas reorders its edges.
+    connected.sort((a, b) => Number(b.id === oldNics[0]?.network_id) - Number(a.id === oldNics[0]?.network_id))
+    const remaining = [...oldNics]
+    const nics = connected.map(({ edge, id }) => {
+      const index = remaining.findIndex(nic => nic.network_id === id)
+      const old = index >= 0 ? remaining.splice(index, 1)[0] : null
+      return { network_id: id, ip: old?.ip || String(edge.data?.connection?.ipAddress || '').split('/')[0] }
+    })
+    if (!nics.length) nics.push({ network_id: '', ip: configured.ip || '' })
+    return { ...vm, ...previous, nics, network_id: nics[0].network_id, ip: nics[0].ip }
+  })
+  return result
 }
 
 function teardownPlay(vms) {
   const read = (path, result) => ({
     'ansible.builtin.uri': { url: `https://{{ proxmox_api_host }}/api2/json/${path}`, method: 'GET',
       headers: { Authorization: 'PVEAPIToken={{ proxmox_api_user }}!{{ proxmox_api_token_id }}={{ proxmox_api_token_secret }}' },
-      validate_certs: '{{ proxmox_api_validate_certs | default(false) }}' },
+      validate_certs: '{{ proxmox_api_validate_certs | default(true) }}' },
     register: result, no_log: true, changed_when: false,
   })
   return [{ name: 'Remove only VMs owned by this deployment', hosts: 'proxmox', gather_facts: false,
@@ -145,7 +183,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(['vm', 'network-segment', 'group'].includes(node.type), `Unsupported canvas kind: ${node.type}; this scenario supports VMs and networks`)
     requireValue(node.data?.kind !== 'team_scope' && node.data?.replication?.scope !== 'per_team' && node.replication?.scope !== 'per_team', 'Replicated teams require explicit VM and network instances; automatic replication is not supported by this emitter')
   }
-  const vms = scenario.vms || []
+  const vms = normalizedVms(scenario.vms || [])
   const networks = scenario.networks || []
   requireValue(vms.length > 0, 'Add at least one VM to the canvas and configure it')
   requireValue(networks.length > 0, 'Add a network to the canvas and connect every VM')
@@ -156,7 +194,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   unique(vms.map(vm => Number(vm.vm_id)), 'VMID')
   unique(vms.map(vm => vm.vm_name), 'VM name')
   unique(networks.map(network => network.vnet), 'network name')
-  unique(vms.map(vm => vm.ip), 'VM IP address')
+  unique(vms.flatMap(vm => vm.nics.map(nic => nic.ip)), 'VM NIC IP address')
   if (scenario.network_mode === 'sdn') requireValue(/^[a-z][a-z0-9]{0,7}$/.test(scenario.zone), 'SDN zone must contain 1–8 lowercase letters or numbers and start with a letter')
   const ranges = new Map()
   for (const network of networks) {
@@ -174,15 +212,19 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(Number.isInteger(Number(vm.template_vm_id)) && Number(vm.template_vm_id) >= 100 && Number(vm.template_vm_id) <= 999999999 && !allVmIds.has(Number(vm.template_vm_id)), `Choose an existing template VMID distinct from every target VM: ${vm.vm_name}`)
     requireValue(/^[a-zA-Z][a-zA-Z0-9-]{0,62}$/.test(vm.vm_name) && !['all', 'ungrouped', 'localhost', 'proxmox', 'proxmox_cli', 'scenario_guests', 'r42-proxmox', 'r42-proxmox-cli'].includes(vm.vm_name), `Invalid or reserved VM name: ${vm.vm_name}`)
     requireValue(/^[a-z_][a-z0-9_-]{0,31}$/.test(vm.ssh_user), `Invalid SSH username for ${vm.vm_name}`)
-    const network = networks.find(network => network.id === vm.network_id)
-    requireValue(network, `Select a network for ${vm.vm_name}`)
     const connections = edges.filter(edge => edge.source === vm.node_id || edge.target === vm.node_id)
-    requireValue(connections.length === 1 && connections[0].source !== connections[0].target
-      && (connections[0].source === network.id || connections[0].target === network.id), `VM ${vm.vm_name} must have exactly one NIC connected to its selected network`)
-    const range = ranges.get(network.id)
-    const ip = address(vm.ip, `address for ${vm.vm_name}`)
-    requireValue(ip > range.start && ip < range.end, `VM ${vm.vm_name} must have a usable address in subnet ${network.subnet}`)
-    requireValue(vm.ip !== network.gateway, `VM ${vm.vm_name} cannot use its gateway address`)
+    const connected = connections.map(edge => edge.source === vm.node_id ? edge.target : edge.source).sort()
+    requireValue(connections.every(edge => edge.source !== edge.target)
+      && JSON.stringify(connected) === JSON.stringify(vm.nics.map(nic => nic.network_id).sort()),
+    `VM ${vm.vm_name} NICs must match every connected canvas network`)
+    for (const nic of vm.nics) {
+      const network = networks.find(network => network.id === nic.network_id)
+      requireValue(network, `Select a network for ${vm.vm_name}`)
+      const range = ranges.get(network.id)
+      const ip = address(nic.ip, `NIC address for ${vm.vm_name}`)
+      requireValue(ip > range.start && ip < range.end, `VM ${vm.vm_name} must have a usable address in subnet ${network.subnet}`)
+      requireValue(nic.ip !== network.gateway, `VM ${vm.vm_name} cannot use its gateway address`)
+    }
   }
   requireValue(edges.every(edge => vms.some(vm => vm.node_id === edge.source || vm.node_id === edge.target)), 'Unsupported network-to-network connection on the canvas')
 
@@ -193,9 +235,16 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     ? { mode: 'sdn', zone: scenario.zone, vnets: networks.map(({ vnet, subnet, gateway, snat }) => ({ vnet, subnet, gateway, snat })) }
     : { mode: 'existing_bridge', bridges: networks.map(network => network.vnet) }
   write('manifest/scenario_networks.json', networkManifest, json)
-  write('manifest/scenario_vms.json', { scenario: scenario.label, version: 2,
+  write('manifest/scenario_vms.json', { scenario: scenario.label, version: 3,
     vms: vms.map(vm => ({ vm_id: Number(vm.vm_id), vm_name: vm.vm_name, ip: vm.ip, role: 'vm',
-      bridge: networks.find(network => network.id === vm.network_id).vnet, template_vm_id: Number(vm.template_vm_id) })),
+      bridge: networks.find(network => network.id === vm.network_id).vnet, template_vm_id: Number(vm.template_vm_id),
+      nics: vm.nics.map((nic, index) => ({ index, ip: nic.ip,
+        bridge: networks.find(network => network.id === nic.network_id).vnet,
+        prefix: Number(ranges.get(nic.network_id).prefix),
+        ...(index === 0 ? { gateway: networks.find(network => network.id === nic.network_id).gateway } : {}),
+      })),
+      ...Object.fromEntries(['cores', 'memory_mb', 'disk_gb', 'disk_device'].filter(key => vm[key] !== undefined && (key !== 'disk_device' || vm.disk_gb !== undefined)).map(key => [key, vm[key]])),
+    })),
     templates: [...new Set(vms.map(vm => Number(vm.template_vm_id)))].map(vm_id => ({ vm_id })),
   }, json)
   write('hosts.yml', { all: { children: {
@@ -212,6 +261,13 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   })])
   write('01_vm_bootstrap.yml', vms.map(vm => {
     const network = networks.find(network => network.id === vm.network_id)
+    const extra = Object.fromEntries(vm.nics.slice(1).flatMap((nic, offset) => {
+      const index = offset + 1
+      const network = networks.find(network => network.id === nic.network_id)
+      return [[`net${index}`, `virtio,bridge=${network.vnet}`], [`ipconfig${index}`, `ip=${nic.ip}/${ranges.get(network.id).prefix}`]]
+    }))
+    if (vm.cores !== undefined) extra.cores = vm.cores
+    if (vm.memory_mb !== undefined) extra.memory = vm.memory_mb
     return imported(`${BUNDLES}/proxmox/vm.bootstrap/main.yml`, {
       global_vm_ssh_name: vm.vm_name, global_vm_name: vm.vm_name, global_vm_id: Number(vm.vm_id),
       global_vm_description: 'range42-deployment:{{ r42_deployment_id }}',
@@ -219,6 +275,8 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
       global_template_vm_id: Number(vm.template_vm_id), global_vm_net_virtio_bridge: network.vnet,
       global_vm_ci_ip_gw: network.gateway, global_vm_ci_netmask: ranges.get(network.id).prefix,
       default_admin_vm_ci_user: vm.ssh_user,
+      ...(Object.keys(extra).length ? { global_vm_extra_config: extra } : {}),
+      ...(vm.disk_gb !== undefined ? { global_vm_disk: { disk: vm.disk_device, size_gb: vm.disk_gb } } : {}),
     })
   }))
   const configure = []
@@ -271,5 +329,5 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(!(path in nextFiles) || nextFiles[path] === value, `Generated path already exists: ${path}; choose a new scenario name or review ownership of the existing scenario`)
     nextFiles[path] = value
   }
-  return { files: nextFiles, generatedPaths: Object.keys(generated), scenario: JSON.parse(JSON.stringify(scenario)) }
+  return { files: nextFiles, generatedPaths: Object.keys(generated), scenario: JSON.parse(JSON.stringify({ ...scenario, vms })) }
 }

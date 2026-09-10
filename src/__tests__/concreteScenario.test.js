@@ -25,6 +25,35 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it('compiles multiple NICs and explicit resource overrides while retaining the management address', () => {
+    const input = fixture()
+    input.nodes.push({ id: 'net2', type: 'network-segment', data: { config: {} } })
+    input.edges.push({ source: 'vm1', target: 'net2' })
+    input.scenario.networks.push({ id: 'net2', vnet: 'demo2', subnet: '10.42.11.0/24', gateway: '10.42.11.1', snat: false })
+    Object.assign(input.scenario.vms[0], { cores: 4, memory_mb: 4096, disk_gb: 32, disk_device: 'scsi0', nics: [
+      { network_id: 'net1', ip: '10.42.10.10' },
+      { network_id: 'net2', ip: '10.42.11.10' },
+    ] })
+    const { files } = emitConcreteScenario(input)
+    const manifest = JSON.parse(files['scenarios/demo/manifest/scenario_vms.json'])
+    expect(manifest.version).toBe(3)
+    expect(manifest.vms[0]).toMatchObject({ ip: '10.42.10.10', bridge: 'demo1', cores: 4, memory_mb: 4096,
+      nics: [{ index: 0, ip: '10.42.10.10', bridge: 'demo1' }, { index: 1, ip: '10.42.11.10', bridge: 'demo2' }] })
+    expect(parse(files['scenarios/demo/01_vm_bootstrap.yml'])[0].vars).toMatchObject({
+      global_vm_extra_config: { net1: 'virtio,bridge=demo2', ipconfig1: 'ip=10.42.11.10/24', cores: 4, memory: 4096 },
+      global_vm_disk: { disk: 'scsi0', size_gb: 32 },
+    })
+    expect(parse(files['scenarios/demo/hosts.yml']).all.children.scenario_guests.hosts['demo-vm'].ansible_host).toBe('10.42.10.10')
+  })
+
+  it.each([
+    ['fractional CPU', { cores: 1.5 }], ['zero memory', { memory_mb: 0 }],
+    ['negative disk size', { disk_gb: -1 }], ['CD-ROM resize', { disk_gb: 32, disk_device: 'ide2' }],
+  ])('rejects invalid resources: %s', (_label, resources) => {
+    const input = fixture()
+    Object.assign(input.scenario.vms[0], resources)
+    expect(() => emitConcreteScenario(input)).toThrow(/CPU|memory|disk/i)
+  })
   it('emits matching inventory, VM manifest, ordered SDN/bootstrap/content stages and a content-only entrypoint', () => {
     const input = fixture()
     const { files } = emitConcreteScenario(input)
@@ -41,7 +70,7 @@ describe('concrete scenario emitter', () => {
     expect(inventory.proxmox_cli.hosts['r42-proxmox-cli'].ansible_host).toBe('{{ r42_proxmox_address }}')
     expect(inventory.scenario_guests.hosts['demo-vm'].ansible_host).toBe('10.42.10.10')
     const manifest = JSON.parse(files['scenarios/demo/manifest/scenario_vms.json'])
-    expect(manifest.vms).toEqual([{ vm_id: 3101, vm_name: 'demo-vm', ip: '10.42.10.10', role: 'vm', bridge: 'demo1', template_vm_id: 9232 }])
+    expect(manifest.vms).toMatchObject([{ vm_id: 3101, vm_name: 'demo-vm', ip: '10.42.10.10', role: 'vm', bridge: 'demo1', template_vm_id: 9232 }])
     expect(yaml('01_vm_bootstrap.yml')[0].vars).toMatchObject({
       global_vm_ssh_name: 'demo-vm', global_vm_id: 3101, global_vm_ci_ip: '10.42.10.10',
       global_vm_net_virtio_bridge: 'demo1', global_template_vm_id: 9232,
@@ -75,6 +104,7 @@ describe('concrete scenario emitter', () => {
     const { files } = emitConcreteScenario(fixture())
     const teardown = parse(files['scenarios/demo/teardown.yml'])
     const tasks = teardown[0].tasks
+    expect(tasks[0]['ansible.builtin.uri'].validate_certs).toBe('{{ proxmox_api_validate_certs | default(true) }}')
     expect(tasks[0]['ansible.builtin.uri'].url).toContain('/cluster/resources?type=vm')
     const owned = tasks[1].block
     const ownerGuard = owned.find(task => task['ansible.builtin.assert']?.fail_msg?.includes('ownership'))
@@ -96,6 +126,16 @@ describe('concrete scenario emitter', () => {
     expect(draft.vms).toHaveLength(2)
     expect(draft.vms[0].vm_id).toBe(3101)
     expect(draft.vms[1].vm_name).toBe('new-vm')
+  })
+
+  it('adds a newly connected NIC without losing the saved management address', () => {
+    const input = fixture()
+    input.nodes.push({ id: 'net2', type: 'network-segment', data: { config: {} } })
+    input.edges.push({ source: 'vm1', target: 'net2' })
+    const draft = createScenarioDraft({ name: 'Demo', scenario: input.scenario }, input.nodes, input.edges)
+    expect(draft.vms[0].nics).toEqual([
+      { network_id: 'net1', ip: '10.42.10.10' }, { network_id: 'net2', ip: '' },
+    ])
   })
 
   it('applies declared public variable overrides with explicit per-step values taking precedence', () => {

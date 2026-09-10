@@ -77,7 +77,7 @@ function review() {
           </header>
 
           <template v-if="!preview">
-            <p class="text-sm mb-4">This version supports one network interface per VM. Template VMs must already exist; CPU, memory and disk sizes come from the selected template. Add VMs and networks on the canvas first. Team replication, containers and legacy attachments need explicit conversion before generation.</p>
+            <p class="text-sm mb-4">Use existing templates and connect each VM to its networks on the canvas. The first interface (net0) carries SSH access and the default route. Leave resource overrides empty to inherit the template; disk changes only grow an existing disk.</p>
             <div class="grid gap-3 sm:grid-cols-3 mb-5">
               <label class="form-control gap-1"><span>Scenario name</span><input v-model="draft.label" class="input input-bordered w-full" data-testid="scenario-label" placeholder="demo_lab" /></label>
               <label class="form-control gap-1"><span>Networking</span><select v-model="draft.network_mode" class="select select-bordered w-full" data-testid="scenario-network-mode"><option value="sdn">SDN (default)</option><option value="existing_bridge">Existing bridges</option></select></label>
@@ -105,9 +105,15 @@ function review() {
                 <label class="form-control gap-1"><span>VM name</span><input v-model="vm.vm_name" class="input input-bordered w-full" /></label>
                 <label class="form-control gap-1"><span>New VMID</span><input v-model.number="vm.vm_id" type="number" min="100" class="input input-bordered w-full" /></label>
                 <label class="form-control gap-1"><span>Existing template VMID</span><input v-model.number="vm.template_vm_id" type="number" min="100" class="input input-bordered w-full" /></label>
-                <label class="form-control gap-1"><span>Network</span><select v-model="vm.network_id" class="select select-bordered w-full"><option value="" disabled>Choose connected network</option><option v-for="network in draft.networks" :key="network.id" :value="network.id">{{ network.vnet || network.id }}</option></select></label>
-                <label class="form-control gap-1"><span>Guest IPv4 address</span><input v-model="vm.ip" class="input input-bordered w-full" placeholder="10.42.1.10" /></label>
                 <label class="form-control gap-1"><span>Guest SSH user</span><input v-model="vm.ssh_user" class="input input-bordered w-full" /></label>
+                <label class="form-control gap-1"><span>CPU cores</span><input v-model.number="vm.cores" type="number" min="1" max="128" class="input input-bordered w-full" data-testid="scenario-vm-cores" placeholder="From template" /></label>
+                <label class="form-control gap-1"><span>Memory (MiB)</span><input v-model.number="vm.memory_mb" type="number" min="128" class="input input-bordered w-full" data-testid="scenario-vm-memory" placeholder="From template" /></label>
+                <label class="form-control gap-1"><span>Disk size (GiB)</span><input v-model.number="vm.disk_gb" type="number" min="1" class="input input-bordered w-full" placeholder="From template" /></label>
+                <label v-if="vm.disk_gb" class="form-control gap-1"><span>Existing disk device</span><input v-model="vm.disk_device" class="input input-bordered w-full" placeholder="scsi0" /></label>
+              </div>
+              <div v-for="(nic, nicIndex) in vm.nics" :key="nicIndex" class="grid gap-3 sm:grid-cols-2 mt-3 border-t border-base-300 pt-3">
+                <label class="form-control gap-1"><span>net{{ nicIndex }} network{{ nicIndex === 0 ? ' (management)' : '' }}</span><select v-model="nic.network_id" class="select select-bordered w-full"><option value="" disabled>Choose connected network</option><option v-for="network in draft.networks" :key="network.id" :value="network.id">{{ network.vnet || network.id }}</option></select></label>
+                <label class="form-control gap-1"><span>net{{ nicIndex }} IPv4 address</span><input v-model="nic.ip" class="input input-bordered w-full" placeholder="10.42.1.10" /></label>
               </div>
             </fieldset>
 

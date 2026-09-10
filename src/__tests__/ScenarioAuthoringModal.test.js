@@ -16,6 +16,16 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('lets an operator set VM resources before reviewing the generated plan', async () => {
+    const wrapper = modal()
+    await flushPromises()
+    await wrapper.get('[data-testid="scenario-vm-cores"]').setValue(4)
+    await wrapper.get('[data-testid="scenario-vm-memory"]').setValue(4096)
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const manifest = JSON.parse(wrapper.emitted('generated')[0][0].files['scenarios/demo/manifest/scenario_vms.json'])
+    expect(manifest.vms[0]).toMatchObject({ cores: 4, memory_mb: 4096, nics: [{ index: 0, ip: '10.42.1.10' }] })
+  })
   it('reviews concrete files before applying them to the project', async () => {
     const wrapper = modal()
     await flushPromises()
