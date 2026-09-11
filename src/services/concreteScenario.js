@@ -1,3 +1,4 @@
+import { validateRoleAttachment } from './catalogRoleExecution'
 import { expandScenarioReplication } from './scenarioReplication'
 import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
@@ -309,6 +310,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   }))
   const configure = []
   const bundleAttachments = []
+  const roleAttachments = []
   const content = scenario.content || []
   unique(content.map(item => item.id), 'content identifier')
   for (const item of content) {
@@ -342,6 +344,14 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
       validateVariableName(name)
     }
     const vars = { ...projectVariables.values, ...(item.vars || {}), global_vm_ssh_name: vm.vm_name, global_vm_ci_ip: vm.ip }
+    if (item.kind === 'role') {
+      const { role } = validateRoleAttachment(item, files)
+      roleAttachments.push({ attachment_id: item.id, vm_id: Number(vm.vm_id), inventory_host: vm.vm_name,
+        path: item.path, role, parameters: item.vars || {} })
+      configure.push({ name: `Catalog role: ${item.path}`, hosts: vm.vm_name, gather_facts: true, become: true,
+        vars_files: [VAULT], vars, roles: [{ role: `{{ r42_project_dir }}/${item.path}`, vars }] })
+      continue
+    }
     requireValue(Object.hasOwn(files, `${base}/${item.path}`), `Content file is missing: ${base}/${item.path}`)
     requireValue(item.kind === 'file' || typeof files[`${base}/${item.path}`] === 'string', `${item.kind} content must be text: ${item.path}`)
     if (item.kind === 'playbook') {
@@ -360,6 +370,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     }
   }
   write('configure.yml', configure.length ? configure : [{ name: 'No additional guest content configured', hosts: 'scenario_guests', gather_facts: false, tasks: [] }])
+  if (roleAttachments.length) write('manifest/scenario_roles.json', { version: 1, attachments: roleAttachments }, json)
   if (bundleAttachments.length) write('manifest/scenario_bundles.json', { version: 1, attachments: bundleAttachments }, json)
   write('main.yml', [
     ...(scenario.network_mode === 'sdn' ? [imported('00_networks.yml')] : []),

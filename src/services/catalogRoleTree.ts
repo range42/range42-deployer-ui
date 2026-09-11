@@ -44,13 +44,17 @@ function checkTasks(value: unknown, file: string, files: ProjectFiles, root: str
   }
 }
 
+function validateRoleName(root: string): void {
+  const name = root.split('/').at(-1) || ''
+  if (!/^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)*$/.test(name) || name.length > 128) throw new Error('The role must preserve the catalog category.action.target naming scheme')
+}
+
 /** Preserve a complete, bounded regular-file role tree; never dereference symlinks. */
 export async function loadCatalogRoleFiles(input: { owner: string; repo: string; path: string; sha: string },
   provider: Pick<GitProviderV1, 'listTree' | 'getFile' | 'getFileContent'>): Promise<ProjectFiles> {
   const { owner, repo, path: root, sha } = input
   validateFilePath(root)
-  const name = root.split('/').at(-1) || ''
-  if (!/^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)*$/.test(name) || name.length > 128) throw new Error('The role must preserve the catalog category.action.target naming scheme')
+  validateRoleName(root)
   const tree = await provider.listTree({ owner, repo, path: root, ref: sha })
   const files: ProjectFiles = {}
   if (tree.length > 512) throw new Error('The role exceeds the 512-entry import limit; choose a smaller self-contained role')
@@ -65,6 +69,15 @@ export async function loadCatalogRoleFiles(input: { owner: string; repo: string;
     files[item.path] = file.content
     validateFileMap(files)
   }
+  validateCatalogRoleFiles(root, files)
+  return files
+}
+
+/** Revalidate already materialized project files after local edits. */
+export function validateCatalogRoleFiles(root: string, files: ProjectFiles): void {
+  validateFilePath(root)
+  validateRoleName(root)
+  validateFileMap(files)
   if (!['main.yml', 'main.yaml'].some(name => Object.hasOwn(files, `${root}/tasks/${name}`))) throw new Error('The selected role has no tasks/main.yml or tasks/main.yaml')
   for (const [path, content] of Object.entries(files)) {
     if (!/\.ya?ml$/.test(path)) continue
@@ -76,5 +89,4 @@ export async function loadCatalogRoleFiles(input: { owner: string; repo: string;
       if (mapping(meta) && meta.dependencies !== undefined && (!Array.isArray(meta.dependencies) || meta.dependencies.length)) throw new Error(`Unresolved role dependencies in ${path}`)
     }
   }
-  return files
 }
