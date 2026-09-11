@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { prepareReplicatedAllocation, applyReplicatedAllocation, applyScenarioAllocation, reserveScenarioAllocation, restoreScenarioAllocation, releaseScenarioAllocation } from '@/services/scenarioAllocation'
+import { getScenarioAllocationProof, prepareReplicatedAllocation, applyReplicatedAllocation, applyScenarioAllocation, reserveScenarioAllocation, restoreScenarioAllocation, releaseScenarioAllocation } from '@/services/scenarioAllocation'
 
 import { replicatedScenario, replicationKey } from './fixtures/replicatedScenario'
 import { emitConcreteScenario } from '@/services/concreteScenario'
@@ -216,5 +216,57 @@ describe('literal replication reservations', () => {
       expect(() => applyReplicatedAllocation(fixture, assignments)).toThrow(/assignment|draft|manual/i)
       expect(JSON.stringify(fixture)).toBe(before)
     }
+  })
+})
+
+
+describe('deployment reservation ownership proof', () => {
+  const proofInput = () => ({ localProjectId: 'project-1', targetHostId: 'pve-1',
+    allocation: { backend_url: state.scope, target_host_id: 'pve-1', reservation: reservation() } })
+
+  it('returns only the current lease id and private header without changing saved ownership', async () => {
+    await reserveScenarioAllocation(input())
+    const stored = localStorage.getItem('range42_scenario_reservation_owners')
+    const token = request.mock.calls[0][1].headers['X-Range42-Reservation-Token']
+    request.mockClear()
+    expect(getScenarioAllocationProof(proofInput())).toEqual({ reservationId: 'lease-1',
+      headers: { 'X-Range42-Reservation-Token': token } })
+    expect(request).not.toHaveBeenCalled()
+    expect(localStorage.getItem('range42_scenario_reservation_owners')).toBe(stored)
+  })
+
+  it('allows a manual deployment only when allocation metadata is absent', () => {
+    expect(getScenarioAllocationProof({ localProjectId: 'project-1', targetHostId: 'pve-1', allocation: null })).toBeNull()
+    expect(() => getScenarioAllocationProof({ ...proofInput(), allocation: {} })).toThrow(/reservation|backend/i)
+  })
+
+  it.each([
+    ['backend', value => { value.allocation.backend_url = 'https://other.test' }],
+    ['host', value => { value.targetHostId = 'pve-2' }],
+    ['reservation host', value => { value.allocation.reservation.host_id = 'pve-2' }],
+    ['project', value => { value.localProjectId = 'backend-project-1' }],
+    ['missing project', value => { value.localProjectId = '' }],
+    ['reservation id', value => { value.allocation.reservation.reservation_id = 'lease-2' }],
+    ['expired', value => { value.allocation.reservation.expires_at = '2000-01-01T00:00:00Z' }],
+    ['invalid expiry', value => { value.allocation.reservation.expires_at = 'not-a-date' }],
+  ])('rejects %s mismatch and preserves the original owner', async (_label, mutate) => {
+    await reserveScenarioAllocation(input())
+    const stored = localStorage.getItem('range42_scenario_reservation_owners')
+    const value = proofInput()
+    mutate(value)
+    expect(() => getScenarioAllocationProof(value)).toThrow(/reserv|project|backend|expir|host|target/i)
+    expect(localStorage.getItem('range42_scenario_reservation_owners')).toBe(stored)
+  })
+
+  it.each([null, 'x'.repeat(31), 'x'.repeat(129), { fake: 'x'.repeat(64) }])('rejects missing or malformed private ownership %j', async token => {
+    await reserveScenarioAllocation(input())
+    const key = 'range42_scenario_reservation_owners'
+    if (token === null) localStorage.removeItem(key)
+    else {
+      const stored = JSON.parse(localStorage.getItem(key))
+      Object.values(stored)[0].token = token
+      localStorage.setItem(key, JSON.stringify(stored))
+    }
+    expect(() => getScenarioAllocationProof(proofInput())).toThrow(/own|browser/i)
   })
 })

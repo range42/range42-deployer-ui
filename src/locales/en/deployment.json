@@ -165,6 +165,7 @@
       "acknowledge": "Acknowledge preflight warnings.",
       "description": "Validates the stored project documents. Network, VM and resource checks run in deployment preflight."
     },
+    "allocationPinRequired": "Save this scenario to Git at an exact commit before handing off its reservation.",
     "allocationTargetChanged": "These values were reserved for another target or backend. Return to scenario configuration and reserve again before using them here."
   },
   "teardown": {

@@ -1382,6 +1382,7 @@ const handleInfrastructureImport = (result) => {
       v-if="showDeployForm && currentProject"
       :visible="showDeployForm"
       :project-id="registeredProjectId || currentProject.id"
+      :local-project-id="currentProject.id"
       :project-name="currentProject.name"
       :initial-scenario-label="currentProject.scenario?.label || ''"
       :allocation="currentProject.scenario?.allocation || null"

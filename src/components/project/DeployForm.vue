@@ -26,7 +26,8 @@
  *
  * Props:
  *   visible            — open state
- *   projectId          — current project id
+ *   projectId          — registered backend project id
+ *   localProjectId     — local authoring project id used to own reservations
  *   projectName        — friendly label
  *   gamenet            — boolean; when true, team_count field is shown
  *   catalogSha         — sha-pin candidate for the catalog repo
@@ -42,10 +43,12 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
+import { getScenarioAllocationProof } from '@/services/scenarioAllocation'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   projectId: { type: String, default: '' },
+  localProjectId: { type: String, default: '' },
   projectName: { type: String, default: '' },
   initialScenarioLabel: { type: String, default: '' },
   gamenet: { type: Boolean, default: true },
@@ -70,8 +73,6 @@ const scenarioLabel = ref(props.initialScenarioLabel)
 const usesPinnedScenario = computed(() => !!props.projectSha && scenarioLabel.value.trim() !== '_universal')
 const targetHost = ref('')
 const allocationBackendMatches = computed(() => props.allocation?.backend_url === getBackendScope())
-const allocationTargetChanged = computed(() => props.allocation && (!allocationBackendMatches.value
-  || props.allocation.target_host_id !== targetHost.value))
 const teamCount = ref(1)
 const vaultPassword = ref('')
 const vaultOverride = ref(false)
@@ -125,6 +126,20 @@ const errVault = computed(() => {
   return null
 })
 
+function readAllocationProof() {
+  const proof = getScenarioAllocationProof({ allocation: props.allocation,
+    localProjectId: props.localProjectId, targetHostId: targetHost.value })
+  if (proof && (!usesPinnedScenario.value || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(props.projectSha))) {
+    throw new Error(t('deployment.deploy.allocationPinRequired'))
+  }
+  return proof
+}
+
+const errAllocation = computed(() => {
+  try { readAllocationProof(); return null }
+  catch (error) { return error.message || String(error) }
+})
+
 const hardErrors = computed(() => {
   return [
     errCodename.value,
@@ -132,6 +147,7 @@ const hardErrors = computed(() => {
     errHost.value,
     errTeamCount.value,
     errVault.value,
+    errAllocation.value,
   ].filter(Boolean)
 })
 
@@ -225,7 +241,10 @@ async function submit() {
   submitting.value = true
   submitError.value = null
   try {
+    // Refresh time and browser ownership at the send boundary, not only on render.
+    const allocationProof = readAllocationProof()
     const body = {
+      ...(allocationProof ? { allocation_reservation_id: allocationProof.reservationId } : {}),
       project_id: props.projectId,
       codename: codename.value.trim().toUpperCase(),
       scenario_label: scenarioLabel.value.trim(),
@@ -238,6 +257,7 @@ async function submit() {
     }
     const created = await backendRequest('/v1/deployments', {
       method: 'POST',
+      ...(allocationProof ? { headers: allocationProof.headers } : {}),
       body: JSON.stringify(body),
     })
     if (session !== sessionVersion) return
@@ -258,7 +278,7 @@ function onCancel() {
 }
 
 watch(
-  [() => props.visible, () => props.projectId, getBackendScope, () => backend.token],
+  [() => props.visible, () => props.projectId, () => props.localProjectId, getBackendScope, () => backend.token],
   ([visible]) => {
     sessionVersion += 1
     hostsVersion += 1
@@ -377,7 +397,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
             </button>
           </div>
           <p v-if="errHost" class="text-xs text-error mt-1">{{ errHost }}</p>
-          <p v-if="allocationTargetChanged" class="text-xs text-warning mt-1" data-testid="deploy-allocation-warning">{{ t('deployment.deploy.allocationTargetChanged') }}</p>
+          <p v-if="errAllocation" role="alert" class="text-xs text-error mt-1" data-testid="deploy-allocation-warning">{{ errAllocation }}</p>
         </div>
 
         <!-- Team count (gamenet only) -->

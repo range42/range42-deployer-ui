@@ -189,6 +189,7 @@ describe('ProjectEditor saved project integration', () => {
     expect(registerProject).toHaveBeenCalledOnce()
     expect(registerProject.mock.calls[0][0].git.repo_owner).toBe('personal-fork')
     expect(wrapper.findComponent(DeployForm).props('projectId')).toBe('registered-backend-project')
+    expect(wrapper.findComponent(DeployForm).props('localProjectId')).toBe(savedProject.id)
     expect(wrapper.findComponent(DeployForm).props('projectSha')).toBe('b'.repeat(40))
     expect(JSON.parse(localStorage.getItem('range42_projects'))[0].git.repo_owner).toBe('personal-fork')
   })

@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import DeployForm from '@/components/project/DeployForm.vue'
+import { reserveScenarioAllocation } from '@/services/scenarioAllocation'
 import deploymentEn from '@/locales/en/deployment.json'
 import commonEn from '@/locales/en/common.json'
 
@@ -500,5 +501,115 @@ describe('DeployForm backend integration', () => {
     await flushPromises()
     expect(wrapper.emitted('created')).toBeUndefined()
     expect(push).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('DeployForm reservation handoff', () => {
+  let allocation
+  let requests
+  const ownerStorage = 'range42_scenario_reservation_owners'
+  beforeEach(async () => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    useBackendApiStore().addHost({ url: 'https://backend.test', token: 'api-token' })
+    const reservation = { reservation_id: 'lease-1', project_key: 'local-project', host_id: 'host-1',
+      node_name: 'pve', expires_at: '2099-01-01T00:00:00Z', checked_at: new Date().toISOString(), assignments: [], limitations: [] }
+    const base = fetchMockHosts()
+    requests = vi.fn((url, options) => String(url).endsWith('/reservations')
+      ? Promise.resolve(response(reservation)) : base(url, options))
+    vi.stubGlobal('fetch', requests)
+    await reserveScenarioAllocation({ projectKey: 'local-project', targetHostId: 'host-1', vmidStart: 2000, vmidEnd: 8999,
+      vms: [{ node_id: 'vm-1', nics: [{ network_id: 'net-1' }] }],
+      networks: [{ id: 'net-1', vnet: 'blue', subnet: '10.42.1.0/24', gateway: '10.42.1.1' }] })
+    allocation = { reservation, backend_url: 'https://backend.test', target_host_id: 'host-1' }
+    requests.mockClear()
+  })
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+  const formProps = () => ({ projectId: 'registered-backend-project', localProjectId: 'local-project',
+    projectSha: 'a'.repeat(40), allocation })
+  const creation = () => requests.mock.calls.find(([url, opts]) => String(url).endsWith('/deployments') && opts?.method === 'POST')
+
+  it('hands off the lease by id and private header while keeping local ownership for uncertain outcomes', async () => {
+    const stored = localStorage.getItem(ownerStorage)
+    const token = Object.values(JSON.parse(stored))[0].token
+    const { wrapper } = await validForm(formProps())
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    await flushPromises()
+    const [, options] = creation()
+    expect(JSON.parse(options.body)).toMatchObject({ project_id: 'registered-backend-project', allocation_reservation_id: 'lease-1' })
+    expect(new Headers(options.headers).get('X-Range42-Reservation-Token')).toBe(token)
+    expect(new Headers(options.headers).get('Authorization')).toBe('Bearer api-token')
+    expect(options.body).not.toContain(token)
+    expect(JSON.parse(options.body)).not.toHaveProperty('localProjectId')
+    expect(localStorage.getItem(ownerStorage)).toBe(stored)
+  })
+
+  it.each([
+    ['backend', value => { value.allocation.backend_url = 'https://other.test' }],
+    ['target', value => { value.allocation.target_host_id = 'host-2' }],
+    ['local project', value => { value.localProjectId = 'other-project' }],
+    ['expiry', value => { value.allocation.reservation.expires_at = '2000-01-01T00:00:00Z' }],
+    ['owner', () => { localStorage.removeItem(ownerStorage) }],
+    ['pin', value => { value.projectSha = '' }],
+  ])('blocks invalid %s proof rather than submitting without its reservation', async (_label, mutate) => {
+    const props = formProps()
+    mutate(props)
+    const { wrapper } = await validForm(props)
+    expect(wrapper.get('[data-testid="deploy-allocation-warning"]').text()).toMatch(/reserv|ownership|commit|project|backend|expir/i)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    expect(creation()).toBeUndefined()
+  })
+
+  it.each(['expiry', 'owner'])('rechecks %s immediately before sending even if the form was already valid', async kind => {
+    const { wrapper } = await validForm(formProps())
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeUndefined()
+    if (kind === 'expiry') vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2099-01-02T00:00:00Z'))
+    else localStorage.removeItem(ownerStorage)
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    await flushPromises()
+    expect(creation()).toBeUndefined()
+    expect(wrapper.text()).toMatch(/expir|browser.*own|ownership/i)
+  })
+
+  it('keeps manual deployment available without attaching an unrelated saved owner', async () => {
+    const { wrapper } = await validForm({ ...formProps(), allocation: null })
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    await flushPromises()
+    const [, options] = creation()
+    expect(JSON.parse(options.body)).not.toHaveProperty('allocation_reservation_id')
+    expect(new Headers(options.headers).has('X-Range42-Reservation-Token')).toBe(false)
+  })
+
+  it('does not navigate after the local authoring identity changes during creation', async () => {
+    const base = requests.getMockImplementation()
+    const pending = pendingResponse()
+    requests.mockImplementation((url, options) => String(url).endsWith('/deployments') && options?.method === 'POST'
+      ? pending.promise : base(url, options))
+    const { wrapper, router } = await validForm(formProps())
+    const push = vi.spyOn(router, 'push')
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    await wrapper.setProps({ localProjectId: 'other-project' })
+    pending.resolve(response({ id: 'old-project-deployment' }, 201))
+    await flushPromises()
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('keeps allocation and owner state intact on backend rejection', async () => {
+    const stored = localStorage.getItem(ownerStorage)
+    const original = JSON.stringify(allocation)
+    const base = requests.getMockImplementation()
+    requests.mockImplementation((url, options) => String(url).endsWith('/deployments') && options?.method === 'POST'
+      ? Promise.resolve(response({ message: 'Saved manifest does not match the reservation', code: 'ALLOCATION_MISMATCH' }, 409))
+      : base(url, options))
+    const { wrapper } = await validForm(formProps())
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Saved manifest does not match the reservation')
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(localStorage.getItem(ownerStorage)).toBe(stored)
+    expect(JSON.stringify(allocation)).toBe(original)
   })
 })

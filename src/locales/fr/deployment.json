@@ -165,6 +165,7 @@
       "acknowledge": "Accepter les avertissements préalables.",
       "description": "Valide les documents du projet enregistrés. Les réseaux, VM et ressources sont vérifiés avant le déploiement."
     },
+    "allocationPinRequired": "Enregistrez ce scénario dans Git avec un commit précis avant de transférer sa réservation.",
     "allocationTargetChanged": "Ces valeurs ont été réservées pour une autre cible ou un autre backend. Revenez à la configuration du scénario et réservez à nouveau avant de les utiliser ici."
   },
   "teardown": {

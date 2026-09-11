@@ -13,3 +13,27 @@ Reservations conservatively share VM IDs and `(bridge, IP)` pairs across all hos
 The deployment form prefers the saved target only when its backend URL matches the current backend and that target still exists. Changing backend or target displays a reminder to reserve again. The initial scope is one target node with explicitly declared subnets; team replication and automatic subnet allocation are separate features.
 
 API: `POST /v1/proxmox/hosts/{host_id}/reservations` reserves or renews; `GET` and `DELETE /v1/proxmox/hosts/{host_id}/reservations/{reservation_id}` restore and release using the same ownership header. Project keys are local authoring IDs and do not require a registered Git project.
+
+
+## Handoff when creating a deployment
+
+The deployment form transfers an applied reservation using `allocation_reservation_id`
+in `POST /v1/deployments` and its private owner token only in the
+`X-Range42-Reservation-Token` header. This requires the paired backend's atomic
+reservation-consumption contract. The form uses the local authoring project ID
+for ownership, separately from the registered backend project ID.
+
+An attached reservation must match the selected backend, host and local project,
+remain unexpired, and have the matching private owner saved in this browser. The
+scenario must have an exact Git commit. Invalid or missing proof blocks submission
+with recovery guidance; it never silently falls back to manual deployment. With no
+attached reservation, manual deployment remains available. The form rechecks
+expiry and local ownership immediately before sending. Backend validation is still
+responsible for matching the pinned manifest's actual VM/NIC identities and the
+current host binding.
+
+Neither success nor failure deletes the browser's saved ownership record, allowing
+an uncertain result to be investigated without discarding that proof. Retaining it
+does not guarantee a second deployment can consume the same lease. A consumed lease
+and its durable deployment claim are governed by the backend; clearing browser
+storage or editing Git files does not release deployed resources.

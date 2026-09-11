@@ -43,7 +43,7 @@ function saveOwner(key: string, owner: Owner) {
 }
 function readOwner(key: string): Owner | null {
   const owner = owners()[key]
-  return owner && /^[A-Za-z0-9_-]{32,}$/.test(owner.token) ? owner : null
+  return owner && typeof owner.token === 'string' && /^[A-Za-z0-9_-]{32,128}$/.test(owner.token) ? owner : null
 }
 function ensureOwner(key: string): Owner {
   const existing = readOwner(key)
@@ -57,6 +57,32 @@ function checkResponse(result: ScenarioReservation, project: string, host: strin
   requireValue(scope === getBackendScope(), 'The selected backend changed; retry on the current backend')
   requireValue(result?.project_key === project && result.host_id === host && result.reservation_id
     && Number.isFinite(Date.parse(result.expires_at)) && Array.isArray(result.assignments), 'Reservation identity does not match this project and target')
+}
+
+/** Read-only handoff proof. The private token belongs in a header, never project JSON. */
+export function getScenarioAllocationProof(input: {
+  allocation: unknown; localProjectId: string; targetHostId: string
+}): { reservationId: string; headers: { 'X-Range42-Reservation-Token': string } } | null {
+  if (input.allocation === null || input.allocation === undefined) return null
+  const allocation = record(input.allocation, 'Reservation metadata')
+  const scope = getBackendScope()
+  const retry = 'Return to scenario configuration and reserve again.'
+  requireValue(allocation.backend_url === scope, `Reservation belongs to another backend. ${retry}`)
+  requireValue(input.targetHostId && allocation.target_host_id === input.targetHostId,
+    `Reservation belongs to another target host. ${retry}`)
+  const reservation = record(allocation.reservation, 'Reservation')
+  requireValue(input.localProjectId && reservation.project_key === input.localProjectId,
+    `Reservation does not belong to this local project. ${retry}`)
+  requireValue(reservation.host_id === input.targetHostId,
+    `Reservation host does not match the selected target. ${retry}`)
+  requireValue(typeof reservation.reservation_id === 'string' && reservation.reservation_id.length > 0,
+    `Reservation identity is missing. ${retry}`)
+  requireValue(typeof reservation.expires_at === 'string' && Number.isFinite(Date.parse(reservation.expires_at))
+    && Date.parse(reservation.expires_at) > Date.now(), `Reservation has expired or has an invalid expiry. ${retry}`)
+  const owner = readOwner(ownerKey(scope, input.localProjectId, input.targetHostId))
+  requireValue(owner?.reservation_id === reservation.reservation_id,
+    'This browser does not own this reservation. Reopen it in the original browser, or reserve again after the lease expires.')
+  return { reservationId: reservation.reservation_id, headers: { 'X-Range42-Reservation-Token': owner.token } }
 }
 
 export async function reserveScenarioAllocation(input: {
