@@ -154,7 +154,7 @@ function prepare(next) {
       <p v-if="planned.error" role="alert" class="alert alert-error break-words" data-testid="replication-error">{{ planned.error }}</p>
       <template v-if="planned.value">
         <p class="font-semibold" data-testid="replication-counts">{{ planned.value.counts.vms }} VMs · {{ planned.value.counts.networks }} networks · {{ planned.value.counts.nics }} NICs</p>
-        <p class="text-sm">Enter reviewed VMIDs, subnets and addresses for each instance below. This preview does not reserve IDs, IPs, VNet names or subnets. Deployment preflight checks live conflicts. Automatic reservation currently applies to scenarios without replication.</p>
+        <p class="text-sm">Define each instance network below, then reserve VM IDs and IP addresses for every generated VM in the allocation panel. You can also enter assignments manually. VNet names and subnets require your review; deployment preflight checks live conflicts.</p>
         <p v-for="warning in planned.value.warnings" :key="warning" class="text-sm rounded-lg border border-warning/50 bg-warning/10 p-3">{{ warning }}</p>
         <fieldset v-for="network in networkRows" :key="network.instance_key" class="border border-base-300 rounded-lg p-3 min-w-0" data-testid="replication-network-assignment">
           <legend class="text-sm px-1 break-words">Network: {{ cohort(network) }}</legend>

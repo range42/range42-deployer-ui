@@ -6,6 +6,8 @@ The authoring panel supports stable team/user identities, editable display label
 
 Executable scope maps are authoritative. They are initialized from canvas hints when replication is enabled; a differing valid original hint produces a preview note, not a hidden canvas mutation. Unknown scope values and nested replication domains remain errors.
 
+When canvas sources change, the panel lists added and removed VMs and networks. Applying this review updates source membership, preserves surviving scopes and all saved instance assignments, and scaffolds blank assignments for new instances. Removed-source assignments remain saved; the action does not delete deployed resources or release reservations.
+
 ## Identity and connectivity
 
 `scenario_id`, source IDs, team IDs, user IDs and source NIC keys use 1–128 ASCII letters, numbers, dots, underscores or hyphens. Roster order and display labels do not determine identity. Instance keys are `vm-` or `net-` followed by the full SHA-256 digest of UTF-8 compact JSON `[scenario_id, source_node_id, team_id, user_id]`; absent cohort IDs are `null`.
@@ -16,16 +18,24 @@ NIC keys are exact source canvas edge IDs. Explicit keys preserve parallel links
 
 Limits are 64 teams, 64 total users, 64 expanded VMs, 32 networks, 32 NICs per VM and 256 total NICs. Oversized plans fail before assignment or publication. Subnet/VNet claims are not created by the preview. Removing a roster entry does not remove a deployed resource or release a remote reservation.
 
+Each scoped network can exclude up to 256 explicit usable IPv4 addresses from allocation. These `reserved_ips` belong to that instance's subnet and persist with its assignments; shared networks retain their source exclusions. The compiler and allocator never translate source exclusions into a different subnet. A VM cannot use an excluded address.
+
 ## Code contracts
 
 - `expandScenarioReplication({scenario,nodes,edges})` requires explicit scoped assignments and returns expanded rows, a matching literal canvas, instance manifest, counts and warnings. `emitConcreteScenario` performs the complete address/resource/file validation and returns the original authoring scenario.
 - `planScenarioReplication` returns the same identities and counts while allowing unassigned rows. It returns `instances`, `network_instances`, `vms`, `networks`, `counts` and `warnings`, **without an executable manifest**. Planning does not mutate the source and does not call a backend.
 - `projectAuthoring.ts` preserves replication configuration, primary NIC identity and source NIC keys in the common save/publication snapshot. Its whitelist removes ownership/credential fields and rejects nested values in scalar assignment fields. Reopening recompiles the original sources to verify generated ownership; it does not expand previously expanded rows again.
+- `prepareReplicatedAllocation` exposes every literal VM and NIC only after instance networks have explicit subnets and gateways. The dialog passes these rows to the normal reservation panel. `applyReplicatedAllocation` revalidates current source identities and network constraints, then maps reviewed VM IDs and IPs into scoped assignments and shared source rows. Roster, canvas and network assignments remain intact.
+- Stable source NIC keys are sent as `nic_key`; a response must match both current index and key. Draft changes invalidate review. Reservations cover VM IDs and NIC addresses; they do not create durable deployment ownership or subnet/VNet claims.
 
-## Checkpoint and pending verification — 11 September 2026
+## Verification — 11 September 2026
 
-The compiler checkpoint passed 1,196 tests, full lint and production build on the updated dependency baseline. The subsequent panel/persistence checkpoint passed 97 focused tests, scoped lint and scoped strict TypeScript checks. It includes a component test that authors two teams with explicit networks/VMIDs/IPs and applies the literal output, plus metadata reopening and byte-identical recompilation tests.
+The combined compiler, panel, persistence, source reconciliation and allocation integration passes **1,233 tests across 138 files**, full ESLint, scoped strict TypeScript and the production build on Node24.21/Vitest4.1.11. Fresh UI output for both SDN and existing bridges is accepted by the paired backend; altered cross-team NIC mappings are rejected.
 
-Before merging or deploying the panel checkpoint, complete production browser acceptance (desktop/mobile and ordinary HTTP), the combined full UI suite/build, and actual Git reopening/publication acceptance for replicated forms. Existing replication maps also need an explicit reconciliation action when canvas sources are removed or added after a roster has been configured; strict source matching currently reports the inconsistency.
+`e2e/scenario-replication.spec.ts` passes against the production build at 1440px and 390px over ordinary HTTP (`window.isSecureContext === false`). It exercises explicit per-instance exclusions, a three-VM/two-network keyed reservation, rejection after a draft change, reviewed Apply, original source preservation, generated manifests and local reload. Both runs report no page errors, scoped WCAG A/AA violations or horizontal overflow. The backend reservation responses are controlled fixtures; these checks do not provision guests or prove real provider publication.
 
-Automatic allocation of replicated instances is the next integration. The source-only reservation panel is hidden while replication is enabled to avoid reserving a single placeholder VM. The planning helper exposes every literal instance for the upcoming backend `nic_key` extension; connect it only after explicit network assignments are valid. Durable allocation ownership, subnet/VNet reservation, deployment growth/resume and destructive shrink remain separate backend work.
+Logs: `/tmp/r42-replication-ui-{full,lint,build,contract}.log`, `/tmp/r42-replication-integrated-tsc.log`, `/tmp/r42-replication-browser-http.log`. Screenshots: `/tmp/r42-replication-{1440,390}.png`.
+
+Actual Git reopening/publication acceptance for replicated forms remains before live activation. Existing byte-identical metadata round-trip tests pass; no new replica guests were deployed for this UI integration.
+
+Automatic allocation requires the backend `nic_key` extension in PR138. Incomplete network declarations show a preparation error before the reservation panel is offered. Durable allocation ownership, subnet/VNet reservation, deployment growth/resume and destructive shrink remain separate backend work.
