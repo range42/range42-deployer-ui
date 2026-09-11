@@ -210,13 +210,13 @@ explicit files-only recovery instead of silently overwriting source.
 
 `manifest/scenario_roles.json` is descriptive provenance, **not** a backend-sealed
 bundle proof or an authorization boundary. The current backend trusts pinned
-custom playbooks and ignores this optional manifest. Its non-replicated project
-resolver validates the VM manifest schema but does not cross-check VM names
-against inventory; replicated instance validation has stronger identity checks.
-The missing non-replicated name cross-check is a known backend correctness bug
-being handled separately; it is not the intended final contract. Backend
-role-manifest sealing and arbitrary role dependency materialization also remain
-unfinished.
+custom playbooks and ignores this optional manifest. API `f068f2f` has a known
+non-replicated inventory-binding gap. The paired candidate
+`d933613cef0f6d426e2054bbb796c5e63147b718` fixes it: every v3 scenario operation
+checks guest names and management addresses against inventory, while preserving
+legacy v1/v2 VMID-only contracts. Use a matched backend containing that fix;
+source acceptance does not imply it is deployed. Backend role-manifest sealing
+and arbitrary role dependency materialization remain unfinished.
 
 `tools/verify-catalog-role-execution.mjs <backend-path>` provides a disposable,
 local-only consumer check. The unchanged seven-file default

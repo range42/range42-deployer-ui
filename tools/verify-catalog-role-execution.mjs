@@ -62,6 +62,7 @@ export { default as fixture } from './src/__tests__/fixtures/catalogRoleNtp.json
   console.log('Actual local Ansible: project role wins over installed-name decoy; selected host only, per-item variables, project variables and ordered repeated roles verified.')
   execFileSync(python, ['-c', `
 import json, sys
+from copy import deepcopy
 from pathlib import Path
 from app.core.project import resolve_project_scenario
 from app.core.errors import Range42Error
@@ -76,14 +77,29 @@ role_data['attachments'][0]['inventory_host'] = 'descriptive-tamper'
 manifest.write_text(json.dumps(role_data))
 assert resolve_project_scenario(root, scenario_label='saved').vmids == [3101]
 vm_manifest = root / 'scenarios/saved/manifest/scenario_vms.json'
-vms = json.loads(vm_manifest.read_text()); vms['vms'][0]['vm_id'] = -1
-vm_manifest.write_text(json.dumps(vms))
-try:
-    resolve_project_scenario(root, scenario_label='saved')
-except Range42Error:
-    pass
-else:
-    raise AssertionError('Backend accepted invalid authoritative VMID')
+original = json.loads(vm_manifest.read_text())
+for mutation in ('vm_id', 'vm_name', 'management_ip'):
+    vms = deepcopy(original)
+    if mutation == 'vm_id':
+        vms['vms'][0]['vm_id'] = -1
+    elif mutation == 'vm_name':
+        vms['vms'][0]['vm_name'] = 'inconsistent-host'
+    else:
+        # Keep the VM manifest internally valid; inventory must reject this drift.
+        vms['vms'][0]['ip'] = '203.0.113.9'
+        vms['vms'][0]['nics'][0]['ip'] = '203.0.113.9'
+    vm_manifest.write_text(json.dumps(vms))
+    for scope in ('full', 'configure', 'teardown', 'runtime'):
+        try:
+            resolve_project_scenario(root, scenario_label='saved', scope=scope)
+        except Range42Error as exc:
+            assert exc.code == 'PROJECT_SCENARIO_INVALID'
+            assert ('manifest/scenario_vms.json' if mutation == 'vm_id' else 'hosts.yml') in exc.message
+        else:
+            raise AssertionError(f'Backend accepted {mutation} drift during {scope}')
+    vm_manifest.write_text(json.dumps(original))
+    assert resolve_project_scenario(root, scenario_label='saved').vmids == [3101]
+
 `, execution], { cwd: backend, env: { ...process.env, PYTHONPATH: backend }, stdio: 'pipe' })
-  console.log('Paired backend: pinned project resolves; invalid authoritative VMID rejected; non-replicated host-name cross-check is not provided by this resolver. Optional role provenance remains descriptive (not sealed).')
+  console.log('Paired backend: pinned project resolves; invalid VMID, changed VM name and changed management IP rejected for full/configure/teardown/runtime; valid files restored and accepted. Optional role provenance remains descriptive (not sealed).')
 } finally { await rm(temporary, { recursive: true, force: true }) }

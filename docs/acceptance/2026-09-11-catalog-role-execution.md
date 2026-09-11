@@ -41,3 +41,17 @@ The reusable browser fixture is
 Existing browser limits remain 512 role files, 1 MiB/file and 2 MiB/project;
 there is one authored version per role path. Original upstream provenance is
 retained separately from hashes of edited authored bytes.
+
+
+Follow-up paired verification against clean API candidate
+`d933613cef0f6d426e2054bbb796c5e63147b718`: the same consumer passes once with
+all original benign Ansible proofs retained. It now rejects invalid VMIDs,
+changed manifest VM names, and changed management IPs for each of `full`,
+`configure`, `teardown` and `runtime` (12 negative resolutions). The IP mutation
+changes both top-level and management-NIC addresses so the VM manifest remains
+internally consistent; rejection must come from the inventory binding. Each
+case restores the original manifest and confirms valid resolution again.
+Optional role metadata remains descriptive. This closes the concrete name/IP
+bug in the paired source candidate, without claiming rollout or backend sealing.
+Scoped consumer ESLint and diff checks pass; no product behavior changed in
+this follow-up, and no provider or live guest operations were performed.
