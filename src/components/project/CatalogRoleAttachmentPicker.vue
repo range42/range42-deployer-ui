@@ -57,7 +57,7 @@ function attach() {
           <label class="form-control gap-1 mt-3"><span>Target VM</span><select v-model="target" class="select select-bordered w-full" data-testid="role-target"><option v-for="vm in vms" :key="vm.node_id" :value="vm.node_id">{{ vm.vm_name || vm.node_id }}</option></select></label>
           <p v-if="source" class="text-xs break-all mt-3">Original catalog: {{ source.project.catalogRef.repo_owner }}/{{ source.project.catalogRef.repo_name }} · {{ source.project.catalogRef.path }} · {{ source.project.catalogRef.sha }}</p>
           <div v-if="preview" class="rounded border border-base-300 p-3 mt-3 text-sm" data-testid="role-review-summary">
-            <p>{{ Object.keys(preview.item.role.file_hashes).length }} current files reviewed. Their SHA256 hashes describe these authored bytes separately from the original catalog commit. The backend runs your pinned project; this is not an installed-runtime bundle proof.</p>
+            <p>{{ Object.keys(preview.item.role.file_hashes).length }} current files ready for {{ vms.find(vm => vm.node_id === preview.item.target_node)?.vm_name || preview.item.target_node }}. Copies include your local edits; the original catalog source remains recorded.</p>
             <p class="mt-2">Changes are staged until you review and use the complete scenario files. Edit non-secret role variables and execution order in the content list.</p>
           </div>
           <p v-if="error" role="alert" class="alert alert-error break-words mt-3">{{ error }}</p>
