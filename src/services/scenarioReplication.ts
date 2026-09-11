@@ -176,7 +176,11 @@ function expand(input: ReplicationInput, planning: boolean) {
     return cohorts(networkScopes[id], teams).map(cohort => {
       const item = identity('net', id, cohort)
       const assigned = networkScopes[id] === 'shared' ? source : record(networkAssignments[item.instance_key] ?? (planning ? { vnet: scenario.network_mode === 'sdn' ? `r${item.instance_key.slice(4, 11)}` : '', subnet: '', gateway: '', snat: scenario.network_mode === 'sdn' && source.snat === true } : undefined), `Review subnet/VNet assignment for ${id}/${cohort.team_id}/${cohort.user_id ?? 'team'}`)
-      const row = { ...clone(source), id: item.instance_key, vnet: assigned.vnet, subnet: assigned.subnet, gateway: assigned.gateway, snat: assigned.snat }
+      const row: ExpandedNetwork = { ...clone(source), id: item.instance_key, vnet: assigned.vnet, subnet: assigned.subnet, gateway: assigned.gateway, snat: assigned.snat }
+      // Exclusions belong to the selected literal subnet; source addresses must
+      // never be copied or translated into a different cohort's subnet.
+      if (assigned.reserved_ips === undefined) delete row.reserved_ips
+      else row.reserved_ips = clone(assigned.reserved_ips)
       if (scenario.network_mode === 'existing_bridge' && !planning) {
         requireValue(typeof row.vnet === 'string' && /^vmbr[0-9]+$/.test(row.vnet) && row.vnet.length <= 15, 'Existing bridge names must be vmbr plus digits, at most 15 characters')
         requireValue(row.snat === false, 'Existing bridges cannot declare managed SNAT')

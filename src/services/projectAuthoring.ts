@@ -40,6 +40,12 @@ function rows(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) throw new Error(`${label} must be a list`)
   return value
 }
+function reservedIpFields(value: unknown): ObjectValue {
+  const ips = objectValue(value, 'Network').reserved_ips
+  if (ips === undefined) return {}
+  if (!Array.isArray(ips) || ips.length > 256 || ips.some(ip => typeof ip !== 'string')) throw new Error('Reserved IPs must be a list of at most 256 address strings')
+  return { reserved_ips: [...ips] }
+}
 function replicationSnapshot(value: unknown): ObjectValue {
   const source = objectValue(value, 'Replication')
   const result = fields(source, ['version', 'scenario_id'], 'Replication')
@@ -73,7 +79,7 @@ function replicationSnapshot(value: unknown): ObjectValue {
   }))
   result.network_assignments = Object.fromEntries(Object.entries(objectValue(source.network_assignments ?? {}, 'Network assignments')).map(([key, row]) => {
     if (!/^net-[a-f0-9]{64}$/.test(key)) throw new Error('Invalid network instance assignment key')
-    return [key, scalarAssignment(row, ['vnet', 'subnet', 'gateway', 'snat'])]
+    return [key, { ...scalarAssignment(row, ['vnet', 'subnet', 'gateway', 'snat']), ...reservedIpFields(row) }]
   }))
   return result
 }
@@ -82,7 +88,7 @@ function scenarioSnapshot(value: unknown): ObjectValue {
   const source = objectValue(value, 'Scenario')
   const result = fields(source, ['label', 'network_mode', 'zone'], 'Scenario')
   if (source.replication !== undefined) result.replication = replicationSnapshot(source.replication)
-  result.networks = rows(source.networks, 'Scenario networks').map(row => fields(row, ['id', 'vnet', 'subnet', 'gateway', 'snat'], 'Network'))
+  result.networks = rows(source.networks, 'Scenario networks').map(row => ({ ...fields(row, ['id', 'vnet', 'subnet', 'gateway', 'snat'], 'Network'), ...reservedIpFields(row) }))
   result.vms = rows(source.vms, 'Scenario VMs').map(row => {
     const vm = fields(row, ['node_id', 'vm_id', 'vm_name', 'template_vm_id', 'network_id', 'ip', 'ssh_user', 'cores', 'memory_mb', 'disk_gb', 'disk_device', 'primary_nic_key'], 'VM')
     const sourceVm = objectValue(row, 'VM')

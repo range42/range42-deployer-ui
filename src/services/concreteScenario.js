@@ -221,6 +221,13 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     const range = subnet(network.subnet)
     const gateway = address(network.gateway, 'gateway')
     requireValue(gateway > range.start && gateway < range.end, `Gateway must be a usable host in subnet ${network.subnet}`)
+    const excluded = network.reserved_ips ?? []
+    requireValue(Array.isArray(excluded) && excluded.length <= 256 && excluded.every(ip => typeof ip === 'string'), 'Reserved IPs must be a list of at most 256 address strings')
+    range.reserved = new Set(excluded.map(value => {
+      const ip = address(value, 'reserved address')
+      requireValue(ip > range.start && ip < range.end, `Reserved address must be a usable host in subnet ${network.subnet}`)
+      return ip
+    }))
     requireValue(typeof network.snat === 'boolean', 'Choose whether each subnet has outbound NAT')
     for (const other of ranges.values()) requireValue(range.end < other.start || range.start > other.end, 'Network subnets overlap')
     ranges.set(network.id, range)
@@ -243,6 +250,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
       const ip = address(nic.ip, `NIC address for ${vm.vm_name}`)
       requireValue(ip > range.start && ip < range.end, `VM ${vm.vm_name} must have a usable address in subnet ${network.subnet}`)
       requireValue(nic.ip !== network.gateway, `VM ${vm.vm_name} cannot use its gateway address`)
+      requireValue(!range.reserved.has(ip), `VM ${vm.vm_name} cannot use a reserved address`)
     }
   }
   requireValue(edges.every(edge => vms.some(vm => vm.node_id === edge.source || vm.node_id === edge.target)), 'Unsupported network-to-network connection on the canvas')
