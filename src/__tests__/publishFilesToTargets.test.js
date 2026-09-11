@@ -1,4 +1,9 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { savedScenario } from './fixtures/savedScenario'
+import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
+import { emitConcreteScenario } from '@/services/concreteScenario'
+import { buildPushArgs } from '@/composables/useProjectGitSync'
+import fixture from './fixtures/catalogRoleNtp.json'
 import { assetFromBytes, fileBytes } from '@/services/projectFiles'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -61,6 +66,28 @@ beforeEach(() => {
 })
 
 describe('publishFilesToTargets', () => {
+  it('publishes the same role bytes, source attribution and target metadata captured before asynchronous edits', async () => {
+    const project = savedScenario(); project.git = binding
+    const origin = { version: 1, kind: 'ansible_role', mode: 'customize', source_id: 'catalog', provider: 'github', base_url: 'https://github.com', repo_owner: 'range42', repo_name: 'catalog', path: fixture.path, sha: fixture.sha }
+    const attached = prepareRoleAttachment({ sourceProject: { catalogRef: origin, files: fixture.files }, targetFiles: project.files, targetNode: 'vm1', id: 'role' })
+    project.scenario.content.push(attached.item)
+    const generated = emitConcreteScenario({ ...project, files: attached.files, generatedPaths: project.scenario_generated_paths })
+    Object.assign(project, { files: generated.files, scenario_generated_paths: generated.generatedPaths })
+    const args = buildPushArgs(project)
+    const snapshot = buildProjectFiles(args)
+    const publishing = publishFilesToTargets({ ...args, files: snapshot, message: 'Role scenario' }, targets)
+    project.scenario.content[1].role.origin.sha = 'f'.repeat(40)
+    project.files[`${fixture.path}/tasks/main.yml`] = 'later edit'
+    const result = await publishing
+    expect(result.targets.every(target => target.status === 'published')).toBe(true)
+    for (const [kind, ref] of [['github', result.branch], ['gitlab', result.targets[0].branch], ['gitea', 'main']]) {
+      expect(repos[kind].files.get(`${ref}:${fixture.path}/tasks/main.yml`).content).toBe(fixture.files[`${fixture.path}/tasks/main.yml`])
+      const meta = JSON.parse(repos[kind].files.get(`${ref}:meta.json`).content)
+      expect(meta.ui_project.scenario.content[1].role.origin.sha).toBe(fixture.sha)
+      expect(meta.ui_project.scenario.content[1].target_node).toBe('vm1')
+    }
+  })
+
   it('keeps Gitea contribution branches within its 100-character API bound with stable distinct identities', async () => {
     const create = repos.gitea.provider.createBranch
     const names = []

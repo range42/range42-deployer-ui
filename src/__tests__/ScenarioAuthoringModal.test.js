@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { assetFromBytes } from '@/services/projectFiles'
+import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
+import fixture from './fixtures/catalogRoleNtp.json'
 import FileAssetField from '@/components/project/FileAssetField.vue'
 import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
 
@@ -14,10 +16,31 @@ function modal(overrides = {}) {
     id: 'local-project', name: 'Demo', files: {}, scenario: { label: 'demo', network_mode: 'sdn', zone: 'r42lab',
       networks: [{ id: 'net', vnet: 'r42net1', subnet: '10.42.1.0/24', gateway: '10.42.1.1', snat: true }],
       vms: [{ node_id: 'vm', vm_id: 3101, vm_name: 'guest', template_vm_id: 9232, network_id: 'net', ip: '10.42.1.10', ssh_user: 'alice' }], content: [] },
-    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, ScenarioAllocationPanel: true, FocusTrap: { template: '<div><slot /></div>' } } } })
+    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, CatalogRoleAttachmentPicker: true, ScenarioAllocationPanel: true, FocusTrap: { template: '<div><slot /></div>' } } } })
 }
 
 describe('scenario authoring review', () => {
+  it('stages copied role files and preserves explicit content order only after scenario review', async () => {
+    const wrapper = modal()
+    const project = wrapper.props('project')
+    await wrapper.get('[data-testid="scenario-add-file"]').trigger('click')
+    await wrapper.get('[data-testid="content-destination"]').setValue('/tmp/before.txt')
+    await wrapper.get('[data-testid="scenario-add-role"]').trigger('click')
+    const origin = { version: 1, kind: 'ansible_role', mode: 'customize', source_id: 'catalog', provider: 'github', base_url: 'https://github.com', repo_owner: 'range42', repo_name: 'catalog', path: fixture.path, sha: fixture.sha }
+    const candidate = prepareRoleAttachment({ sourceProject: { catalogRef: origin, files: fixture.files }, targetFiles: {}, targetNode: 'vm', id: 'role1' })
+    wrapper.getComponent({ name: 'CatalogRoleAttachmentPicker' }).vm.$emit('selected', candidate)
+    await flushPromises()
+    expect(project.files).toEqual({})
+    expect(wrapper.findAll('[data-testid="content-text"]')).toHaveLength(1)
+    await wrapper.get('[data-testid="content-move-up-role1"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(result.scenario.content.map(item => item.kind)).toEqual(['role', 'file'])
+    expect(result.files[`${fixture.path}/tasks/main.yml`]).toBe(fixture.files[`${fixture.path}/tasks/main.yml`])
+    expect(result.files['scenarios/demo/configure.yml'].indexOf('Catalog role:')).toBeLessThan(result.files['scenarios/demo/configure.yml'].indexOf('Copy '))
+  })
+
   it('offers review of existing attachments without changing the project on open or cancel', async () => {
     const wrapper = modal()
     const project = JSON.parse(JSON.stringify(wrapper.props('project')))

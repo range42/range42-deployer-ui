@@ -57,7 +57,7 @@
     "missing": "Élément ou source indisponible. Actualisez le catalogue puis réessayez.",
     "role_scope": "Importe les fichiers du rôle Ansible au commit fixé, en conservant le nom catégorie.action.cible. Modifiez les fichiers dans Config, puis enregistrez ou publiez via Git. Aucun VM déployable ni validation des dépendances d’exécution. Limites : 512 entrées, 1 Mio par fichier, 2 Mio par projet. Les exécutables, liens symboliques et références externes non résolues nécessitent le dépôt complet.",
     "role_files": "{count} fichiers du rôle à importer",
-    "role_editor": "Projet de sources du rôle : modifiez les fichiers dans Config et publiez explicitement. Cet import ne lie pas le rôle à l’exécution d’une VM ; configurez cela séparément via les scénarios ou bundles pris en charge.",
+    "role_editor": "Projet de sources du rôle : modifiez les fichiers dans Config et publiez explicitement. Pour exécuter un rôle pris en charge, ouvrez un scénario de VM, choisissez Add role, sélectionnez cette source locale puis vérifiez et enregistrez les fichiers copiés.",
     "origin_changed": "La source du catalogue ou la révision choisie a changé. Fermez cette fenêtre puis rouvrez l’élément pour recharger son contenu."
   }
 }

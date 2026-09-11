@@ -123,10 +123,8 @@ bytes are preserved, including binary assets. The destination project directory
 is an explicit prefix around those paths; it is never silently inferred to be
 the original catalog directory. Existing target directories and working branches
 are rejected during review. This imports role source for editing and publication;
-it does not create a VM or validate a complete deployment environment. The existing
-scenario and verified bundle workflows remain responsible for execution. This
-handoff does not attach an imported catalog role to VM execution; general
-catalog-role materialization remains unfinished.
+it does not create a VM or validate a complete deployment environment. To attach that role to an existing VM scenario, use **Scenario → Add role** as
+described below. Generic external dependency materialization remains unfinished.
 
 A canonical `range42.yaml` lab/gamenet/component can instead import its editable
 nodes, network links, inline attachments and variable declarations. Secret
@@ -167,3 +165,65 @@ against that production build at 1440 and 390 pixels exercise the real
 catalog → destination review → Config → reload flow with intercepted read-only
 provider requests. These are local acceptance tests, not provider publication or
 shared deployment evidence, and do not endorse the role's runtime behavior.
+
+
+## Execute an imported role on a scenario VM
+
+After Catalog → Use/Customize, open the destination VM project and choose
+**Scenario → Add role**. Select the imported local source and target VM, review
+its current files, and stage the attachment. Set non-secret JSON variables and
+use **Move up / Move down** to order it among files, scripts, playbooks and bundles.
+Only **Review generated files → Use scenario files** applies the complete local
+candidate. Save then checkpoints it through the existing Git binding; deployment
+uses the saved pinned project revision. Canceling the picker or scenario leaves
+the project unchanged.
+
+The whole supported role tree is copied under its original
+`category.action.target` path inside the destination project. Different bytes at
+an existing path reject the copy; no role is fetched at execution time. One
+version of a given role path can exist per project. Current-file review can
+refresh an attachment after editing its copied files in Config; attachments still
+using older hashes must also be reviewed. Removing an attachment retains the
+copied files, so authored source is not silently deleted.
+
+Each role becomes a separate configure play with the literal VM inventory name,
+facts enabled, privilege escalation, backend workspace vault and reviewed role
+parameters. Role parameters override role-defined vars through normal
+[Ansible variable precedence](https://docs.ansible.com/projects/ansible/latest/reference_appendices/general_precedence.html).
+The role uses `{{ r42_project_dir }}/<project-relative-role-path>`;
+`r42_project_dir` is supplied by the backend for the pinned project/subdirectory.
+This [absolute role path](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbook_pathing.html)
+avoids substituting a similarly named installed catalog role. Main YAML tasks,
+handlers, defaults and vars are checked for explicit connection/managed-target
+changes; controller lookups in templates are also rejected. This conservative
+validation does not sandbox trusted Ansible plugins, templates or shell commands.
+Guest packages, supported distributions, collections and service prerequisites
+remain the operator's responsibility.
+
+Ordinary saves, public/private publication snapshots and pinned Git reopening
+retain `scenario.content[].role`: original public catalog identity plus SHA256
+hashes of the **authored** role files. Original catalog SHA is not a claim that
+edited files still equal upstream. Replication retains the source attachment and
+emits one role play per literal target, preserving content order. Changed/missing
+role files reject generation; conflicting Git authoring offers the existing
+explicit files-only recovery instead of silently overwriting source.
+
+`manifest/scenario_roles.json` is descriptive provenance, **not** a backend-sealed
+bundle proof or an authorization boundary. The current backend trusts pinned
+custom playbooks and ignores this optional manifest. API `f068f2f` has a known
+non-replicated inventory-binding gap. The paired candidate
+`d933613cef0f6d426e2054bbb796c5e63147b718` fixes it: every v3 scenario operation
+checks guest names and management addresses against inventory, while preserving
+legacy v1/v2 VMID-only contracts. Use a matched backend containing that fix;
+source acceptance does not imply it is deployed. Backend role-manifest sealing
+and arbitrary role dependency materialization remain unfinished.
+
+`tools/verify-catalog-role-execution.mjs <backend-path>` provides a disposable,
+local-only consumer check. The unchanged seven-file default
+`service.reload.ntp@0b170a768b9603cf8f5b080e4eac780cbad07c75` passes real Ansible
+syntax validation. A clearly separate safe authored replacement proves actual
+local role lookup, target isolation, role-variable precedence and repeated
+execution order, including an installed-name decoy. The NTP role's package and
+service tasks are **not executed** or endorsed: its Fedora task uses shell `&&`
+inside `command`, and its distribution/systemd prerequisites still apply.
+This source acceptance creates no guest, provider commit or shared deployment.

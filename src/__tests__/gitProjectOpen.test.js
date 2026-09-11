@@ -5,6 +5,9 @@ import { loadGitProject, prepareGitProjectImport } from '@/services/gitProjectOp
 import { useProjectStore } from '@/stores/projectStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { emitConcreteScenario } from '@/services/concreteScenario'
+import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
+import catalogRole from './fixtures/catalogRoleNtp.json'
+import { replicatedScenario } from './fixtures/replicatedScenario'
 import { savedScenario } from './fixtures/savedScenario'
 
 const { getProvider } = vi.hoisted(() => ({ getProvider: vi.fn() }))
@@ -26,6 +29,29 @@ function repository(project) {
 beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()); getProvider.mockClear() })
 
 describe('open project from Git', () => {
+  it.each([false, true])('preserves role metadata, files and order through Git reopening (replicated=%s), rejecting drift', async replicated => {
+    const project = replicated ? { ...savedScenario(), ...replicatedScenario(), scenario_generated_paths: [] } : savedScenario()
+    const role = prepareRoleAttachment({ sourceProject: { catalogRef: { version: 1, kind: 'ansible_role', mode: 'customize', source_id: 'catalog', path: catalogRole.path, sha: catalogRole.sha }, files: catalogRole.files },
+      targetFiles: project.files, targetNode: 'vm1', id: 'role' })
+    project.files = role.files
+    project.scenario.content.push(role.item)
+    const generated = emitConcreteScenario({ ...project, generatedPaths: project.scenario_generated_paths })
+    Object.assign(project, { files: generated.files, scenario: generated.scenario, scenario_generated_paths: generated.generatedPaths })
+    useInventoryStore().addSource({ id: 'source', provider: project.git.provider, base_url: project.git.base_url, repos: [], auth: { kind: 'none' } })
+    const { files } = repository(project)
+    const reopened = prepareGitProjectImport(await loadGitProject(project.git, []))
+    expect(reopened.scenario.content[1].role).toEqual(role.item.role)
+    expect(reopened.scenario.replication).toEqual(project.scenario.replication)
+    expect(reopened.scenario.content.map(item => item.kind)).toEqual(['file', 'role'])
+    const recompiled = emitConcreteScenario({ ...reopened, generatedPaths: reopened.scenario_generated_paths })
+    expect(recompiled.files[`scenarios/${project.scenario.label}/manifest/scenario_roles.json`]).toBe(project.files[`scenarios/${project.scenario.label}/manifest/scenario_roles.json`])
+    expect(reopened.files[`${catalogRole.path}/tasks/main.yml`]).toBe(catalogRole.files[`${catalogRole.path}/tasks/main.yml`])
+    files[`${catalogRole.path}/tasks/main.yml`] += '# edited outside structured review\n'
+    const drifted = await loadGitProject(project.git, [])
+    expect(drifted.authoring.status).toBe('conflict')
+    expect(drifted.authoring.issue).toMatch(/Role files changed/)
+  })
+
   it('restores catalog origin independently of the working repository from the same pinned snapshot', async () => {
     const project = savedScenario()
     project.catalogRef = { version: 1, mode: 'use', source_id: 'original', path: 'labs/example', sha: 'a'.repeat(40), repo_owner: 'range42', repo_name: 'catalog' }

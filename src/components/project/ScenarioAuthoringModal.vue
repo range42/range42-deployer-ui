@@ -8,6 +8,7 @@ import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteSc
 import ScenarioReplicationPanel from '@/components/project/ScenarioReplicationPanel.vue'
 import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
 import { applyReplicatedAllocation, prepareReplicatedAllocation } from '@/services/scenarioAllocation'
+import CatalogRoleAttachmentPicker from '@/components/project/CatalogRoleAttachmentPicker.vue'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
 import LegacyAttachmentMigration from '@/components/project/LegacyAttachmentMigration.vue'
 import { prepareAttachmentMigration, scenarioReviewSource } from '@/services/attachmentMigration'
@@ -25,6 +26,10 @@ const error = ref('')
 const focusReady = ref(false)
 const heading = ref(null)
 const bundleLibraryOpen = ref(false)
+const rolePickerOpen = ref(false)
+const roleBeingReviewed = ref(null)
+const stagedRoleFiles = ref({})
+const roleProject = computed(() => ({ ...props.project, files: { ...(props.project.files || {}), ...stagedRoleFiles.value }, scenario: draft.value }))
 const migrationChoices = ref({})
 const migrateAttachments = ref(false)
 let openedSource = ''
@@ -38,6 +43,8 @@ const playbookHint = 'Ansible playbook — use hosts: "{{ global_vm_ssh_name }}"
 watch(() => props.open, async open => {
   focusReady.value = false
   bundleLibraryOpen.value = false
+  rolePickerOpen.value = false
+  stagedRoleFiles.value = {}
   if (!open) return
   draft.value = createScenarioDraft(props.project, props.nodes, props.edges)
   openedSource = scenarioReviewSource(props.project, props.nodes, props.edges)
@@ -54,6 +61,7 @@ watch(() => props.open, async open => {
 }, { immediate: true })
 
 function addContent(kind) {
+  if (kind === 'role') { roleBeingReviewed.value = null; rolePickerOpen.value = true; return }
   if (kind === 'bundle') {
     bundleLibraryOpen.value = true
     return
@@ -75,6 +83,20 @@ function attachBundle(item) {
   draft.value.content.push(item)
   contentState.value[item.id] = { content: '', varsText: JSON.stringify(item.vars || {}, null, 2) }
   bundleLibraryOpen.value = false
+}
+
+function attachRole({ files, item }) {
+  stagedRoleFiles.value = files
+  const index = draft.value.content.findIndex(row => row.id === item.id)
+  if (index >= 0) draft.value.content.splice(index, 1, item)
+  else draft.value.content.push(item)
+  contentState.value[item.id] ||= { content: '', varsText: '{}' }
+  rolePickerOpen.value = false
+}
+
+function moveContent(index, offset) {
+  const [item] = draft.value.content.splice(index, 1)
+  draft.value.content.splice(index + offset, 0, item)
 }
 
 function applyAllocation({ reservation, vms, target_host_id, backend_url }) {
@@ -102,11 +124,11 @@ function review() {
   error.value = ''
   try {
     if (openedSource !== scenarioReviewSource(props.project, props.nodes, props.edges)) throw new Error('Project changed since this editor opened. Reopen scenario configuration and review the current content.')
-    const files = { ...(props.project.files || {}) }
+    const files = { ...(props.project.files || {}), ...stagedRoleFiles.value }
     const scenario = JSON.parse(JSON.stringify(draft.value))
     const written = new Map()
     for (const item of scenario.content) {
-      if (item.kind !== 'bundle') {
+      if (!['bundle', 'role'].includes(item.kind)) {
         const path = `scenarios/${scenario.label}/${item.path}`
         const value = contentState.value[item.id].content
         if (written.has(path) && !fileContentEquals(written.get(path), value)) throw new Error(`Content items have different files at the same path: ${item.path}. Choose separate paths.`)
@@ -141,7 +163,7 @@ function applyReview() {
 
 <template>
   <Teleport to="body">
-    <FocusTrap v-if="open && draft" :active="focusReady && !bundleLibraryOpen"
+    <FocusTrap v-if="open && draft" :active="focusReady && !bundleLibraryOpen && !rolePickerOpen"
       :fallback-focus="() => heading" :escape-deactivates="false" :return-focus-on-deactivate="true">
       <div class="modal modal-open p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="scenario-authoring-title" @keydown.esc.prevent="emit('close')">
         <section class="modal-box max-w-5xl w-full max-h-[92vh] overflow-y-auto min-w-0">
@@ -214,20 +236,26 @@ function applyReview() {
               <label class="flex gap-2 items-start text-sm mb-4"><input v-model="migrateAttachments" type="checkbox" class="checkbox checkbox-sm" data-testid="migration-confirm" /> Include the reviewed attachment conversion in this scenario preview.</label>
             </template>
             <div class="flex flex-wrap gap-2 mb-3">
-              <button v-for="kind in ['file', 'script', 'playbook', 'bundle']" :key="kind" type="button" class="btn btn-outline btn-sm" :data-testid="`scenario-add-${kind}`" @click="addContent(kind)">Add {{ kind }}</button>
+              <button v-for="kind in ['file', 'script', 'playbook', 'bundle', 'role']" :key="kind" type="button" class="btn btn-outline btn-sm" :data-testid="`scenario-add-${kind}`" @click="addContent(kind)">Add {{ kind }}</button>
             </div>
             <fieldset v-for="(item, index) in draft.content" :key="item.id" class="border border-base-300 rounded-lg p-3 mb-3 min-w-0">
               <legend class="px-1 text-sm">{{ index + 1 }}. {{ item.kind }}</legend>
               <div class="grid gap-3 sm:grid-cols-2">
                 <label class="form-control gap-1"><span>Target VM</span><select v-model="item.target_node" class="select select-bordered w-full"><option v-for="vm in draft.vms" :key="vm.node_id" :value="vm.node_id">{{ vm.vm_name }}</option></select></label>
-                <label class="form-control gap-1"><span>{{ item.kind === 'bundle' ? 'Verified bundle path' : 'File path relative to the scenario directory' }}</span><input v-model="item.path" :readonly="item.kind === 'bundle'" class="input input-bordered w-full" data-testid="content-path" /></label>
+                <label class="form-control gap-1"><span>{{ item.kind === 'role' ? 'Role directory in this project' : item.kind === 'bundle' ? 'Verified bundle path' : 'File path relative to the scenario directory' }}</span><input v-model="item.path" :readonly="['bundle', 'role'].includes(item.kind)" class="input input-bordered w-full" data-testid="content-path" /></label>
                 <label v-if="item.kind === 'file'" class="form-control gap-1"><span>Destination on guest</span><input v-model="item.destination" class="input input-bordered w-full" data-testid="content-destination" placeholder="/etc/example.conf" /></label>
                 <label v-if="item.kind === 'file'" class="form-control gap-1"><span>File mode</span><input v-model="item.mode" class="input input-bordered w-full" placeholder="0644" /></label>
               </div>
               <p v-if="item.kind === 'bundle'" class="text-xs text-base-content/70 mt-2 break-all">{{ item.resolution ? `Source commit: ${item.resolution.source_sha} · Installed runtime: ${item.resolution.runtime.fingerprint}` : 'Remove this unverified attachment and select it from the bundle library.' }}</p>
+              <div v-if="item.kind === 'role'" class="text-sm mt-3">
+                <p class="break-all">Original catalog commit: {{ item.role?.origin?.sha }}. Current role files are copied into this project and checked against their reviewed hashes.</p>
+                <button type="button" class="btn btn-outline btn-sm mt-2" @click="roleBeingReviewed = item; rolePickerOpen = true">Review current role files</button>
+              </div>
               <FileAssetField v-if="item.kind === 'file'" v-model="contentState[item.id].content" :filename="item.path.split('/').at(-1)" class="mt-3" />
-              <label v-if="item.kind !== 'bundle' && typeof contentState[item.id].content === 'string'" class="form-control gap-1 mt-3"><span>{{ item.kind === 'playbook' ? playbookHint : 'Content' }}</span><textarea v-model="contentState[item.id].content" class="textarea textarea-bordered font-mono w-full min-h-36" data-testid="content-text" spellcheck="false" /></label>
+              <label v-if="!['bundle', 'role'].includes(item.kind) && typeof contentState[item.id].content === 'string'" class="form-control gap-1 mt-3"><span>{{ item.kind === 'playbook' ? playbookHint : 'Content' }}</span><textarea v-model="contentState[item.id].content" class="textarea textarea-bordered font-mono w-full min-h-36" data-testid="content-text" spellcheck="false" /></label>
               <label class="form-control gap-1 mt-3"><span>Non-secret variables (JSON)</span><textarea v-model="contentState[item.id].varsText" class="textarea textarea-bordered font-mono w-full" spellcheck="false" /></label>
+              <button type="button" class="btn btn-ghost btn-sm mt-2" :disabled="index === 0" :data-testid="`content-move-up-${item.id}`" @click="moveContent(index, -1)">Move up</button>
+              <button type="button" class="btn btn-ghost btn-sm mt-2" :disabled="index === draft.content.length - 1" @click="moveContent(index, 1)">Move down</button>
               <button type="button" class="btn btn-ghost btn-sm mt-2" @click="draft.content.splice(index, 1)">Remove item</button>
             </fieldset>
             <p v-if="error" role="alert" class="alert alert-error break-words">{{ error }}</p>
@@ -248,6 +276,8 @@ function applyReview() {
         </section>
       </div>
     </FocusTrap>
+    <CatalogRoleAttachmentPicker v-if="open && rolePickerOpen" :open="rolePickerOpen" :project="roleProject" :vms="draft.vms" :initial-target="initialTarget"
+      :existing-item="roleBeingReviewed" @selected="attachRole" @close="rolePickerOpen = false" />
     <BundleLibraryModal v-if="open && draft" :open="bundleLibraryOpen" :vms="draft.vms" @selected="attachBundle" @close="bundleLibraryOpen = false" />
   </Teleport>
 </template>

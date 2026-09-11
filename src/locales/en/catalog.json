@@ -57,7 +57,7 @@
     "missing": "The catalog item or its source is unavailable. Refresh the catalog and try again.",
     "role_scope": "Imports the complete supported Ansible role tree at its pinned commit, preserving its category.action.target name. Edit its files in Config, then save or publish with the existing Git workflow. This is role source editing; it does not create a deployable VM or prove runtime dependencies. Limits: 512 entries, 1 MiB per file, 2 MiB per project. Executable files, symlinks and unresolved external references require a complete repository workflow.",
     "role_files": "{count} role files to import",
-    "role_editor": "Role source project: edit files in Config and publish explicitly. This handoff does not attach the role to VM execution; configure that separately with supported scenario/bundle workflows.",
+    "role_editor": "Role source project: edit files in Config and publish explicitly. To run a supported role, open a VM scenario and choose Add role, select this local source, then review and save its copied files.",
     "origin_changed": "The catalog origin or selected revision changed. Close this dialog and reopen the item to fetch its current content."
   }
 }

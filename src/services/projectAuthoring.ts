@@ -1,3 +1,4 @@
+import { publicRoleSource } from '@/services/catalogRoleExecution'
 import type { CanvasModel } from '@/overlay/serialize'
 import type { ProjectState } from '@/services/projectRepo'
 import { emitConcreteScenario } from '@/services/concreteScenario'
@@ -98,6 +99,7 @@ function scenarioSnapshot(value: unknown): ObjectValue {
   result.content = rows(source.content ?? [], 'Scenario content').map(row => {
     const item = fields(row, ['id', 'kind', 'target_node', 'path', 'destination', 'mode', 'vars'], 'Content item')
     const sourceItem = objectValue(row, 'Content item')
+    if (sourceItem.role !== undefined) item.role = publicRoleSource(sourceItem.role)
     if (sourceItem.resolution !== undefined) {
       // Public, backend-sealed provenance must remain byte-for-byte equivalent;
       // it contains no runtime credentials or allocator ownership secret.
