@@ -108,10 +108,13 @@ describe('open project from Git', () => {
     const project = savedScenario()
     repository(project)
     const preview = await loadGitProject(project.git, [])
-    const quota = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new DOMException('Full', 'QuotaExceededError') })
-    expect(() => useProjectStore().importProject(prepareGitProjectImport(preview), { generateNewId: false })).toThrow(/storage/i)
-    expect(useProjectStore().projects).toHaveLength(0)
-    quota.mockRestore()
+    vi.stubGlobal('localStorage', {
+      setItem: () => { throw new DOMException('Full', 'QuotaExceededError') },
+    })
+    try {
+      expect(() => useProjectStore().importProject(prepareGitProjectImport(preview), { generateNewId: false })).toThrow(/storage/i)
+      expect(useProjectStore().projects).toHaveLength(0)
+    } finally { vi.unstubAllGlobals() }
   })
 
   it.each(['credential', 'unknown field', 'missing endpoint', 'duplicate id', 'too many nodes'])('rejects imported canvas %s', reason => {

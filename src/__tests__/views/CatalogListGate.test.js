@@ -55,7 +55,7 @@ async function mountList() {
   const wrapper = mount(CatalogList, {
     global: { plugins: [pinia, makeI18n(), makeRouter()] },
   })
-  await flushPromises()
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="catalog-grid"] article[data-kind]')).toHaveLength(PAGE.items.length))
   return wrapper
 }
 

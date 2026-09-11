@@ -63,7 +63,7 @@ async function mountList(seedSource = true) {
       },
     },
   })
-  await flushPromises()
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="catalog-grid"] article[data-kind]')).toHaveLength(PAGE.items.length))
   return wrapper
 }
 

@@ -84,12 +84,17 @@ describe('Open from Git review', () => {
     await wrapper.get('[data-testid="repository-source"]').setValue('source')
     await wrapper.get('[data-testid="open-git-preview"]').trigger('click')
     await flushPromises()
-    const quota = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('Full') })
-    await wrapper.get('[data-testid="open-git-import"]').trigger('click')
-    expect(wrapper.get('[role="alert"]').text()).toMatch(/storage/i)
-    expect(wrapper.find('[data-testid="open-git-revision"]').exists()).toBe(true)
-    expect(wrapper.emitted('opened')).toBeUndefined()
-    quota.mockRestore()
+    const storage = globalThis.localStorage
+    vi.stubGlobal('localStorage', {
+      getItem: storage.getItem.bind(storage),
+      setItem: () => { throw new DOMException('Full', 'QuotaExceededError') },
+    })
+    try {
+      await wrapper.get('[data-testid="open-git-import"]').trigger('click')
+      expect(wrapper.get('[role="alert"]').text()).toMatch(/storage/i)
+      expect(wrapper.find('[data-testid="open-git-revision"]').exists()).toBe(true)
+      expect(wrapper.emitted('opened')).toBeUndefined()
+    } finally { vi.unstubAllGlobals() }
   })
 
   it('does not let an old request change the loading/error state of a new connection', async () => {
