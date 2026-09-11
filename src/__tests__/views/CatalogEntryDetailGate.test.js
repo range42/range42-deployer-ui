@@ -60,13 +60,12 @@ async function mountDetail({ writable }) {
   const wrapper = mount(CatalogEntryDetail, {
     global: { plugins: [pinia, makeI18n(), router] },
   })
-  // getEntry awaits IndexedDB caching, so a single flush is not enough — settle
-  // until the verbs row (which only renders once the entry resolves) appears.
-  for (let i = 0; i < 20; i++) {
+  // Entry loading includes IndexedDB and dynamic imports. Wait for its rendered
+  // result instead of assuming a fixed number of event-loop turns completes it.
+  await vi.waitFor(async () => {
     await flushPromises()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    if (wrapper.find('[data-testid="entry-verbs"]').exists()) break
-  }
+    expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(true)
+  })
   return wrapper
 }
 
