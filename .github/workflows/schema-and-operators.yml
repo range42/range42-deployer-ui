@@ -15,13 +15,22 @@ jobs:
         with:
           path: range42-deployer-ui
 
-      - name: Checkout backend-api (for cross-compare + pydantic drift)
+      - name: Checkout matching backend-api branch
+        id: checkout_backend
+        uses: actions/checkout@v6
+        with:
+          repository: range42/range42-backend-api
+          path: range42-backend-api
+          ref: ${{ github.head_ref || github.ref_name }}
+        continue-on-error: true
+
+      - name: Checkout backend-api (dev fallback)
+        if: steps.checkout_backend.outcome == 'failure'
         uses: actions/checkout@v6
         with:
           repository: range42/range42-backend-api
           path: range42-backend-api
           ref: dev
-        continue-on-error: true
 
       - name: Setup Node 24
         uses: actions/setup-node@v6
@@ -64,7 +73,6 @@ jobs:
           python-version: '3.11'
 
       - name: Install backend dev deps + pydantic codegen
-        if: hashFiles('range42-backend-api/requirements.txt') != ''
         working-directory: range42-backend-api
         run: |
           python -m venv .venv
@@ -72,10 +80,8 @@ jobs:
           pip install -U pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-          pip install datamodel-code-generator
 
       - name: Regenerate Pydantic + drift check
-        if: hashFiles('range42-backend-api/requirements.txt') != ''
         working-directory: range42-backend-api
         run: |
           . .venv/bin/activate
@@ -84,41 +90,34 @@ jobs:
             || { echo "::error::app/schemas/generated.py is out of date — regenerate and commit"; exit 1; }
 
       - name: Pytest (Python operators on shared vectors)
-        if: hashFiles('range42-backend-api/requirements.txt') != ''
         working-directory: range42-backend-api
         run: |
           . .venv/bin/activate
-          if [ -d tests/overlay ]; then
-            pytest tests/overlay/ -v
-          else
-            echo "tests/overlay/ not yet created — skipping"
-          fi
+          pytest tests/overlay/ -v
 
-      - name: Cross-compare stub — trivial compose vector parity
-        if: hashFiles('range42-backend-api/requirements.txt') != ''
+      - name: Cross-compare TypeScript and Python compose
         run: |
           set -euo pipefail
           VECTOR=range42-deployer-ui/schema/test-vectors/compose/01_identity.json
-          TS_OUT=$(node --input-type=module -e "
-            import { compose } from './range42-deployer-ui/src/overlay/compose.ts';
-            import { readFileSync } from 'node:fs';
+          range42-deployer-ui/node_modules/.bin/esbuild \
+            range42-deployer-ui/src/overlay/compose.ts --bundle --platform=node \
+            --format=cjs --outfile=/tmp/range42-compose.cjs
+          TS_OUT=$(node -e "
+            const { compose } = require('/tmp/range42-compose.cjs');
+            const { readFileSync } = require('node:fs');
             const v = JSON.parse(readFileSync('$VECTOR','utf8'));
             process.stdout.write(JSON.stringify(compose(v.input.base, v.input.overlay)));
-          " 2>/dev/null || echo '__TS_UNAVAILABLE__')
+          ")
           PY_OUT=$(range42-backend-api/.venv/bin/python -c "
           import json, sys
           sys.path.insert(0, 'range42-backend-api')
           from app.overlay import compose
           v = json.load(open('$VECTOR'))
           sys.stdout.write(json.dumps(compose(v['input']['base'], v['input']['overlay'])))
-          " 2>/dev/null || echo '__PY_UNAVAILABLE__')
-          if [[ "$TS_OUT" == "__TS_UNAVAILABLE__" || "$PY_OUT" == "__PY_UNAVAILABLE__" ]]; then
-            echo "::warning::Cross-compare runner unavailable (TS=$TS_OUT PY=$PY_OUT) — app.overlay not yet implemented; relying on vitest parity."
-          else
-            if [[ "$(echo "$TS_OUT" | jq -c .)" != "$(echo "$PY_OUT" | jq -c .)" ]]; then
-              echo "::error::TS vs Python divergence on compose/01_identity.json"
-              diff <(echo "$TS_OUT") <(echo "$PY_OUT") || true
-              exit 1
-            fi
+          ")
+          if [[ "$(echo "$TS_OUT" | jq -Sc .)" != "$(echo "$PY_OUT" | jq -Sc .)" ]]; then
+            echo "::error::TS vs Python divergence on compose/01_identity.json"
+            diff <(echo "$TS_OUT") <(echo "$PY_OUT") || true
+            exit 1
           fi
           echo "cross-compare: ok"
