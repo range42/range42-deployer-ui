@@ -131,18 +131,14 @@ async function removeHostConfirm(h) {
 }
 
 // ===========================================================================
-// Snapshot retention (user-set here, enforced by the backend)
-//
-// The UI stores the user's preferred defaults and POSTs them to the backend's
-// `/v1/admin/retention` so the backend enforces them on the snapshot pipeline.
-// LocalStorage is a fallback mirror while offline / while the backend is
-// unreachable; the backend is authoritative once it's online.
+// Snapshot retention preferences — storage only; backend expiry is not implemented.
+// Preserve the local mirror and existing PUT contract without implying cleanup.
 // ===========================================================================
 
 const RETENTION_KEY = 'range42_snapshot_retention'
 const retention = ref({ keep_count: 5, keep_days: 7 })
 const retentionSaving = ref(false)
-const retentionStatus = ref('') // 'local-only' | 'synced' | 'error'
+const retentionStatus = ref('')
 
 function loadRetention() {
   try {
@@ -168,15 +164,15 @@ async function saveRetention() {
       body: JSON.stringify(retention.value),
     })
     if (res.ok) {
-      retentionStatus.value = 'synced'
-      showToast('Snapshot retention saved + synced to backend', 'success')
+      retentionStatus.value = 'Stored on backend; automatic cleanup is not enabled.'
+      showToast(retentionStatus.value, 'info')
     } else {
-      retentionStatus.value = 'local-only'
-      showToast(`Saved locally — backend refused (HTTP ${res.status})`, 'warning')
+      retentionStatus.value = `Stored locally only; backend refused (HTTP ${res.status}).`
+      showToast(retentionStatus.value, 'warning')
     }
   } catch {
-    retentionStatus.value = 'local-only'
-    showToast('Saved locally — backend unreachable', 'warning')
+    retentionStatus.value = 'Stored locally only; backend unreachable.'
+    showToast(retentionStatus.value, 'warning')
   } finally {
     retentionSaving.value = false
   }
@@ -470,11 +466,13 @@ const clearAllData = async () => {
       <!-- Snapshot retention (Plan C §C5.4) -->
       <div id="snapshot-retention" class="card bg-base-100 shadow-md mb-6" data-testid="settings-snapshot-retention">
         <div class="card-body">
-          <h2 class="card-title">Snapshot retention</h2>
-          <p class="text-sm text-base-content/60 mb-3">
-            Defaults for new deployments: keep at least <strong>last N snapshots</strong> and any
-            snapshot taken in the <strong>last D days</strong>. Per-deployment overrides live on the
-            deployment page.
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="card-title">Snapshot retention preferences</h2>
+            <span class="badge badge-warning" data-testid="retention-inactive">Not enforced</span>
+          </div>
+          <p class="text-sm text-base-content/80 mb-3">
+            These values are stored only. The backend does not automatically expire or delete
+            snapshots. Manage existing snapshots manually.
           </p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
             <fieldset class="fieldset">
@@ -498,25 +496,16 @@ const clearAllData = async () => {
               />
             </fieldset>
           </div>
-          <div class="mt-3 flex items-center gap-3">
+          <div class="mt-3 flex flex-wrap items-center gap-3">
             <button
               class="btn btn-primary btn-sm"
               type="button"
               :disabled="retentionSaving"
               @click="saveRetention"
             >
-              {{ retentionSaving ? 'Saving…' : 'Save retention' }}
+              {{ retentionSaving ? 'Saving…' : 'Store preferences' }}
             </button>
-            <span
-              v-if="retentionStatus === 'synced'"
-              class="text-xs text-success"
-              data-testid="retention-status-synced"
-            >Synced to backend</span>
-            <span
-              v-else-if="retentionStatus === 'local-only'"
-              class="text-xs text-warning"
-              data-testid="retention-status-local"
-            >Local only — backend unreachable</span>
+            <span role="status" class="text-sm text-base-content/80">{{ retentionStatus }}</span>
           </div>
         </div>
       </div>
