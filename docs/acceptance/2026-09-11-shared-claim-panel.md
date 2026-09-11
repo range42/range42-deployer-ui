@@ -35,7 +35,7 @@ The Git adapter normally discovers an existing branch by attempting ref creation
 
 The coordinator's full attempt `505eb94ae7e14839` failed with exit code 2 during the second guest's cloud-init wait. VM `60000` passed that stage, `60000` and `60001` remained running, and `60002` was not created. This was the real condition used to test release refusal.
 
-Owned teardown attempt `90e433c1974c42c4` succeeded with exit code 0. Before authorizing UI release, the coordinator verified all three test VM IDs absent, all 47 original guests unchanged and NAT unchanged. The final independent post-release audit was still pending when this report was written.
+Owned teardown attempt `90e433c1974c42c4` succeeded with exit code 0. Before authorizing UI release, the coordinator verified all three test VM IDs absent, all 47 original guests unchanged and NAT unchanged. The independent post-release audit then passed all 26 checks at 12:26:23 UTC: exact original guests, ordered NAT rules, SDN declarations, release bytes and runtime were preserved, with no remaining claims, leases, locks or active runners. Its `all_requested_attempts_succeeded` value is false, preserving the failed full attempt separately from successful cleanup.
 
 Two harness readiness checks were corrected without changing product state: persistent deployment event streams require DOM/content readiness instead of network-idle, and claim/attempt requests finish independently, so release review waits for the actual enabled button. The harness never forced UI state or bypassed backend guards.
 
