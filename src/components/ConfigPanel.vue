@@ -57,7 +57,7 @@ const props = defineProps({
     default: () => [],
   },
 })
-const emit = defineEmits(['close', 'update', 'delete', 'update:attachments'])
+const emit = defineEmits(['close', 'update', 'delete', 'update:attachments', 'open-content'])
 
 const statusView = computed(() =>
   resolveNodeStatus(props.node?.data?.status, props.node?.data?.pendingAction),
@@ -592,6 +592,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           :attachments="attachments"
           :nodes="nodes"
           @update:attachments="$emit('update:attachments', $event)"
+          @open-content="emit('open-content', $event)"
         />
 
         <!-- Shared Service Specific Fields -->

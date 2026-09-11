@@ -1,0 +1,24 @@
+# Scenario Content and legacy attachment conversion
+
+New content from either the node panel or Config tab opens the executable Scenario editor. Files, scripts, complete Ansible playbooks and backend-verified bundles use the same authoring, generated-file review and Git checkpoint flow. Opening from a VM selects that VM for newly added content. Existing attachment records remain editable until the operator reviews their conversion.
+
+The conversion supports main-stage, node-scoped content targeting an existing VM. Self-contained inline task/block lists become playbooks importing the original task files; complete playbooks retain their original bytes. Uploaded files require an explicit choice of copy, script, playbook or task list. Copies also require a guest destination and offer a file mode. Content is appended after existing Scenario Content in saved attachment order, with stable ordering for ties. Task wrappers and file/script operations use privilege escalation after VM bootstrap.
+
+Original text, BOM/CRLF and binary bytes remain intact. Referenced project files are preserved. Attachment variables and original records are retained; originals are archived at `scenarios/<name>/content/legacy-attachments.json`. Existing files are never overwritten with different bytes by conversion. The preview includes the resulting executable files and archive before Apply.
+
+Apply updates the scenario, files, generated-file list and active attachments in one store operation. A failed browser-storage write leaves the prior project intact. Changes to the project, variables, files, attachments or live canvas invalidate an older review. Cancelling or failing conversion does not remove any original attachment. A subsequent Git failure leaves the successfully persisted local candidate available for retry; it does not claim publication succeeded.
+
+## Explicit remaining mappings
+
+Group inheritance, handlers/notifications, custom stages, catalog roles/containers and external Git references are not automatically converted. Target overrides, relative file imports, lookups, lookup loops, roles and other unresolved dependencies also require explicit mapping. For catalog content, resolve the corresponding supported bundle in the verified library. For Git content, load the pinned files and review their dependencies and target. Unsupported records remain in the project with an explanation; the complete conversion cannot apply until they are resolved. This is a conservative migration helper, not a sandbox or a complete Ansible interpreter.
+
+The backend currently checks top-level bundle imports; it does not recursively validate arbitrary task-file dependencies. Missing nested imports are reported by Ansible. The wrapper uses Ansible's standard [static task import](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/import_tasks_module.html); task bytes are not parsed and reserialized for execution.
+
+## Verification
+
+- Unit and component regressions cover stable ordering, variables, exact bytes, collisions, missing sources, dependency restrictions, explicit upload mappings, cancellation, stale reviews and storage failure.
+- Git-adapter round-trip coverage rebuilds the published file map, reopens structured authoring at a pinned revision and checks byte-identical regeneration. This is a controlled provider test, not a new real-provider publication acceptance.
+- `e2e/attachment-migration.spec.ts` passes against the production build over HTTP at desktop 1440px and mobile 390px. It covers Config-tab entry, cancel, review, atomic apply, binary/task bytes, archived originals and reload/regeneration. No page errors, scoped WCAG A/AA violations or dialog overflow. The existing replication browser tests also pass with the stale-review guard.
+- Local Ansible 2.19.1 acceptance verifies wrapper-relative imports, task/block variables and preserved LF/BOM/CRLF bytes, plus failing missing-import and incorrect-variable cases. It uses a disposable local inventory and disables privilege escalation there; it does not establish guest sudo availability. Evidence: `docs/acceptance/attachment-ansible-20260911.json`.
+
+The shared deployment remains the separately verified API052e089/UI45a4f04 release until a new immutable UI revision is explicitly activated and checked.

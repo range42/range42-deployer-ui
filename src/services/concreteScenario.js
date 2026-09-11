@@ -345,7 +345,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(Object.hasOwn(files, `${base}/${item.path}`), `Content file is missing: ${base}/${item.path}`)
     requireValue(item.kind === 'file' || typeof files[`${base}/${item.path}`] === 'string', `${item.kind} content must be text: ${item.path}`)
     if (item.kind === 'playbook') {
-      const plays = parse(files[`${base}/${item.path}`])
+      const plays = parse(files[`${base}/${item.path}`].replace(/^\uFEFF/, ''))
       requireValue(Array.isArray(plays) && plays.length > 0 && plays.every(play => play && ['{{ global_vm_ssh_name }}', vm.vm_name].includes(play.hosts)), `Playbook ${item.path} must contain plays with hosts: "{{ global_vm_ssh_name }}" (or ${vm.vm_name})`)
       configure.push(imported(item.path, vars))
     } else {

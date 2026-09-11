@@ -9,10 +9,13 @@ import ScenarioReplicationPanel from '@/components/project/ScenarioReplicationPa
 import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
 import { applyReplicatedAllocation, prepareReplicatedAllocation } from '@/services/scenarioAllocation'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
+import LegacyAttachmentMigration from '@/components/project/LegacyAttachmentMigration.vue'
+import { prepareAttachmentMigration, scenarioReviewSource } from '@/services/attachmentMigration'
 
 const props = defineProps({
   open: Boolean, project: { type: Object, required: true },
   nodes: { type: Array, default: () => [] }, edges: { type: Array, default: () => [] },
+  initialTarget: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'generated'])
 const draft = ref(null)
@@ -22,6 +25,9 @@ const error = ref('')
 const focusReady = ref(false)
 const heading = ref(null)
 const bundleLibraryOpen = ref(false)
+const migrationChoices = ref({})
+const migrateAttachments = ref(false)
+let openedSource = ''
 const allocationPlan = computed(() => {
   if (!draft.value?.replication) return { vms: draft.value?.vms || [], networks: draft.value?.networks || [] }
   try { return prepareReplicatedAllocation({ scenario: draft.value, nodes: props.nodes, edges: props.edges }) }
@@ -34,6 +40,9 @@ watch(() => props.open, async open => {
   bundleLibraryOpen.value = false
   if (!open) return
   draft.value = createScenarioDraft(props.project, props.nodes, props.edges)
+  openedSource = scenarioReviewSource(props.project, props.nodes, props.edges)
+  migrationChoices.value = {}
+  migrateAttachments.value = false
   contentState.value = Object.fromEntries(draft.value.content.map(item => [item.id, {
     content: props.project.files?.[`scenarios/${draft.value.label}/${item.path}`] || '',
     varsText: JSON.stringify(item.vars || {}, null, 2),
@@ -51,7 +60,7 @@ function addContent(kind) {
   }
   const id = randomId()
   const suffix = kind === 'script' ? 'sh' : kind === 'playbook' ? 'yml' : 'txt'
-  draft.value.content.push({ id, kind, target_node: draft.value.vms[0]?.node_id || '',
+  draft.value.content.push({ id, kind, target_node: draft.value.vms.find(vm => vm.node_id === props.initialTarget)?.node_id || draft.value.vms[0]?.node_id || '',
     path: kind === 'bundle' ? 'generic/systems.baseline.default/main.yml' : `content/${kind}-${draft.value.content.length + 1}.${suffix}`,
     ...(kind === 'file' ? { destination: '', mode: '0644' } : {}),
   })
@@ -92,6 +101,7 @@ function connectedEdges(vm, networkId) {
 function review() {
   error.value = ''
   try {
+    if (openedSource !== scenarioReviewSource(props.project, props.nodes, props.edges)) throw new Error('Project changed since this editor opened. Reopen scenario configuration and review the current content.')
     const files = { ...(props.project.files || {}) }
     const scenario = JSON.parse(JSON.stringify(draft.value))
     const written = new Map()
@@ -107,10 +117,25 @@ function review() {
       if (!vars || Array.isArray(vars) || typeof vars !== 'object') throw new Error('Content variables must be a JSON object')
       item.vars = vars
     }
-    preview.value = emitConcreteScenario({ scenario, nodes: props.nodes, edges: props.edges,
+    let candidate = { scenario, files, attachments: props.project.attachments || [] }
+    if (candidate.attachments.length) {
+      if (!migrateAttachments.value) throw new Error('Review the legacy attachments and select their conversion before generating scenario files.')
+      candidate = prepareAttachmentMigration({ project: { ...props.project, files }, scenario, nodes: props.nodes, choices: migrationChoices.value })
+    }
+    preview.value = { ...emitConcreteScenario({ ...candidate, nodes: props.nodes, edges: props.edges,
       baseDoc: props.project.baseDoc, overlay: props.project.overlay,
-      files, attachments: props.project.attachments || [], generatedPaths: props.project.scenario_generated_paths || [] })
+      generatedPaths: props.project.scenario_generated_paths || [] }),
+      attachments: candidate.attachments, migrationRows: candidate.rows || [], reviewSource: openedSource }
   } catch (reason) { error.value = reason.message || String(reason) }
+}
+
+function applyReview() {
+  if (preview.value.reviewSource !== scenarioReviewSource(props.project, props.nodes, props.edges)) {
+    preview.value = null
+    error.value = 'Project changed since review. Reopen scenario configuration and review the current content.'
+    return
+  }
+  emit('generated', preview.value)
 }
 </script>
 
@@ -184,6 +209,10 @@ function review() {
 
             <h3 class="font-semibold mt-5 mb-2">Content after VM bootstrap</h3>
             <p class="text-sm text-base-content/70 mb-3">Items run in the displayed order. File and script tasks use privilege escalation. SSH keys and credentials come from the backend workspace.</p>
+            <template v-if="project.attachments?.length">
+              <LegacyAttachmentMigration :attachments="project.attachments" :nodes="nodes" :files="project.files || {}" v-model:choices="migrationChoices" />
+              <label class="flex gap-2 items-start text-sm mb-4"><input v-model="migrateAttachments" type="checkbox" class="checkbox checkbox-sm" data-testid="migration-confirm" /> Include the reviewed attachment conversion in this scenario preview.</label>
+            </template>
             <div class="flex flex-wrap gap-2 mb-3">
               <button v-for="kind in ['file', 'script', 'playbook', 'bundle']" :key="kind" type="button" class="btn btn-outline btn-sm" :data-testid="`scenario-add-${kind}`" @click="addContent(kind)">Add {{ kind }}</button>
             </div>
@@ -198,7 +227,7 @@ function review() {
               <p v-if="item.kind === 'bundle'" class="text-xs text-base-content/70 mt-2 break-all">{{ item.resolution ? `Source commit: ${item.resolution.source_sha} · Installed runtime: ${item.resolution.runtime.fingerprint}` : 'Remove this unverified attachment and select it from the bundle library.' }}</p>
               <FileAssetField v-if="item.kind === 'file'" v-model="contentState[item.id].content" :filename="item.path.split('/').at(-1)" class="mt-3" />
               <label v-if="item.kind !== 'bundle' && typeof contentState[item.id].content === 'string'" class="form-control gap-1 mt-3"><span>{{ item.kind === 'playbook' ? playbookHint : 'Content' }}</span><textarea v-model="contentState[item.id].content" class="textarea textarea-bordered font-mono w-full min-h-36" data-testid="content-text" spellcheck="false" /></label>
-              <label v-if="['bundle', 'playbook'].includes(item.kind)" class="form-control gap-1 mt-3"><span>Non-secret variables (JSON)</span><textarea v-model="contentState[item.id].varsText" class="textarea textarea-bordered font-mono w-full" spellcheck="false" /></label>
+              <label class="form-control gap-1 mt-3"><span>Non-secret variables (JSON)</span><textarea v-model="contentState[item.id].varsText" class="textarea textarea-bordered font-mono w-full" spellcheck="false" /></label>
               <button type="button" class="btn btn-ghost btn-sm mt-2" @click="draft.content.splice(index, 1)">Remove item</button>
             </fieldset>
             <p v-if="error" role="alert" class="alert alert-error break-words">{{ error }}</p>
@@ -206,6 +235,7 @@ function review() {
           </template>
 
           <template v-else>
+            <p v-if="preview.migrationRows.length" class="text-sm mb-3" data-testid="migration-summary">{{ preview.migrationRows.length }} legacy attachments will become scenario content. Original records are kept in content/legacy-attachments.json; active attachments are replaced only when this whole update is saved.</p>
             <p v-for="warning in preview.warnings || []" :key="warning" class="text-sm rounded-lg border border-warning/50 bg-warning/10 p-3 mb-3">{{ warning }}</p>
             <p class="mb-3">Review these files before adding them to the project. Saving the project checkpoints them on its working branch; deployment still requires backend preflight.</p>
             <details v-for="path in Object.keys(preview.files).sort()" :key="path" class="border border-base-300 rounded-lg p-3 mb-2 min-w-0">
@@ -213,7 +243,7 @@ function review() {
               <pre v-if="typeof preview.files[path] === 'string'" class="text-xs overflow-x-auto max-h-72 mt-3">{{ preview.files[path] }}</pre>
               <FileAssetField v-else :model-value="preview.files[path]" :filename="path.split('/').at(-1)" readonly class="mt-3" />
             </details>
-            <footer class="flex flex-wrap justify-end gap-2 mt-5"><button type="button" class="btn btn-ghost" @click="preview = null">Back to configuration</button><button type="button" class="btn btn-primary" data-testid="scenario-apply" @click="emit('generated', preview)">Use scenario files</button></footer>
+            <footer class="flex flex-wrap justify-end gap-2 mt-5"><button type="button" class="btn btn-ghost" @click="preview = null">Back to configuration</button><button type="button" class="btn btn-primary" data-testid="scenario-apply" @click="applyReview">Use scenario files</button></footer>
           </template>
         </section>
       </div>

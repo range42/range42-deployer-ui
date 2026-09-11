@@ -18,6 +18,74 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('offers review of existing attachments without changing the project on open or cancel', async () => {
+    const wrapper = modal()
+    const project = JSON.parse(JSON.stringify(wrapper.props('project')))
+    project.attachments = [{ id: 'legacy', target_node: 'vm', stage: 'main',
+      source: { kind: 'inline_yaml', content_inline: '- ansible.builtin.debug:\n    msg: hello\n' } }]
+    await wrapper.setProps({ open: false, project })
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="attachment-migration"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('legacy')
+    expect(wrapper.emitted('generated')).toBeUndefined()
+    await wrapper.get('[aria-label="Close scenario configuration"]').trigger('click')
+    expect(project.attachments).toHaveLength(1)
+    expect(project.scenario.content).toEqual([])
+  })
+
+  it('converts an attachment only in the reviewed complete candidate', async () => {
+    const wrapper = modal()
+    const project = JSON.parse(JSON.stringify(wrapper.props('project')))
+    const text = '\uFEFF- ansible.builtin.debug:\r\n    msg: "{{ MESSAGE }}"\r\n'
+    project.attachments = [{ id: 'old', target_node: 'vm', stage: 'main', vars: { MESSAGE: 'hello' }, source: { kind: 'inline_yaml', content_inline: text } }]
+    await wrapper.setProps({ open: false, project }); await wrapper.setProps({ open: true })
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    expect(wrapper.find('[data-testid="scenario-apply"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="migration-confirm"]').setValue(true)
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    expect(wrapper.get('[data-testid="migration-summary"]').text()).toContain('1 legacy attachments')
+    expect(project.attachments).toHaveLength(1)
+    expect(project.scenario.content).toEqual([])
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(result.attachments).toEqual([])
+    expect(result.files['scenarios/demo/content/legacy-1.tasks.yml']).toBe(text)
+    expect(result.scenario.content[0]).toMatchObject({ target_node: 'vm', vars: { MESSAGE: 'hello' } })
+  })
+
+  it('lets the user map a binary upload to a destination without re-encoding its bytes', async () => {
+    const wrapper = modal()
+    const project = JSON.parse(JSON.stringify(wrapper.props('project')))
+    project.attachments = [{ id: 'upload', target_node: 'vm', stage: 'main', source: { kind: 'file_upload', content_inline: 'AP+ACg==' } }]
+    await wrapper.setProps({ open: false, project }); await wrapper.setProps({ open: true })
+    await wrapper.get('[data-testid="migration-kind"]').setValue('file')
+    await wrapper.get('[data-testid="migration-destination"]').setValue('/tmp/data.bin')
+    await wrapper.get('[data-testid="migration-confirm"]').setValue(true)
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    expect(wrapper.emitted('generated')[0][0].files['scenarios/demo/content/legacy-1.bin'].content).toBe('AP+ACg==')
+  })
+
+  it('keeps unsupported attachments and rejects changed projects after preview', async () => {
+    const wrapper = modal()
+    const project = JSON.parse(JSON.stringify(wrapper.props('project')))
+    project.attachments = [{ id: 'group-role', target_node: 'vm', scope: 'group_inherited', stage: 'main', source: { kind: 'inline_yaml', content_inline: '- debug: msg=hi' } }]
+    await wrapper.setProps({ open: false, project }); await wrapper.setProps({ open: true })
+    expect(wrapper.get('[data-testid="migration-issue"]').text()).toContain('Group inheritance')
+    await wrapper.get('[data-testid="migration-confirm"]').setValue(true)
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    expect(wrapper.emitted('generated')).toBeUndefined()
+    expect(project.attachments).toHaveLength(1)
+    const updated = JSON.parse(JSON.stringify(project)); updated.attachments = []
+    await wrapper.setProps({ open: false, project: updated }); await wrapper.setProps({ open: true })
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.setProps({ project: { ...updated, files: { 'new.txt': 'changed' } } })
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    expect(wrapper.get('[role="alert"]').text()).toContain('Project changed since review')
+    expect(wrapper.emitted('generated')).toBeUndefined()
+  })
+
   it('reviews an uploaded file as binary metadata and keeps its bytes when applying the scenario', async () => {
     const wrapper = modal()
     await wrapper.get('[data-testid="scenario-add-file"]').trigger('click')

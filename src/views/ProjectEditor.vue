@@ -34,6 +34,7 @@ import { useDeploymentIndex } from '@/composables/useDeploymentIndex'
 import { getBackendScope } from '@/services/backendApi'
 import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
+import { reviewedScenarioUpdates } from '@/services/attachmentMigration'
 import ProjectRepositoryConnection from '@/components/ProjectRepositoryConnection.vue'
 import { emitConcreteScenario } from '@/services/concreteScenario'
 import { ensureBackendProject } from '@/services/backendProjectRegistration'
@@ -102,6 +103,7 @@ const gitSaveError = ref('')
 const showPublishTargets = ref(false)
 const publicationFiles = ref({})
 const showScenarioAuthoring = ref(false)
+const scenarioContentTarget = ref('')
 const showRepositoryConnection = ref(false)
 const registeredProjectId = ref('')
 const dragAndDropComposable = useDragAndDrop()
@@ -540,12 +542,15 @@ function openPublishTargets() {
 function applyScenario(result) {
   if (!currentProject.value) return
   try {
-    projectStore.updateProject(currentProject.value.id, {
-      scenario: result.scenario, files: result.files, scenario_generated_paths: result.generatedPaths,
-    })
+    projectStore.updateProject(currentProject.value.id, reviewedScenarioUpdates(currentProject.value, result, liveNodes.value, liveEdges.value))
     showScenarioAuthoring.value = false
     void manualSave()
   } catch (error) { showToast(error.message || String(error), 'error', 8000) }
+}
+
+function openScenarioContent(target = '') {
+  scenarioContentTarget.value = typeof target === 'string' ? target : ''
+  showScenarioAuthoring.value = true
 }
 
 function openRepositoryConnection() {
@@ -1067,7 +1072,7 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Save button -->
           <button type="button" class="btn btn-ghost btn-sm" data-testid="project-repository" :disabled="gitSaving > 0" @click="openRepositoryConnection">Repository</button>
-          <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="showScenarioAuthoring = true">Scenario</button>
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="openScenarioContent()">Scenario</button>
           <button class="btn btn-ghost btn-sm gap-2" :disabled="gitSaving > 0" @click="manualSave()" title="Save (Ctrl+S)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
@@ -1276,6 +1281,7 @@ const handleInfrastructureImport = (result) => {
             :attachments="attachmentsRef"
             :nodes="liveNodes"
             @update:attachments="handleAttachmentsUpdate"
+            @open-content="openScenarioContent"
             @save="handleConfigSave"
           />
         </KeepAlive>
@@ -1322,6 +1328,7 @@ const handleInfrastructureImport = (result) => {
       @update="updateNodeStatus"
       @delete="handleDeleteNode"
       @update:attachments="handleAttachmentsUpdate"
+      @open-content="openScenarioContent"
     />
     
     <!-- Edge Config Panel -->
@@ -1358,6 +1365,7 @@ const handleInfrastructureImport = (result) => {
 
     <ScenarioAuthoringModal v-if="showScenarioAuthoring && currentProject" :open="showScenarioAuthoring"
       :project="currentProject" :nodes="liveNodes" :edges="liveEdges"
+      :initial-target="scenarioContentTarget"
       @close="showScenarioAuthoring = false" @generated="applyScenario" />
 
     <PublishTargetsModal

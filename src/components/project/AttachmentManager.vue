@@ -7,20 +7,20 @@
  *   offered: "Attach at group (inherited by descendants)" — toggles
  *   `scope: 'group_inherited'` on those rows.
  * - Per-row Edit button opens the AttachmentEditor panel.
- * - Global add control: choose a node + kind and click Add.
+ * - New content opens the concrete Scenario editor.
  * - Emits `update:attachments` with the new attachments array so the parent
  *   project store can persist.
  */
 import { computed, ref } from 'vue'
 import { applyBulkAttachmentEdit } from '@/composables/useInfraBuilder'
-import { createAttachment, removeAttachment } from '@/composables/useAttachments'
+import { removeAttachment } from '@/composables/useAttachments'
 import AttachmentEditor from '@/components/project/attachments/AttachmentEditor.vue'
 
 const props = defineProps({
   attachments: { type: Array, default: () => [] },
   nodes: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:attachments'])
+const emit = defineEmits(['update:attachments', 'open-content'])
 
 const selected = ref(new Set())
 const bulk = ref({
@@ -36,11 +36,6 @@ const editingAttachment = computed(
   () => (editingId.value ? props.attachments.find((a) => a.id === editingId.value) ?? null : null),
 )
 
-// Global add state
-const SOURCE_KINDS = ['catalog_role', 'catalog_container', 'inline_yaml', 'file_upload', 'external_git']
-const addNodeId = ref('')
-const addKind = ref('inline_yaml')
-
 function onEditorUpdate(next) {
   emit('update:attachments', props.attachments.map((a) => (a.id === next.id ? next : a)))
 }
@@ -48,13 +43,6 @@ function onEditorUpdate(next) {
 function onEditorDelete() {
   emit('update:attachments', removeAttachment(props.attachments, editingId.value))
   editingId.value = null
-}
-
-function onAddAttachment() {
-  if (!addNodeId.value) return
-  const att = createAttachment(addKind.value, addNodeId.value)
-  emit('update:attachments', [...props.attachments, att])
-  editingId.value = att.id
 }
 
 /** Short human summary of an attachment source for the Source column. */
@@ -161,35 +149,14 @@ function applyNodeScoped() {
 <template>
   <section class="attachment-manager bg-base-100 border border-base-300 rounded-lg" data-testid="attachment-manager">
     <header class="flex items-center justify-between px-3 py-2 border-b border-base-300">
-      <h3 class="font-semibold text-sm">Attachments</h3>
+      <h3 class="font-semibold text-sm">Legacy attachments</h3>
       <span class="text-xs opacity-60">{{ selected.size }} selected / {{ attachments.length }}</span>
     </header>
 
-    <!-- Global add control -->
-    <div class="px-3 py-2 border-b border-base-300 flex flex-wrap items-center gap-2">
-      <select
-        v-model="addNodeId"
-        class="select select-xs select-bordered"
-        data-testid="add-node"
-      >
-        <option value="">— node —</option>
-        <option v-for="n in nodes" :key="n.id" :value="n.id">{{ n.id }}</option>
-      </select>
-      <select
-        v-model="addKind"
-        class="select select-xs select-bordered"
-        data-testid="add-kind"
-      >
-        <option v-for="k in SOURCE_KINDS" :key="k" :value="k">{{ k }}</option>
-      </select>
-      <button
-        class="btn btn-xs btn-primary"
-        data-testid="add-btn"
-        type="button"
-        @click="onAddAttachment"
-      >
-        Add
-      </button>
+    <div class="px-3 py-2 border-b border-base-300 space-y-2">
+      <p class="text-sm">Use Scenario Content for files, scripts, playbooks and verified bundles. Review existing attachments there before converting them.</p>
+      <button class="btn btn-sm btn-primary" data-testid="scenario-content-btn" type="button"
+        @click="emit('open-content')">Open Scenario Content</button>
     </div>
 
     <!-- Bulk actions toolbar -->

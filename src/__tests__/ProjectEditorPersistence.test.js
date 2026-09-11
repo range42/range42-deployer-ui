@@ -16,6 +16,7 @@ import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.
 import ProjectRepositoryConnection from '@/components/ProjectRepositoryConnection.vue'
 import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { emitConcreteScenario } from '@/services/concreteScenario'
+import { scenarioReviewSource } from '@/services/attachmentMigration'
 import { useProjectStore } from '@/stores/projectStore'
 import projectMessages from '@/locales/en/project.json'
 import historyTab from '@/locales/en/historyTab.json'
@@ -221,6 +222,8 @@ describe('ProjectEditor saved project integration', () => {
     const { store } = await editor(project({ nodes, edges }))
     await wrapper.get('[data-testid="project-scenario"]').trigger('click')
     const generated = emitConcreteScenario({ scenario, nodes, edges })
+    const authoring = wrapper.findComponent(ScenarioAuthoringModal)
+    generated.reviewSource = scenarioReviewSource(store.getProject('saved'), authoring.props('nodes'), authoring.props('edges'))
     wrapper.findComponent(ScenarioAuthoringModal).vm.$emit('generated', generated)
     await flushPromises()
     expect(store.getProject('saved').scenario.label).toBe('generated_demo')
@@ -228,6 +231,15 @@ describe('ProjectEditor saved project integration', () => {
     wrapper.findComponent(Sidebar).vm.$emit('openDeploy')
     await flushPromises()
     expect(wrapper.findComponent(DeployForm).props('initialScenarioLabel')).toBe('generated_demo')
+  })
+
+  it('opens the concrete content editor from the Config tab and preserves its target VM', async () => {
+    await editor(project())
+    await wrapper.get('[data-testid="project-tab-config"]').trigger('click')
+    await flushPromises()
+    wrapper.findComponent(ConfigTab).vm.$emit('open-content', 'vm-two')
+    await flushPromises()
+    expect(wrapper.findComponent(ScenarioAuthoringModal).props('initialTarget')).toBe('vm-two')
   })
 
   it('connects a repository without pushing and clears pins belonging to the previous repository', async () => {

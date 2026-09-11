@@ -36,7 +36,7 @@ const props = defineProps({
   attachments: { type: Array, default: () => [] },
   nodes: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:attachments', 'save'])
+const emit = defineEmits(['update:attachments', 'save', 'open-content'])
 
 const selectedPath = ref('')
 const selectedFsKind = ref('overlay')
@@ -217,6 +217,7 @@ const yamlWarning = computed(() => {
         :attachments="attachments"
         :nodes="nodes"
         @update:attachments="(next) => emit('update:attachments', next)"
+        @open-content="emit('open-content', $event)"
       />
     </div>
   </div>
