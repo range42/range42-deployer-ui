@@ -188,6 +188,16 @@ describe('literal replication reservations', () => {
       nics: [{ key: 'nic-primary', network_id: 'net1', ip: '10.42.9.20' }] })
     expect(applied.replication.vm_assignments[plan.vms[0].node_id]).toEqual({ vm_id: 3401, nics: { 'nic-primary': { ip: '10.42.9.20' } } })
   })
+  it('rejects an address newly excluded from a shared subnet before applying the saved mapping', () => {
+    const fixture = replicatedScenario()
+    fixture.scenario.replication.node_scopes.vm1 = 'shared'
+    fixture.scenario.replication.network_scopes.net1 = 'shared'
+    const assignments = allocated(prepareReplicatedAllocation(fixture))
+    fixture.scenario.networks[0].reserved_ips = [assignments[0].nics[0].ip]
+    const before = JSON.stringify(fixture)
+    expect(() => applyReplicatedAllocation(fixture, assignments)).toThrow(/excluded|reserved address/i)
+    expect(JSON.stringify(fixture)).toBe(before)
+  })
   it('requires explicit network assignments before making an allocation plan', () => {
     const fixture = replicatedScenario()
     fixture.scenario.replication.network_assignments = {}

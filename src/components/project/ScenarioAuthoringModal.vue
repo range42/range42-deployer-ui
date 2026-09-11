@@ -2,11 +2,12 @@
 import { randomId } from '@/services/randomId'
 import FileAssetField from '@/components/project/FileAssetField.vue'
 import { fileContentEquals } from '@/services/projectFiles'
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
 import ScenarioReplicationPanel from '@/components/project/ScenarioReplicationPanel.vue'
 import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
+import { applyReplicatedAllocation, prepareReplicatedAllocation } from '@/services/scenarioAllocation'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
 
 const props = defineProps({
@@ -21,6 +22,11 @@ const error = ref('')
 const focusReady = ref(false)
 const heading = ref(null)
 const bundleLibraryOpen = ref(false)
+const allocationPlan = computed(() => {
+  if (!draft.value?.replication) return { vms: draft.value?.vms || [], networks: draft.value?.networks || [] }
+  try { return prepareReplicatedAllocation({ scenario: draft.value, nodes: props.nodes, edges: props.edges }) }
+  catch (reason) { return { error: reason.message || String(reason) } }
+})
 const playbookHint = 'Ansible playbook — use hosts: "{{ global_vm_ssh_name }}"'
 
 watch(() => props.open, async open => {
@@ -63,8 +69,13 @@ function attachBundle(item) {
 }
 
 function applyAllocation({ reservation, vms, target_host_id, backend_url }) {
-  draft.value.vms = vms
-  draft.value.allocation = { reservation, target_host_id, backend_url }
+  try {
+    const updated = draft.value.replication
+      ? applyReplicatedAllocation({ scenario: draft.value, nodes: props.nodes, edges: props.edges }, reservation.assignments)
+      : { vms }
+    draft.value = { ...draft.value, ...updated, allocation: { reservation, target_host_id, backend_url } }
+    error.value = ''
+  } catch (reason) { error.value = reason.message || String(reason) }
 }
 
 function releaseAllocation({ reservation_id, target_host_id, backend_url }) {
@@ -141,8 +152,14 @@ function review() {
               <label v-if="draft.network_mode === 'sdn' && (!draft.replication || draft.replication.network_scopes[network.id] === 'shared')" class="flex items-center gap-2 mt-3"><input v-model="network.snat" type="checkbox" class="checkbox checkbox-sm" /> Outbound NAT</label>
             </fieldset>
 
-            <ScenarioAllocationPanel v-if="project.id && !draft.replication" :project-id="project.id" :vms="draft.vms" :networks="draft.networks"
-              @reserved="applyAllocation" @released="releaseAllocation" />
+            <template v-if="project.id">
+              <p v-if="allocationPlan.error" role="alert" class="text-sm text-error break-words my-3" data-testid="replication-allocation-error">{{ allocationPlan.error }}</p>
+              <template v-else>
+                <p v-if="draft.replication" class="text-sm mt-4" data-testid="replication-allocation-counts">Reservations cover {{ allocationPlan.counts.vms }} literal VMs, {{ allocationPlan.counts.networks }} declared networks and {{ allocationPlan.counts.nics }} NICs. Empty VM IDs and addresses can be reserved; VNet names and subnets remain your explicit assignments.</p>
+                <ScenarioAllocationPanel :project-id="project.id" :vms="allocationPlan.vms" :networks="allocationPlan.networks"
+                  @reserved="applyAllocation" @released="releaseAllocation" />
+              </template>
+            </template>
 
             <h3 class="font-semibold mt-5 mb-2">Virtual machines</h3>
             <p v-if="!draft.vms.length" class="text-sm text-warning">No VM nodes found. Add a VM to the canvas and connect it to a network.</p>

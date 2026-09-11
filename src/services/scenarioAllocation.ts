@@ -177,6 +177,7 @@ export function applyReplicatedAllocation(input: ReplicationInput, assignments: 
     const network = plan.networks.find(network => network.id === nic.network_id)
     requireValue(network && network.vnet === nic.bridge && network.subnet === nic.subnet
       && (nic.gateway ?? '') === (network.gateway ?? ''), 'Network assignments no longer match the draft')
+    requireValue(!network.reserved_ips?.includes(nic.ip), `Reservation contains an excluded address: ${nic.ip}`)
   }
   const scenario = record(JSON.parse(JSON.stringify(input.scenario)), 'Scenario')
   const replication = record(scenario.replication, 'Replication')
