@@ -2,8 +2,8 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
 import { useBackendApiStore } from '@/stores/backendApiStore.ts'
-import FormField from '@/components/ui/FormField.vue'
 import FormSection from '@/components/ui/FormSection.vue'
+import ProxmoxCapacityPanel from '@/components/proxmox/ProxmoxCapacityPanel.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 
 const DEFAULT_API_URL = DEFAULT_BACKEND_API_URL
@@ -41,6 +41,13 @@ const formDefaultNode = ref('')
 const selectedHostId = ref('')
 const isSaving = ref(false)
 const saveError = ref(null)
+const capacityBackendId = computed(() => {
+  const url = formBaseUrl.value.trim().replace(/\/+$/, '')
+  const selected = backendApi.getHost(selectedHostId.value)
+  if (selected?.url === url) return selected.id
+  const matching = savedHosts.value.filter(host => host.url === url)
+  return matching.length === 1 ? matching[0].id : ''
+})
 
 const populateForm = () => {
   formBaseUrl.value = currentBaseUrl.value || backendApi.activeHost?.url || DEFAULT_API_URL
@@ -134,7 +141,7 @@ const testConnection = async () => {
   connectionInfo.value = 'Testing connection...'
 
   try {
-    const matchedHost = backendApi.hosts.find(host => host.url === url)
+    const matchedHost = backendApi.getHost(capacityBackendId.value)
     const hostToken = matchedHost?.token
     const resp = await fetch(url + '/v1/health/ready', {
       method: 'GET', signal: AbortSignal.timeout(8000),
@@ -225,9 +232,9 @@ const formatDate = (isoString) => {
 </script>
 
 <template>
-  <dialog ref="modalRef" class="modal">
-    <div class="modal-box max-w-2xl">
-      <h3 class="font-bold text-lg mb-4">Proxmox Configuration</h3>
+  <dialog ref="modalRef" class="modal" aria-labelledby="proxmox-configuration-title">
+    <div class="modal-box max-w-2xl overscroll-contain">
+      <h3 id="proxmox-configuration-title" class="font-bold text-lg mb-4">Proxmox Configuration</h3>
       
       <!-- Info Alert -->
       <div class="alert alert-info mb-4">
@@ -257,10 +264,11 @@ const formatDate = (isoString) => {
       </div>
 
       <!-- Pick from saved backend-api hosts (Settings → Backend API hosts) -->
-      <fieldset class="fieldset mb-4" data-testid="saved-host-picker">
+      <fieldset class="fieldset mb-4 min-w-0" data-testid="saved-host-picker">
         <legend class="fieldset-legend">Use a saved backend-api host</legend>
         <select
           class="select w-full"
+          aria-label="Saved backend connection"
           :value="selectedHostId"
           @change="applySavedHost($event.target.value)"
         >
@@ -269,32 +277,28 @@ const formatDate = (isoString) => {
             {{ h.label || h.url }} ({{ h.url }} · node {{ h.nodeName }})
           </option>
         </select>
-        <p class="label">Selecting a host fills the fields below. You can still edit them manually.</p>
+        <p class="text-xs text-base-content/80 whitespace-normal">Selecting a host fills the fields below. You can still edit them manually.</p>
       </fieldset>
 
       <!-- Form -->
       <FormSection variant="bordered" :columns="1" class="mb-4">
-        <FormField
-          v-model="formBaseUrl"
-          label="Backend API URL"
-          type="text"
-          placeholder="http://127.0.0.1:8000"
-          :required="true"
-          :error="saveError && !formBaseUrl.trim() ? 'Required' : ''"
-          hint="URL of the Range42 Backend API service (e.g., http://192.168.1.100:8000)"
-          icon=""
-        />
-        <FormField
-          v-model="formDefaultNode"
-          label="Proxmox Node"
-          type="text"
-          placeholder="pve"
-          :required="true"
-          :error="saveError && !formDefaultNode.trim() ? 'Required' : ''"
-          hint="The Proxmox node name where VMs will be deployed (e.g., pve, px-testing, node1)"
-          icon=""
-        />
+        <div class="min-w-0">
+          <label for="proxmox-backend-url" class="block text-sm font-medium mb-1">Backend API URL <span aria-hidden="true">*</span></label>
+          <input id="proxmox-backend-url" v-model="formBaseUrl" name="backend_url" type="url" required autocomplete="url" spellcheck="false"
+            class="input input-bordered w-full focus-visible:outline-2 focus-visible:outline-offset-2" placeholder="http://127.0.0.1:8000"
+            aria-describedby="proxmox-backend-url-hint" :aria-invalid="!!saveError && !formBaseUrl.trim()" />
+          <p id="proxmox-backend-url-hint" class="text-xs text-base-content/80 mt-1">URL of the Range42 Backend API service.</p>
+        </div>
+        <div class="min-w-0">
+          <label for="proxmox-node-name" class="block text-sm font-medium mb-1">Proxmox Node <span aria-hidden="true">*</span></label>
+          <input id="proxmox-node-name" v-model="formDefaultNode" name="proxmox_node" type="text" required autocomplete="off" spellcheck="false"
+            class="input input-bordered w-full focus-visible:outline-2 focus-visible:outline-offset-2" placeholder="pve"
+            aria-describedby="proxmox-node-name-hint" :aria-invalid="!!saveError && !formDefaultNode.trim()" />
+          <p id="proxmox-node-name-hint" class="text-xs text-base-content/80 mt-1">The Proxmox node where VMs will be deployed, for example pve01.</p>
+        </div>
       </FormSection>
+
+      <ProxmoxCapacityPanel v-if="visible" :backend-id="capacityBackendId" :node-name="formDefaultNode" />
 
       <!-- Connection Test -->
       <div class="flex items-center gap-2 mb-4">
