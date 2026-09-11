@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import DeploymentDetail from '@/views/DeploymentDetail.vue'
 import { useBackendApiStore } from '@/stores/backendApiStore'
+import TeamCard from '@/components/ui/TeamCard.vue'
 import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
 import RuntimeGitRecords from '@/components/deployment/RuntimeGitRecords.vue'
 import runtimeEn from '@/locales/en/runtime.json'
@@ -162,6 +163,84 @@ describe('<DeploymentDetail>', () => {
     expect(wrapper.text()).not.toContain('No attempts recorded yet')
     expect(wrapper.findAll('button').some(button => button.text() === 'Cancel deployment')).toBe(false)
     expect(wrapper.find('[data-testid="detail-teardown-open"]').exists()).toBe(false)
+  })
+
+  it.each([null, 'a'.repeat(40)])('retires _universal independently of project pin %s while preserving history and logs', async project_sha => {
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [{ id: 'historical-attempt', state: 'succeeded', scope: 'full' }] }
+        : { id: 'd-retired', codename: 'ORIGINAL', state: 'succeeded', project_sha, scenario_label: '_universal' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-retired')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    const retired = wrapper.get('[data-testid="retired-deployment"]')
+    expect(retired.text()).toContain('_universal is retired')
+    expect(retired.text()).toContain('save a concrete scenario')
+    expect(retired.text()).toContain('new deployment')
+    expect(wrapper.get('h1').text()).toBe('ORIGINAL')
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('succeeded')
+    expect(wrapper.text()).toContain('historical-attempt')
+    expect(wrapper.find('[data-testid="detail-teardown-open"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="maintenance-scope"]').exists()).toBe(false)
+    expect(wrapper.findComponent(RuntimeControls).exists()).toBe(false)
+    expect(wrapper.findComponent(RuntimeGitRecords).exists()).toBe(false)
+    expect(wrapper.findAll('a').some(link => link.text() === 'View preflight record')).toBe(true)
+    const live = useDeploymentStore().getOrCreateRecord('d-retired')
+    applySseEvent(live, { event_type: 'log_line', event_seq: 1, payload: { team_id: 'old-team', text: 'Historical guest output' } })
+    await wrapper.get('[data-testid="tab-teams"]').trigger('click')
+    await flushPromises()
+    const card = wrapper.getComponent(TeamCard)
+    expect(card.props('actionsEnabled')).toBe(false)
+    expect(wrapper.find('[aria-label="Team actions"]').exists()).toBe(false)
+    for (const event of ['reset', 'snapshot', 'rollback']) card.vm.$emit(event, { teamId: 'old-team' })
+    await flushPromises()
+    expect(globalThis.fetch.mock.calls.some(([url]) => url.includes('/snapshots'))).toBe(false)
+    await card.get('[aria-label="Open logs for this team"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="logs-list"]').text()).toContain('Historical guest output')
+    expect(wrapper.get('[data-testid="logs-download"]').exists()).toBe(true)
+    expect(globalThis.fetch.mock.calls.some(([, options]) => ['POST', 'DELETE'].includes(options?.method))).toBe(false)
+  })
+
+  it.each(['pending', 'failed'])('does not offer retired %s deployments a new preflight or start attempt', async state => {
+    globalThis.fetch = fetchMock({ id: 'd-retired', state, scenario_label: '_universal' })
+    const router = makeRouter()
+    await router.push('/deployments/d-retired')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.find('[data-testid="deployment-start"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="deployment-run-preflight"]').exists()).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === 'Cancel deployment')).toBe(false)
+  })
+
+  it('keeps cancellation available for an existing running attempt on a retired deployment', async () => {
+    globalThis.fetch = fetchMock({ id: 'd-retired', state: 'running_attempt', scenario_label: '_universal', current_attempt_id: 'old-running' })
+    const router = makeRouter()
+    await router.push('/deployments/d-retired')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    await wrapper.findAll('button').find(button => button.text() === 'Cancel deployment').trigger('click')
+    await flushPromises()
+    expect(globalThis.fetch.mock.calls.some(([url, options]) => url.endsWith('/cancel') && options?.method === 'POST')).toBe(true)
+  })
+
+  it('retains legacy lifecycle controls for a nonretired concrete label without a project pin', async () => {
+    globalThis.fetch = fetchMock({ id: 'd-legacy', state: 'deployed', scenario_label: 'existing_concrete', project_sha: null })
+    const router = makeRouter()
+    await router.push('/deployments/d-legacy')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.find('[data-testid="retired-deployment"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="detail-teardown-open"]').exists()).toBe(true)
+    applySseEvent(useDeploymentStore().getOrCreateRecord('d-legacy'), {
+      event_type: 'task_start', event_seq: 1, payload: { task_name: 'Historical task', team_id: 'team-1' },
+    })
+    await wrapper.get('[data-testid="tab-teams"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(TeamCard).props('actionsEnabled')).toBe(true)
+    await wrapper.get('[aria-label="Team actions"]').trigger('click')
+    expect(wrapper.findAll('[role="menuitem"]').map(item => item.text())).toEqual(expect.arrayContaining(['Reset team', 'Snapshot', 'Rollback']))
   })
 
   it('shows partial runtime results and missing guests in attempt history', async () => {

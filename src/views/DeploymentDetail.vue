@@ -37,6 +37,7 @@ const attempts = ref([])
 const newRuntimeAttempt = ref(null)
 const attemptsError = ref(null)
 const meta = ref(null) // deployment metadata from the backend (non-live)
+const isRetired = computed(() => meta.value?.scenario_label === '_universal')
 const loading = ref(true)
 const loadError = ref(null)
 const logFilter = ref('')
@@ -49,7 +50,7 @@ const preflight = ref(null)
 const checkingPreflight = ref(false)
 const starting = ref(false)
 const warningsAck = ref(false)
-const canPrepare = computed(() => meta.value && !loading.value && !loadError.value
+const canPrepare = computed(() => meta.value && !isRetired.value && !loading.value && !loadError.value
   && ['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value))
 const hasWarnings = computed(() => preflight.value?.result === 'warn'
   || preflight.value?.checks?.some(check => check.result === 'warn'))
@@ -79,7 +80,9 @@ const effectiveState = computed(() => {
   return meta.value?.state || 'unknown'
 })
 
-const supportsLegacyActions = computed(() => !(meta.value?.project_sha && meta.value?.scenario_label !== '_universal'))
+// Match backend scope guards: retirement is independent of the project pin.
+const supportsConcreteActions = computed(() => !!meta.value?.project_sha && !isRetired.value)
+const supportsLegacyActions = computed(() => !!meta.value && !meta.value.project_sha && !isRetired.value)
 const maintenanceScope = ref('configure')
 const maintenanceSha = ref('')
 const maintenanceConfirm = ref('')
@@ -88,7 +91,7 @@ const maintenanceSnapshot = ref(null)
 const maintenanceWarningsAck = ref(false)
 const maintenanceBusy = ref(false)
 let maintenanceVersion = 0
-const canMaintain = computed(() => !supportsLegacyActions.value && !loading.value && !loadError.value
+const canMaintain = computed(() => supportsConcreteActions.value && !loading.value && !loadError.value
   && ['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value))
 const maintenanceRequest = computed(() => maintenanceScope.value === 'configure'
   ? { scope: 'configure', project_sha: maintenanceSha.value.trim() } : { scope: 'teardown' })
@@ -107,7 +110,8 @@ watch([maintenanceScope, maintenanceSha], () => {
   maintenanceWarningsAck.value = false
   maintenanceBusy.value = false
 })
-const canCancel = computed(() => ['pending', 'preflight_running', 'preflight_review', 'deploying', 'running_attempt'].includes(effectiveState.value))
+const canCancel = computed(() => ['pending', 'preflight_running', 'preflight_review', 'deploying', 'running_attempt'].includes(effectiveState.value)
+  && (!isRetired.value || !!meta.value?.current_attempt_id))
 
 const defaultTab = computed(() => {
   if (teamCount.value > 1 && TEAMS_DEFAULT_STATES.has(effectiveState.value)) return 'teams'
@@ -124,6 +128,7 @@ const IN_FLIGHT_STATES = new Set(['deploying', 'running_attempt'])
 const inFlight = computed(() => IN_FLIGHT_STATES.has(effectiveState.value))
 
 function onOpenReset(payload) {
+  if (!supportsLegacyActions.value) return
   resetTeamId.value = payload?.teamId || null
   if (!resetTeamId.value) return
   showResetModal.value = true
@@ -174,6 +179,7 @@ const snapshotTeamId = ref(null)
 const teamSnapshots = ref({})
 
 function onOpenSnapshot(payload) {
+  if (!supportsLegacyActions.value) return
   snapshotTeamId.value = payload?.teamId || null
   if (!snapshotTeamId.value) return
   showSnapshotModal.value = true
@@ -193,6 +199,7 @@ async function fetchTeamSnapshots(id, teamId) {
 }
 
 async function onOpenRollback(payload) {
+  if (!supportsLegacyActions.value) return
   const id = payload?.teamId
   if (!id) return
   snapshotTeamId.value = id
@@ -525,6 +532,12 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <section v-if="isRetired" role="status" class="rounded-lg border border-base-300 bg-base-200 p-4 mb-4 space-y-2" aria-labelledby="retired-scenario-heading" data-testid="retired-deployment">
+      <h2 id="retired-scenario-heading" class="font-semibold">{{ t('deployment.detail.retired.title') }}</h2>
+      <p class="text-sm">{{ t('deployment.detail.retired.description') }}</p>
+      <p class="text-sm">{{ t('deployment.detail.retired.replacement') }}</p>
+    </section>
+
     <!-- Plan C §C4.8 — Teardown confirm-phrase modal -->
     <TeardownConfirmModal
       v-if="showTeardown && supportsLegacyActions"
@@ -643,9 +656,9 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
-      <RuntimeControls v-if="meta && !supportsLegacyActions" :deployment-id="String(route.params.id)"
+      <RuntimeControls v-if="supportsConcreteActions" :deployment-id="String(route.params.id)"
         :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
-      <RuntimeGitRecords v-if="meta && !supportsLegacyActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
+      <RuntimeGitRecords v-if="supportsConcreteActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
       <div class="card card-compact bg-base-100 border border-base-300 mb-4">
         <div class="card-body p-4">
           <h2 class="card-title text-sm">{{ t('deployment.detail.overview.stateChainHeading') }}</h2>

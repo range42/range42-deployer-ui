@@ -83,7 +83,12 @@
       "teams": "Équipes",
       "logs": "Logs"
     },
-    "notFound": "Déploiement introuvable."
+    "notFound": "Déploiement introuvable.",
+    "retired": {
+      "title": "Scénario retiré",
+      "description": "_universal a été retiré. Le démarrage, la reconfiguration, la réinitialisation, les instantanés, la restauration et la destruction de ce scénario historique ne sont plus disponibles. Ses tentatives, équipes et journaux restent consultables.",
+      "replacement": "Ouvrez ou rouvrez le projet, configurez et enregistrez un scénario concret, puis créez un nouveau déploiement depuis son commit Git enregistré. Conservez cette fiche pour consulter l’historique du déploiement initial."
+    }
   },
   "team": {
     "ariaLabel": "Équipe {id}",

@@ -83,7 +83,12 @@
       "teams": "Teams",
       "logs": "Logs"
     },
-    "notFound": "Deployment not found."
+    "notFound": "Deployment not found.",
+    "retired": {
+      "title": "Retired scenario",
+      "description": "_universal is retired. Starting, configuring, resetting, snapshotting, rolling back and tearing down this historical scenario are unavailable. Its attempts, teams and logs remain accessible.",
+      "replacement": "Open or reopen the project, configure and save a concrete scenario, then create a new deployment from its saved Git commit. Keep this record for the original deployment history."
+    }
   },
   "team": {
     "ariaLabel": "Team {id}",
