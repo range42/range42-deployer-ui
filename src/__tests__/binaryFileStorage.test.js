@@ -42,11 +42,17 @@ describe('binary authored-file storage', () => {
     const store = useProjectStore()
     store.importProject({ id: 'binary', name: 'Binary', nodes: [], edges: [], files: { 'content/file.txt': 'before' } }, { generateNewId: false })
     const saved = localStorage.getItem('range42_projects')
-    const write = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    const storage = globalThis.localStorage
+    // jsdom Storage uses a proxy: spying on an instance method can create a
+    // storage entry instead of replacing the method on supported Node 24.
+    vi.stubGlobal('localStorage', {
+      getItem: storage.getItem.bind(storage),
+      setItem: () => { throw new DOMException('full', 'QuotaExceededError') },
+    })
     try {
       expect(() => store.updateProject('binary', { files: { 'content/a.bin': asset } })).toThrow(/browser storage.*full.*remove|quota/i)
       expect(store.getProject('binary')?.files).toEqual({ 'content/file.txt': 'before' })
       expect(localStorage.getItem('range42_projects')).toBe(saved)
-    } finally { write.mockRestore() }
+    } finally { vi.unstubAllGlobals() }
   })
 })
