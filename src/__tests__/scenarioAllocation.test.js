@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyScenarioAllocation, reserveScenarioAllocation, restoreScenarioAllocation, releaseScenarioAllocation } from '@/services/scenarioAllocation'
+import { prepareReplicatedAllocation, applyReplicatedAllocation, applyScenarioAllocation, reserveScenarioAllocation, restoreScenarioAllocation, releaseScenarioAllocation } from '@/services/scenarioAllocation'
+
+import { replicatedScenario, replicationKey } from './fixtures/replicatedScenario'
+import { emitConcreteScenario } from '@/services/concreteScenario'
 
 const { request, state } = vi.hoisted(() => ({ request: vi.fn(), state: { scope: 'https://backend.test' } }))
 vi.mock('@/services/backendApi', () => ({ backendRequest: request, getBackendScope: () => state.scope }))
@@ -95,5 +98,113 @@ describe('applying reviewed assignments', () => {
     const assignments = reservation().assignments
     mutate(assignments)
     expect(() => applyScenarioAllocation(rows(), assignments)).toThrow(/assignment|manual|duplicate|draft/i)
+  })
+})
+
+
+describe('stable NIC reservation identity', () => {
+  it('sends exact NIC keys while preserving indexes and manual addresses', async () => {
+    const values = input()
+    values.vms[0].nics.forEach((nic, index) => { nic.key = `nic-${index}` })
+    await reserveScenarioAllocation(values)
+    expect(JSON.parse(request.mock.calls[0][1].body).vms[0].nics).toEqual([
+      { index: 0, nic_key: 'nic-0', network_id: 'blue' },
+      { index: 1, nic_key: 'nic-1', network_id: 'red', ip: '10.2.0.9' },
+    ])
+  })
+  it.each([['primary', undefined], ['same', 'same'], ['bad:key', 'second'], ['', 'second']])('rejects mixed, duplicate or invalid keys %j before acquiring ownership', async (first, second) => {
+    const values = input()
+    values.vms[0].nics[0].key = first
+    values.vms[0].nics[1].key = second
+    await expect(reserveScenarioAllocation(values)).rejects.toThrow(/NIC key/i)
+    expect(request).not.toHaveBeenCalled()
+    expect(localStorage.getItem('range42_scenario_reservation_owners')).toBeNull()
+  })
+  it('applies a reordered keyed response using its returned indexes and rejects old key/index pairings', () => {
+    const vms = rows()
+    vms[0].nics[0].key = 'primary'
+    vms[0].nics[1].key = 'secondary'
+    const assignments = reservation().assignments
+    assignments[0].nics[0].nic_key = 'primary'
+    assignments[0].nics[1].nic_key = 'secondary'
+    assignments[0].nics.reverse()
+    expect(applyScenarioAllocation(vms, assignments)[0].nics.map(nic => nic.ip)).toEqual(['10.1.0.2', '10.2.0.9'])
+    assignments[0].nics[0].nic_key = 'primary'
+    expect(() => applyScenarioAllocation(vms, assignments)).toThrow(/NIC assignment/i)
+  })
+  it('rejects a missing key instead of treating a legacy lease as current keyed assignments', () => {
+    const vms = rows()
+    vms[0].nics.forEach((nic, index) => { nic.key = `nic-${index}` })
+    expect(() => applyScenarioAllocation(vms, reservation().assignments)).toThrow(/NIC assignment/i)
+  })
+})
+
+function allocated(plan) {
+  return plan.vms.map((vm, vmIndex) => ({ node_id: vm.node_id, vm_id: vm.vm_id || 3401 + vmIndex,
+    nics: vm.nics.map((nic, index) => {
+      const network = plan.networks.find(network => network.id === nic.network_id)
+      return { index, nic_key: nic.key, network_id: nic.network_id, bridge: network.vnet, subnet: network.subnet,
+        ip: nic.ip || network.gateway.replace(/1$/, String(20 + vmIndex)), prefix: 24, gateway: network.gateway }
+    }),
+  }))
+}
+
+describe('literal replication reservations', () => {
+  it('plans every user VM against its own team subnet and maps reserved values back without expanding authoring', async () => {
+    const fixture = replicatedScenario()
+    fixture.scenario.replication.vm_assignments = { retired: { vm_id: 3999, nics: {} } }
+    const before = JSON.stringify(fixture)
+    const plan = prepareReplicatedAllocation(fixture)
+    expect(plan.vms).toHaveLength(3)
+    expect(plan.networks).toHaveLength(2)
+    expect(plan.vms.every(vm => vm.nics[0].key === 'nic-primary' && vm.vm_id === '')).toBe(true)
+    request.mockResolvedValue({ ...reservation(), assignments: allocated(plan) })
+    await reserveScenarioAllocation({ ...input(), vms: plan.vms, networks: plan.networks })
+    const payload = JSON.parse(request.mock.calls[0][1].body)
+    expect(payload.vms).toHaveLength(3)
+    expect(payload.vms.every(vm => vm.node_id.startsWith('vm-') && vm.nics[0].nic_key === 'nic-primary')).toBe(true)
+    expect(payload.vms[0].nics[0].network_id).toBe(replicationKey('net', 'net1', 'blue'))
+    expect(payload.vms[2].nics[0].network_id).toBe(replicationKey('net', 'net1', 'red'))
+    const applied = applyReplicatedAllocation(fixture, allocated(plan))
+    expect(applied.vms).toEqual(fixture.scenario.vms)
+    expect(applied.replication.teams).toEqual(fixture.scenario.replication.teams)
+    expect(applied.replication.network_assignments).toEqual(fixture.scenario.replication.network_assignments)
+    expect(applied.replication.vm_assignments.retired).toEqual({ vm_id: 3999, nics: {} })
+    expect(applied.replication.vm_assignments[plan.vms[0].node_id]).toEqual({ vm_id: 3401, nics: { 'nic-primary': { ip: '10.42.10.20' } } })
+    expect(JSON.stringify(fixture)).toBe(before)
+    const compiled = emitConcreteScenario({ ...fixture, scenario: { ...fixture.scenario, ...applied } })
+    expect(compiled.scenario.vms).toHaveLength(1)
+    expect(JSON.parse(compiled.files['scenarios/replicated/manifest/scenario_vms.json']).vms.map(vm => vm.vm_id)).toEqual([3401, 3402, 3403])
+  })
+  it('updates a shared source VM by NIC identity and retains its source network IDs', () => {
+    const fixture = replicatedScenario()
+    fixture.scenario.replication.node_scopes.vm1 = 'shared'
+    fixture.scenario.replication.network_scopes.net1 = 'shared'
+    fixture.scenario.vms[0].vm_id = ''
+    fixture.scenario.vms[0].nics[0].ip = ''
+    const plan = prepareReplicatedAllocation(fixture)
+    const applied = applyReplicatedAllocation(fixture, allocated(plan))
+    expect(applied.vms[0]).toMatchObject({ node_id: 'vm1', vm_id: 3401, network_id: 'net1', ip: '10.42.9.20',
+      nics: [{ key: 'nic-primary', network_id: 'net1', ip: '10.42.9.20' }] })
+    expect(applied.replication.vm_assignments[plan.vms[0].node_id]).toEqual({ vm_id: 3401, nics: { 'nic-primary': { ip: '10.42.9.20' } } })
+  })
+  it('requires explicit network assignments before making an allocation plan', () => {
+    const fixture = replicatedScenario()
+    fixture.scenario.replication.network_assignments = {}
+    expect(() => prepareReplicatedAllocation(fixture)).toThrow(/subnet|gateway/i)
+  })
+  it('rejects roster, network and manual assignment changes without mutating the draft', () => {
+    for (const mutate of [
+      fixture => { fixture.scenario.replication.teams.pop() },
+      fixture => { Object.values(fixture.scenario.replication.network_assignments)[0].subnet = '10.99.0.0/24' },
+      fixture => { Object.values(fixture.scenario.replication.vm_assignments)[0].vm_id = 3999 },
+    ]) {
+      const fixture = replicatedScenario()
+      const assignments = allocated(prepareReplicatedAllocation(fixture))
+      mutate(fixture)
+      const before = JSON.stringify(fixture)
+      expect(() => applyReplicatedAllocation(fixture, assignments)).toThrow(/assignment|draft|manual/i)
+      expect(JSON.stringify(fixture)).toBe(before)
+    }
   })
 })
