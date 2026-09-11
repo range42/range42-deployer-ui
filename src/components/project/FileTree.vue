@@ -81,9 +81,8 @@ async function forkToOverride() {
   closeMenu()
   if (!entry) return
   try {
-    const { content } = await props.baseFs.getFile(entry.path)
-    const header = buildForkHeader(entry.path, entry.sha)
-    const forked = header + (content ?? '')
+    const { content } = await (props.baseFs.getFileContent ? props.baseFs.getFileContent(entry.path) : props.baseFs.getFile(entry.path))
+    const forked = typeof content === 'string' ? buildForkHeader(entry.path, entry.sha) + content : content
     await props.overlayFs.putFile({
       path: entry.path,
       content: forked,
@@ -158,7 +157,7 @@ function markerGlyph(marker) {
           class="w-2 h-2 rounded-full bg-warning"
           :title="$t ? $t('configTab.drift') : 'Drift'"
         />
-        <span class="truncate font-mono">{{ entry.path }}</span>
+        <span class="truncate font-mono">{{ entry.path }}</span><span v-if="entry.binary" class="text-xs text-base-content/70">Binary</span>
       </li>
     </ul>
 

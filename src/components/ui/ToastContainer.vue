@@ -14,8 +14,9 @@ const alertClass = (type) => {
 </script>
 
 <template>
+  <Teleport to="body">
   <div
-    class="toast toast-end toast-bottom z-[200]"
+    class="toast toast-end toast-bottom z-[1100]"
     role="status"
     aria-live="polite"
     aria-atomic="false"
@@ -48,6 +49,7 @@ const alertClass = (type) => {
       <span class="text-sm">{{ toast.message }}</span>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <style scoped>

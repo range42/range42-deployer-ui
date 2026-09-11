@@ -1,0 +1,36 @@
+{
+  "provider": "gitlab",
+  "started": "2026-09-10T15:14:48.213Z",
+  "checks": [
+    "actual decoded Git blob equals every original byte",
+    "same snapshot in public review and private main",
+    "UTF-8 BOM, accents and Japanese text preserved",
+    "binary text API reads rejected",
+    "unchanged republish reuses reviewed commit without rewriting binary"
+  ],
+  "repositories": {
+    "public": "phparage/range42-acceptance-20260910-public-gl2",
+    "private": "phparage/range42-acceptance-20260910-private-gl2"
+  },
+  "fixture": {
+    "path": "acceptance/binary-assets-20260910/fixture.bin",
+    "bytes": 1024,
+    "sha256": "785b0751fc2c53dc14a4ce3d800e69ef9ce1009eb327ccf458afe09c242c26c9"
+  },
+  "publication": [
+    {
+      "target_id": "public",
+      "mode": "pull_request",
+      "branch": "range42-publish/binary-assets-gitlab-20260910/public/main/%22%22",
+      "commit_sha": "0e481c041c32e3f028844ee7ca67bc067825d039",
+      "pr_url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/6",
+      "pr_number": 6
+    },
+    {
+      "target_id": "private",
+      "mode": "direct",
+      "branch": "main",
+      "commit_sha": "4c3fe3f70897d11cb7aab28b342a5ba3320a00f9"
+    }
+  ]
+}

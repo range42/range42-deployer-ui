@@ -1,0 +1,15 @@
+{
+  "provider": "gitlab",
+  "started": "2026-09-10T15:17:23.612Z",
+  "checks": [
+    "dedicated branch request and result files persisted",
+    "idempotent request causes no additional commit",
+    "byte-exact readback at completed SHA",
+    "remote metadata preserved",
+    "secret-bearing runtime fields excluded"
+  ],
+  "repository": "phparage/range42-acceptance-20260910-private-gl2",
+  "branch": "range42-ui/runtime-records-gitlab-20260910",
+  "request_sha": "86acfe372bc80cd6dfcbe6a063e31fd15927e9e1",
+  "result_sha": "57ec58d6b99a8ca50738ea5b3ccbd2a966274c6d"
+}

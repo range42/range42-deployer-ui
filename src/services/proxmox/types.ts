@@ -85,6 +85,7 @@ export interface VmListItem {
 }
 
 export interface VmActionRequest {
+  vmtype?: 'qemu' | 'lxc'
   proxmox_node: ProxmoxNode
   vm_id: string | number
 }
@@ -96,6 +97,8 @@ export interface VmCloneRequest extends VmActionRequest {
 }
 
 export interface VmSnapshotRequest extends VmActionRequest {
+  vmtype?: 'qemu' | 'lxc'
+  vmstate?: boolean
   vm_snapshot_name: string
   vm_snapshot_description?: string
 }

@@ -1,5 +1,6 @@
 {
   "title": "Catalogue",
+  "new_role": "Nouveau rôle Ansible",
   "subtitle": "Parcourez labs, gamenets et composants sur l'ensemble de vos sources Git.",
   "filters": {
     "kind": "Type",
@@ -18,7 +19,7 @@
     "use": "Utiliser",
     "customize": "Personnaliser",
     "fork": "Forker et publier",
-    "customize_readonly_hint": "Vous disposez d'un accès en lecture seule à cette source. Forkez et publiez vers un dépôt accessible en écriture pour la personnaliser."
+    "customize_readonly_hint": "Source originale en lecture seule. Choisissez un dépôt accessible en écriture ou un fork."
   },
   "empty": {
     "no_sources_title": "Aucune source Git configurée",
@@ -38,5 +39,25 @@
     "fork_target_repo": "Dépôt cible (propriétaire/dépôt)",
     "fork_target_name": "Nom de la nouvelle entrée",
     "fork_submit": "Forker"
+  },
+  "handoff": {
+    "title": "Vérifier le projet du catalogue",
+    "origin": "Élément du catalogue original",
+    "scope": "Importe la topologie range42.yaml, les pièces jointes intégrées et les déclarations de variables prises en charge. Résolvez les fichiers externes et dépendances avant import. Le catalogue original reste inchangé.",
+    "destination": "Dépôt de travail et dossier du projet",
+    "branch": "Branche de travail dédiée",
+    "seed": "Branche de base et commit exact vérifiés",
+    "counts": "{nodes} nœuds · {edges} liens réseau · {attachments} pièces jointes intégrées",
+    "fork_pending": "Le premier enregistrement demandera un fork accessible en écriture selon votre choix. Aucun fork ni branche créé à ce stade. Espace de destination :",
+    "save_hint": "Créez le projet local. Les enregistrements utiliseront cette branche de travail. Publier ou fusionner dans une branche de base reste une action distincte.",
+    "loading": "Chargement et vérification de la destination…",
+    "back": "Changer de destination",
+    "import": "Créer le projet lié",
+    "changed": "La source, la destination ou les identifiants ont changé. Vérifiez à nouveau la destination.",
+    "missing": "Élément ou source indisponible. Actualisez le catalogue puis réessayez.",
+    "role_scope": "Importe les fichiers du rôle Ansible au commit fixé, en conservant le nom catégorie.action.cible. Modifiez les fichiers dans Config, puis enregistrez ou publiez via Git. Aucun VM déployable ni validation des dépendances d’exécution. Limites : 512 entrées, 1 Mio par fichier, 2 Mio par projet. Les exécutables, liens symboliques et références externes non résolues nécessitent le dépôt complet.",
+    "role_files": "{count} fichiers du rôle à importer",
+    "role_editor": "Projet de sources du rôle : modifiez les fichiers dans Config et publiez explicitement. Pour exécuter un rôle pris en charge, ouvrez un scénario de VM, choisissez Add role, sélectionnez cette source locale puis vérifiez et enregistrez les fichiers copiés.",
+    "origin_changed": "La source du catalogue ou la révision choisie a changé. Fermez cette fenêtre puis rouvrez l’élément pour recharger son contenu."
   }
 }

@@ -25,21 +25,28 @@
       "noProject": "（プロジェクトなし）"
     }
   },
+  "maintenance": {
+    "title": "コンテンツ更新またはデプロイVMの削除",
+    "description": "構成では既存VMでconfigureプレイブックを実行します。削除ではデプロイの所有情報を確認し、共有ネットワークを保持します。",
+    "action": "操作",
+    "configure": "保存済みコンテンツと構成を適用",
+    "teardown": "デプロイVMを削除",
+    "revision": "保存済みプロジェクトコミット",
+    "revisionHint": "このブラウザー内で関連プロジェクトの最新保存コミットを初期値に使用します。VM、インベントリー、ネットワークは元のデプロイと一致する必要があります。",
+    "invalidSha": "保存済みコミットの完全な40文字または64文字のSHAを入力してください。",
+    "confirm": "VM削除の確認として{codename}を入力",
+    "preflight": "選択した操作を確認",
+    "start": "確認済み操作を実行"
+  },
   "detail": {
+    "prepareDescription": "ネットワークとリソースを確認してからデプロイを開始してください。",
+    "runPreflight": "デプロイの事前チェック",
+    "start": "デプロイを開始",
+    "startFailed": "デプロイの準備に失敗しました: {reason}。バックエンド設定を確認してから再試行してください。",
     "back": "デプロイ一覧へ戻る",
     "cancel": "デプロイをキャンセル",
     "pause": "一時停止",
     "teardown": "撤去…",
-    "overview": "概要",
-    "teams": "チーム",
-    "logs": "ログ",
-    "preflight": "事前チェック",
-    "preflightLink": "事前チェックを表示",
-    "tabs": {
-      "overview": "概要",
-      "teams": "チーム",
-      "logs": "ログ"
-    },
     "overview": {
       "stateChainHeading": "ステートマシン",
       "phaseHeading": "現在のフェーズ",
@@ -66,9 +73,22 @@
       "download": "events.jsonl をダウンロード",
       "empty": "ログはまだ受信されていません。",
       "teamFilter": "チーム {id} のログを表示中",
-      "clearTeamFilter": "チームフィルタを解除"
+      "clearTeamFilter": "チームフィルタを解除",
+      "showRoutine": "スキップ・インクルードされたタスクを表示"
     },
-    "notFound": "デプロイが見つかりません。"
+    "preflight": "事前チェック",
+    "preflightLink": "事前チェックを表示",
+    "tabs": {
+      "overview": "概要",
+      "teams": "チーム",
+      "logs": "ログ"
+    },
+    "notFound": "デプロイが見つかりません。",
+    "retired": {
+      "title": "廃止されたシナリオ",
+      "description": "_universal は廃止されています。この過去のシナリオでは、開始、再構成、リセット、スナップショット、ロールバック、破棄を実行できません。試行、チーム、ログは引き続き確認できます。",
+      "replacement": "プロジェクトを開くか再度読み込み、実行内容を明示したシナリオを設定して保存し、その Git コミットから新しいデプロイを作成してください。この記録は元のデプロイ履歴として保持してください。"
+    }
   },
   "team": {
     "ariaLabel": "チーム {id}",
@@ -99,6 +119,11 @@
     }
   },
   "deploy": {
+    "pinnedPreflight": "デプロイを作成すると、開始前に固定リビジョンのシナリオ、ネットワーク、リソースを確認できます。",
+    "backend": "バックエンド: {backend}",
+    "backendSameOrigin": "現在のサイト",
+    "hostsLoading": "Proxmox ホストを読み込み中…",
+    "hostsEmpty": "このバックエンドに Proxmox ホストが登録されていません。",
     "title": "デプロイ",
     "submit": "デプロイ",
     "submitting": "デプロイ中…",
@@ -110,11 +135,15 @@
       "host": "対象 Proxmox ホスト",
       "hostPlaceholder": "ホストを選択",
       "teamCount": "チーム数",
-      "vault": "Vault パスワード"
+      "vault": "Vault パスワード",
+      "backendCredentials": "バックエンドに設定された認証情報を使用します。ここで Vault パスワードを入力する必要はありません。",
+      "vaultOverride": "このデプロイにカスタム Vault パスワードを使用する",
+      "vaultOverrideHint": "保存された SSH と Proxmox の認証情報を含む、バックエンドの認証情報テンプレートを置き換えます。シナリオには対応する暗号化済み認証情報が必要です。"
     },
     "err": {
+      "teamCountRange": "チーム数は1から64までの整数で指定してください。",
       "codenameRequired": "コードネームは必須です。",
-      "codenameShape": "小文字、数字、ハイフンのみ、3〜32文字。",
+      "codenameShape": "英字で始まる2～32文字の英数字、ハイフン、アンダースコア。大文字に変換されます。",
       "codenameTaken": "このコードネームは既に使用されています。",
       "scenarioRequired": "シナリオ名は必須です。",
       "hostRequired": "Proxmox ホストを選択してください。",
@@ -129,12 +158,15 @@
       "ack": "これらの正確なリビジョンでデプロイすることを確認します。"
     },
     "preflight": {
-      "heading": "事前チェック",
-      "run": "事前チェック実行",
+      "heading": "プロジェクト検証",
+      "run": "プロジェクトを検証",
       "running": "実行中…",
-      "blocking": "事前チェックでブロックされる問題があります。修正してください。",
-      "acknowledge": "警告を了承する。"
-    }
+      "blocking": "プロジェクト検証で問題が見つかりました。デプロイ前に修正してください。",
+      "acknowledge": "警告を了承する。",
+      "description": "保存済みのプロジェクト文書を検証します。ネットワーク、VM、リソースはデプロイの事前チェックで検証されます。"
+    },
+    "allocationPinRequired": "予約を引き継ぐ前に、このシナリオを Git の確定したコミットとして保存してください。",
+    "allocationTargetChanged": "これらの値は別のターゲットまたはバックエンド用に予約されています。シナリオ設定に戻り、この環境で使用する前に再予約してください。"
   },
   "teardown": {
     "title": "デプロイを撤去",
@@ -224,5 +256,25 @@
     "install": "インストール",
     "configure": "構成",
     "validate": "検証"
+  },
+  "allocations": {
+    "title": "デプロイの割り当て",
+    "description": "これらのVM IDとアドレスには有効期限がありません。明示的に解放するまで予約されます。",
+    "loading": "割り当てを読み込み中…",
+    "refresh": "割り当てを更新",
+    "absent": "このデプロイに確定済みの割り当てはありません。",
+    "released": "割り当てを解放しました。確定済みの割り当てがないことをバックエンドで確認しました。",
+    "target": "対象",
+    "revision": "保存済みプロジェクトのリビジョン",
+    "created": "予約日時",
+    "unnamed": "VM",
+    "noAddresses": "記録されたアドレスはありません。",
+    "busy": "操作の実行中またはデプロイの状態が不明な間は解放できません。操作の完了後に更新してください。",
+    "review": "割り当ての解放を確認",
+    "confirmTitle": "これらの割り当てを解放しますか？",
+    "confirmDescription": "IDとアドレスを再利用可能にする前に、バックエンドが対象VMと実行中の操作がないことを確認します。履歴は保持され、VMやネットワークは削除されません。",
+    "confirm": "解放を確定",
+    "releasing": "確認して解放中…",
+    "cancel": "キャンセル"
   }
 }

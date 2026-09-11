@@ -20,8 +20,10 @@ function mountBanner() {
 }
 
 function completeSetup() {
-  useInventoryStore().addSource({ id: 's1', type: 'github' })
   useBackendApiStore().addHost({ url: 'http://h1:8000', nodeName: 'pve' })
+  const inv = useInventoryStore()
+  inv.sourcesBackendScope = 'http://h1:8000'
+  inv.addSource({ id: 's1', repos: [{ owner: 'range42', repo: 'range42-catalog', branch: 'main', last_refreshed_at: '2026-09-10T09:00:00Z' }] })
 }
 
 describe('SetupBanner', () => {

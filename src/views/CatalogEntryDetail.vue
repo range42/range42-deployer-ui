@@ -22,7 +22,7 @@ import { Background } from '@vue-flow/background'
 
 import { useCatalog } from '@/composables/useCatalog'
 import { useInventoryStore } from '@/stores/inventoryStore'
-import { useProjectStore } from '@/stores/projectStore'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import { getProvider } from '@/services/git'
 import { ensureNamespaces } from '@/i18n'
 
@@ -31,7 +31,6 @@ const router = useRouter()
 const { t } = useI18n()
 const catalog = useCatalog()
 const inv = useInventoryStore()
-const projects = useProjectStore()
 
 const entry = ref(null)
 const loading = ref(false)
@@ -95,14 +94,6 @@ const inventoryItems = computed(() => {
 const shortSha = computed(() => {
   const sha = entry.value?.sha
   return sha ? String(sha).slice(0, 7) : ''
-})
-
-// Customize (fork-and-edit) requires write access to the backing source.
-// Only gate when write access is *known to be false*; unknown stays enabled so
-// we never block on a source that simply hasn't been probed yet.
-const customizeReadonly = computed(() => {
-  const src = inv.getSource(entry.value?.source_id)
-  return src?.writable === false
 })
 
 // ---------- Fork modal ----------
@@ -177,32 +168,16 @@ async function submitFork() {
 }
 
 // ---------- Verbs ----------
+const handoff = ref(null)
 function useEntry() {
-  if (!entry.value) return
-  const p = projects.createProject(entry.value.name)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'use',
-      source_id: entry.value.source_id,
-      path: entry.value.path,
-      sha: entry.value.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+  handoff.value = { entry: entry.value, mode: 'use' }
 }
-
 function customizeEntry() {
-  if (!entry.value || customizeReadonly.value) return
-  const p = projects.createProject(`${entry.value.name} (custom)`)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'customize',
-      source_id: entry.value.source_id,
-      path: entry.value.path,
-      sha: entry.value.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+  handoff.value = { entry: entry.value, mode: 'customize' }
+}
+function openCreatedProject(project) {
+  handoff.value = null
+  router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
 }
 
 // ---------- Lifecycle ----------
@@ -227,6 +202,8 @@ onMounted(async () => {
 </script>
 
 <template>
+  <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
+    :entry="handoff.entry" :mode="handoff.mode" @close="handoff = null" @opened="openCreatedProject" />
   <section class="max-w-5xl mx-auto p-6">
     <!-- Back link -->
     <div class="mb-4">
@@ -285,8 +262,6 @@ onMounted(async () => {
             <button
               type="button"
               class="btn btn-ghost btn-sm"
-              :disabled="customizeReadonly"
-              :title="customizeReadonly ? t('catalog.verbs.customize_readonly_hint') : undefined"
               @click="customizeEntry"
             >
               {{ t('catalog.verbs.customize') }}

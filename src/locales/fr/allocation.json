@@ -1,0 +1,27 @@
+{
+  "title": "Réserver les identifiants et adresses des VM",
+  "description": "Conservez les identifiants et adresses saisis et réservez des valeurs pour les champs vides. Vérifiez la correspondance avant de l’appliquer. Les réservations vérifient la cible choisie et expirent après une heure sans renouvellement.",
+  "target": "Nœud cible", "chooseTarget": "Choisir une cible", "rangeStart": "Premier identifiant automatique", "rangeEnd": "Dernier identifiant automatique",
+  "rangeHint": "La plage s’applique aux identifiants vides. Les identifiants saisis sont conservés. Les adresses proviennent des sous-réseaux IPv4 /16 à /30 déclarés ; les passerelles, adresses réservées et occupations visibles sont exclues.",
+  "noHosts": "Enregistrez un hôte Proxmox sur ce backend avant de réserver des ressources.",
+  "targetMissing": "La cible enregistrée est indisponible sur ce backend. Choisissez une cible actuelle et réservez à nouveau.",
+  "hostPageError": "Le backend a répété une page d’hôtes. Rechargez avant de choisir une cible.",
+  "loading": "Vérification des réservations et des ressources de la cible…", "reserve": "Réserver et vérifier", "renew": "Vérifier et renouveler",
+  "expiry": "Réservé jusqu’au {time}. Occupation vérifiée le {checked}.",
+  "expired": "Cette réservation a expiré. Réservez à nouveau pour vérifier si ces valeurs sont encore disponibles.",
+  "changed": "Le brouillon a changé depuis la vérification. Réservez à nouveau avant d’appliquer les valeurs.",
+  "applied": "Valeurs réservées appliquées. Enregistrez le scénario pour conserver la correspondance.",
+  "mapping": "Correspondance des identifiants et adresses réservés", "vm": "Machine virtuelle", "vmId": "Identifiant VM", "addresses": "Interfaces et adresses IPv4",
+  "ownershipHint": "Le droit de gérer la réservation reste dans ce navigateur et n’est jamais enregistré dans Git. Libérer une réservation conserve les valeurs saisies dans le scénario. Le déploiement effectue toujours ses propres vérifications.",
+  "apply": "Appliquer les valeurs réservées", "release": "Libérer la réservation",
+  "errors": {
+    "ALLOCATION_BUSY": "Une autre réservation a changé pendant la vérification. Réessayez avec le même brouillon ; ce navigateur conservera son droit de gestion de la réservation.",
+    "ALLOCATION_OWNERSHIP": "Ce projet possède une réservation active appartenant à un autre navigateur. Utilisez le navigateur d’origine ou attendez son expiration.",
+    "ALLOCATION_OCCUPIED": "Un identifiant ou une adresse saisi est occupé. Modifiez explicitement cette valeur, puis réservez à nouveau.",
+    "ALLOCATION_PROTECTED": "Un identifiant VM saisi est protégé. Choisissez-en un autre ; les identifiants protégés ne sont jamais réattribués automatiquement.",
+    "ALLOCATION_POOL_EXHAUSTED": "Le pool disponible est insuffisant dans la limite de recherche. Ajustez la plage d’identifiants ou le sous-réseau déclaré, ou libérez les réservations inutilisées.",
+    "ALLOCATION_OCCUPANCY_UNAVAILABLE": "L’occupation de la cible n’a pas pu être vérifiée. Rétablissez la connexion au backend avant de réserver.",
+    "ALLOCATION_INVALID": "Vérifiez les identifiants VM, les réseaux connectés et les sous-réseaux IPv4 canoniques du scénario.",
+    "ALLOCATION_EXPIRED": "La réservation a expiré. Réservez à nouveau pour vérifier la disponibilité."
+  }
+}

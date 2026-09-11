@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { ref } from 'vue';
-import { useNetworkZones } from '../composables/useNetworkZones';
+import { useNetworkZones, type NetworkZoneNode } from '../composables/useNetworkZones';
 
 const PADDING = 40;
 
-function makeNode(over: Record<string, any>) {
+function makeNode(over: NetworkZoneNode): NetworkZoneNode {
   return {
     dimensions: { width: 200, height: 80 },
     ...over,
@@ -111,7 +111,7 @@ describe('useNetworkZones — Issue #68 network-zone overlay geometry', () => {
 
   it('recomputes when the measureTick trigger is bumped', () => {
     const tick = ref(0);
-    const vm: any = { id: 'vm1', type: 'vm', computedPosition: { x: 300, y: 0 }, position: { x: 300, y: 0 }, dimensions: undefined };
+    const vm: NetworkZoneNode = { id: 'vm1', type: 'vm', computedPosition: { x: 300, y: 0 }, position: { x: 300, y: 0 }, dimensions: undefined };
     const nodes = ref([
       makeNode({ id: 'net1', type: 'network-segment', computedPosition: { x: 0, y: 0 }, position: { x: 0, y: 0 }, data: { config: { segmentType: 'lan' } } }),
       vm,

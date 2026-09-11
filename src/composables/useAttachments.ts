@@ -1,3 +1,4 @@
+import { randomId } from '@/services/randomId'
 /**
  * useAttachments — pure data operations over the canonical Attachment shape.
  *
@@ -29,7 +30,7 @@ export function createAttachment(
   opts: CreateAttachmentOptions = {},
 ): Attachment {
   const att: Attachment = {
-    id: opts.id ?? crypto.randomUUID(),
+    id: opts.id ?? randomId(),
     target_node: targetNode,
     source: { kind },
     stage: opts.stage ?? DEFAULT_STAGE,

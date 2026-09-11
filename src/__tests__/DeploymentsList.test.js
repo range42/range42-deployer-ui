@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { createI18n } from 'vue-i18n'
 import DeploymentsList from '@/views/DeploymentsList.vue'
 import deploymentEn from '@/locales/en/deployment.json'
+
+enableAutoUnmount(afterEach)
 
 function makeI18n() {
   return createI18n({
@@ -28,7 +32,7 @@ function fetchMock(deployments) {
   return vi.fn(async () => ({
     ok: true,
     status: 200,
-    json: async () => ({ deployments }),
+    json: async () => ({ items: deployments, total: deployments.length }),
   }))
 }
 
@@ -48,7 +52,7 @@ async function settle(wrapper) {
 
 const SAMPLE = [
   { id: 'd-1', codename: 'alpha', scenario_label: 'demo_lab', state: 'deploying', started_at: '2026-04-14T10:00Z', attempts_count: 1, project_id: 'p1', project_name: 'Project One' },
-  { id: 'd-2', codename: 'bravo', scenario_label: 'forensics_lab', state: 'deployed', started_at: '2026-04-13T10:00Z', attempts_count: 2, project_id: 'p1', project_name: 'Project One' },
+  { id: 'd-2', codename: 'bravo', scenario_label: 'forensics_lab', state: 'succeeded', started_at: '2026-04-13T10:00Z', attempts_count: 2, project_id: 'p1', project_name: 'Project One' },
   { id: 'd-3', codename: 'charlie', scenario_label: 'misp_lab', state: 'failed', started_at: '2026-04-12T10:00Z', attempts_count: 3, project_id: 'p2', project_name: 'Project Two' },
   { id: 'd-4', codename: 'delta', scenario_label: 'kunai_lab', state: 'torn_down', started_at: '2026-04-11T10:00Z', attempts_count: 1, project_id: null, project_name: null },
 ]
@@ -56,10 +60,51 @@ const SAMPLE = [
 describe('<DeploymentsList>', () => {
   let originalFetch
   beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
     originalFetch = globalThis.fetch
   })
   afterEach(() => {
     globalThis.fetch = originalFetch
+  })
+
+  it('loads all pages from the selected backend using its gateway token', async () => {
+    useBackendApiStore().addHost({ url: 'https://backend.test', token: 'gateway' })
+    globalThis.fetch = vi.fn(async url => {
+      const offset = Number(new URL(url, 'http://ui.test').searchParams.get('offset') || 0)
+      return { ok: true, status: 200, json: async () => ({ items: [SAMPLE[offset]], total: 4, offset, limit: 1 }) }
+    })
+    const router = makeRouter()
+    await router.push('/deployments')
+    const wrapper = mount(DeploymentsList, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.findAll('[data-testid="deployment-row"]')).toHaveLength(4)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4)
+    for (const [url, options] of globalThis.fetch.mock.calls) {
+      expect(url).toMatch(/^https:\/\/backend.test\/v1\//)
+      expect(new Headers(options.headers).get('Authorization')).toBe('Bearer gateway')
+    }
+  })
+
+  it('does not mix delayed results from the previous backend', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://old.test' })
+    const next = backend.addHost({ url: 'https://new.test' })
+    let oldResponse
+    globalThis.fetch = vi.fn(url => url.startsWith('https://old.test')
+      ? new Promise(resolve => { oldResponse = resolve })
+      : Promise.resolve({ ok: true, status: 200, json: async () => ({ items: [SAMPLE[1]], total: 1 }) }))
+    const router = makeRouter()
+    await router.push('/deployments')
+    const wrapper = mount(DeploymentsList, { global: { plugins: [router, makeI18n()] } })
+    await flushPromises()
+    backend.setActiveHost(next)
+    await settle(wrapper)
+    expect(wrapper.text()).toContain('bravo')
+    expect(oldResponse).toBeTypeOf('function')
+    oldResponse({ ok: true, status: 200, json: async () => ({ items: [SAMPLE[0]], total: 1 }) })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('alpha')
   })
 
   it('splits active from past and groups past by project', async () => {

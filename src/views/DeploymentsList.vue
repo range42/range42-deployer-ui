@@ -11,38 +11,20 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
+import { useDeploymentIndex } from '@/composables/useDeploymentIndex'
 import EmptyState from '@/components/ui/EmptyState.vue'
 
 const { t } = useI18n({ useScope: 'global' })
 const router = useRouter()
 
 // Terminal state labels (spec §12 canonicalisation): deployed | failed | cancelled | torn_down.
-const TERMINAL_STATES = new Set(['deployed', 'failed', 'cancelled', 'torn_down'])
+const TERMINAL_STATES = new Set(['succeeded', 'deployed', 'failed', 'cancelled', 'torn_down'])
 
-const deployments = ref([])
-const loadError = ref(null)
-const loading = ref(true)
+const { items: deployments, error: loadError, loading } = useDeploymentIndex()
 
 const filter = ref('all') // all | in_progress | failed
 
-onMounted(async () => {
-  await ensureNamespaces(['deployment', 'common'])
-  try {
-    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
-    if (!res.ok) {
-      loadError.value = `HTTP ${res.status}`
-      loading.value = false
-      return
-    }
-    const body = await res.json()
-    deployments.value = Array.isArray(body) ? body : (body?.deployments || [])
-  } catch (err) {
-    // Backend not running or CORS — show empty state with subtle notice.
-    loadError.value = err?.message || String(err)
-  } finally {
-    loading.value = false
-  }
-})
+onMounted(() => { ensureNamespaces(['deployment', 'common']) })
 
 function isTerminal(state) {
   return TERMINAL_STATES.has(state)
@@ -50,6 +32,7 @@ function isTerminal(state) {
 
 function stateBadgeClass(state) {
   switch (state) {
+    case 'succeeded':
     case 'deployed':  return 'badge-success'
     case 'failed':    return 'badge-error'
     case 'cancelled': return 'badge-ghost'

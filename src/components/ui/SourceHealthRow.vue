@@ -4,9 +4,9 @@ import { useI18n } from 'vue-i18n'
 import AppIcon from '@/components/icons/AppIcon.vue'
 
 const { t: _t } = useI18n()
-function t(key) {
+function t(key, values) {
   const full = `sources.${key}`
-  const translated = _t(full)
+  const translated = _t(full, values || {})
   // If the translation is missing, vue-i18n returns the key itself.
   if (translated === full) {
     const fallback = {
@@ -24,6 +24,8 @@ function t(key) {
 const props = defineProps({
   source: { type: Object, required: true },
   health: { type: Object, default: () => ({ status: 'unknown' }) },
+  busy: { type: Boolean, default: false },
+  disabled: { type: Boolean, default: false },
 })
 
 defineEmits(['test', 'remove', 'rotate-token'])
@@ -47,24 +49,12 @@ const providerIconName = computed(() => {
   return 'link'
 })
 
-const rttLabel = computed(() => {
-  const rtt = props.health?.rtt_ms
-  if (typeof rtt !== 'number') return '—'
-  return `${Math.round(rtt)} ms`
-})
-
-function relativeTime(iso) {
+const checkedLabel = computed(() => {
+  const iso = props.health?.checked_at || props.source?.repos?.find((repo) => repo.last_refreshed_at)?.last_refreshed_at
   if (!iso) return ''
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ''
-  const diff = Date.now() - t
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  return `${Math.floor(diff / 86_400_000)}d ago`
-}
-
-const checkedLabel = computed(() => relativeTime(props.health?.checked_at))
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+})
 
 const displayName = computed(() => {
   return props.source?.name || props.source?.base_url || props.source?.id || 'source'
@@ -82,19 +72,19 @@ const writable = computed(() => {
 
 <template>
   <div
-    class="source-health-row flex items-center gap-3 p-3 border border-base-300 rounded-xl bg-base-100"
+    class="source-health-row flex flex-wrap items-start gap-3 p-4 border border-base-300 rounded-xl bg-base-100"
     :data-source-id="source?.id"
   >
     <div class="shrink-0 w-8 h-8 rounded-lg bg-base-200 flex items-center justify-center">
       <AppIcon :name="providerIconName" class="w-5 h-5" />
     </div>
 
-    <div class="flex-1 min-w-0">
-      <div class="flex items-center gap-2">
+    <div class="flex-1 min-w-0 basis-48">
+      <div class="flex flex-wrap items-center gap-2">
         <span
           class="inline-block w-2 h-2 rounded-full"
           :class="statusClass"
-          :aria-label="`status ${health?.status || 'unknown'}`"
+          :aria-label="t(`status_${health?.status || 'unknown'}`)"
         />
         <span class="font-medium truncate">{{ displayName }}</span>
         <span class="badge badge-ghost badge-sm uppercase">{{ source?.provider }}</span>
@@ -107,26 +97,36 @@ const writable = computed(() => {
           {{ writable ? t('access_writable') : t('access_readonly') }}
         </span>
       </div>
-      <div class="text-xs text-base-content/60 mt-0.5 flex items-center gap-3">
-        <span>rtt: {{ rttLabel }}</span>
-        <span v-if="checkedLabel">checked: {{ checkedLabel }}</span>
-        <span v-if="health?.error" class="text-error truncate">{{ health.error }}</span>
+      <div class="text-xs text-base-content/70 mt-2 space-y-1">
+        <p v-for="repo in source.repos" :key="`${repo.owner}/${repo.repo}`" class="break-all">
+          {{ source.base_url.replace(/\/+$/, '') }}/{{ repo.owner }}/{{ repo.repo }}
+          <span class="badge badge-ghost badge-xs ml-1">{{ repo.branch }}</span>
+        </p>
+        <p v-if="busy" role="status">{{ t('working') }}</p>
+        <p v-else-if="typeof health?.entries_indexed === 'number'">{{ t('entry_count', { count: health.entries_indexed }) }}</p>
+        <p v-else>{{ t(`status_${health?.status || 'unknown'}`) }}</p>
+        <p v-if="health?.repos_seen === 0" class="text-warning">{{ t('no_repositories') }}</p>
+        <p v-else-if="health?.entries_indexed === 0" class="text-warning">{{ t('no_entries') }}</p>
+        <p v-if="checkedLabel">{{ t('last_refreshed', { time: checkedLabel }) }}</p>
+        <p v-if="health?.error" class="text-error break-words">{{ health.error }}</p>
       </div>
     </div>
 
-    <div class="flex items-center gap-1 shrink-0">
+    <div class="flex flex-wrap items-center gap-1 shrink-0">
       <button
         type="button"
         class="btn btn-ghost btn-xs"
-        :aria-label="`Test ${displayName}`"
+        :aria-label="t('refresh_source', { name: displayName })"
+        :disabled="disabled || busy"
         @click="$emit('test', source)"
       >
-        {{ t('test_connection') }}
+        {{ t('refresh') }}
       </button>
       <button
         type="button"
         class="btn btn-ghost btn-xs"
         :aria-label="`Rotate token for ${displayName}`"
+        :disabled="disabled || busy"
         @click="$emit('rotate-token', source)"
       >
         {{ t('rotate_token') }}
@@ -135,6 +135,7 @@ const writable = computed(() => {
         type="button"
         class="btn btn-ghost btn-xs text-error"
         :aria-label="`Remove ${displayName}`"
+        :disabled="disabled || busy"
         @click="$emit('remove', source)"
       >
         {{ t('remove') }}

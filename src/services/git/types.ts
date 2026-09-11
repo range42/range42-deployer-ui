@@ -1,3 +1,5 @@
+import type { FileContent } from '@/services/projectFiles'
+
 /**
  * Git Provider Types
  * 
@@ -308,8 +310,50 @@ export interface RepoRef {
   default_branch: string
 }
 
+export interface CommitFilesOptions {
+  owner: string
+  repo: string
+  branch: string
+  message: string
+  expectedHead: string
+  files: Array<{ path: string; content: FileContent; sha?: string }>
+}
+
+export interface PullRequestRef {
+  owner: string
+  repo: string
+  number: number
+}
+
+export interface PullRequestReview {
+  number: number
+  url: string
+  state: 'open' | 'closed' | 'merged'
+  head_sha: string
+  source?: { owner: string; repo: string; branch: string }
+  target_branch?: string
+  can_merge: boolean
+  mergeable: boolean
+}
+
+export interface MergePullRequestOptions extends PullRequestRef {
+  expectedHead: string
+  method?: 'merge' | 'squash'
+}
+
+export interface UpdateBranchResult {
+  status: 'updated' | 'queued' | 'review_required'
+  review_url?: string
+}
+
 export interface GitProviderV1 {
   id: GitProviderV1Kind
+  updatePullRequestBranch?(opts: PullRequestRef & { expectedHead: string }): Promise<UpdateBranchResult>
+  getPullRequest?(opts: PullRequestRef): Promise<PullRequestReview>
+  mergePullRequest?(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }>
+  ensureFork?(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef>
+  commitFiles?(opts: CommitFilesOptions): Promise<{ sha: string }>
+  getFileContent?(opts: { owner: string; repo: string; path: string; ref?: string }): Promise<{ content: FileContent; sha: string }>
   listRepos(opts: { owner?: string }): Promise<RepoRef[]>
   getFile(opts: {
     owner: string
@@ -321,7 +365,7 @@ export interface GitProviderV1 {
     owner: string
     repo: string
     path: string
-    content: string
+    content: FileContent
     sha?: string
     message: string
     branch?: string
@@ -339,13 +383,14 @@ export interface GitProviderV1 {
     to: string
     title: string
     body?: string
+    source?: { owner: string; repo: string }
   }): Promise<{ url: string; number: number }>
   listTree(opts: {
     owner: string
     repo: string
     ref?: string
     path?: string
-  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>>
+  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string; mode?: string }>>
   listCommits(opts: {
     owner: string
     repo: string

@@ -112,5 +112,12 @@
     "nameRequired": "Le nom est requis",
     "cpuMin": "Les cœurs CPU doivent être au moins 1",
     "memoryRequired": "La mémoire est requise"
+  },
+  "context": {
+    "group": "Les groupes organisent les composants d’infrastructure associés.",
+    "simulated-internet": "Internet simulé fournit des adresses IP et des services publics fictifs pour des exercices isolés.",
+    "edge-firewall": "Le pare-feu périphérique relie vos segments réseau.",
+    "vuln-target": "Les cibles vulnérables sont des systèmes volontairement non sécurisés destinés aux exercices.",
+    "shared-service": "Les services partagés sont accessibles depuis tous les Gamenets (Git, chat, wiki, authentification)."
   }
 }

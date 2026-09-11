@@ -25,21 +25,28 @@
       "noProject": "(no project)"
     }
   },
+  "maintenance": {
+    "title": "Update content or remove deployment VMs",
+    "description": "Configuration runs the scenario's configure playbook on existing VMs. Teardown verifies ownership and removes deployment VMs while preserving shared networks.",
+    "action": "Action",
+    "configure": "Apply saved content and configuration",
+    "teardown": "Remove deployment VMs",
+    "revision": "Saved project commit",
+    "revisionHint": "Defaults to the linked project's latest saved commit in this browser. VM, inventory and network definitions must match the original deployment.",
+    "invalidSha": "Enter the full 40- or 64-character saved commit SHA.",
+    "confirm": "Type {codename} to confirm VM removal",
+    "preflight": "Check selected action",
+    "start": "Run checked action"
+  },
   "detail": {
+    "prepareDescription": "Check network and resource readiness, then start this deployment.",
+    "runPreflight": "Run deployment preflight",
+    "start": "Start deployment",
+    "startFailed": "Deployment setup failed: {reason}. Review the backend configuration before retrying.",
     "back": "Back to deployments",
     "cancel": "Cancel deployment",
     "pause": "Pause",
     "teardown": "Teardown…",
-    "overview": "Overview",
-    "teams": "Teams",
-    "logs": "Logs",
-    "preflight": "Preflight",
-    "preflightLink": "View preflight record",
-    "tabs": {
-      "overview": "Overview",
-      "teams": "Teams",
-      "logs": "Logs"
-    },
     "overview": {
       "stateChainHeading": "State machine",
       "phaseHeading": "Current phase",
@@ -66,9 +73,22 @@
       "download": "Download events.jsonl",
       "empty": "No log lines received yet.",
       "teamFilter": "Showing logs for team {id}",
-      "clearTeamFilter": "Clear team filter"
+      "clearTeamFilter": "Clear team filter",
+      "showRoutine": "Show skipped and included tasks"
     },
-    "notFound": "Deployment not found."
+    "preflight": "Preflight",
+    "preflightLink": "View preflight record",
+    "tabs": {
+      "overview": "Overview",
+      "teams": "Teams",
+      "logs": "Logs"
+    },
+    "notFound": "Deployment not found.",
+    "retired": {
+      "title": "Retired scenario",
+      "description": "_universal is retired. Starting, configuring, resetting, snapshotting, rolling back and tearing down this historical scenario are unavailable. Its attempts, teams and logs remain accessible.",
+      "replacement": "Open or reopen the project, configure and save a concrete scenario, then create a new deployment from its saved Git commit. Keep this record for the original deployment history."
+    }
   },
   "team": {
     "ariaLabel": "Team {id}",
@@ -99,6 +119,11 @@
     }
   },
   "deploy": {
+    "pinnedPreflight": "Create the deployment to review its pinned scenario, network and resource checks before starting.",
+    "backend": "Backend: {backend}",
+    "backendSameOrigin": "Current site",
+    "hostsLoading": "Loading Proxmox hosts…",
+    "hostsEmpty": "No Proxmox hosts registered on this backend.",
     "title": "Deploy",
     "submit": "Deploy",
     "submitting": "Deploying…",
@@ -110,11 +135,15 @@
       "host": "Target Proxmox host",
       "hostPlaceholder": "Select a host",
       "teamCount": "Team count",
-      "vault": "Vault password"
+      "vault": "Vault password",
+      "backendCredentials": "Use the credentials configured on the backend. No vault password is needed here.",
+      "vaultOverride": "Use a custom vault password for this deployment",
+      "vaultOverrideHint": "This replaces the backend credential template, including its saved SSH and Proxmox credentials. The scenario must supply the matching encrypted credentials."
     },
     "err": {
+      "teamCountRange": "Team count must be a whole number from 1 to 64.",
       "codenameRequired": "Codename is required.",
-      "codenameShape": "Lowercase letters, digits, dashes only; 3–32 characters.",
+      "codenameShape": "Starts with a letter; letters, digits, underscores and dashes; 2–32 characters. Converted to uppercase.",
       "codenameTaken": "This codename is already used by another local deployment.",
       "scenarioRequired": "Scenario label is required.",
       "hostRequired": "Choose a target Proxmox host.",
@@ -129,12 +158,15 @@
       "ack": "I confirm deploying with these exact revisions."
     },
     "preflight": {
-      "heading": "Preflight",
-      "run": "Run preflight",
+      "heading": "Project validation",
+      "run": "Validate project",
       "running": "Running…",
-      "blocking": "Preflight reported blocking issues. Fix them before deploying.",
-      "acknowledge": "Acknowledge preflight warnings."
-    }
+      "blocking": "Project validation reported blocking issues. Fix them before deploying.",
+      "acknowledge": "Acknowledge preflight warnings.",
+      "description": "Validates the stored project documents. Network, VM and resource checks run in deployment preflight."
+    },
+    "allocationPinRequired": "Save this scenario to Git at an exact commit before handing off its reservation.",
+    "allocationTargetChanged": "These values were reserved for another target or backend. Return to scenario configuration and reserve again before using them here."
   },
   "teardown": {
     "title": "Teardown deployment",
@@ -224,5 +256,25 @@
     "install": "install",
     "configure": "configure",
     "validate": "validate"
+  },
+  "allocations": {
+    "title": "Deployment allocations",
+    "description": "These VM IDs and addresses do not expire. They stay reserved until explicitly released.",
+    "loading": "Reading allocations…",
+    "refresh": "Refresh allocations",
+    "absent": "No committed allocation record exists for this deployment.",
+    "released": "Allocation released. The backend confirms no committed allocation record remains.",
+    "target": "Target",
+    "revision": "Saved project revision",
+    "created": "Reserved since",
+    "unnamed": "VM",
+    "noAddresses": "No addresses recorded.",
+    "busy": "Release is unavailable while an operation is active or deployment status is uncertain. Refresh after the operation finishes.",
+    "review": "Review allocation release",
+    "confirmTitle": "Release these assignments?",
+    "confirmDescription": "The backend checks that no allocated VMs or active operations remain before freeing these IDs and addresses for reuse. Release keeps deployment history and does not remove guests or networks.",
+    "confirm": "Confirm release",
+    "releasing": "Checking and releasing…",
+    "cancel": "Cancel"
   }
 }

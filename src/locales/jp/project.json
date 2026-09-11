@@ -1,4 +1,11 @@
 {
+  "git": {
+    "saved": "{branch} に保存済み · リビジョン {sha}",
+    "failed": "Git 保存に失敗しました: {error}",
+    "publish": "公開…",
+    "saving": "作業ブランチに保存中…",
+    "changedDuringSave": "保存中にプロジェクトが変更されました。デプロイ前に現在の変更を保存してください。"
+  },
   "tabs": {
     "canvas": "キャンバス",
     "config": "構成",

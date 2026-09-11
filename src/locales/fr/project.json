@@ -1,4 +1,11 @@
 {
+  "git": {
+    "saved": "Enregistré sur {branch} · révision {sha}",
+    "failed": "Échec Git : {error}",
+    "publish": "Publier…",
+    "saving": "Enregistrement sur la branche de travail…",
+    "changedDuringSave": "Le projet a changé pendant l’enregistrement. Enregistrez les modifications avant le déploiement."
+  },
   "tabs": {
     "canvas": "Canevas",
     "config": "Configuration",

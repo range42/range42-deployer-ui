@@ -1,16 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import 'fake-indexeddb/auto'
 import CatalogList from '@/views/CatalogList.vue'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProjectStore } from '@/stores/projectStore'
 import catalogEn from '@/locales/en/catalog.json'
 import commonEn from '@/locales/en/common.json'
 import sourcesEn from '@/locales/en/sources.json'
+
+enableAutoUnmount(afterEach)
 
 const PAGE = {
   items: [
@@ -51,9 +54,9 @@ async function mountList() {
   inv.addSource({ id: 'src-rw', provider: 'gitlab', base_url: 'https://gl.example', auth: { kind: 'none' }, repos: [], writable: true })
 
   const wrapper = mount(CatalogList, {
-    global: { plugins: [pinia, makeI18n(), makeRouter()] },
+    global: { plugins: [pinia, makeI18n(), makeRouter()], stubs: { CatalogProjectHandoff: true } },
   })
-  await flushPromises()
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="catalog-grid"] article[data-kind]')).toHaveLength(PAGE.items.length))
   return wrapper
 }
 
@@ -70,7 +73,7 @@ describe('CatalogList — customize gating by write access', () => {
     vi.restoreAllMocks()
   })
 
-  it('does NOT create a project when customizing an entry from a read-only source', async () => {
+  it('opens a destination handoff without creating a project for a read-only source', async () => {
     const wrapper = await mountList()
     const projects = useProjectStore()
     const before = projects.projects.length
@@ -79,6 +82,7 @@ describe('CatalogList — customize gating by write access', () => {
     await flushPromises()
 
     expect(projects.projects.length).toBe(before)
+    expect(wrapper.findComponent(CatalogProjectHandoff).props()).toMatchObject({ entry: PAGE.items[0], mode: 'customize' })
   })
 
   it('shows a read-only badge on tiles backed by a read-only source only', async () => {
@@ -89,7 +93,7 @@ describe('CatalogList — customize gating by write access', () => {
     expect(rwTileWrap.querySelector('[data-testid="tile-readonly-badge"]')).toBeNull()
   })
 
-  it('creates a project when customizing an entry from a writable source', async () => {
+  it('also requires a reviewed destination for a writable source', async () => {
     const wrapper = await mountList()
     const projects = useProjectStore()
     const before = projects.projects.length
@@ -97,6 +101,11 @@ describe('CatalogList — customize gating by write access', () => {
     await tileFor(wrapper, 'src-rw').vm.$emit('customize', PAGE.items[1])
     await flushPromises()
 
-    expect(projects.projects.length).toBe(before + 1)
+    expect(projects.projects.length).toBe(before)
+    const handoff = wrapper.findComponent(CatalogProjectHandoff)
+    expect(handoff.props()).toMatchObject({ entry: PAGE.items[1], mode: 'customize' })
+    await handoff.vm.$emit('close')
+    await flushPromises()
+    expect(wrapper.findComponent(CatalogProjectHandoff).exists()).toBe(false)
   })
 })

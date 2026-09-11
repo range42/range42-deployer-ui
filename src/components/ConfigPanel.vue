@@ -5,8 +5,23 @@ import { ensureNamespaces } from '@/i18n/index.js'
 import FormField from '@/components/ui/FormField.vue'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import FormSection from '@/components/ui/FormSection.vue'
-import FormDivider from '@/components/ui/FormDivider.vue'
-import FormList from '@/components/ui/FormList.vue'
+import NetworkFields from '@/components/ConfigPanel/NetworkFields.vue'
+import RouterFields from '@/components/ConfigPanel/RouterFields.vue'
+import SwitchFields from '@/components/ConfigPanel/SwitchFields.vue'
+import FirewallFields from '@/components/ConfigPanel/FirewallFields.vue'
+import LoadBalancerFields from '@/components/ConfigPanel/LoadBalancerFields.vue'
+import DnsFields from '@/components/ConfigPanel/DnsFields.vue'
+import DhcpFields from '@/components/ConfigPanel/DhcpFields.vue'
+import DockerFields from '@/components/ConfigPanel/DockerFields.vue'
+import GroupFields from '@/components/ConfigPanel/GroupFields.vue'
+import SimulatedInternetFields from '@/components/ConfigPanel/SimulatedInternetFields.vue'
+import EdgeFirewallFields from '@/components/ConfigPanel/EdgeFirewallFields.vue'
+import LxcFields from '@/components/ConfigPanel/LxcFields.vue'
+import VulnerableTargetFields from '@/components/ConfigPanel/VulnerableTargetFields.vue'
+import SharedServiceFields from '@/components/ConfigPanel/SharedServiceFields.vue'
+import VmFields from '@/components/ConfigPanel/VmFields.vue'
+import NodeContextNotice from '@/components/ConfigPanel/NodeContextNotice.vue'
+import DeployedVmFields from '@/components/ConfigPanel/DeployedVmFields.vue'
 import { getBaseUrl } from '@/services/proxmox/api'
 import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
@@ -42,7 +57,7 @@ const props = defineProps({
     default: () => [],
   },
 })
-const emit = defineEmits(['close', 'update', 'delete', 'update:attachments'])
+const emit = defineEmits(['close', 'update', 'delete', 'update:attachments', 'open-content'])
 
 const statusView = computed(() =>
   resolveNodeStatus(props.node?.data?.status, props.node?.data?.pendingAction),
@@ -141,7 +156,7 @@ watch(() => config.value.template, (newTemplate) => {
 
 onMounted(async () => {
   if (props.node?.data?.config) {
-    config.value = { ...props.node.data.config }
+    config.value = JSON.parse(JSON.stringify(props.node.data.config))
   }
   // For group nodes, hydrate kind/team_count from data (spec §6)
   if (props.node?.type === 'group') {
@@ -174,7 +189,7 @@ const validateConfig = () => {
   // Add type-specific validations
   switch (props.node?.type) {
     case 'vm':
-      if (!config.value.cpu || config.value.cpu < 1) {
+      if (!Number.isInteger(Number(config.value.cores ?? config.value.cpu)) || Number(config.value.cores ?? config.value.cpu) < 1) {
         errors.value.push(t('configPanel.validation.cpuMin'))
       }
       if (!String(config.value.memory || '').trim()) {
@@ -191,68 +206,6 @@ const isValid = computed(() => {
   return validateConfig()
 })
 
-
-// Add VLAN management for switches
-const addVlan = () => {
-  if (!config.value.vlans) config.value.vlans = []
-  config.value.vlans.push({
-    id: config.value.vlans.length + 1,
-    name: `VLAN_${config.value.vlans.length + 1}`,
-    description: ''
-  })
-}
-
-const removeVlan = (index) => {
-  config.value.vlans.splice(index, 1)
-}
-
-// Add firewall rule management (Proxmox-compatible format)
-const addFirewallRule = () => {
-  if (!config.value.rules) config.value.rules = []
-  config.value.rules.push({
-    action: 'ACCEPT',
-    direction: 'in',
-    source: '',
-    dest: '',
-    dport: '',
-    proto: 'tcp',
-    comment: '',
-    enabled: true
-  })
-}
-
-const removeFirewallRule = (index) => {
-  config.value.rules.splice(index, 1)
-}
-
-// Add server management for load balancer
-const addServer = () => {
-  if (!config.value.servers) config.value.servers = []
-  config.value.servers.push({
-    ip: '',
-    port: '',
-    weight: 1,
-    status: 'active'
-  })
-}
-
-const removeServer = (index) => {
-  config.value.servers.splice(index, 1)
-}
-
-// Add DNS zone management
-const addDnsZone = () => {
-  if (!config.value.zones) config.value.zones = []
-  config.value.zones.push({
-    name: '',
-    type: 'forward',
-    description: ''
-  })
-}
-
-const removeDnsZone = (index) => {
-  config.value.zones.splice(index, 1)
-}
 
 // Tag editor state
 const tagSync = useTagSync()
@@ -337,13 +290,11 @@ async function handleVmAction(action) {
   if (!method) return
 
   const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
-  const request = { proxmox_node: getProxmoxNode(), vm_id: vmId }
+  const request = { proxmox_node: getProxmoxNode(), vm_id: vmId, vmtype }
   await tasks.launch(action, {
     node: props.node,
     vmId,
     vmtype,
-    // NOTE: lifecycle buttons only render for deployed VMs today, so vm.* is correct.
-    // When deployed-LXC lifecycle UI lands, route LXC through proxmoxApi.lxc.* here.
     apiCall: () => proxmoxApi.vm[method](request),
     onSuccess: () => {},
   })
@@ -420,7 +371,7 @@ const onEscape = () => {
 
 watch(() => props.node, (newNode) => {
   if (newNode) {
-    config.value = { ...newNode.data.config }
+    config.value = JSON.parse(JSON.stringify(newNode.data.config || {}))
     if (newNode.type === 'group') {
       config.value.kind = newNode.data?.kind || 'topology_group'
       config.value.team_count = Number(newNode.data?.team_count ?? config.value.team_count ?? 1)
@@ -505,6 +456,8 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
       <!-- Content (scrolls between sticky header/footer) -->
       <div class="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+        <NodeContextNotice :type="node.type" />
+
         <!-- Common Fields -->
         <FormSection icon="" title="" :columns="1">
           <FormField
@@ -586,1138 +539,52 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
         </FormSection>
 
         <!-- Deployed VM Status View -->
-        <template v-if="node.type === 'vm' && node.data?.deployed">
-          <!-- Live status + metrics card -->
-          <div class="space-y-3 rounded-box bg-base-200/40 p-4">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-medium uppercase tracking-wide opacity-60">
-                {{ t('configPanel.liveStatus') }}
-              </span>
-              <span class="ml-auto inline-flex items-center gap-1.5 text-sm font-medium capitalize">
-                <span
-                  class="h-2.5 w-2.5 rounded-full"
-                  :class="[statusDotClass, { 'animate-pulse': statusView.pulse }]"
-                ></span>
-                {{ statusView.label }}
-              </span>
-            </div>
+        <DeployedVmFields v-if="node.type === 'vm' && node.data?.deployed"
+          :node="node" :status-view="statusView" :status-dot-class="statusDotClass"
+          @action="handleVmAction" @revert-field="revertField" @update-desired="updateDesired" />
 
-            <div v-if="node.data.liveMetrics" class="grid grid-cols-2 gap-2">
-              <div class="rounded-lg bg-base-100 px-3 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">{{ t('configPanel.metrics.cpu') }}</div>
-                <div class="text-sm font-semibold tabular-nums">{{ Math.round(node.data.liveMetrics.cpu) }}%</div>
-              </div>
-              <div class="rounded-lg bg-base-100 px-3 py-2">
-                <div class="text-[10px] uppercase tracking-wide opacity-50">{{ t('configPanel.metrics.ram') }}</div>
-                <div class="text-sm font-semibold tabular-nums">{{ node.data.liveMetrics.memPercent }}%</div>
-              </div>
-            </div>
-
-            <!-- Lifecycle actions — gated by live status so we never offer an
-                 action that doesn't apply (e.g. Start on a running VM). -->
-            <div class="space-y-1.5">
-              <span class="text-xs font-medium uppercase tracking-wide opacity-60">
-                {{ t('configPanel.power.label') }}
-              </span>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-if="node.data.status !== 'running' && node.data.status !== 'paused'"
-                  class="btn btn-success btn-sm gap-1.5"
-                  :disabled="!!node.data.pendingAction"
-                  @click="handleVmAction('start')"
-                >
-                  <span v-if="node.data.pendingAction === 'start'" class="loading loading-xs"></span>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  {{ t('configPanel.lifecycle.start') }}
-                </button>
-                <button
-                  v-if="node.data.status === 'paused'"
-                  class="btn btn-success btn-sm gap-1.5"
-                  :disabled="!!node.data.pendingAction"
-                  @click="handleVmAction('resume')"
-                >
-                  <span v-if="node.data.pendingAction === 'resume'" class="loading loading-xs"></span>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  {{ t('configPanel.lifecycle.resume') }}
-                </button>
-                <button
-                  v-if="node.data.status === 'running'"
-                  class="btn btn-info btn-sm gap-1.5"
-                  :disabled="!!node.data.pendingAction"
-                  @click="handleVmAction('pause')"
-                >
-                  <span v-if="node.data.pendingAction === 'pause'" class="loading loading-xs"></span>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-                  </svg>
-                  {{ t('configPanel.lifecycle.pause') }}
-                </button>
-                <button
-                  v-if="node.data.status === 'running' || node.data.status === 'paused'"
-                  class="btn btn-warning btn-sm gap-1.5"
-                  :disabled="!!node.data.pendingAction"
-                  @click="handleVmAction('stop')"
-                >
-                  <span v-if="node.data.pendingAction === 'stop'" class="loading loading-xs"></span>
-                  <svg v-else class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 6h12v12H6z" />
-                  </svg>
-                  {{ t('configPanel.lifecycle.stop') }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Editable config fields (with diff/revert affordance) -->
-          <div class="space-y-4">
-            <!-- Name -->
-            <div class="form-control">
-              <div class="label pb-1">
-                <span class="label-text font-medium">{{ t('configPanel.deployedFields.name') }}</span>
-                <button
-                  v-if="node.data.desiredConfig?.name !== node.data.actualConfig?.name"
-                  class="btn btn-ghost btn-xs text-warning"
-                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.name') })"
-                  @click="revertField('name')"
-                >&#x21A9;</button>
-              </div>
-              <input
-                type="text"
-                class="input input-bordered input-sm w-full rounded-lg"
-                :class="{ 'border-warning': node.data.desiredConfig?.name !== node.data.actualConfig?.name }"
-                :value="node.data.desiredConfig?.name || ''"
-                @input="updateDesired('name', $event.target.value)"
-              />
-            </div>
-
-            <!-- CPU Cores -->
-            <div class="form-control">
-              <div class="label pb-1">
-                <span class="label-text font-medium">{{ t('configPanel.deployedFields.cores') }}</span>
-                <button
-                  v-if="node.data.desiredConfig?.cores !== node.data.actualConfig?.cores"
-                  class="btn btn-ghost btn-xs text-warning"
-                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.cores') })"
-                  @click="revertField('cores')"
-                >&#x21A9;</button>
-              </div>
-              <input
-                type="number"
-                min="1"
-                max="128"
-                class="input input-bordered input-sm w-full rounded-lg"
-                :class="{ 'border-warning': node.data.desiredConfig?.cores !== node.data.actualConfig?.cores }"
-                :value="node.data.desiredConfig?.cores || 1"
-                @input="updateDesired('cores', Number($event.target.value))"
-              />
-            </div>
-
-            <!-- Memory -->
-            <div class="form-control">
-              <div class="label pb-1">
-                <span class="label-text font-medium">{{ t('configPanel.deployedFields.memory') }}</span>
-                <button
-                  v-if="node.data.desiredConfig?.memory !== node.data.actualConfig?.memory"
-                  class="btn btn-ghost btn-xs text-warning"
-                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.memory') })"
-                  @click="revertField('memory')"
-                >&#x21A9;</button>
-              </div>
-              <input
-                type="number"
-                min="128"
-                step="256"
-                class="input input-bordered input-sm w-full rounded-lg"
-                :class="{ 'border-warning': node.data.desiredConfig?.memory !== node.data.actualConfig?.memory }"
-                :value="node.data.desiredConfig?.memory || 0"
-                @input="updateDesired('memory', Number($event.target.value))"
-              />
-            </div>
-
-            <!-- Description -->
-            <div class="form-control">
-              <div class="label pb-1">
-                <span class="label-text font-medium">{{ t('configPanel.deployedFields.description') }}</span>
-                <button
-                  v-if="(node.data.desiredConfig?.description || '') !== (node.data.actualConfig?.description || '')"
-                  class="btn btn-ghost btn-xs text-warning"
-                  :aria-label="t('configPanel.a11y.revertField', { field: t('configPanel.deployedFields.description') })"
-                  @click="revertField('description')"
-                >&#x21A9;</button>
-              </div>
-              <textarea
-                class="textarea textarea-bordered textarea-sm w-full rounded-lg"
-                :class="{ 'border-warning': (node.data.desiredConfig?.description || '') !== (node.data.actualConfig?.description || '') }"
-                rows="2"
-                :value="node.data.desiredConfig?.description || ''"
-                @input="updateDesired('description', $event.target.value)"
-              ></textarea>
-            </div>
-          </div>
-        </template>
 
         <!-- VM Specific Fields (non-deployed) -->
-        <template v-else-if="node.type === 'vm'">
-          <FormDivider label="Virtual Machine" icon="" />
-
-          <FormSection title="Template" icon="" variant="bordered" :columns="1">
-            <div class="flex items-end gap-2">
-              <div class="flex-1">
-                <FormField
-                  v-model="config.template"
-                  label="Clone from template"
-                  type="select"
-                  :options="availableTemplates"
-                  :placeholder="loadingTemplates ? 'Loading templates...' : 'Select a template...'"
-                  :disabled="loadingTemplates"
-                  hint="Selecting a template auto-fills CPU and RAM (editable)"
-                  icon=""
-                />
-              </div>
-              <button
-                class="btn btn-sm btn-ghost mb-1"
-                :class="{ 'loading': loadingTemplates }"
-                :disabled="loadingTemplates"
-                @click="loadTemplates(true)"
-                title="Refresh templates from Proxmox"
-              >
-                <svg v-if="!loadingTemplates" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-            </div>
-          </FormSection>
-
-          <FormSection title="Resources" icon="" variant="bordered" :columns="3">
-            <FormField
-              v-model="config.cores"
-              label="CPU Cores"
-              type="number"
-              placeholder="2"
-              :min="1"
-              :max="32"
-              icon=""
-            />
-            <FormField
-              v-model="config.memory"
-              label="Memory (MB)"
-              type="number"
-              placeholder="2048"
-              :min="512"
-              hint="Auto-filled from template"
-              icon=""
-            />
-            <FormField
-              v-model="config.diskSize"
-              label="Disk"
-              type="text"
-              placeholder="32G"
-              hint="e.g. 16G, 32G, 100G"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection v-if="availableStorages.length > 0" title="Storage" icon="" variant="bordered" :columns="1">
-            <FormField
-              v-model="config.storage"
-              label="Disk Storage"
-              type="select"
-              :options="availableStorages"
-              placeholder="Use project default"
-              hint="Where to store VM disk (overrides project default)"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection title="Network & Details" icon="" variant="bordered" :columns="2">
-            <FormField
-              v-model="config.ipAddress"
-              label="IP Address (optional)"
-              type="text"
-              placeholder="auto-assign or e.g. 192.168.42.50"
-              hint="Leave empty for DHCP or cloud-init default"
-              icon=""
-            />
-            <FormField
-              v-model="config.description"
-              label="Description"
-              type="textarea"
-              placeholder="What is this VM for?"
-              :rows="2"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <VmFields v-else-if="node.type === 'vm'" v-model="config" :available-templates="availableTemplates" :available-storages="availableStorages" :loading-templates="loadingTemplates" @refresh-templates="loadTemplates(true)" />
 
         <!-- Network Segment Specific Fields -->
-        <template v-if="node.type === 'network-segment'">
-          <FormDivider label="Segment Type" icon="" />
-          
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.segmentType"
-              label="Network Zone Type"
-              type="select"
-              :required="true"
-              :options="[
-                { value: 'wan', label: 'WAN - External/Internet facing' },
-                { value: 'dmz', label: 'DMZ - Demilitarized zone' },
-                { value: 'lan', label: 'LAN - Internal network' },
-                { value: 'management', label: 'Management - Admin/OOB access' },
-                { value: 'custom', label: 'Custom - User defined' }
-              ]"
-              hint="Defines the security zone purpose"
-              icon=""
-            />
-            <FormField
-              v-model="config.description"
-              label="Description"
-              type="textarea"
-              placeholder="Network segment description..."
-              :rows="2"
-              icon=""
-            />
-          </FormSection>
-
-          <FormDivider label="Proxmox Bridge Configuration" icon="" />
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.bridge"
-              label="Proxmox Bridge"
-              type="text"
-              :required="true"
-              placeholder="vmbr0"
-              hint="Bridge name (must exist on Proxmox node)"
-              icon=""
-            />
-            <FormField
-              v-model="config.vlan"
-              label="VLAN Tag"
-              type="number"
-              placeholder="Optional (1-4094)"
-              :min="1"
-              :max="4094"
-              hint="802.1Q VLAN ID (optional)"
-              icon=""
-            />
-          </FormSection>
-
-          <FormDivider label="IP Addressing (Planning)" icon="" />
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.cidr"
-              :label="t('configPanel.fields.cidr')"
-              type="text"
-              :placeholder="t('configPanel.placeholders.cidr')"
-              hint="Network range in CIDR notation"
-              icon=""
-            />
-            <FormField
-              v-model="config.gateway"
-              :label="t('configPanel.fields.gateway')"
-              type="text"
-              :placeholder="t('configPanel.placeholders.gateway')"
-              hint="Default gateway IP for this segment"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <NetworkFields v-if="node.type === 'network-segment'" v-model="config" />
 
         <!-- Router Specific Fields -->
-        <template v-if="node.type === 'router'">
-          <FormDivider label="Router Configuration" icon="" />
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.description"
-              label="Description"
-              type="textarea"
-              placeholder="Router description..."
-              :rows="2"
-              icon=""
-            />
-            <FormField
-              v-model="config.applianceType"
-              label="Appliance Type"
-              type="select"
-              :options="[
-                { value: 'vyos', label: 'VyOS' },
-                { value: 'opnsense', label: 'OPNsense' },
-                { value: 'pfsense', label: 'pfSense' }
-              ]"
-              hint="Virtual router appliance type"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <RouterFields v-if="node.type === 'router'" v-model="config" />
 
         <!-- Switch Specific Fields -->
-        <template v-if="node.type === 'switch'">
-          <FormDivider label="Switch Configuration" icon="" />
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.bridge"
-              label="Backing Proxmox Bridge"
-              type="select"
-              :options="[
-                { value: '', label: 'None (Logical only)' },
-                { value: 'vmbr0', label: 'vmbr0' },
-                { value: 'vmbr1', label: 'vmbr1' },
-                { value: 'vmbr2', label: 'vmbr2' },
-                { value: 'vmbr3', label: 'vmbr3' }
-              ]"
-              hint="Optional bridge for VLAN trunking"
-              icon=""
-            />
-            <FormField
-              v-model="config.portCount"
-              label="Port Count"
-              type="select"
-              :required="true"
-              :options="[
-                { value: 8, label: '8 ports' },
-                { value: 16, label: '16 ports' },
-                { value: 24, label: '24 ports' },
-                { value: 48, label: '48 ports' }
-              ]"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.managementVlan"
-              label="Management VLAN"
-              type="number"
-              placeholder="e.g., 1"
-              :min="1"
-              :max="4094"
-              icon=""
-            />
-            <FormField
-              v-model="config.trunkPortsInput"
-              label="Trunk Ports"
-              type="text"
-              placeholder="e.g., 1,2,24"
-              hint="Comma-separated list of trunk ports"
-              icon=""
-            />
-          </FormSection>
-
-          <!-- VLAN Management -->
-          <FormDivider label="VLAN Configuration" icon="" />
-          
-          <FormList
-            :items="config.vlans || []"
-            add-label="Add VLAN"
-            empty-text="No VLANs configured"
-            empty-hint="Click 'Add VLAN' to create one"
-            @add="addVlan"
-            @remove="removeVlan"
-          >
-            <template #header>
-              <span class="font-medium text-sm">VLANs</span>
-            </template>
-            <template #item="{ item: vlan }">
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 pr-8">
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">VLAN ID</span></label>
-                  <input
-                    v-model.number="vlan.id"
-                    type="number"
-                    class="input input-bordered input-sm"
-                    placeholder="1-4094"
-                    min="1"
-                    max="4094"
-                  />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Name</span></label>
-                  <input
-                    v-model="vlan.name"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="VLAN Name"
-                  />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Subnet</span></label>
-                  <input
-                    v-model="vlan.subnet"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="10.0.10.0/24"
-                  />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Gateway</span></label>
-                  <input
-                    v-model="vlan.gateway"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="10.0.10.1"
-                  />
-                </div>
-              </div>
-            </template>
-          </FormList>
-        </template>
+        <SwitchFields v-if="node.type === 'switch'" v-model="config" />
 
         <!-- Firewall Specific Fields -->
-        <template v-if="node.type === 'firewall'">
-          <FormDivider label="Firewall Features" icon="" />
-          
-          <FormSection variant="bordered" :columns="3">
-            <FormField
-              v-model="config.natEnabled"
-              label="Enable NAT"
-              type="checkbox"
-              icon=""
-            />
-            <FormField
-              v-model="config.vpnSupport"
-              label="VPN Support"
-              type="checkbox"
-              icon=""
-            />
-            <FormField
-              v-model="config.intrusionDetection"
-              label="Intrusion Detection"
-              type="checkbox"
-              icon=""
-            />
-          </FormSection>
-
-          <!-- Enhanced Firewall Rules Builder -->
-          <FormDivider label="Firewall Rules" icon="" />
-          
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="font-medium text-sm">Rules</span>
-              <button type="button" @click="addFirewallRule" class="btn btn-sm btn-primary gap-1">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Rule
-              </button>
-            </div>
-            
-            <!-- Rules Header -->
-            <div v-if="config.rules?.length" class="hidden md:grid grid-cols-12 gap-2 px-4 py-2 bg-base-200/70 rounded-lg text-xs font-semibold text-base-content/60">
-              <div class="col-span-1">#</div>
-              <div class="col-span-1">Action</div>
-              <div class="col-span-1">Dir</div>
-              <div class="col-span-2">Source</div>
-              <div class="col-span-2">Destination</div>
-              <div class="col-span-1">Port</div>
-              <div class="col-span-1">Proto</div>
-              <div class="col-span-2">Comment</div>
-              <div class="col-span-1"></div>
-            </div>
-
-            <TransitionGroup
-              v-if="config.rules?.length"
-              tag="div"
-              class="space-y-2"
-              enter-active-class="transition-all duration-200 ease-out"
-              enter-from-class="opacity-0 scale-95"
-              enter-to-class="opacity-100 scale-100"
-              leave-active-class="transition-all duration-150 ease-in"
-              leave-from-class="opacity-100 scale-100"
-              leave-to-class="opacity-0 scale-95"
-            >
-              <div
-                v-for="(rule, index) in config.rules"
-                :key="rule.id || index"
-                class="group bg-base-200/30 border border-base-300 rounded-lg p-3 hover:border-primary/30 transition-all duration-200"
-                :class="{ 'opacity-40 bg-base-300/20': rule.enabled === false }"
-              >
-                <!-- Rule Row -->
-                <div class="grid grid-cols-2 md:grid-cols-12 gap-2 items-center">
-                  <!-- Position -->
-                  <div class="hidden md:flex col-span-1 text-sm font-mono text-base-content/40">
-                    {{ index + 1 }}
-                  </div>
-                  
-                  <!-- Action -->
-                  <select 
-                    v-model="rule.action" 
-                    class="select select-bordered select-sm col-span-1 font-medium"
-                    :class="{
-                      'bg-success/10 border-success/30 text-success': rule.action === 'ACCEPT',
-                      'bg-error/10 border-error/30 text-error': rule.action === 'DROP' || rule.action === 'REJECT'
-                    }"
-                  >
-                    <option value="ACCEPT">Allow</option>
-                    <option value="DROP">Drop</option>
-                    <option value="REJECT">Reject</option>
-                  </select>
-                  
-                  <!-- Direction -->
-                  <select v-model="rule.direction" class="select select-bordered select-sm col-span-1">
-                    <option value="in">In</option>
-                    <option value="out">Out</option>
-                  </select>
-                  
-                  <!-- Source -->
-                  <input
-                    v-model="rule.source"
-                    type="text"
-                    class="input input-bordered input-sm col-span-2 focus:input-primary"
-                    placeholder="any / CIDR"
-                  />
-                  
-                  <!-- Destination -->
-                  <input
-                    v-model="rule.dest"
-                    type="text"
-                    class="input input-bordered input-sm col-span-2 focus:input-primary"
-                    placeholder="any / CIDR"
-                  />
-                  
-                  <!-- Port -->
-                  <input
-                    v-model="rule.dport"
-                    type="text"
-                    class="input input-bordered input-sm col-span-1 focus:input-primary"
-                    placeholder="80,443"
-                  />
-                  
-                  <!-- Protocol -->
-                  <select v-model="rule.proto" class="select select-bordered select-sm col-span-1">
-                    <option value="tcp">TCP</option>
-                    <option value="udp">UDP</option>
-                    <option value="icmp">ICMP</option>
-                    <option value="">Any</option>
-                  </select>
-                  
-                  <!-- Comment -->
-                  <input
-                    v-model="rule.comment"
-                    type="text"
-                    class="input input-bordered input-sm col-span-2 focus:input-primary"
-                    placeholder="Description"
-                  />
-                  
-                  <!-- Actions -->
-                  <div class="col-span-1 flex gap-1 justify-end">
-                    <label class="swap swap-rotate">
-                      <input type="checkbox" v-model="rule.enabled" />
-                      <svg class="swap-on w-5 h-5 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                      </svg>
-                      <svg class="swap-off w-5 h-5 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </label>
-                    <button
-                      type="button"
-                      @click="removeFirewallRule(index)"
-                      class="btn btn-xs btn-ghost text-error opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </TransitionGroup>
-
-            <!-- Empty State -->
-            <div v-else class="text-center py-8 border-2 border-dashed border-base-300 rounded-lg bg-base-200/30">
-              <svg class="w-12 h-12 mx-auto mb-3 text-base-content/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <p class="text-base-content/50">No firewall rules configured</p>
-              <p class="text-sm text-base-content/30 mt-1">Click "Add Rule" to create your first rule</p>
-            </div>
-          </div>
-        </template>
+        <FirewallFields v-if="node.type === 'firewall'" v-model="config" />
 
         <!-- Load Balancer Specific Fields -->
-        <template v-if="node.type === 'loadbalancer'">
-          <FormDivider label="Load Balancer Settings" icon="" />
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.algorithm"
-              label="Load Balancing Algorithm"
-              type="select"
-              :required="true"
-              :options="[
-                { value: 'round-robin', label: 'Round Robin' },
-                { value: 'least-connections', label: 'Least Connections' },
-                { value: 'ip-hash', label: 'IP Hash' },
-                { value: 'weighted-round-robin', label: 'Weighted Round Robin' }
-              ]"
-              icon=""
-            />
-            <FormField
-              v-model="config.healthCheck"
-              label="Health Check"
-              type="checkbox"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.sslTermination"
-              label="SSL Termination"
-              type="checkbox"
-              icon=""
-            />
-          </FormSection>
-
-          <!-- Server Pool Management -->
-          <FormDivider label="Server Pool" icon="" />
-          
-          <FormList
-            :items="config.servers || []"
-            add-label="Add Server"
-            empty-text="No servers configured"
-            empty-hint="Click 'Add Server' to add backend servers"
-            @add="addServer"
-            @remove="removeServer"
-          >
-            <template #header>
-              <span class="font-medium text-sm">Backend Servers</span>
-            </template>
-            <template #item="{ item: server }">
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 pr-8">
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Server IP</span></label>
-                  <input v-model="server.ip" type="text" class="input input-bordered input-sm" placeholder="192.168.1.10" />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Port</span></label>
-                  <input v-model="server.port" type="text" class="input input-bordered input-sm" placeholder="80" />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Weight</span></label>
-                  <input v-model.number="server.weight" type="number" class="input input-bordered input-sm" placeholder="1" min="1" />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Status</span></label>
-                  <select v-model="server.status" class="select select-bordered select-sm">
-                    <option value="active">Active</option>
-                    <option value="backup">Backup</option>
-                    <option value="disabled">Disabled</option>
-                  </select>
-                </div>
-              </div>
-            </template>
-          </FormList>
-        </template>
+        <LoadBalancerFields v-if="node.type === 'loadbalancer'" v-model="config" />
 
         <!-- DNS Server Specific Fields -->
-        <template v-if="node.type === 'dns'">
-          <FormDivider label="DNS Server Settings" icon="" />
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.recursion"
-              label="Enable Recursion"
-              type="checkbox"
-              icon=""
-            />
-            <FormField
-              v-model="config.dnssec"
-              label="DNSSEC"
-              type="checkbox"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.forwarders"
-              label="Forwarders"
-              type="text"
-              placeholder="8.8.8.8, 1.1.1.1"
-              hint="Comma-separated list of upstream DNS servers"
-              icon=""
-            />
-          </FormSection>
-
-          <!-- DNS Zone Management -->
-          <FormDivider label="DNS Zones" icon="" />
-          
-          <FormList
-            :items="config.zones || []"
-            add-label="Add Zone"
-            empty-text="No DNS zones configured"
-            empty-hint="Click 'Add Zone' to create a DNS zone"
-            @add="addDnsZone"
-            @remove="removeDnsZone"
-          >
-            <template #header>
-              <span class="font-medium text-sm">Zones</span>
-            </template>
-            <template #item="{ item: zone }">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pr-8">
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Zone Name</span></label>
-                  <input v-model="zone.name" type="text" class="input input-bordered input-sm" placeholder="example.com" />
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Type</span></label>
-                  <select v-model="zone.type" class="select select-bordered select-sm">
-                    <option value="forward">Forward</option>
-                    <option value="reverse">Reverse</option>
-                  </select>
-                </div>
-                <div class="form-control">
-                  <label class="label py-0"><span class="label-text text-xs opacity-60">Description</span></label>
-                  <input v-model="zone.description" type="text" class="input input-bordered input-sm" placeholder="Zone description" />
-                </div>
-              </div>
-            </template>
-          </FormList>
-        </template>
+        <DnsFields v-if="node.type === 'dns'" v-model="config" />
 
         <!-- DHCP Server Specific Fields -->
-        <template v-if="node.type === 'dhcp'">
-          <FormDivider label="DHCP Server Settings" icon="" />
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.scope"
-              label="IP Range/Scope"
-              type="text"
-              :required="true"
-              placeholder="e.g., 192.168.1.100-200"
-              hint="Range of IPs to assign to clients"
-              icon=""
-            />
-            <FormField
-              v-model="config.leaseTime"
-              label="Lease Time"
-              type="text"
-              placeholder="e.g., 24h, 7d"
-              hint="How long clients can use assigned IPs"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.gateway"
-              label="Default Gateway"
-              type="text"
-              :required="true"
-              placeholder="e.g., 192.168.1.1"
-              icon=""
-            />
-            <FormField
-              v-model="config.dnsServers"
-              label="DNS Servers"
-              type="text"
-              placeholder="e.g., 192.168.1.1, 8.8.8.8"
-              hint="Comma-separated list of DNS servers"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <DhcpFields v-if="node.type === 'dhcp'" v-model="config" />
 
         <!-- Docker Container Specific Fields -->
-        <template v-if="node.type === 'docker'">
-          <FormDivider label="Docker Container" icon="" />
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.image"
-              label="Docker Image"
-              type="text"
-              :required="true"
-              placeholder="e.g., nginx:latest"
-              hint="Image name with optional tag"
-              icon=""
-            />
-            <FormField
-              v-model="config.ports"
-              label="Port Mapping"
-              type="text"
-              :required="true"
-              placeholder="e.g., 80:80, 443:443"
-              hint="host:container format, comma-separated"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.env"
-              label="Environment Variables"
-              type="textarea"
-              placeholder="KEY=value (one per line)"
-              :rows="3"
-              icon=""
-            />
-            <FormField
-              v-model="config.network"
-              label="Container Network"
-              type="select"
-              :options="[
-                { value: 'bridge', label: 'Bridge (Default)' },
-                { value: 'host', label: 'Host Network' },
-                { value: 'none', label: 'No Network' },
-                { value: 'custom', label: 'Custom Network' }
-              ]"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <DockerFields v-if="node.type === 'docker'" v-model="config" />
 
         <!-- Group/Container Specific Fields -->
-        <template v-if="node.type === 'group'">
-          <div class="alert alert-info shadow-sm mb-4">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
-            <span>Groups organize related infrastructure components together.</span>
-          </div>
-
-          <!-- Group kind (topology_group | team_scope) -->
-          <FormSection variant="bordered" :columns="1" title="Group kind">
-            <FormField
-              v-model="config.kind"
-              label="Kind"
-              type="select"
-              :options="[
-                { value: 'topology_group', label: 'Topology group (static)' },
-                { value: 'team_scope', label: 'Team scope (replicated per team)' },
-              ]"
-              hint="team_scope replicates its contents N times at deploy."
-              icon=""
-            />
-            <FormField
-              v-if="config.kind === 'team_scope'"
-              v-model.number="config.team_count"
-              label="Team count"
-              type="number"
-              :min="1"
-              :max="64"
-              placeholder="e.g., 4"
-              hint="Number of teams to replicate this scope for at deploy."
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.prefix"
-              label="Prefix"
-              type="text"
-              placeholder="e.g., lab1, prod, dev"
-              hint="Applied to all items in this group"
-              icon=""
-            />
-            <FormField
-              v-model="config.resourcePool"
-              label="Resource Pool"
-              type="text"
-              placeholder="Proxmox resource pool name"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.description"
-              label="Description"
-              type="textarea"
-              placeholder="Describe this group..."
-              :rows="2"
-              icon=""
-            />
-            <FormField
-              v-model="config.tagsString"
-              label="Tags"
-              type="text"
-              placeholder="e.g., production, web-tier, database"
-              hint="Comma-separated list of tags"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <GroupFields v-if="node.type === 'group'" v-model="config" />
 
         <!-- Simulated Internet Specific Fields -->
-        <template v-if="node.type === 'simulated-internet'">
-          <div class="alert alert-warning shadow-sm mb-4">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>Simulated Internet provides fake public IPs and services for isolated training.</span>
-          </div>
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.bridge"
-              label="Bridge Name"
-              type="text"
-              :required="true"
-              placeholder="e.g., vmbr100"
-              icon=""
-            />
-            <FormField
-              v-model="config.publicCidr"
-              label="Public CIDR"
-              type="text"
-              :required="true"
-              placeholder="e.g., 203.0.113.0/24"
-              hint="Simulated public IP range"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.fakeDns"
-              label="Include Fake DNS (8.8.8.8, 1.1.1.1)"
-              type="checkbox"
-              icon=""
-            />
-            <FormField
-              v-model="config.fakeServices"
-              label="Fake Services"
-              type="text"
-              placeholder="e.g., cdn, updates, cloud"
-              hint="Comma-separated list of simulated services"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <SimulatedInternetFields v-if="node.type === 'simulated-internet'" v-model="config" />
 
         <!-- Edge Firewall Specific Fields -->
-        <template v-if="node.type === 'edge-firewall'">
-          <div class="alert alert-success shadow-sm mb-4">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-            <span>Edge Firewall connects your network segments.</span>
-          </div>
-
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.description"
-              label="Description"
-              type="textarea"
-              placeholder="Edge firewall description..."
-              :rows="2"
-              icon=""
-            />
-            <FormField
-              v-model="config.applianceType"
-              label="Appliance Type"
-              type="select"
-              :options="[
-                { value: 'pfsense', label: 'pfSense' },
-                { value: 'opnsense', label: 'OPNsense' }
-              ]"
-              hint="Firewall appliance type"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <EdgeFirewallFields v-if="node.type === 'edge-firewall'" v-model="config" />
 
         <!-- LXC Container Specific Fields -->
-        <template v-if="node.type === 'lxc'">
-          <FormDivider label="LXC Container" icon="" />
-          
-          <FormSection variant="bordered" :columns="1">
-            <FormField
-              v-model="config.description"
-              label="Description"
-              type="textarea"
-              placeholder="Container description..."
-              :rows="2"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.hostname"
-              label="Hostname"
-              type="text"
-              placeholder="e.g., web-server-01"
-              icon=""
-            />
-            <FormField
-              v-model="config.ipAddress"
-              label="IP Address"
-              type="text"
-              placeholder="e.g., 192.168.1.10"
-              hint="Static IP for this container"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <LxcFields v-if="node.type === 'lxc'" v-model="config" />
 
         <!-- Vulnerable Target Specific Fields -->
-        <template v-if="node.type === 'vuln-target'">
-          <div class="alert alert-error shadow-sm mb-4">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span>Vulnerable targets are intentionally insecure systems for training purposes.</span>
-          </div>
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.targetType"
-              label="Target Type"
-              type="select"
-              :required="true"
-              placeholder="Select target..."
-              :options="[
-                { value: 'dvwa', label: 'DVWA (Web Vulnerabilities)' },
-                { value: 'juiceshop', label: 'OWASP Juice Shop' },
-                { value: 'metasploitable', label: 'Metasploitable 2/3' },
-                { value: 'dvl', label: 'Damn Vulnerable Linux' },
-                { value: 'dvcp', label: 'Damn Vulnerable Cloud Platform' },
-                { value: 'dvad', label: 'Damn Vulnerable AD' },
-                { value: 'custom', label: 'Custom Template' }
-              ]"
-              icon=""
-            />
-            <FormField
-              v-model="config.template"
-              label="Template Name"
-              type="text"
-              placeholder="Template to clone from"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.cores"
-              label="CPU Cores"
-              type="number"
-              placeholder="2"
-              :min="1"
-              icon=""
-            />
-            <FormField
-              v-model="config.memory"
-              label="Memory (MB)"
-              type="number"
-              placeholder="2048"
-              :min="512"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <VulnerableTargetFields v-if="node.type === 'vuln-target'" v-model="config" />
 
         <!-- Per-node Attachments -->
         <NodeAttachmentsSection
@@ -1725,82 +592,11 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           :attachments="attachments"
           :nodes="nodes"
           @update:attachments="$emit('update:attachments', $event)"
+          @open-content="emit('open-content', $event)"
         />
 
         <!-- Shared Service Specific Fields -->
-        <template v-if="node.type === 'shared-service'">
-          <div class="alert alert-info shadow-sm mb-4">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span>Shared services are accessible from all Gamenets (Git, Chat, Wiki, Auth).</span>
-          </div>
-          
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.serviceType"
-              label="Service Type"
-              type="select"
-              :required="true"
-              placeholder="Select service..."
-              :options="[
-                { value: 'gitea', label: 'Gitea (Git Server)' },
-                { value: 'gitlab', label: 'GitLab' },
-                { value: 'mattermost', label: 'Mattermost (Chat)' },
-                { value: 'wiki', label: 'Wiki.js' },
-                { value: 'keycloak', label: 'Keycloak (SSO)' },
-                { value: 'registry', label: 'Docker Registry' },
-                { value: 'vault', label: 'HashiCorp Vault' },
-                { value: 'custom', label: 'Custom Service' }
-              ]"
-              icon=""
-            />
-            <FormField
-              v-model="config.template"
-              label="Template Name"
-              type="text"
-              placeholder="Template to clone from"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.cores"
-              label="CPU Cores"
-              type="number"
-              placeholder="2"
-              :min="1"
-              icon=""
-            />
-            <FormField
-              v-model="config.memory"
-              label="Memory (MB)"
-              type="number"
-              placeholder="2048"
-              :min="512"
-              icon=""
-            />
-          </FormSection>
-
-          <FormSection variant="bordered" :columns="2">
-            <FormField
-              v-model="config.bridge"
-              label="Network Bridge"
-              type="text"
-              placeholder="vmbr0 (management network)"
-              icon=""
-            />
-            <FormField
-              v-model="config.ipAddress"
-              label="IP Address"
-              type="text"
-              placeholder="e.g., 10.0.0.10"
-              icon=""
-            />
-          </FormSection>
-        </template>
+        <SharedServiceFields v-if="node.type === 'shared-service'" v-model="config" />
       </div>
 
       <!-- Footer (sticky) -->

@@ -8,6 +8,9 @@
 
 import { ref } from 'vue'
 import { openDB, type IDBPDatabase } from 'idb'
+import { backendRequest, getBackendScope } from '@/services/backendApi'
+import { deserializeToCanvas } from '@/overlay/serialize'
+import type { CatalogEntry as CatalogDocument } from '@/types/range42-schema'
 
 // =============================================================================
 // Types
@@ -53,6 +56,23 @@ export interface CatalogEntry {
   topology?: Record<string, unknown>
   inventory?: Array<Record<string, unknown>>
   metadata?: Record<string, unknown>
+  document?: Record<string, unknown>
+  readme_md?: string | null
+}
+
+/** Adapt the API detail envelope to the fields rendered by the entry viewer. */
+function presentEntry(entry: CatalogEntry): CatalogEntry {
+  const doc = entry.document ?? {}
+  const topology = Array.isArray(doc.nodes)
+    ? { ...deserializeToCanvas(doc as unknown as CatalogDocument, { nodes: {}, edges: {}, unsupported: [] }) }
+    : (doc.topology as CatalogEntry['topology']) ?? entry.topology
+  return {
+    ...entry,
+    readme: entry.readme_md ?? entry.readme,
+    topology,
+    inventory: Array.isArray(doc.inventory) ? doc.inventory : entry.inventory,
+    metadata: (doc.metadata as CatalogEntry['metadata']) ?? entry.metadata,
+  }
 }
 
 /** Paged response envelope returned by the backend (`app.schemas.v1.common.Page`). */
@@ -147,7 +167,7 @@ function buildQueryString(filters: CatalogEntryFilters): string {
 }
 
 function cacheKey(filters: CatalogEntryFilters): string {
-  return `entries:${buildQueryString(filters)}`
+  return `${getBackendScope()}:entries:${buildQueryString(filters)}`
 }
 
 // =============================================================================
@@ -162,19 +182,30 @@ export function useCatalog() {
   async function listEntries(filters: CatalogEntryFilters = {}): Promise<CatalogEntry[]> {
     loading.value = true
     error.value = null
-    const qs = buildQueryString(filters)
     const key = cacheKey(filters)
     try {
-      const res = await fetch(`/v1/catalog/entries${qs}`, { credentials: 'same-origin' })
-      if (!res.ok) {
-        throw new Error(`catalog list failed: ${res.status}`)
+      const collected: CatalogEntry[] = []
+      let pageFilters = { ...filters }
+      while (true) {
+        const data = await backendRequest<CatalogPage>(
+          `/v1/catalog/entries${buildQueryString(pageFilters)}`,
+        )
+        const items = data.items ?? []
+        collected.push(...items)
+        const offset = pageFilters.offset ?? 0
+        const nextOffset = (data.offset ?? offset) + items.length
+        if (!Number.isFinite(data.total) || nextOffset >= data.total) break
+        if (!items.length || nextOffset <= offset) {
+          throw new Error('Catalog pagination did not advance. Refresh the source and retry.')
+        }
+        pageFilters = { ...filters, offset: nextOffset }
       }
-      const data = (await res.json()) as CatalogPage
-      entries.value = data.items || []
+      entries.value = collected
       // Cache by filter key (the Page envelope carries no source SHA).
       try {
         const db = await getDb()
-        await db.put(STORE, { entries: entries.value, ts: Date.now() }, key)
+        // IndexedDB cannot clone Vue's reactive proxies; store the API payload.
+        await db.put(STORE, { entries: collected, ts: Date.now() }, key)
       } catch {
         /* ignore cache failures */
       }
@@ -203,17 +234,13 @@ export function useCatalog() {
   async function getEntry(source: string, path: string): Promise<CatalogEntry | null> {
     loading.value = true
     error.value = null
-    const key = `entry:${source}:${path}`
+    const key = `${getBackendScope()}:entry:${source}:${path}`
     try {
       const url = `/v1/catalog/entries/${encodeURIComponent(source)}/${path
         .split('/')
         .map(encodeURIComponent)
         .join('/')}`
-      const res = await fetch(url, { credentials: 'same-origin' })
-      if (!res.ok) {
-        throw new Error(`catalog entry fetch failed: ${res.status}`)
-      }
-      const entry = (await res.json()) as CatalogEntry
+      const entry = presentEntry(await backendRequest<CatalogEntry>(url))
       try {
         const db = await getDb()
         await db.put(STORE, { entry, ts: Date.now() }, key)

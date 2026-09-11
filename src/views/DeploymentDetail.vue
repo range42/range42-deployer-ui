@@ -12,27 +12,56 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useDeploymentStore } from '@/stores/deploymentStore.ts'
+import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
+import RuntimeGitRecords from '@/components/deployment/RuntimeGitRecords.vue'
+import DeploymentAllocations from '@/components/deployment/DeploymentAllocations.vue'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
 import SnapshotCreateModal from '@/components/SnapshotCreateModal.vue'
 import RollbackModal from '@/components/RollbackModal.vue'
+import { backendRequest, backendBlob, getBackendScope } from '@/services/backendApi'
+import { visibleDeploymentLogs } from '@/services/deploymentLogs'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import PreflightReport from '@/components/ui/PreflightReport.vue'
 import { useToast } from '@/composables/useToast'
+import { latestSavedProjectRevision } from '@/services/backendProjectRegistration'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n({ useScope: 'global' })
 const store = useDeploymentStore()
+const backend = useBackendApiStore()
+let contextVersion = 0
 
+const attempts = ref([])
+const newRuntimeAttempt = ref(null)
+const attemptsError = ref(null)
 const meta = ref(null) // deployment metadata from the backend (non-live)
+const isRetired = computed(() => meta.value?.scenario_label === '_universal')
 const loading = ref(true)
 const loadError = ref(null)
 const logFilter = ref('')
+const showRoutineLogs = ref(false)
+const downloadingLogs = ref(false)
 const teamFilter = ref(null)
 const showTeardown = ref(false)
+const actionError = ref(null)
+const preflight = ref(null)
+const checkingPreflight = ref(false)
+const starting = ref(false)
+const warningsAck = ref(false)
+const canPrepare = computed(() => meta.value && !isRetired.value && !loading.value && !loadError.value
+  && ['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value))
+const hasWarnings = computed(() => preflight.value?.result === 'warn'
+  || preflight.value?.checks?.some(check => check.result === 'warn'))
+const canStart = computed(() => canPrepare.value && !checkingPreflight.value && !starting.value
+  && preflight.value && ['pass', 'warn'].includes(preflight.value.result)
+  && !preflight.value.checks?.some(check => check.result === 'block')
+  && (!hasWarnings.value || warningsAck.value))
 
 const VALID_TABS = ['overview', 'teams', 'logs']
-const TEAMS_DEFAULT_STATES = new Set(['deploying', 'deployed', 'partial'])
+const TEAMS_DEFAULT_STATES = new Set(['deploying', 'deployed', 'succeeded', 'partial'])
 
 const live = computed(() => store.deployments[String(route.params.id)] || null)
 
@@ -52,6 +81,39 @@ const effectiveState = computed(() => {
   return meta.value?.state || 'unknown'
 })
 
+// Match backend scope guards: retirement is independent of the project pin.
+const supportsConcreteActions = computed(() => !!meta.value?.project_sha && !isRetired.value)
+const supportsLegacyActions = computed(() => !!meta.value && !meta.value.project_sha && !isRetired.value)
+const maintenanceScope = ref('configure')
+const maintenanceSha = ref('')
+const maintenanceConfirm = ref('')
+const maintenanceRecord = ref(null)
+const maintenanceSnapshot = ref(null)
+const maintenanceWarningsAck = ref(false)
+const maintenanceBusy = ref(false)
+let maintenanceVersion = 0
+const canMaintain = computed(() => supportsConcreteActions.value && !loading.value && !loadError.value
+  && ['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value))
+const maintenanceRequest = computed(() => maintenanceScope.value === 'configure'
+  ? { scope: 'configure', project_sha: maintenanceSha.value.trim() } : { scope: 'teardown' })
+const maintenanceWarnings = computed(() => maintenanceRecord.value?.result === 'warn'
+  || maintenanceRecord.value?.checks?.some(check => check.result === 'warn'))
+const canRunMaintenance = computed(() => canMaintain.value && !maintenanceBusy.value
+  && maintenanceRecord.value && ['pass', 'warn'].includes(maintenanceRecord.value.result)
+  && !maintenanceRecord.value.checks?.some(check => check.result === 'block')
+  && JSON.stringify(maintenanceSnapshot.value) === JSON.stringify(maintenanceRequest.value)
+  && (!maintenanceWarnings.value || maintenanceWarningsAck.value)
+  && (maintenanceScope.value !== 'teardown' || (meta.value?.codename && maintenanceConfirm.value === meta.value.codename)))
+watch([maintenanceScope, maintenanceSha], () => {
+  maintenanceVersion += 1
+  maintenanceRecord.value = null
+  maintenanceSnapshot.value = null
+  maintenanceWarningsAck.value = false
+  maintenanceBusy.value = false
+})
+const canCancel = computed(() => ['pending', 'preflight_running', 'preflight_review', 'deploying', 'running_attempt'].includes(effectiveState.value)
+  && (!isRetired.value || !!meta.value?.current_attempt_id))
+
 const defaultTab = computed(() => {
   if (teamCount.value > 1 && TEAMS_DEFAULT_STATES.has(effectiveState.value)) return 'teams'
   return 'overview'
@@ -65,8 +127,16 @@ const { showToast } = useToast()
 
 const IN_FLIGHT_STATES = new Set(['deploying', 'running_attempt'])
 const inFlight = computed(() => IN_FLIGHT_STATES.has(effectiveState.value))
+const ALLOCATION_IDLE_STATES = new Set(['pending', 'draft', 'preflight_review', 'succeeded', 'completed', 'deployed', 'partial', 'failed', 'cancelled', 'torn_down'])
+const TERMINAL_ATTEMPT_STATES = new Set(['succeeded', 'completed', 'partial', 'failed', 'cancelled', 'unknown'])
+const allocationReleaseDisabled = computed(() => loading.value || !!loadError.value || !!attemptsError.value
+  || starting.value || checkingPreflight.value || maintenanceBusy.value
+  || !ALLOCATION_IDLE_STATES.has(effectiveState.value)
+  || (live.value?.state === 'unknown' && live.value.last_event_seq > 0)
+  || attempts.value.some(attempt => !TERMINAL_ATTEMPT_STATES.has(attempt.state)))
 
 function onOpenReset(payload) {
+  if (!supportsLegacyActions.value) return
   resetTeamId.value = payload?.teamId || null
   if (!resetTeamId.value) return
   showResetModal.value = true
@@ -117,33 +187,33 @@ const snapshotTeamId = ref(null)
 const teamSnapshots = ref({})
 
 function onOpenSnapshot(payload) {
+  if (!supportsLegacyActions.value) return
   snapshotTeamId.value = payload?.teamId || null
   if (!snapshotTeamId.value) return
   showSnapshotModal.value = true
 }
 
 async function fetchTeamSnapshots(id, teamId) {
+  const version = contextVersion
   try {
     const url = `/v1/deployments/${encodeURIComponent(id)}/snapshots?team_id=${encodeURIComponent(teamId)}`
-    const res = await fetch(url, { credentials: 'same-origin' })
-    if (!res.ok) {
-      teamSnapshots.value = { ...teamSnapshots.value, [teamId]: [] }
-      return
-    }
-    const body = await res.json().catch(() => ({}))
-    const list = Array.isArray(body) ? body : (body?.snapshots || [])
+    const body = await backendRequest(url)
+    if (version !== contextVersion) return
+    const list = Array.isArray(body) ? body : (body?.items || body?.snapshots || [])
     teamSnapshots.value = { ...teamSnapshots.value, [teamId]: list }
-  } catch {
-    teamSnapshots.value = { ...teamSnapshots.value, [teamId]: [] }
+  } catch (error) {
+    if (version === contextVersion) actionError.value = error.message
   }
 }
 
 async function onOpenRollback(payload) {
+  if (!supportsLegacyActions.value) return
   const id = payload?.teamId
   if (!id) return
   snapshotTeamId.value = id
+  const version = contextVersion
   await fetchTeamSnapshots(String(route.params.id), id)
-  showRollbackModal.value = true
+  if (version === contextVersion) showRollbackModal.value = true
 }
 
 function onSnapshotCreated() {
@@ -189,14 +259,38 @@ const filteredLogs = computed(() => {
   const src = teamFilter.value
     ? (live.value.teams[teamFilter.value]?.latest_logs || [])
     : live.value.logs
-  if (!logFilter.value) return src
-  const needle = logFilter.value.toLowerCase()
-  return src.filter(l => (l.text || '').toLowerCase().includes(needle))
+  return visibleDeploymentLogs(src, { query: logFilter.value, showRoutine: showRoutineLogs.value })
 })
+
+async function downloadLogs() {
+  const version = contextVersion
+  downloadingLogs.value = true
+  actionError.value = null
+  try {
+    const blob = await backendBlob(`/v1/deployments/${encodeURIComponent(String(route.params.id))}/events/download`)
+    if (version !== contextVersion) return
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'events.jsonl'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) {
+    if (version === contextVersion) actionError.value = error.message
+  } finally {
+    downloadingLogs.value = false
+  }
+}
 
 const aggregateProgress = computed(() => {
   const state = effectiveState.value
   const map = {
+    pending:   0,
+    preflight_running: 10,
+    preflight_review: 20,
+    succeeded: 100,
     draft:     0,
     preflight: 10,
     deploying: 50,
@@ -210,32 +304,149 @@ const aggregateProgress = computed(() => {
 })
 
 async function loadMeta() {
+  const version = contextVersion
+  const cursor = live.value?.last_event_seq
   loading.value = true
+  loadError.value = null
   try {
-    const res = await fetch(`/v1/deployments/${encodeURIComponent(route.params.id)}`, {
-      credentials: 'same-origin',
-    })
-    if (!res.ok) {
-      if (res.status === 404) loadError.value = 'not_found'
-      else loadError.value = `HTTP ${res.status}`
-    } else {
-      meta.value = await res.json()
+    const record = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}`)
+    if (version === contextVersion) {
+      meta.value = record
+      if (live.value && live.value.last_event_seq === cursor) live.value.state = record.state
+      if (!maintenanceSha.value) maintenanceSha.value = latestSavedProjectRevision(record.project_id) || record.project_sha || ''
+      await loadAttempts()
     }
-  } catch (err) {
-    loadError.value = err?.message || String(err)
+  } catch (error) {
+    if (version === contextVersion) {
+      loadError.value = error.status === 404 ? 'not_found' : error.message
+    }
   } finally {
-    loading.value = false
+    if (version === contextVersion) loading.value = false
   }
 }
 
-async function cancelDeployment() {
+async function onRuntimeStarted(attempt) {
+  newRuntimeAttempt.value = attempt
+  maintenanceRecord.value = null
+  maintenanceSnapshot.value = null
+  await loadMeta()
+}
+
+async function loadAttempts() {
+  const version = contextVersion
   try {
-    await fetch(`/v1/deployments/${encodeURIComponent(route.params.id)}/cancel`, {
-      method: 'POST',
-      credentials: 'same-origin',
+    const page = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}/attempts`)
+    if (version === contextVersion) {
+      attempts.value = page.items || []
+      attemptsError.value = null
+    }
+  } catch (error) {
+    if (version === contextVersion) attemptsError.value = error.message
+  }
+}
+
+watch(() => live.value?.state, (state, previous) => {
+  if (state !== previous && ['succeeded', 'failed', 'cancelled', 'partial'].includes(state)) {
+    void loadAttempts()
+  }
+})
+
+async function cancelDeployment() {
+  const version = contextVersion
+  actionError.value = null
+  try {
+    await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}/cancel`, { method: 'POST' })
+    if (version === contextVersion) await loadMeta()
+  } catch (error) {
+    if (version === contextVersion) actionError.value = error.message
+  }
+}
+
+async function runPreflight() {
+  if (!canPrepare.value || checkingPreflight.value || starting.value) return
+  const version = contextVersion
+  checkingPreflight.value = true
+  preflight.value = null
+  warningsAck.value = false
+  actionError.value = null
+  try {
+    const record = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}/preflight`, { method: 'POST' })
+    if (version === contextVersion) preflight.value = record
+  } catch (error) {
+    if (version === contextVersion) actionError.value = error.message
+  } finally {
+    if (version === contextVersion) checkingPreflight.value = false
+  }
+}
+
+async function startDeployment() {
+  if (!canStart.value) return
+  const version = contextVersion
+  starting.value = true
+  actionError.value = null
+  try {
+    const attempt = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}/attempts`, {
+      method: 'POST', body: JSON.stringify({ scope: 'full' }),
     })
-  } catch {
-    // soft fail — UI will surface state via SSE
+    if (version !== contextVersion) return
+    preflight.value = null
+    if (attempt.state === 'failed') {
+      actionError.value = t('deployment.detail.startFailed', { reason: attempt.sub_reason || 'ATTEMPT_START_FAILED' })
+    }
+    await loadMeta()
+  } catch (error) {
+    if (version === contextVersion) actionError.value = error.message
+  } finally {
+    if (version === contextVersion) starting.value = false
+  }
+}
+
+async function checkMaintenance() {
+  if (!canMaintain.value || maintenanceBusy.value) return
+  actionError.value = null
+  const snapshot = { ...maintenanceRequest.value }
+  if (snapshot.scope === 'configure' && !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(snapshot.project_sha)) {
+    actionError.value = t('deployment.maintenance.invalidSha')
+    return
+  }
+  const context = contextVersion
+  const version = ++maintenanceVersion
+  maintenanceBusy.value = true
+  maintenanceRecord.value = null
+  maintenanceWarningsAck.value = false
+  try {
+    const record = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}/preflight`, {
+      method: 'POST', body: JSON.stringify(snapshot),
+    })
+    if (context !== contextVersion || version !== maintenanceVersion) return
+    maintenanceSnapshot.value = snapshot
+    maintenanceRecord.value = record
+  } catch (error) {
+    if (context === contextVersion && version === maintenanceVersion) actionError.value = error.message
+  } finally {
+    if (context === contextVersion && version === maintenanceVersion) maintenanceBusy.value = false
+  }
+}
+
+async function runMaintenance() {
+  if (!canRunMaintenance.value) return
+  const context = contextVersion
+  const snapshot = { ...maintenanceSnapshot.value }
+  maintenanceBusy.value = true
+  actionError.value = null
+  try {
+    const attempt = await backendRequest(`/v1/deployments/${encodeURIComponent(route.params.id)}/attempts`, {
+      method: 'POST', body: JSON.stringify(snapshot),
+    })
+    if (context !== contextVersion) return
+    maintenanceRecord.value = null
+    maintenanceConfirm.value = ''
+    if (attempt.state === 'failed') actionError.value = t('deployment.detail.startFailed', { reason: attempt.sub_reason || 'ATTEMPT_START_FAILED' })
+    await loadMeta()
+  } catch (error) {
+    if (context === contextVersion) actionError.value = error.message
+  } finally {
+    if (context === contextVersion) maintenanceBusy.value = false
   }
 }
 
@@ -248,21 +459,41 @@ function clearTeamFilter() {
   teamFilter.value = null
 }
 
-onMounted(async () => {
-  await ensureNamespaces(['deployment', 'common'])
-  await loadMeta()
-  // Subscribe regardless — SSE will populate or reconnect.
-  store.subscribe(String(route.params.id))
-})
+onMounted(() => { ensureNamespaces(['deployment', 'common', 'runtime']) })
 
-watch(() => route.params.id, async (id, prev) => {
-  if (!id || id === prev) return
-  if (prev) store.unsubscribe(String(prev))
+watch([() => route.params.id, getBackendScope, () => backend.token], async ([id], previous) => {
+  const version = ++contextVersion
+  if (previous?.[0]) store.unsubscribe(String(previous[0]))
+  meta.value = null
+  attempts.value = []
+  newRuntimeAttempt.value = null
+  attemptsError.value = null
+  preflight.value = null
+  checkingPreflight.value = false
+  starting.value = false
+  actionError.value = null
+  warningsAck.value = false
+  maintenanceVersion += 1
+  maintenanceScope.value = 'configure'
+  maintenanceSha.value = ''
+  maintenanceConfirm.value = ''
+  maintenanceRecord.value = null
+  maintenanceSnapshot.value = null
+  maintenanceBusy.value = false
+  maintenanceWarningsAck.value = false
+  teamSnapshots.value = {}
+  queuedResets.value = new Set()
+  showResetModal.value = false
+  showSnapshotModal.value = false
+  showRollbackModal.value = false
+  showTeardown.value = false
+  if (!id) return
   await loadMeta()
-  store.subscribe(String(id))
-})
+  if (version === contextVersion && !loadError.value) store.subscribe(String(id))
+}, { immediate: true, flush: 'sync' })
 
 onBeforeUnmount(() => {
+  contextVersion += 1
   if (route.params.id) store.unsubscribe(String(route.params.id))
 })
 </script>
@@ -294,12 +525,13 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
-        <button type="button" class="btn btn-sm btn-ghost" @click="cancelDeployment">
+        <button v-if="canCancel" type="button" class="btn btn-sm btn-ghost" @click="cancelDeployment">
           {{ t('deployment.detail.cancel') }}
         </button>
         <button
           type="button"
           class="btn btn-sm btn-error btn-outline"
+          v-if="supportsLegacyActions && meta"
           data-testid="detail-teardown-open"
           @click="showTeardown = true"
         >
@@ -308,9 +540,15 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <section v-if="isRetired" role="status" class="rounded-lg border border-base-300 bg-base-200 p-4 mb-4 space-y-2" aria-labelledby="retired-scenario-heading" data-testid="retired-deployment">
+      <h2 id="retired-scenario-heading" class="font-semibold">{{ t('deployment.detail.retired.title') }}</h2>
+      <p class="text-sm">{{ t('deployment.detail.retired.description') }}</p>
+      <p class="text-sm">{{ t('deployment.detail.retired.replacement') }}</p>
+    </section>
+
     <!-- Plan C §C4.8 — Teardown confirm-phrase modal -->
     <TeardownConfirmModal
-      v-if="showTeardown"
+      v-if="showTeardown && supportsLegacyActions"
       :visible="showTeardown"
       :deployment-id="String(route.params.id)"
       :codename="meta?.codename || String(route.params.id)"
@@ -319,7 +557,7 @@ onBeforeUnmount(() => {
 
     <!-- Plan C §C4.9 — Per-team reset modal -->
     <ResetTeamModal
-      v-if="showResetModal && resetTeamId"
+      v-if="showResetModal && resetTeamId && supportsLegacyActions"
       :visible="showResetModal"
       :deployment-id="String(route.params.id)"
       :team-id="resetTeamId"
@@ -331,7 +569,7 @@ onBeforeUnmount(() => {
 
     <!-- Plan C §C4.10 — Snapshot + Rollback -->
     <SnapshotCreateModal
-      v-if="showSnapshotModal && snapshotTeamId"
+      v-if="showSnapshotModal && snapshotTeamId && supportsLegacyActions"
       :visible="showSnapshotModal"
       :deployment-id="String(route.params.id)"
       :team-id="snapshotTeamId"
@@ -339,7 +577,7 @@ onBeforeUnmount(() => {
       @created="onSnapshotCreated"
     />
     <RollbackModal
-      v-if="showRollbackModal && snapshotTeamId"
+      v-if="showRollbackModal && snapshotTeamId && supportsLegacyActions"
       :visible="showRollbackModal"
       :deployment-id="String(route.params.id)"
       :team-id="snapshotTeamId"
@@ -348,7 +586,50 @@ onBeforeUnmount(() => {
       @rolled-back="onRolledBack"
     />
 
+    <p v-if="actionError" role="alert" class="alert alert-error mb-4">{{ actionError }}</p>
+    <p v-if="loadError && loadError !== 'not_found'" role="alert" class="alert alert-error mb-4">{{ loadError }}</p>
+    <div v-if="canPrepare" class="rounded border border-base-300 p-4 mb-4 space-y-3">
+      <p class="text-sm">{{ t('deployment.detail.prepareDescription') }}</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm btn-outline" data-testid="deployment-run-preflight"
+          :disabled="checkingPreflight || starting" @click="runPreflight">
+          {{ checkingPreflight ? t('deployment.deploy.preflight.running') : t('deployment.detail.runPreflight') }}
+        </button>
+        <button type="button" class="btn btn-sm btn-primary" data-testid="deployment-start"
+          :disabled="!canStart" @click="startDeployment">{{ t('deployment.detail.start') }}</button>
+      </div>
+      <PreflightReport v-if="preflight" :record="preflight" />
+      <label v-if="hasWarnings" class="flex items-center gap-2 text-sm">
+        <input v-model="warningsAck" type="checkbox" class="checkbox checkbox-sm" data-testid="deployment-warnings-ack" />
+        {{ t('deployment.deploy.preflight.acknowledge') }}
+      </label>
+    </div>
+
     <progress class="progress progress-primary w-full mb-4" :value="aggregateProgress" max="100"></progress>
+
+    <section v-if="canMaintain" class="rounded border border-base-300 p-4 mb-4 space-y-3" aria-labelledby="maintenance-heading">
+      <h2 id="maintenance-heading" class="font-semibold">{{ t('deployment.maintenance.title') }}</h2>
+      <p class="text-sm text-base-content/70">{{ t('deployment.maintenance.description') }}</p>
+      <label class="form-control gap-1"><span>{{ t('deployment.maintenance.action') }}</span>
+        <select v-model="maintenanceScope" class="select select-bordered w-full" data-testid="maintenance-scope" :disabled="maintenanceBusy">
+          <option value="configure">{{ t('deployment.maintenance.configure') }}</option>
+          <option value="teardown">{{ t('deployment.maintenance.teardown') }}</option>
+        </select>
+      </label>
+      <label v-if="maintenanceScope === 'configure'" class="form-control gap-1"><span>{{ t('deployment.maintenance.revision') }}</span>
+        <input v-model="maintenanceSha" class="input input-bordered font-mono w-full" data-testid="configure-project-sha" :disabled="maintenanceBusy" spellcheck="false" />
+        <span class="text-xs text-base-content/70">{{ t('deployment.maintenance.revisionHint') }}</span>
+      </label>
+      <label v-else class="form-control gap-1"><span>{{ t('deployment.maintenance.confirm', { codename: meta.codename }) }}</span>
+        <input v-model="maintenanceConfirm" class="input input-bordered w-full" data-testid="maintenance-confirm" :disabled="maintenanceBusy" autocomplete="off" />
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline btn-sm" data-testid="maintenance-preflight" :disabled="maintenanceBusy" @click="checkMaintenance">{{ t('deployment.maintenance.preflight') }}</button>
+        <button type="button" class="btn btn-sm" :class="maintenanceScope === 'teardown' ? 'btn-error' : 'btn-primary'" data-testid="maintenance-start" :disabled="!canRunMaintenance" @click="runMaintenance">{{ t('deployment.maintenance.start') }}</button>
+      </div>
+      <PreflightReport v-if="maintenanceRecord" :record="maintenanceRecord" />
+      <label v-if="maintenanceWarnings" class="flex items-center gap-2 text-sm"><input v-model="maintenanceWarningsAck" type="checkbox" class="checkbox checkbox-sm" />{{ t('deployment.deploy.preflight.acknowledge') }}</label>
+    </section>
 
     <!-- Tabs -->
     <div class="tabs tabs-bordered mb-4" role="tablist">
@@ -383,16 +664,34 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
+      <DeploymentAllocations v-if="meta && !loadError" :deployment-id="String(route.params.id)" :disabled="allocationReleaseDisabled" />
+      <RuntimeControls v-if="supportsConcreteActions" :deployment-id="String(route.params.id)"
+        :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
+      <RuntimeGitRecords v-if="supportsConcreteActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
       <div class="card card-compact bg-base-100 border border-base-300 mb-4">
         <div class="card-body p-4">
           <h2 class="card-title text-sm">{{ t('deployment.detail.overview.stateChainHeading') }}</h2>
-          <ol v-if="meta?.attempts?.length" class="list-decimal pl-5 space-y-1 text-sm">
-            <li v-for="(att, idx) in meta.attempts" :key="idx">
-              <span class="font-mono text-xs">{{ att.attempt_id || `#${idx + 1}` }}</span>
+          <ol v-if="attempts.length" class="list-decimal pl-5 space-y-1 text-sm">
+            <li v-for="(att, idx) in attempts" :key="idx">
+              <span class="font-mono text-xs">{{ att.id || att.attempt_id || `#${idx + 1}` }}</span>
               <span class="ml-2 text-base-content/70">{{ att.state }}</span>
+              <span v-if="att.scope" class="ml-2 text-xs">{{ att.scope }}</span>
+              <code v-if="att.project_sha" class="ml-2 text-xs break-all">{{ att.project_sha }}</code>
               <span v-if="att.started_at" class="ml-2 text-xs text-base-content/50">{{ att.started_at }}</span>
+              <details v-if="att.operation?.request" class="mt-1">
+                <summary class="cursor-pointer">{{ t('runtime.historyOperation') }} · {{ t(`runtime.operations.${att.operation.request.kind}`) }} · {{ t(att.operation.request.enabled ? 'runtime.enabled' : 'runtime.disabled') }} <span>{{ att.operation.request.vm_id || att.operation.request.vnet || '' }}</span></summary>
+                <div v-if="att.operation_result" class="space-y-1 py-2 text-xs" data-testid="runtime-result">
+                  <p>{{ t(att.operation_result.desired_reached ? 'runtime.desiredConfirmed' : 'runtime.desiredUnconfirmed') }}</p>
+                  <p v-if="att.operation_result.partial" class="text-base-content border-l-2 border-warning pl-2">{{ t('runtime.partialResult') }}</p>
+                  <p v-if="att.operation_result.missing_vmids?.length">{{ t('runtime.missingGuests', { ids: att.operation_result.missing_vmids.join(', ') }) }}</p>
+                  <p v-if="att.operation_result.mismatched_vmids?.length">{{ t('runtime.mismatchedGuests', { ids: att.operation_result.mismatched_vmids.join(', ') }) }}</p>
+                  <p v-if="att.operation_result.error" class="text-error break-words">{{ att.operation_result.error }}</p>
+                  <p v-if="att.operation_result.live_forwarding_verified === false">{{ t('runtime.forwardingUnknown') }}</p>
+                </div>
+              </details>
             </li>
           </ol>
+          <p v-else-if="attemptsError" class="text-sm text-error">{{ attemptsError }}</p>
           <p v-else class="text-sm italic text-base-content/60">{{ t('deployment.detail.overview.noAttempts') }}</p>
         </div>
       </div>
@@ -426,6 +725,7 @@ onBeforeUnmount(() => {
       >{{ t('deployment.detail.teams.empty') }}</div>
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="teams-grid">
         <TeamCard
+          :actions-enabled="supportsLegacyActions"
           v-for="team in teamList"
           :key="team.id"
           :team="teamWithQueueStatus(team)"
@@ -446,11 +746,16 @@ onBeforeUnmount(() => {
           :placeholder="t('deployment.detail.logs.filterPlaceholder')"
           class="input input-bordered input-sm flex-1 min-w-0"
         />
-        <a
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="showRoutineLogs" type="checkbox" class="checkbox checkbox-sm" data-testid="logs-show-routine" />
+          {{ t('deployment.detail.logs.showRoutine') }}
+        </label>
+        <button
+          type="button"
           class="btn btn-sm btn-ghost"
-          :href="`/v1/deployments/${encodeURIComponent(String(route.params.id))}/events?format=raw`"
-          download="events.jsonl"
-        >{{ t('deployment.detail.logs.download') }}</a>
+          data-testid="logs-download" :disabled="downloadingLogs"
+          @click="downloadLogs"
+        >{{ t('deployment.detail.logs.download') }}</button>
       </div>
       <div v-if="teamFilter" class="text-xs text-base-content/70 mb-2 flex items-center gap-2">
         <span>{{ t('deployment.detail.logs.teamFilter', { id: teamFilter }) }}</span>

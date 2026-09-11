@@ -1,13 +1,17 @@
 <script setup>
+import { randomId } from '@/services/randomId'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useCatalog, applyClientFilters } from '@/composables/useCatalog'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProjectStore } from '@/stores/projectStore'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import { getProvider } from '@/services/git'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import NewRoleModal from '@/components/catalog/NewRoleModal.vue'
+import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { ensureNamespaces } from '@/i18n'
 
 const { t } = useI18n()
@@ -26,6 +30,27 @@ const selectedOs = ref('')
 const selectedDifficulty = ref('')
 const tagInput = ref('')
 const searchQuery = ref('')
+const newRoleOpen = ref(false)
+const rolePublisherOpen = ref(false)
+const roleDraft = ref(null)
+const roleDraftId = ref('')
+
+function openNewRole() {
+  roleDraftId.value = `catalog-role-${randomId()}`
+  roleDraft.value = null
+  newRoleOpen.value = true
+}
+
+function publishRole(draft) {
+  roleDraft.value = draft
+  newRoleOpen.value = false
+  rolePublisherOpen.value = true
+}
+
+function closeRolePublisher() {
+  rolePublisherOpen.value = false
+  newRoleOpen.value = true
+}
 
 // Fork modal state
 const forkEntry = ref(null)
@@ -104,35 +129,16 @@ onMounted(async () => {
 
 // ----- Verb handlers -----
 
-function useEntry(entry) {
-  const p = projects.createProject(entry.name)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'use',
-      source_id: entry.source_id,
-      path: entry.path,
-      sha: entry.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+const handoff = ref(null)
+function useEntry(item) {
+  handoff.value = { entry: item, mode: 'use' }
 }
-
-function customizeEntry(entry) {
-  // Gate fork-and-edit on real write access. A source whose `writable` flag is
-  // explicitly false is read-only, so customizing (which publishes back) is not
-  // possible — fork & publish to a writable repo instead.
-  const source = inv.getSource(entry?.source_id)
-  if (source?.writable === false) return
-  const p = projects.createProject(`${entry.name} (custom)`)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'customize',
-      source_id: entry.source_id,
-      path: entry.path,
-      sha: entry.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+function customizeEntry(item) {
+  handoff.value = { entry: item, mode: 'customize' }
+}
+function openCreatedProject(project) {
+  handoff.value = null
+  router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
 }
 
 function openFork(entry) {
@@ -201,14 +207,32 @@ async function submitFork() {
 </script>
 
 <template>
+  <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
+    :entry="handoff.entry" :mode="handoff.mode" @close="handoff = null" @opened="openCreatedProject" />
   <section class="max-w-6xl mx-auto p-6">
-    <header class="mb-6">
-      <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
-      <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
+    <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
+        <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm shrink-0" data-testid="new-catalog-role" @click="openNewRole">{{ t('catalog.new_role') }}</button>
     </header>
 
-    <!-- Empty state when no sources -->
-    <div v-if="inv.sources.length === 0">
+    <NewRoleModal :key="roleDraftId" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
+    <PublishTargetsModal
+      v-if="roleDraft"
+      :open="rolePublisherOpen"
+      :project-id="roleDraftId"
+      :files="roleDraft.files"
+      :message="`Add Ansible role ${roleDraft.name}`"
+      :create-only="true"
+      :component-path="roleDraft.path"
+      @close="closeRolePublisher"
+      @published="refresh"
+    />
+
+    <!-- Backend entries remain browsable before this browser loads its source mirror. -->
+    <div v-if="inv.sources.length === 0 && entries.length === 0 && !loading && !loadError">
       <EmptyState
         :title="t('catalog.empty.no_sources_title')"
         :description="t('catalog.empty.no_sources_desc')"

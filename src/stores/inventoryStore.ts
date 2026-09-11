@@ -5,8 +5,9 @@
  * Supports read and write operations to Git repositories.
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import {
   getGitProvider,
   parseRepoUrl,
@@ -25,6 +26,7 @@ import {
 
 const STORAGE_KEY = 'range42_inventories'
 const SOURCES_STORAGE_KEY = 'range42_git_sources'
+const SOURCE_SCOPE_STORAGE_KEY = 'range42_git_sources_backend'
 const TOKEN_STORAGE_PREFIX = 'range42_token_'
 
 // =============================================================================
@@ -52,7 +54,7 @@ export interface ComponentListItem {
 
 export type GitSourceProvider = 'github' | 'gitlab' | 'gitea' | 'generic'
 
-export type GitSourceAuthKind = 'none' | 'oauth' | 'pat'
+export type GitSourceAuthKind = 'none' | 'oauth' | 'pat' | 'ssh'
 
 export interface GitSourceAuth {
   kind: GitSourceAuthKind
@@ -64,6 +66,7 @@ export interface GitSourceRepo {
   repo: string
   branch: string
   manifest?: string
+  last_refreshed_at?: string | null
 }
 
 export interface GitSourceHealth {
@@ -74,6 +77,8 @@ export interface GitSourceHealth {
   // Whether the authenticated identity can push to this source's repo(s).
   // Undefined until a successful write-access probe (canWrite) has run.
   writable?: boolean
+  repos_seen?: number
+  entries_indexed?: number
 }
 
 export interface GitSource {
@@ -87,6 +92,9 @@ export interface GitSource {
   // Cached write-access flag for the source's repo(s); mirrors health.writable
   // for convenient lookup from catalog views via getSource().
   writable?: boolean
+  /** Backend that owns this source ID. Undefined for legacy local sources. */
+  backend_url?: string
+  has_token?: boolean
 }
 
 // =============================================================================
@@ -101,8 +109,21 @@ export const useInventoryStore = defineStore('inventory', () => {
   const registeredRepos = ref<RegisteredInventory[]>(loadFromStorage())
   const cachedComponents = ref<Map<string, CachedComponent>>(new Map())
   const sources = ref<GitSource[]>(loadSourcesFromStorage())
+  const sourcesBackendScope = ref<string | null>(loadSourceScope())
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const backend = useBackendApiStore()
+
+  // Source IDs and health belong to one backend. Reset its mirror on switch.
+  watch(() => backend.url, (url, previous) => {
+    const scope = url.replace(/\/+$/, '')
+    if ((sourcesBackendScope.value !== null && sourcesBackendScope.value !== scope) ||
+        (previous !== undefined && previous !== url)) {
+      sources.value = []
+      sourcesBackendScope.value = null
+      saveSourcesToStorage()
+    }
+  }, { immediate: true, flush: 'sync' })
   
   // ===========================================================================
   // Computed
@@ -171,9 +192,19 @@ export const useInventoryStore = defineStore('inventory', () => {
     return []
   }
 
+  function loadSourceScope(): string | null {
+    try {
+      return localStorage.getItem(SOURCE_SCOPE_STORAGE_KEY)
+    } catch {
+      return null
+    }
+  }
+
   function saveSourcesToStorage(): void {
     try {
       localStorage.setItem(SOURCES_STORAGE_KEY, JSON.stringify(sources.value))
+      if (sourcesBackendScope.value === null) localStorage.removeItem(SOURCE_SCOPE_STORAGE_KEY)
+      else localStorage.setItem(SOURCE_SCOPE_STORAGE_KEY, sourcesBackendScope.value)
     } catch (e) {
       console.warn('[InventoryStore] Failed to save sources to storage:', e)
     }
@@ -200,6 +231,14 @@ export const useInventoryStore = defineStore('inventory', () => {
     return normalized
   }
 
+  /** Replace the browser mirror only with a successful response from its owner. */
+  function syncSources(next: GitSource[], backendUrl: string): void {
+    if (backend.url.replace(/\/+$/, '') !== backendUrl) return
+    sources.value = next.map((source) => ({ ...source, backend_url: backendUrl }))
+    sourcesBackendScope.value = backendUrl
+    saveSourcesToStorage()
+  }
+
   function removeSource(id: string): void {
     const idx = sources.value.findIndex((s) => s.id === id)
     if (idx >= 0) {
@@ -208,7 +247,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     }
     // Also clear the associated token
     try {
-      localStorage.removeItem(TOKEN_STORAGE_PREFIX + id)
+      localStorage.removeItem(tokenStorageKey(id))
     } catch {
       /* ignore */
     }
@@ -229,7 +268,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
   function setToken(sourceId: string, token: string): void {
     try {
-      localStorage.setItem(TOKEN_STORAGE_PREFIX + sourceId, token)
+      localStorage.setItem(tokenStorageKey(sourceId), token)
     } catch (e) {
       console.warn('[InventoryStore] Failed to save token:', e)
     }
@@ -237,10 +276,15 @@ export const useInventoryStore = defineStore('inventory', () => {
 
   function getToken(sourceId: string): string | null {
     try {
-      return localStorage.getItem(TOKEN_STORAGE_PREFIX + sourceId)
+      return localStorage.getItem(tokenStorageKey(sourceId))
     } catch {
       return null
     }
+  }
+
+  function tokenStorageKey(sourceId: string): string {
+    const scope = backend.url.replace(/\/+$/, '')
+    return TOKEN_STORAGE_PREFIX + (scope ? `${encodeURIComponent(scope)}:` : '') + sourceId
   }
 
   function getSource(id: string): GitSource | undefined {
@@ -668,6 +712,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     registeredRepos,
     cachedComponents,
     sources,
+    sourcesBackendScope,
     isLoading,
     error,
 
@@ -700,6 +745,7 @@ export const useInventoryStore = defineStore('inventory', () => {
 
     // GitSource management (Plan C §4)
     addSource,
+    syncSources,
     removeSource,
     updateSourceHealth,
     setToken,

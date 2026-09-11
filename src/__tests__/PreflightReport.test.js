@@ -93,3 +93,16 @@ describe('<PreflightReport>', () => {
     expect(wrapper.text()).toContain('has no checks')
   })
 })
+
+it.each([
+  ['pass', 'All checks passed', 'alert-success'],
+  ['block', 'Blocking issues found', 'alert-error'],
+])('renders canonical preflight result %s and timestamp', (result, label, cls) => {
+  const wrapper = mount(PreflightReport, {
+    props: { record: { result, checks: [], ts: '2026-09-10T10:00:00Z' } },
+    global: { plugins: [makeI18n()] },
+  })
+  expect(wrapper.text()).toContain(label)
+  expect(wrapper.find(`.${cls}`).exists()).toBe(true)
+  expect(wrapper.text()).toContain('2026-09-10T10:00:00Z')
+})

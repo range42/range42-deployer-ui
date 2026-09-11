@@ -1,8 +1,7 @@
 /**
  * Deployment Store
  *
- * Manages deployment state, executes deployment plans step by step,
- * and tracks progress. Provides real-time status updates.
+ * Tracks backend-owned deployment state and real-time progress.
  *
  * Also (Plan C §C4.1) consumes the backend SSE stream at
  *   `GET /v1/deployments/:id/events?from_cursor=<k>`
@@ -11,34 +10,11 @@
  * redaction counters, preflight rollup).
  */
 
-import { ref, computed, reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
-import {
-  proxmoxApi,
-  type DeploymentPlan,
-  type DeploymentStep,
-} from '@/services/proxmox'
-import { useProjectStore } from './projectStore'
-
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface DeploymentLog {
-  timestamp: string
-  level: 'info' | 'success' | 'warning' | 'error'
-  message: string
-  stepId?: string
-}
-
-export interface DeploymentState {
-  currentPlan: DeploymentPlan | null
-  isDeploying: boolean
-  isPaused: boolean
-  logs: DeploymentLog[]
-  startTime: string | null
-  endTime: string | null
-}
+import { BackendEventStream } from '@/services/backendEventStream'
+import { getBackendScope } from '@/services/backendApi'
+import { useBackendApiStore } from './backendApiStore'
 
 // =============================================================================
 // SSE event vocabulary — spec §18.2
@@ -72,6 +48,8 @@ export interface LogLine {
   text: string
   team_id?: string
   host?: string
+  ansible_event?: string
+  task_action?: string
 }
 
 export interface TeamSlice {
@@ -207,6 +185,8 @@ export function applySseEvent(record: DeploymentRecord, event: SseEvent): void {
         text: typeof payload.text === 'string' ? payload.text : '',
         team_id: payload.team_id as string | undefined,
         host: payload.host as string | undefined,
+        ansible_event: payload.ansible_event as string | undefined,
+        task_action: payload.task_action as string | undefined,
       }
       if (line.team_id) {
         const team = ensureTeam(record, line.team_id)
@@ -290,17 +270,9 @@ function makeEmptyRecord(id: string): DeploymentRecord {
 // =============================================================================
 
 export const useDeploymentStore = defineStore('deployment', () => {
-  // State
-  const currentPlan = ref<DeploymentPlan | null>(null)
-  const isDeploying = ref(false)
-  const isPaused = ref(false)
-  const logs = ref<DeploymentLog[]>([])
-  const startTime = ref<string | null>(null)
-  const endTime = ref<string | null>(null)
-
   // Plan C §C4.1 — SSE-backed live deployment records.
   const deployments = reactive<Record<string, DeploymentRecord>>({})
-  const activeStreams = new Map<string, EventSource>()
+  const activeStreams = new Map<string, EventSource | BackendEventStream>()
   const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const subscribeOpts = new Map<string, SubscribeOptions>()
 
@@ -327,7 +299,7 @@ export const useDeploymentStore = defineStore('deployment', () => {
    * exponential backoff up to SSE_MAX_RETRIES, passing `from_cursor` =
    * last seen `event_seq` so the server can replay missed events.
    */
-  function subscribe(id: string, opts: SubscribeOptions = {}): EventSource | null {
+  function subscribe(id: string, opts: SubscribeOptions = {}): EventSource | BackendEventStream | null {
     if (activeStreams.has(id)) return activeStreams.get(id) || null
     subscribeOpts.set(id, opts)
     const record = getOrCreateRecord(id)
@@ -337,22 +309,25 @@ export const useDeploymentStore = defineStore('deployment', () => {
     return openStream(id)
   }
 
-  function openStream(id: string): EventSource | null {
+  function openStream(id: string): EventSource | BackendEventStream | null {
     const opts = subscribeOpts.get(id) || {}
     const record = getOrCreateRecord(id)
     const Ctor = opts.eventSourceCtor
       || (typeof EventSource !== 'undefined' ? EventSource : undefined)
-    if (!Ctor) {
+    const backend = useBackendApiStore()
+    const base = opts.baseUrl ?? getBackendScope()
+    const headers = base === getBackendScope() ? backend.authHeaders() : {}
+    const useFetch = !opts.eventSourceCtor && !!headers.Authorization
+    if (!Ctor && !useFetch) {
       record.connection = 'exhausted'
       return null
     }
-    const base = opts.baseUrl || ''
     const cursor = record.last_event_seq || 0
     const url = `${base}/v1/deployments/${encodeURIComponent(id)}/events?from_cursor=${cursor}`
     record.connection = 'connecting'
-    let es: EventSource
+    let es: EventSource | BackendEventStream
     try {
-      es = new Ctor(url)
+      es = useFetch ? new BackendEventStream(url, headers) : new Ctor!(url)
     } catch (err) {
       console.warn('[deploymentStore] EventSource ctor failed:', err)
       record.connection = 'exhausted'
@@ -365,6 +340,7 @@ export const useDeploymentStore = defineStore('deployment', () => {
       record.retry_count = 0
     }
     es.onmessage = (evt: MessageEvent) => {
+      if (activeStreams.get(id) !== es) return
       let parsed: SseEvent | null = null
       try {
         parsed = JSON.parse(evt.data) as SseEvent
@@ -382,7 +358,18 @@ export const useDeploymentStore = defineStore('deployment', () => {
         })
       }
     }
-    es.onerror = () => scheduleReconnect(id)
+    if ('addEventListener' in es) {
+      for (const type of [
+        'state_transition', 'phase_transition', 'task_start', 'task_end',
+        'host_unreachable', 'log_line', 'redaction', 'heartbeat',
+        'attempt_start', 'attempt_end', 'proxmox_task', 'preflight_check',
+      ]) {
+        es.addEventListener(type, es.onmessage as EventListener)
+      }
+    }
+    es.onerror = () => {
+      if (activeStreams.get(id) === es) scheduleReconnect(id)
+    }
     return es
   }
 
@@ -428,416 +415,13 @@ export const useDeploymentStore = defineStore('deployment', () => {
     if (record) record.connection = 'closed'
   }
 
-  // Abort controller for cancellation
-  let abortController: AbortController | null = null
-
-  // =============================================================================
-  // Node Status Integration
-  // =============================================================================
-
-  /**
-   * Update canvas node status based on deployment step result
-   * Maps deployment status to node status colors
-   */
-  function updateNodeStatus(
-    nodeId: string,
-    status: 'pending' | 'deploying' | 'running' | 'stopped' | 'error'
-  ): void {
-    if (!currentPlan.value?.projectId) return
-
-    const projectStore = useProjectStore()
-    projectStore.updateNodeStatus(currentPlan.value.projectId, nodeId, status)
-  }
-
-  function markNodeDeployed(nodeId: string, payload: Record<string, unknown>): void {
-    if (!currentPlan.value?.projectId) return
-
-    const projectStore = useProjectStore()
-    const project = projectStore.getProject(currentPlan.value.projectId)
-    if (!project) return
-
-    const node = project.nodes.find((n: any) => n.id === nodeId)
-    if (!node?.data) return
-
-    node.data.deployed = true
-    node.data.vmId = payload.vm_id ? Number(payload.vm_id) : undefined
-
-    // Initialize desired/actual config from the deployment config
-    const initialConfig = {
-      name: node.data.config?.name || '',
-      cores: node.data.config?.cores ? Number(node.data.config.cores) : 1,
-      memory: node.data.config?.memory ? Number(node.data.config.memory) : 0,
-      tags: node.data.tags ? [...node.data.tags] : [],
-      description: node.data.config?.description || '',
-    }
-    node.data.desiredConfig = { ...initialConfig }
-    node.data.actualConfig = { ...initialConfig }
-
-    projectStore.updateProject(currentPlan.value.projectId, { nodes: project.nodes })
-  }
-
-  // =============================================================================
-  // Computed
-  // =============================================================================
-
-  const progress = computed(() => {
-    if (!currentPlan.value) return 0
-    const steps = currentPlan.value.steps
-    const completed = steps.filter(s => s.status === 'completed').length
-    return Math.round((completed / steps.length) * 100)
-  })
-
-  const currentStep = computed(() => {
-    if (!currentPlan.value) return null
-    return currentPlan.value.steps.find(s => s.status === 'running') || null
-  })
-
-  const completedSteps = computed(() => {
-    if (!currentPlan.value) return []
-    return currentPlan.value.steps.filter(s => s.status === 'completed')
-  })
-
-  const failedSteps = computed(() => {
-    if (!currentPlan.value) return []
-    return currentPlan.value.steps.filter(s => s.status === 'failed')
-  })
-
-  const pendingSteps = computed(() => {
-    if (!currentPlan.value) return []
-    return currentPlan.value.steps.filter(s => s.status === 'pending')
-  })
-
-  // =============================================================================
-  // Logging
-  // =============================================================================
-
-  function addLog(
-    level: DeploymentLog['level'],
-    message: string,
-    stepId?: string
-  ) {
-    logs.value.push({
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      stepId,
-    })
-  }
-
-  function clearLogs() {
-    logs.value = []
-  }
-
-  // =============================================================================
-  // Step Execution
-  // =============================================================================
-
-  async function executeStep(step: DeploymentStep): Promise<boolean> {
-    step.status = 'running'
-    step.startedAt = new Date().toISOString()
-    addLog('info', `Starting: ${step.name}`, step.id)
-
-    // Update node status to 'deploying'
-    updateNodeStatus(step.nodeId, 'deploying')
-
-    try {
-      // Execute based on step type
-      switch (step.type) {
-        case 'noop': {
-          // Already deployed — nothing to do
-          break
-        }
-
-        case 'create_bridge': {
-          await proxmoxApi.network.addToNode(step.payload as Parameters<typeof proxmoxApi.network.addToNode>[0])
-          break
-        }
-
-        case 'create_vm': {
-          await proxmoxApi.vm.create(step.payload as Parameters<typeof proxmoxApi.vm.create>[0])
-          break
-        }
-
-        case 'clone_template': {
-          await proxmoxApi.vm.clone(step.payload as Parameters<typeof proxmoxApi.vm.clone>[0])
-          break
-        }
-
-        case 'create_lxc': {
-          await proxmoxApi.lxc.create(step.payload as Parameters<typeof proxmoxApi.lxc.create>[0])
-          break
-        }
-
-        case 'configure_network': {
-          await proxmoxApi.network.addToVm(step.payload as Parameters<typeof proxmoxApi.network.addToVm>[0])
-          break
-        }
-
-        case 'add_firewall_rule': {
-          await proxmoxApi.firewall.addRule(step.payload as Parameters<typeof proxmoxApi.firewall.addRule>[0])
-          break
-        }
-
-        case 'start_vm': {
-          const payload = step.payload as { proxmox_node: string; vm_id: number }
-          await proxmoxApi.vm.start({
-            proxmox_node: payload.proxmox_node,
-            vm_id: payload.vm_id,
-          })
-          break
-        }
-
-        case 'start_lxc': {
-          const payload = step.payload as { proxmox_node: string; vm_id: number }
-          await proxmoxApi.lxc.start(payload.proxmox_node, payload.vm_id)
-          break
-        }
-
-        default:
-          addLog('warning', `Unknown step type: ${step.type}`, step.id)
-      }
-
-      step.status = 'completed'
-      step.completedAt = new Date().toISOString()
-      addLog('success', `Completed: ${step.name}`, step.id)
-      
-      // Update node status based on step type
-      if (['start_vm', 'start_lxc'].includes(step.type)) {
-        // VM is now running — mark as deployed with VMID
-        updateNodeStatus(step.nodeId, 'running')
-        markNodeDeployed(step.nodeId, step.payload)
-      } else if (step.type === 'noop') {
-        // Already deployed — no status change needed
-      } else {
-        updateNodeStatus(step.nodeId, 'stopped')
-      }
-      
-      return true
-
-    } catch (error) {
-      step.status = 'failed'
-      step.completedAt = new Date().toISOString()
-      step.error = error instanceof Error ? error.message : String(error)
-      addLog('error', `Failed: ${step.name} - ${step.error}`, step.id)
-      
-      // Update node status to 'error'
-      updateNodeStatus(step.nodeId, 'error')
-      
-      return false
-    }
-  }
-
-  // =============================================================================
-  // Deployment Control
-  // =============================================================================
-
-  /**
-   * Load a deployment plan
-   */
-  function loadPlan(plan: DeploymentPlan) {
-    currentPlan.value = plan
-    clearLogs()
-    addLog('info', `Loaded deployment plan: ${plan.name}`)
-  }
-
-  /**
-   * Start or resume deployment
-   */
-  async function startDeployment(): Promise<boolean> {
-    if (!currentPlan.value) {
-      addLog('error', 'No deployment plan loaded')
-      return false
-    }
-
-    if (isDeploying.value && !isPaused.value) {
-      addLog('warning', 'Deployment already in progress')
-      return false
-    }
-
-    isDeploying.value = true
-    isPaused.value = false
-    abortController = new AbortController()
-
-    if (!startTime.value) {
-      startTime.value = new Date().toISOString()
-      currentPlan.value.status = 'deploying'
-      currentPlan.value.startedAt = startTime.value
-    }
-
-    addLog('info', 'Starting deployment...')
-
-    // Execute steps sequentially
-    for (const step of currentPlan.value.steps) {
-      // Skip already completed/deployed steps
-      if (step.status === 'completed') {
-        if (step.type === 'noop') {
-          addLog('info', `Skipping: ${step.name} (already on Proxmox)`, step.id)
-        }
-        continue
-      }
-
-      // Check for pause/cancel
-      if (isPaused.value) {
-        addLog('info', 'Deployment paused')
-        return true
-      }
-
-      if (abortController?.signal.aborted) {
-        addLog('warning', 'Deployment cancelled')
-        currentPlan.value.status = 'cancelled'
-        isDeploying.value = false
-        return false
-      }
-
-      // Execute the step
-      const success = await executeStep(step)
-
-      if (!success) {
-        // Stop on failure
-        currentPlan.value.status = 'failed'
-        endTime.value = new Date().toISOString()
-        currentPlan.value.completedAt = endTime.value
-        isDeploying.value = false
-        addLog('error', 'Deployment failed')
-        return false
-      }
-
-      // Small delay between steps
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    // All steps completed
-    currentPlan.value.status = 'completed'
-    endTime.value = new Date().toISOString()
-    currentPlan.value.completedAt = endTime.value
-    isDeploying.value = false
-    addLog('success', 'Deployment completed successfully!')
-    return true
-  }
-
-  /**
-   * Pause deployment
-   */
-  function pauseDeployment() {
-    if (isDeploying.value) {
-      isPaused.value = true
-      addLog('info', 'Pausing deployment...')
-    }
-  }
-
-  /**
-   * Cancel deployment
-   */
-  function cancelDeployment() {
-    if (abortController) {
-      abortController.abort()
-    }
-    isPaused.value = false
-    isDeploying.value = false
-    addLog('warning', 'Deployment cancelled by user')
-  }
-
-  /**
-   * Reset deployment state
-   */
-  function resetDeployment() {
-    if (currentPlan.value) {
-      // Reset all step statuses
-      currentPlan.value.steps.forEach(step => {
-        step.status = 'pending'
-        step.startedAt = undefined
-        step.completedAt = undefined
-        step.error = undefined
-        step.progress = undefined
-      })
-      currentPlan.value.status = 'draft'
-      currentPlan.value.startedAt = undefined
-      currentPlan.value.completedAt = undefined
-    }
-
-    isDeploying.value = false
-    isPaused.value = false
-    startTime.value = null
-    endTime.value = null
-    clearLogs()
-    addLog('info', 'Deployment reset')
-  }
-
-  /**
-   * Clear current deployment
-   */
-  function clearDeployment() {
-    currentPlan.value = null
-    isDeploying.value = false
-    isPaused.value = false
-    startTime.value = null
-    endTime.value = null
-    clearLogs()
-  }
-
-  /**
-   * Retry a failed step
-   */
-  async function retryStep(stepId: string): Promise<boolean> {
-    if (!currentPlan.value) return false
-
-    const step = currentPlan.value.steps.find(s => s.id === stepId)
-    if (!step || step.status !== 'failed') {
-      addLog('error', 'Cannot retry: step not found or not failed')
-      return false
-    }
-
-    step.status = 'pending'
-    step.error = undefined
-    
-    return executeStep(step)
-  }
-
-  /**
-   * Skip a step
-   */
-  function skipStep(stepId: string) {
-    if (!currentPlan.value) return
-
-    const step = currentPlan.value.steps.find(s => s.id === stepId)
-    if (step && (step.status === 'pending' || step.status === 'failed')) {
-      step.status = 'skipped'
-      addLog('warning', `Skipped: ${step.name}`, step.id)
-    }
-  }
-
-  // =============================================================================
-  // Return
-  // =============================================================================
+  const backend = useBackendApiStore()
+  watch([getBackendScope, () => backend.token], () => {
+    for (const id of subscribeOpts.keys()) unsubscribe(id)
+    for (const id of Object.keys(deployments)) delete deployments[id]
+  }, { flush: 'sync' })
 
   return {
-    // State
-    currentPlan: computed(() => currentPlan.value),
-    isDeploying: computed(() => isDeploying.value),
-    isPaused: computed(() => isPaused.value),
-    logs: computed(() => logs.value),
-    startTime: computed(() => startTime.value),
-    endTime: computed(() => endTime.value),
-
-    // Computed
-    progress,
-    currentStep,
-    completedSteps,
-    failedSteps,
-    pendingSteps,
-
-    // Actions
-    loadPlan,
-    startDeployment,
-    pauseDeployment,
-    cancelDeployment,
-    resetDeployment,
-    clearDeployment,
-    retryStep,
-    skipStep,
-    addLog,
-    clearLogs,
-
     // SSE (§C4.1)
     deployments,
     subscribe,
