@@ -1,0 +1,15 @@
+{
+  "provider": "github",
+  "started": "2026-09-10T15:16:23.504Z",
+  "checks": [
+    "dedicated branch request and result files persisted",
+    "idempotent request causes no additional commit",
+    "byte-exact readback at completed SHA",
+    "remote metadata preserved",
+    "secret-bearing runtime fields excluded"
+  ],
+  "repository": "pparage/range42-acceptance-20260910-private-gh1",
+  "branch": "range42-ui/runtime-records-github-20260910",
+  "request_sha": "05473c283ffb3ad8a93de405f1be1fb552efd2aa",
+  "result_sha": "4a8024c8a331808f6d751891d80221f16c98c57d"
+}

@@ -1,7 +1,7 @@
 import { providerForBinding, runOnBranch, workingBranchForProject } from '@/composables/useProjectGitSync'
 import { registeredLocalProject } from './backendProjectRegistration'
 
-const terminal = new Set(['succeeded', 'failed', 'cancelled'])
+const terminal = new Set(['succeeded', 'completed', 'partial', 'failed', 'cancelled', 'unknown'])
 const shaPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value)
 const vmid = value => Number.isInteger(value) && value >= 100 && value <= 999999999
@@ -40,7 +40,7 @@ export function buildRuntimeRecord(deployment, attempt, scope) {
   } else requireValue(input.kind === 'scenario_firewall', 'Unsupported runtime operation')
   request.enabled = input.enabled
   if (input.kind === 'sdn_snat') request.acknowledge_shared_scope = true
-  requireValue(terminal.has(attempt.state) || ['pending', 'running'].includes(attempt.state), 'Unknown runtime attempt state')
+  requireValue(terminal.has(attempt.state) || ['pending', 'deploying', 'running'].includes(attempt.state), 'Unknown runtime attempt state')
   const phase = terminal.has(attempt.state) ? 'result' : 'request'
   const record = { version: 1, phase, backend_url: scope, deployment_id: deployment.id, attempt_id: attempt.id,
     project_sha: operation.project_sha, target_host_id: operation.target_host_id, request }

@@ -15,7 +15,7 @@ enableAutoUnmount(afterEach)
 const scope = 'https://backend.test'
 const deployment = { id: 'dep-1', project_id: 'project-1', scenario_label: 'demo', target_host_id: 'host-1' }
 const operation = { request: { kind: 'vm_firewall', vm_id: 3191, enabled: true }, target_host_id: 'host-1', project_sha: 'a'.repeat(40) }
-const attempt = { id: 'attempt-1', deployment_id: 'dep-1', operation, project_sha: 'a'.repeat(40), state: 'running' }
+const attempt = { id: 'attempt-1', deployment_id: 'dep-1', operation, project_sha: 'a'.repeat(40), state: 'deploying' }
 let project
 beforeEach(() => {
   localStorage.clear()

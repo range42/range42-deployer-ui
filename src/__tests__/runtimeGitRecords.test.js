@@ -12,7 +12,7 @@ const project = () => ({ id: 'browser-1', name: 'Lab', scenario: { label: 'demo'
   git: { source_id: 'source-1', provider: 'github', base_url: 'https://github.com', repo_owner: 'team', repo_name: 'lab',
     branch_strategy: 'dedicated_repo', branch: 'main', working_branch: 'range42-ui/browser-1', subdir: 'projects/demo' } })
 const deployment = () => ({ id: 'deployment-1', project_id: 'browser-1', scenario_label: 'demo', target_host_id: 'host-1' })
-const attempt = () => ({ id: 'attempt-1', deployment_id: 'deployment-1', state: 'running', project_sha: 'b'.repeat(40),
+const attempt = () => ({ id: 'attempt-1', deployment_id: 'deployment-1', state: 'deploying', project_sha: 'b'.repeat(40),
   created_at: '2026-09-10T12:00:00Z', operation: { project_sha: 'b'.repeat(40), target_host_id: 'host-1',
     request: { kind: 'sdn_snat', vnet: 'labnet', enabled: false, acknowledge_shared_scope: true },
     runtime: { proof: 'private-runtime-proof' }, target_identity: { password: 'private-password' } },
@@ -58,6 +58,12 @@ describe('runtime change records in project Git', () => {
     expect(JSON.parse(record.content)).toMatchObject({ state: 'failed', result: { desired_reached: false, partial: true,
       matched_vmids: [3101], missing_vmids: [3102], mismatched_vmids: [], live_forwarding_verified: false, error_present: true } })
     expect(record.content).not.toContain('private-')
+  })
+
+  it.each(['succeeded', 'completed', 'partial', 'failed', 'cancelled', 'unknown'])('records the backend terminal state %s without reclassifying it', state => {
+    const record = buildRuntimeRecord(deployment(), { ...attempt(), state }, 'https://backend.test')
+    expect(record.phase).toBe('result')
+    expect(JSON.parse(record.content).state).toBe(state)
   })
 
   it('appends only the record and remote file index in one guarded commit', async () => {
