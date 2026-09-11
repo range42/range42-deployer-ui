@@ -256,5 +256,25 @@
     "install": "install",
     "configure": "configure",
     "validate": "validate"
+  },
+  "allocations": {
+    "title": "Deployment allocations",
+    "description": "These VM IDs and addresses do not expire. They stay reserved until explicitly released.",
+    "loading": "Reading allocations…",
+    "refresh": "Refresh allocations",
+    "absent": "No committed allocation record exists for this deployment.",
+    "released": "Allocation released. The backend confirms no committed allocation record remains.",
+    "target": "Target",
+    "revision": "Saved project revision",
+    "created": "Reserved since",
+    "unnamed": "VM",
+    "noAddresses": "No addresses recorded.",
+    "busy": "Release is unavailable while an operation is active or deployment status is uncertain. Refresh after the operation finishes.",
+    "review": "Review allocation release",
+    "confirmTitle": "Release these assignments?",
+    "confirmDescription": "The backend checks that no allocated VMs or active operations remain before freeing these IDs and addresses for reuse. Release keeps deployment history and does not remove guests or networks.",
+    "confirm": "Confirm release",
+    "releasing": "Checking and releasing…",
+    "cancel": "Cancel"
   }
 }

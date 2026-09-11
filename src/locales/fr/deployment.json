@@ -256,5 +256,25 @@
     "install": "installation",
     "configure": "configuration",
     "validate": "validation"
+  },
+  "allocations": {
+    "title": "Allocations du déploiement",
+    "description": "Ces identifiants de VM et adresses n’expirent pas. Ils restent réservés jusqu’à leur libération explicite.",
+    "loading": "Lecture des allocations…",
+    "refresh": "Actualiser les allocations",
+    "absent": "Aucune allocation permanente n’est enregistrée pour ce déploiement.",
+    "released": "Allocation libérée. Le backend confirme qu’aucune allocation permanente ne subsiste.",
+    "target": "Cible",
+    "revision": "Révision enregistrée du projet",
+    "created": "Réservée depuis",
+    "unnamed": "VM",
+    "noAddresses": "Aucune adresse enregistrée.",
+    "busy": "La libération est indisponible pendant une opération ou lorsque l’état du déploiement est incertain. Actualisez après la fin de l’opération.",
+    "review": "Examiner la libération",
+    "confirmTitle": "Libérer ces allocations ?",
+    "confirmDescription": "Le backend vérifie l’absence de VM allouées et d’opérations actives avant de rendre ces identifiants et adresses réutilisables. La libération conserve l’historique et ne supprime ni machines ni réseaux.",
+    "confirm": "Confirmer la libération",
+    "releasing": "Vérification et libération…",
+    "cancel": "Annuler"
   }
 }

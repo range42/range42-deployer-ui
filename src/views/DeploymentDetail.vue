@@ -14,6 +14,7 @@ import { ensureNamespaces } from '@/i18n'
 import { useDeploymentStore } from '@/stores/deploymentStore.ts'
 import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
 import RuntimeGitRecords from '@/components/deployment/RuntimeGitRecords.vue'
+import DeploymentAllocations from '@/components/deployment/DeploymentAllocations.vue'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
@@ -126,6 +127,13 @@ const { showToast } = useToast()
 
 const IN_FLIGHT_STATES = new Set(['deploying', 'running_attempt'])
 const inFlight = computed(() => IN_FLIGHT_STATES.has(effectiveState.value))
+const ALLOCATION_IDLE_STATES = new Set(['pending', 'draft', 'preflight_review', 'succeeded', 'completed', 'deployed', 'partial', 'failed', 'cancelled', 'torn_down'])
+const TERMINAL_ATTEMPT_STATES = new Set(['succeeded', 'completed', 'partial', 'failed', 'cancelled', 'unknown'])
+const allocationReleaseDisabled = computed(() => loading.value || !!loadError.value || !!attemptsError.value
+  || starting.value || checkingPreflight.value || maintenanceBusy.value
+  || !ALLOCATION_IDLE_STATES.has(effectiveState.value)
+  || (live.value?.state === 'unknown' && live.value.last_event_seq > 0)
+  || attempts.value.some(attempt => !TERMINAL_ATTEMPT_STATES.has(attempt.state)))
 
 function onOpenReset(payload) {
   if (!supportsLegacyActions.value) return
@@ -656,6 +664,7 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
+      <DeploymentAllocations v-if="meta && !loadError" :deployment-id="String(route.params.id)" :disabled="allocationReleaseDisabled" />
       <RuntimeControls v-if="supportsConcreteActions" :deployment-id="String(route.params.id)"
         :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
       <RuntimeGitRecords v-if="supportsConcreteActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
