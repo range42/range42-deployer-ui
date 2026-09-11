@@ -31,6 +31,28 @@ function hint(id) {
   }
   return 'shared'
 }
+function scopeChanges(ids, saved = {}) {
+  const current = new Set(ids)
+  return {
+    added: ids.filter(id => !Object.hasOwn(saved, id)).map(id => ({ id, scope: hint(id) })),
+    removed: Object.keys(saved).filter(id => !current.has(id)),
+  }
+}
+const sourceChanges = computed(() => {
+  const vms = scopeChanges(props.scenario.vms.map(vm => vm.node_id), props.modelValue?.node_scopes)
+  const networks = scopeChanges(props.scenario.networks.map(network => network.id), props.modelValue?.network_scopes)
+  return { vms, networks, pending: [vms, networks].some(change => change.added.length || change.removed.length) }
+})
+function reconcileSources() {
+  update(next => {
+    for (const [field, changes] of [['node_scopes', sourceChanges.value.vms], ['network_scopes', sourceChanges.value.networks]]) {
+      next[field] = Object.fromEntries([
+        ...Object.entries(next[field] || {}).filter(([id]) => !changes.removed.includes(id)),
+        ...changes.added.map(({ id, scope }) => [id, scope]),
+      ])
+    }
+  })
+}
 function enable(event) {
   if (!event.target.checked) {
     cached.value = copy(props.modelValue)
@@ -117,6 +139,17 @@ function prepare(next) {
       <div class="grid sm:grid-cols-2 gap-3">
         <label v-for="vm in scenario.vms" :key="vm.node_id" class="form-control gap-1 min-w-0"><span class="break-words">VM scope: {{ vm.vm_name || vm.node_id }}</span><select class="select select-bordered w-full" :data-testid="`replication-vm-scope-${vm.node_id}`" :value="modelValue.node_scopes[vm.node_id]" @change="update(next => { next.node_scopes[vm.node_id] = $event.target.value })"><option v-for="[value, label] in scopes" :key="value" :value="value">{{ label }}</option></select></label>
         <label v-for="network in scenario.networks" :key="network.id" class="form-control gap-1 min-w-0"><span class="break-words">Network scope: {{ network.id }}</span><select class="select select-bordered w-full" :data-testid="`replication-network-scope-${network.id}`" :value="modelValue.network_scopes[network.id]" @change="update(next => { next.network_scopes[network.id] = $event.target.value })"><option v-for="[value, label] in scopes" :key="value" :value="value">{{ label }}</option></select></label>
+      </div>
+      <div v-if="sourceChanges.pending" class="border border-warning/50 bg-warning/10 rounded-lg p-3 space-y-2" data-testid="replication-source-review">
+        <p class="font-semibold">Review changed canvas sources</p>
+        <ul class="list-disc pl-5 space-y-1 break-words">
+          <li v-for="source in sourceChanges.vms.added" :key="`add-vm-${source.id}`">Add VM {{ source.id }} with scope {{ source.scope }}.</li>
+          <li v-for="id in sourceChanges.vms.removed" :key="`remove-vm-${id}`">Remove VM {{ id }} from the source scopes.</li>
+          <li v-for="source in sourceChanges.networks.added" :key="`add-net-${source.id}`">Add network {{ source.id }} with scope {{ source.scope }}.</li>
+          <li v-for="id in sourceChanges.networks.removed" :key="`remove-net-${id}`">Remove network {{ id }} from the source scopes.</li>
+        </ul>
+        <p class="text-sm">Existing scopes and saved instance assignments will be kept. New instances need reviewed assignments. Deployed resources and reservations are unaffected.</p>
+        <button type="button" class="btn btn-outline btn-sm" data-testid="replication-reconcile-sources" @click="reconcileSources">Update source scopes</button>
       </div>
       <p v-if="planned.error" role="alert" class="alert alert-error break-words" data-testid="replication-error">{{ planned.error }}</p>
       <template v-if="planned.value">
