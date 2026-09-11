@@ -1,3 +1,4 @@
+import { expandScenarioReplication } from './scenarioReplication'
 import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
 import { validateBundleParameters } from './bundleParameters.ts'
@@ -185,10 +186,13 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
   requireValue(['sdn', 'existing_bridge'].includes(scenario.network_mode), 'Choose SDN or an existing bridge network')
   requireValue(!attachments.length, 'Existing canvas attachments must be moved into the scenario Content list before generating; they cannot be silently omitted')
+  const authoringScenario = scenario
+  const expanded = expandScenarioReplication({ scenario, nodes, edges })
+  if (expanded) ({ scenario, nodes, edges } = expanded)
   const projectVariables = configurationVariables(baseDoc, overlay)
   for (const node of nodes) {
     requireValue(['vm', 'network-segment', 'group'].includes(node.type), `Unsupported canvas kind: ${node.type}; this scenario supports VMs and networks`)
-    requireValue(node.data?.kind !== 'team_scope' && node.data?.replication?.scope !== 'per_team' && node.replication?.scope !== 'per_team', 'Replicated teams require explicit VM and network instances; automatic replication is not supported by this emitter')
+    requireValue(node.data?.kind !== 'team_scope' && [undefined, 'shared'].includes(node.data?.replication?.scope) && [undefined, 'shared'].includes(node.replication?.scope), 'Replicated canvas scopes require an explicit scenario replication roster and instance assignments')
   }
   const vms = normalizedVms(scenario.vms || [])
   const networks = scenario.networks || []
@@ -242,6 +246,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     ? { mode: 'sdn', zone: scenario.zone, vnets: networks.map(({ vnet, subnet, gateway, snat }) => ({ vnet, subnet, gateway, snat })) }
     : { mode: 'existing_bridge', bridges: networks.map(network => network.vnet) }
   write('manifest/scenario_networks.json', networkManifest, json)
+  if (expanded) write('manifest/scenario_instances.json', expanded.manifest, json)
   write('manifest/scenario_vms.json', { scenario: scenario.label, version: 3,
     vms: vms.map(vm => ({ vm_id: Number(vm.vm_id), vm_name: vm.vm_name, ip: vm.ip, role: 'vm',
       bridge: networks.find(network => network.id === vm.network_id).vnet, template_vm_id: Number(vm.template_vm_id),
@@ -355,5 +360,5 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(!(path in nextFiles) || nextFiles[path] === value, `Generated path already exists: ${path}; choose a new scenario name or review ownership of the existing scenario`)
     nextFiles[path] = value
   }
-  return { files: nextFiles, generatedPaths: Object.keys(generated), scenario: JSON.parse(JSON.stringify({ ...scenario, vms })) }
+  return { files: nextFiles, generatedPaths: Object.keys(generated), ...(expanded ? { warnings: expanded.warnings } : {}), scenario: JSON.parse(JSON.stringify(expanded ? authoringScenario : { ...scenario, vms })) }
 }
