@@ -21,6 +21,7 @@ vi.mock('@/services/projectRepo', () => ({ createProjectRepoAdapter }))
 
 import { useProjectGitSync, buildPushArgs, buildProjectFiles } from '@/composables/useProjectGitSync'
 import { useInventoryStore } from '@/stores/inventoryStore'
+import { savedScenario } from './fixtures/savedScenario'
 
 const CANVAS = {
   nodes: [
@@ -41,6 +42,37 @@ const BINDING = {
 }
 
 describe('useProjectGitSync', () => {
+  it('captures structured authoring before queued async saves and publishes the same metadata', async () => {
+    const project = savedScenario()
+    project.git = BINDING
+    const args = buildPushArgs(project, project.nodes, project.edges)
+    const publication = buildProjectFiles(args)
+    const promise = useProjectGitSync().pushToGit(args)
+    project.scenario.vms[0].vm_name = 'later-edit'
+    project.scenario_generated_paths.length = 0
+    project.baseDoc.env[0].default = 9999
+    await promise
+    const state = fakeAdapter.autosave.mock.calls[0][1]
+    expect(state.meta.ui_project).toEqual(JSON.parse(publication['meta.json']).ui_project)
+    expect(state.meta.ui_project.scenario.vms[0].vm_name).toBe('saved-vm')
+    expect(state.meta.ui_project.generated_paths.length).toBeGreaterThan(0)
+  })
+
+  it('seeds reopened working branches from their loaded SHA without changing older bindings', async () => {
+    const branchFrom = 'a'.repeat(40)
+    await useProjectGitSync().pushToGit({ projectId: 'new', binding: { ...BINDING, branch_from: branchFrom }, canvas: CANVAS, meta: { name: 'Opened' } })
+    expect(createProjectRepoAdapter.mock.calls[0][0].branchFrom).toBe(branchFrom)
+  })
+  it('keeps the loaded SHA when a reopened read-only project needs a fork', async () => {
+    const provider = { canWrite: vi.fn(async () => false),
+      ensureFork: vi.fn(async () => ({ owner: 'personal', repo: 'fork', default_branch: 'main' })), listCommits: vi.fn() }
+    getProvider.mockReturnValueOnce(provider)
+    const branchFrom = 'b'.repeat(40)
+    await useProjectGitSync().pushToGit({ projectId: 'copy', binding: { ...BINDING, branch_from: branchFrom }, canvas: CANVAS, meta: { name: 'Opened' } })
+    expect(createProjectRepoAdapter.mock.calls[0][0]).toMatchObject({ branchFrom,
+      source: { repos: [{ owner: 'personal', repo: 'fork' }] } })
+    expect(provider.listCommits).not.toHaveBeenCalled()
+  })
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()

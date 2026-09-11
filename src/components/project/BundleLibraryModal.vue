@@ -1,4 +1,5 @@
 <script setup>
+import { randomId } from '@/services/randomId'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
@@ -105,7 +106,7 @@ function attach() {
   error.value = ''
   try {
     const vars = bundleParameters(resolution.value.params, values.value, resolution.value.target_vars)
-    emit('selected', { id: crypto.randomUUID(), kind: 'bundle', target_node: target.value,
+    emit('selected', { id: randomId(), kind: 'bundle', target_node: target.value,
       path: resolution.value.entrypoint, vars, resolution: JSON.parse(JSON.stringify(resolution.value)) })
   } catch (cause) { error.value = cause.message || String(cause) }
 }

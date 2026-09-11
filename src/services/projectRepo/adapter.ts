@@ -1,3 +1,4 @@
+import { randomId } from '@/services/randomId'
 import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
 import { authoredFilesMetadata, validateAuthoredFilePath, validateAuthoredFiles, restoreBinaryFile, fileContentEquals, fileText, validateFileMap, type FileContent, type ProjectFiles } from '@/services/projectFiles'
 /**
@@ -24,8 +25,8 @@ import type {
 import { openProjectDb } from './indexeddb'
 
 function uuid(): string {
-  // crypto.randomUUID is available in all target browsers and in Node 19+.
-  return crypto.randomUUID()
+  // Use getRandomValues for shared HTTP origins as well as HTTPS.
+  return randomId()
 }
 
 function nowIso(): string {
@@ -121,12 +122,12 @@ class RepoAdapter implements ProjectRepoAdapter {
   // load / autosave / save
   // ---------------------------------------------------------------------------
 
-  async load(_projectId: string): Promise<ProjectState> {
-    let branch = this.draftBranch
+  async load(_projectId: string, options?: { branch: string }): Promise<ProjectState> {
+    let branch = options?.branch || this.draftBranch
     let revision: string
     try { revision = await this.headCommitSha(branch) }
     catch (error) {
-      if (!isGitNotFound(error)) throw error
+      if (options || !isGitNotFound(error)) throw error
       branch = this.mainBranch
       revision = await this.headCommitSha(branch)
     }

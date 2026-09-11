@@ -386,7 +386,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common'])
+  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common', 'reopening'])
 })
 
 onUnmounted(() => {
@@ -1133,6 +1133,10 @@ const handleInfrastructureImport = (result) => {
         <span v-if="gitSaving">{{ translate('project.git.saving') }}</span>
         <span v-else-if="gitSaveError" role="alert" class="text-error">{{ gitSaveError }}</span>
         <span v-else-if="currentProject.head_sha">{{ translate('project.git.saved', { branch: currentProject.git.working_branch || '—', sha: currentProject.head_sha.slice(0, 7) }) }}</span>
+      </div>
+      <div v-if="currentProject?.git_opened" class="px-3 py-1 text-xs text-base-content/70 break-all" data-testid="project-opened-revision">
+        <p>{{ translate('reopening.opened_revision', { branch: currentProject.git_opened.branch, sha: currentProject.git_opened.commit_sha }) }}</p>
+        <p v-if="currentProject.git_opened.mode === 'files' && !currentProject.scenario">{{ translate('reopening.files_notice') }}</p>
       </div>
 
       <!-- Tab strip -->

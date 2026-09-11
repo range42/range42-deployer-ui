@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { randomId } from '@/services/randomId'
 import { cloneFiles, type ProjectFiles } from '@/services/projectFiles'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
@@ -123,7 +124,7 @@ function connectCredential(sourceId: string) {
 }
 function addTarget() {
   targets.value.push({
-    id: `publish-${crypto.randomUUID()}`, source_id: '', provider: 'github', base_url: '',
+    id: `publish-${randomId()}`, source_id: '', provider: 'github', base_url: '',
     repo_owner: '', repo_name: '', base_branch: 'main', mode: 'pull_request', selected: true,
   })
 }

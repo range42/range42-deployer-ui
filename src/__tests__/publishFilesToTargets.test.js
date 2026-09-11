@@ -61,6 +61,25 @@ beforeEach(() => {
 })
 
 describe('publishFilesToTargets', () => {
+  it('keeps Gitea contribution branches within its 100-character API bound with stable distinct identities', async () => {
+    const create = repos.gitea.provider.createBranch
+    const names = []
+    repos.gitea.provider.createBranch = async options => {
+      if (options.name.length > 100) throw new Error('Gitea branch name exceeds 100 characters')
+      names.push(options.name)
+      return create(options)
+    }
+    const target = { ...targets[1], id: 'target-'.repeat(10), base_branch: 'a-review-branch-with-a-descriptive-name',
+      subdir: 'projects/a-project-with-a-descriptive-name', mode: 'pull_request' }
+    const args = { projectId: 'long-project-name-'.repeat(4), binding, files, message: 'Save' }
+    const first = await publishFilesToTargets(args, [target])
+    const retry = await publishFilesToTargets(args, [target])
+    const changed = await publishFilesToTargets(args, [{ ...target, subdir: `${target.subdir}-different` }])
+    expect([first, retry, changed].every(result => result.targets[0].status === 'published')).toBe(true)
+    expect(names[0]).toBe(names[1])
+    expect(names[2]).not.toBe(names[0])
+    expect(names.every(name => name.length <= 100)).toBe(true)
+  })
   it('rejects an oversized complete project before attempting a repository fork', async () => {
     repos.github.provider.canWrite = async () => false
     repos.github.provider.ensureFork = vi.fn(async () => ({ owner: 'fork', repo: 'project', default_branch: 'main' }))

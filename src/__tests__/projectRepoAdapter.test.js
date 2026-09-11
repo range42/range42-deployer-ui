@@ -74,6 +74,14 @@ function makeAdapter(provider, options = {}) {
 }
 
 describe('ProjectRepoAdapter', () => {
+  it('loads an explicitly selected branch and never falls back when it is missing', async () => {
+    const mock = makeMockProvider()
+    mock.files.set('review:projects/demo/meta.json', { content: '{"name":"Reviewed"}', sha: 'file' })
+    const state = await makeAdapter(mock).load('project', { branch: 'review' })
+    expect(state.meta.name).toBe('Reviewed')
+    expect(state.revision.branch).toBe('review')
+    await expect(makeAdapter(mock).load('project', { branch: 'deleted' })).rejects.toThrow(/404/)
+  })
   it('pins one working revision for metadata and assets even when the branch advances during loading', async () => {
     const mock = makeMockProvider()
     const original = assetFromBytes(Uint8Array.of(0, 255))

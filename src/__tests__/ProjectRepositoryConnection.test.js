@@ -12,19 +12,25 @@ vi.mock('@/composables/useCatalogSources', () => ({ useCatalogSources: () => ({ 
 vi.mock('focus-trap-vue', () => ({ FocusTrap: { template: '<div><slot /></div>' } }))
 enableAutoUnmount(afterEach)
 
-function modal() {
+function modal(binding) {
   localStorage.clear()
   const pinia = createPinia()
   setActivePinia(pinia)
   const inventory = useInventoryStore()
   inventory.sources = [{ id: 'github', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' },
     repos: [{ owner: 'range42', repo: 'catalog', branch: 'main' }] }]
-  const wrapper = mount(ProjectRepositoryConnection, { props: { open: true },
+  const wrapper = mount(ProjectRepositoryConnection, { props: { open: true, binding },
     global: { plugins: [pinia, createI18n({ legacy: false, locale: 'en', messages: { en: { publishing } } })] } })
   return { wrapper, inventory }
 }
 
 describe('project repository connection', () => {
+  it('retains the reviewed branch seed when reconnecting the same reopened repository', async () => {
+    const { wrapper } = modal({ source_id: 'github', provider: 'github', base_url: 'https://github.com', repo_owner: 'range42',
+      repo_name: 'catalog', branch: 'main', branch_strategy: 'dedicated_repo', working_branch: 'range42-ui/open-copy', branch_from: 'a'.repeat(40) })
+    await wrapper.get('[data-testid="connect-project-repository"]').trigger('click')
+    expect(wrapper.emitted('connected')[0][0].branch_from).toBe('a'.repeat(40))
+  })
   it('connects an explicit source and personal-fork policy without publishing or exposing credentials', async () => {
     const { wrapper, inventory } = modal()
     expect(wrapper.find('[data-testid="repository-source"]').exists()).toBe(true)

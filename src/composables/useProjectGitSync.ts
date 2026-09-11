@@ -1,4 +1,6 @@
 import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
+import { publicationBranch as publicationBranchFor } from '@/services/git/publicationBranch'
+import { captureProjectAuthoring, publicProjectOverlay, type AuthoringInput } from '@/services/projectAuthoring'
 import { authoredFilesMetadata, validateAuthoredFiles, cloneFiles, fileContentEquals, validateFileMap, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
 /**
  * useProjectGitSync — on-demand "serialize canvas → push to git → pin SHA".
@@ -31,6 +33,8 @@ export interface ProjectGitBinding {
   repo_name: string
   branch?: string
   working_branch?: string
+  /** Immutable seed for a newly opened project's dedicated working branch. */
+  branch_from?: string
   fork_policy?: ForkPolicy
   fork_owner?: string
   publish_targets?: ProjectPublishTarget[]
@@ -48,6 +52,7 @@ export interface PushToGitArgs {
   message?: string
   files?: ProjectFiles
   overlay?: Record<string, unknown>
+  authoring?: AuthoringInput
 }
 
 /**
@@ -66,6 +71,9 @@ export function buildPushArgs(
     attachments?: unknown[]
     files?: ProjectFiles
     overlay?: Record<string, unknown>
+    scenario?: unknown
+    scenario_generated_paths?: unknown
+    baseDoc?: { env?: unknown }
   },
   nodes: unknown[],
   edges: unknown[],
@@ -88,6 +96,7 @@ export function buildPushArgs(
     message: message ?? `Save ${project.name}`,
     files: project.files,
     overlay: project.overlay,
+    authoring: { scenario: project.scenario, generated_paths: project.scenario_generated_paths, variables: project.baseDoc?.env },
   }
 }
 
@@ -97,13 +106,11 @@ export function useProjectGitSync() {
     args: PushToGitArgs,
   ): Promise<{ commit_sha: string; branch: string; binding?: ProjectGitBinding }> {
     validateFileMap(buildProjectFiles(args))
-    const { projectId, canvas, meta, message } = args
+    const { projectId, meta, message } = args
     const binding = { ...args.binding }
     const provider = providerForBinding(binding)
     const branch = binding.working_branch ?? workingBranchForProject(projectId)
-    const state = buildProjectState(canvas, meta)
-    if (args.overlay !== undefined) state.overlay = JSON.stringify(args.overlay, null, 2)
-    if (args.files) state.files = cloneFiles(args.files)
+    const state = captureProjectState(args)
     return withWritableCheckpoint(binding, branch, provider, async (actual, adapter) => {
       await adapter.autosave(projectId, state)
       const saved = await adapter.save(projectId, message ?? `Update ${meta.name}`)
@@ -193,7 +200,7 @@ export async function publishFilesToTargets(args: {
       repo_owner: target.repo_owner, repo_name: target.repo_name, branch: target.base_branch,
       branch_strategy: 'dedicated_repo', subdir: target.subdir, fork_owner: target.fork_owner,
     }
-    const publicationBranch = `range42-publish/${encodeURIComponent(args.projectId)}/${encodeURIComponent(target.id)}/${encodeURIComponent(target.base_branch)}/${encodeURIComponent(JSON.stringify(target.subdir || ''))}`
+    const publicationBranch = publicationBranchFor(args.projectId, target)
     try {
       return { target, destination, publicationBranch, connection: adapterForBinding(destination, publicationBranch) }
     } catch (error) {
@@ -253,15 +260,17 @@ function adapterForBinding(binding: ProjectGitBinding, workingBranch: string, pr
   const adapter = createProjectRepoAdapter({
     provider, source: { id: binding.source_id, provider: binding.provider, repos: [{
       owner: binding.repo_owner, repo: binding.repo_name, branch: binding.branch || 'main',
-    }] }, branchStrategy: binding.branch_strategy, projectPath: binding.subdir || '', workingBranch, branchFrom,
+    }] }, branchStrategy: binding.branch_strategy, projectPath: binding.subdir || '', workingBranch, branchFrom: branchFrom || binding.branch_from,
   })
   return { adapter, provider }
 }
 
 async function resolveWritableBinding(binding: ProjectGitBinding, provider: GitProviderV1, policy: ForkPolicy): Promise<{ binding: ProjectGitBinding; branchFrom?: string }> {
+  if (binding.branch_from && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(binding.branch_from)) throw new Error('The saved branch seed must be an exact commit SHA')
   if (policy === 'upstream' || !provider.ensureFork) return { binding }
   if (policy !== 'fork' && await provider.canWrite(binding.repo_owner, binding.repo_name)) return { binding }
   const fork = await provider.ensureFork({ owner: binding.repo_owner, repo: binding.repo_name, ...(binding.fork_owner ? { destination: binding.fork_owner } : {}) })
+  if (binding.branch_from) return { binding: { ...binding, repo_owner: fork.owner, repo_name: fork.repo, fork_policy: 'upstream' }, branchFrom: binding.branch_from }
   const commits = await provider.listCommits({ owner: binding.repo_owner, repo: binding.repo_name, ref: binding.branch || 'main', perPage: 1 })
   if (!commits[0]?.sha) throw new Error('The upstream branch has no commit to start a contribution')
   return { binding: { ...binding, repo_owner: fork.owner, repo_name: fork.repo, fork_policy: 'upstream' }, branchFrom: commits[0].sha }
@@ -343,15 +352,23 @@ async function matchesCheckpoint(
 
 /** Project-relative files shown in the publication preview. */
 export function buildProjectFiles(args: PushToGitArgs): ProjectFiles {
-  validateAuthoredFiles(args.files || {})
-  const state = buildProjectState(args.canvas, args.meta)
+  const state = captureProjectState(args)
   return {
-    'overlay.json': args.overlay !== undefined ? JSON.stringify(args.overlay, null, 2) : state.overlay,
+    'overlay.json': state.overlay,
     'canvas_layout.json': state.canvas_layout,
     'meta.json': JSON.stringify({ ...state.meta, ...authoredFilesMetadata(args.files) }, null, 2),
     'topology.json': state.topology || '',
-    ...args.files,
+    ...state.files,
   }
+}
+
+function captureProjectState(args: PushToGitArgs) {
+  validateAuthoredFiles(args.files || {})
+  const authoring = captureProjectAuthoring(args.projectId, args.authoring)
+  const state = buildProjectState(args.canvas, args.meta, { ui_project: authoring })
+  if (args.overlay !== undefined) state.overlay = JSON.stringify(publicProjectOverlay(args.overlay, authoring.variables), null, 2)
+  if (args.files) state.files = cloneFiles(args.files)
+  return state
 }
 
 

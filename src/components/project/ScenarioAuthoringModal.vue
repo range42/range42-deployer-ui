@@ -1,4 +1,5 @@
 <script setup>
+import { randomId } from '@/services/randomId'
 import FileAssetField from '@/components/project/FileAssetField.vue'
 import { fileContentEquals } from '@/services/projectFiles'
 import { nextTick, ref, watch } from 'vue'
@@ -41,7 +42,7 @@ function addContent(kind) {
     bundleLibraryOpen.value = true
     return
   }
-  const id = crypto.randomUUID()
+  const id = randomId()
   const suffix = kind === 'script' ? 'sh' : kind === 'playbook' ? 'yml' : 'txt'
   draft.value.content.push({ id, kind, target_node: draft.value.vms[0]?.node_id || '',
     path: kind === 'bundle' ? 'generic/systems.baseline.default/main.yml' : `content/${kind}-${draft.value.content.length + 1}.${suffix}`,

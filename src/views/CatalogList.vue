@@ -1,4 +1,5 @@
 <script setup>
+import { randomId } from '@/services/randomId'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -34,7 +35,7 @@ const roleDraft = ref(null)
 const roleDraftId = ref('')
 
 function openNewRole() {
-  roleDraftId.value = `catalog-role-${crypto.randomUUID()}`
+  roleDraftId.value = `catalog-role-${randomId()}`
   roleDraft.value = null
   newRoleOpen.value = true
 }

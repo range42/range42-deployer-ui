@@ -1,7 +1,9 @@
 <script setup>
 defineOptions({ name: 'DashboardView' })
 
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ensureNamespaces } from '@/i18n'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import AppIcon from '@/components/icons/AppIcon.vue'
@@ -9,6 +11,9 @@ import DeployForm from '@/components/project/DeployForm.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
+const { t } = useI18n()
+const OpenProjectFromGitModal = defineAsyncComponent(() => import('@/components/OpenProjectFromGitModal.vue'))
+const showOpenGit = ref(false)
 
 const showCreateModal = ref(false)
 const newProjectName = ref('')
@@ -44,6 +49,7 @@ function closeQuickDeploy() {
 }
 
 onMounted(() => {
+  void ensureNamespaces(['reopening'])
   projectStore.loadProjects()
 })
 
@@ -202,6 +208,7 @@ const formatDate = (date) => {
               Design, configure, and deploy Proxmox-based infrastructure using an intuitive drag-and-drop visual editor.
             </p>
             <div class="flex flex-wrap gap-3">
+              <button class="btn btn-outline gap-2" data-testid="open-project-from-git" @click="showOpenGit = true">{{ t('reopening.title') }}</button>
               <button class="btn btn-primary gap-2" @click="showCreateModal = true">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
@@ -532,6 +539,7 @@ const formatDate = (date) => {
   </div>
 
   <!-- Plan C §C4.6 — Quick-deploy DeployForm -->
+  <OpenProjectFromGitModal v-if="showOpenGit" :open="showOpenGit" @close="showOpenGit = false" @opened="project => { showOpenGit = false; openProject(project.id) }" />
   <DeployForm
     v-if="quickDeployTarget"
     :visible="!!quickDeployTarget"

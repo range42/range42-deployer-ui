@@ -1,7 +1,8 @@
+import { randomId } from '@/services/randomId'
 import { backendRequest, getBackendScope } from './backendApi'
 
 const STORAGE_KEY = 'range42_project_registrations'
-const newId = () => `project_${crypto.randomUUID().replace(/-/g, '')}`
+const newId = () => `project_${randomId().replace(/-/g, '')}`
 
 function registrations() {
   try {

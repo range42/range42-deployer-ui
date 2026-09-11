@@ -175,7 +175,11 @@ function teardownPlay(vms) {
   }]
 }
 
-/** Compile one explicitly configured canvas into the existing concrete runner contract. */
+/** Compile one explicitly configured canvas into the existing concrete runner contract.
+ * @param {{ scenario: object, nodes?: import('@/overlay/serialize').CanvasNode[], edges?: import('@/overlay/serialize').CanvasEdge[],
+ * files?: import('@/services/projectFiles').ProjectFiles, attachments?: import('@/overlay/serialize').CanvasAttachment[],
+ * generatedPaths?: string[], baseDoc?: object, overlay?: object }} input
+ */
 export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay }) {
   validateFileMap(files)
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')

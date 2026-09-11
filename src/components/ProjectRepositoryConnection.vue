@@ -90,6 +90,7 @@ async function connect() {
     if (old && ['source_id', 'provider', 'base_url', 'repo_owner', 'repo_name'].every(key => old[key as keyof ProjectGitBinding] === binding[key as keyof ProjectGitBinding])
       && (old.branch || 'main') === branch && (old.subdir || '') === subdir) {
       binding.working_branch = old.working_branch
+      binding.branch_from = old.branch_from
       binding.publish_targets = old.publish_targets
       binding.publish_results = old.publish_results
     }

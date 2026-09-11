@@ -50,7 +50,7 @@ export interface LockInfo {
 export type BranchStrategy = 'shared_repo_subdir' | 'dedicated_repo'
 
 export interface ProjectRepoAdapter {
-  load(projectId: string): Promise<ProjectState>
+  load(projectId: string, options?: { branch: string }): Promise<ProjectState>
   autosave(projectId: string, state: ProjectState): Promise<void>
   /** Save checkpoints the working branch; publishing is always explicit. */
   save(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
