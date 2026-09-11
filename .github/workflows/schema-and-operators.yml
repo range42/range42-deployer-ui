@@ -95,6 +95,10 @@ jobs:
           . .venv/bin/activate
           pytest tests/overlay/ -v
 
+      - name: Concrete replication UI-to-backend contract
+        working-directory: range42-deployer-ui
+        run: node tools/verify-concrete-replication.mjs ../range42-backend-api
+
       - name: Cross-compare TypeScript and Python compose
         run: |
           set -euo pipefail
