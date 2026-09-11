@@ -264,7 +264,7 @@ export class GiteaProvider implements GitProviderV1 {
     repo: string
     ref?: string
     path?: string
-  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>> {
+  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string; mode?: string }>> {
     const ref = opts.ref ?? 'main'
     // Gitea exposes a git-tree endpoint; we use the recursive mode for parity
     // with GitHub's tree API.
@@ -272,8 +272,9 @@ export class GiteaProvider implements GitProviderV1 {
       `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/git/trees/${encodeURIComponent(ref)}?recursive=true`,
     )
     const body = await this.json<{
-      tree: Array<{ path: string; type: string; sha: string }>
+      tree: Array<{ path: string; type: string; sha: string; mode?: string }>; truncated?: boolean
     }>(url, { headers: this.headers() })
+    if (body.truncated) throw new Error('Repository tree is truncated; narrow the repository before importing its files')
     let items = body.tree
     if (opts.path) {
       const prefix = opts.path.endsWith('/') ? opts.path : `${opts.path}/`
@@ -283,6 +284,7 @@ export class GiteaProvider implements GitProviderV1 {
       path: it.path,
       type: it.type === 'tree' ? 'tree' : 'blob',
       sha: it.sha,
+      ...(it.mode ? { mode: it.mode } : {}),
     }))
   }
 

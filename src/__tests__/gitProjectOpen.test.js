@@ -26,6 +26,18 @@ function repository(project) {
 beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()); getProvider.mockClear() })
 
 describe('open project from Git', () => {
+  it('restores catalog origin independently of the working repository from the same pinned snapshot', async () => {
+    const project = savedScenario()
+    project.catalogRef = { version: 1, mode: 'use', source_id: 'original', path: 'labs/example', sha: 'a'.repeat(40), repo_owner: 'range42', repo_name: 'catalog' }
+    useInventoryStore().addSource({ id: 'source', provider: project.git.provider, base_url: project.git.base_url, repos: [], auth: { kind: 'none' } })
+    const { provider } = repository(project)
+    const preview = await loadGitProject(project.git, [])
+    const restored = prepareGitProjectImport(preview)
+    expect(restored.catalogRef).toEqual(project.catalogRef)
+    expect(restored.git.repo_owner).toBe(project.git.repo_owner)
+    expect(provider.getFileContent.mock.calls.every(([options]) => options.ref === revision)).toBe(true)
+  })
+
   it.each(['github', 'gitlab', 'gitea'])('previews %s at one pinned revision and restores complete authoring without writes', async kind => {
     const project = savedScenario()
     project.git = { ...project.git, provider: kind, branch: 'review' }

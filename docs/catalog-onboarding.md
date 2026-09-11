@@ -102,3 +102,68 @@ Source responses include repository bindings and their last successful refresh
 timestamps. The setup checklist completes the catalog step after a repository
 has been indexed on the selected backend. Cached catalog entries are scoped to
 the backend URL, and an offline fallback continues to show the request error.
+
+## Use or customize an existing item
+
+**Use** and **Customize** now ask for a working repository before creating a
+project. A read-only original remains usable: choose a writable destination or
+select the existing fork policy. Review the exact base commit, unused project
+subdirectory and dedicated `range42-ui/…` branch, then create the local project.
+Canceling or a failed review leaves existing local projects intact. The handoff
+performs provider reads only; the editor's first Save creates the working branch
+(and requests a fork when selected). Publishing and merging remain explicit,
+separate operations. The original repository, source, path and commit remain
+visible in the editor and survive ordinary saves, publication snapshots and
+pinned Git reopening as public `meta.json.ui_catalog` provenance. Credentials
+are excluded from that metadata.
+
+The default catalog's **Ansible roles** open in **Config** with their complete
+supported role files. The original `category.action.target` directory and file
+bytes are preserved, including binary assets. The destination project directory
+is an explicit prefix around those paths; it is never silently inferred to be
+the original catalog directory. Existing target directories and working branches
+are rejected during review. This imports role source for editing and publication;
+it does not create a VM or validate a complete deployment environment. The existing
+scenario and verified bundle workflows remain responsible for execution. This
+handoff does not attach an imported catalog role to VM execution; general
+catalog-role materialization remains unfinished.
+
+A canonical `range42.yaml` lab/gamenet/component can instead import its editable
+nodes, network links, inline attachments and variable declarations. Secret
+variable declarations keep their names and flags but lose their default values.
+Executable fields that cannot survive the current canvas serializer are rejected
+with their field path. External attachment references are rejected rather than
+dropped. Saved deployer projects should use **Open from Git**, which restores the
+whole structured project from one pinned commit.
+
+Current bounds are explicit: role trees have at most 512 entries; the existing
+1 MiB per-file and 2 MiB complete-project limits apply before local creation.
+Only regular `100644` role files are copied; executable modes, symlinks,
+submodules, external role dependencies, unresolved task/variable/file references
+and controller lookups require a full repository workflow. Alternate `action`/`local_action` syntax and implicit controller file lookups
+are refused; literal `with_items` loops remain supported. This conservative
+source check does not analyze arbitrary shell commands and is not an Ansible sandbox or a proof that a role's commands are
+correct. Required packages, facts, collections and host services remain runtime
+prerequisites. Container and bundle item customization is not implemented by
+this handoff. Generic dependency materialization and distributed multi-tab edit
+ownership remain separate unfinished work.
+
+GitLab repository-tree reads now follow all pages at the same SHA (bounded to
+10,000 entries). GitHub and Gitea return a clear error for truncated trees, so a
+partial response cannot be mistaken for a complete role. File modes are retained
+from provider metadata to distinguish regular files from symlinks and executable
+files. These checks follow the provider tree contracts:
+[GitHub](https://docs.github.com/en/rest/git/trees),
+[GitLab](https://docs.gitlab.com/api/repositories/), and
+[Gitea](https://docs.gitea.com/api/operations/get-tree/).
+
+Source-level acceptance uses the actual seven-file
+`02_ansible_layer/admin/roles/service.reload.ntp` tree at catalog commit
+`0b170a768b9603cf8f5b080e4eac780cbad07c75`. Tests preserve its exact files and origin
+through import, project/publication serialization and pinned reopening for the
+three provider contracts. The focused suite passes 161 tests; scoped ESLint,
+strict service TypeScript checks and the production build pass. Browser tests
+against that production build at 1440 and 390 pixels exercise the real
+catalog → destination review → Config → reload flow with intercepted read-only
+provider requests. These are local acceptance tests, not provider publication or
+shared deployment evidence, and do not endorse the role's runtime behavior.

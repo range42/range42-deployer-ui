@@ -19,7 +19,7 @@
     "use": "Use",
     "customize": "Customize",
     "fork": "Fork & publish",
-    "customize_readonly_hint": "You have read-only access to this source. Fork & publish to a writable repository to customize it."
+    "customize_readonly_hint": "Original source is read-only. Choose a writable destination or fork when customizing."
   },
   "empty": {
     "no_sources_title": "No Git sources configured",
@@ -39,5 +39,25 @@
     "fork_target_repo": "Target repository (owner/repo)",
     "fork_target_name": "New entry name",
     "fork_submit": "Fork"
+  },
+  "handoff": {
+    "title": "Review catalog project",
+    "origin": "Original catalog item",
+    "scope": "Imports supported range42.yaml topology, inline attachments and variable declarations. External files and dependencies must be resolved before import. The original catalog remains unchanged.",
+    "destination": "Working repository and project directory",
+    "branch": "Dedicated working branch",
+    "seed": "Reviewed base branch and exact commit",
+    "counts": "{nodes} nodes · {edges} network links · {attachments} inline attachments",
+    "fork_pending": "The first Save will request a writable fork using your chosen policy. No fork or branch has been created yet. Destination namespace:",
+    "save_hint": "Create the local project now. Editor Save and autosave will use this working branch. Publishing or merging to a base branch remains a separate action.",
+    "loading": "Loading the item and checking the destination…",
+    "back": "Change destination",
+    "import": "Create linked project",
+    "changed": "The source, destination or credential changed. Review the destination again before creating the project.",
+    "missing": "The catalog item or its source is unavailable. Refresh the catalog and try again.",
+    "role_scope": "Imports the complete supported Ansible role tree at its pinned commit, preserving its category.action.target name. Edit its files in Config, then save or publish with the existing Git workflow. This is role source editing; it does not create a deployable VM or prove runtime dependencies. Limits: 512 entries, 1 MiB per file, 2 MiB per project. Executable files, symlinks and unresolved external references require a complete repository workflow.",
+    "role_files": "{count} role files to import",
+    "role_editor": "Role source project: edit files in Config and publish explicitly. This handoff does not attach the role to VM execution; configure that separately with supported scenario/bundle workflows.",
+    "origin_changed": "The catalog origin or selected revision changed. Close this dialog and reopen the item to fetch its current content."
   }
 }

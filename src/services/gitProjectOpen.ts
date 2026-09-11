@@ -1,3 +1,4 @@
+import { publicCatalogReference } from '@/services/catalogReference'
 import { randomId } from '@/services/randomId'
 import { createProjectRepoAdapter, type ProjectState } from '@/services/projectRepo'
 import { providerForBinding, type ProjectGitBinding } from '@/composables/useProjectGitSync'
@@ -8,6 +9,7 @@ import { captureCanvasSnapshot, readCanvasSnapshot } from '@/services/projectCan
 import { cloneFiles, validateAuthoredFiles, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
 
 export interface GitProjectPreview {
+  catalogRef?: Record<string, string | number>
   name: string
   local_id: string
   identity_reused: boolean
@@ -83,6 +85,7 @@ export async function loadGitProject(input: ProjectGitBinding, existingIds: stri
       repo_owner: binding.repo_owner, repo_name: binding.repo_name, branch: binding.branch || 'main',
       branch_strategy: binding.branch_strategy, subdir: binding.subdir || '', fork_policy: binding.fork_policy || 'auto',
       ...(binding.fork_owner ? { fork_owner: binding.fork_owner } : {}), working_branch: workingBranch, branch_from: state.revision.commit_sha },
+    catalogRef: publicCatalogReference(state.meta.ui_catalog),
     canvas, files: cloneFiles(state.files || {}), overlay, authoring, gamenet: topology.kind === 'gamenet',
     bridge_base: typeof topology.bridge_base === 'number' ? topology.bridge_base : 140 }
 }
@@ -94,6 +97,7 @@ export function prepareGitProjectImport(preview: GitProjectPreview, mode: 'struc
   // Clone the reviewed snapshot so edits in the imported project cannot mutate
   // an open preview or another local project.
   return JSON.parse(JSON.stringify({ id: preview.local_id, name: preview.name, ...preview.canvas,
+    ...(preview.catalogRef ? { catalogRef: preview.catalogRef } : {}),
     files: preview.files, overlay: preview.overlay, baseDoc: { env: preview.authoring.variables },
     gamenet: preview.gamenet, bridge_base: preview.bridge_base, git: preview.binding, head_sha: preview.revision.commit_sha,
     git_opened: { ...preview.revision, mode: useScenario ? 'structured' : 'files', authoring_status: preview.authoring.status },

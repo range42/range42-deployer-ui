@@ -42,6 +42,22 @@ const BINDING = {
 }
 
 describe('useProjectGitSync', () => {
+  it('captures catalog provenance for ordinary and publication snapshots before asynchronous saving', async () => {
+    const project = savedScenario()
+    project.git = BINDING
+    project.catalogRef = { version: 1, mode: 'customize', source_id: 'original', path: 'labs/example', sha: 'a'.repeat(40),
+      repo_owner: 'range42', repo_name: 'catalog', token: 'never-persist' }
+    const args = buildPushArgs(project, project.nodes, project.edges)
+    const publication = buildProjectFiles(args)
+    const pending = useProjectGitSync().pushToGit(args)
+    project.catalogRef.repo_owner = 'later-edit'
+    await pending
+    const state = fakeAdapter.autosave.mock.calls[0][1]
+    expect(state.meta.ui_catalog).toMatchObject({ repo_owner: 'range42', source_id: 'original', sha: 'a'.repeat(40) })
+    expect(state.meta.ui_catalog).toEqual(JSON.parse(publication['meta.json']).ui_catalog)
+    expect(JSON.stringify(state)).not.toContain('never-persist')
+  })
+
   it('captures structured authoring before queued async saves and publishes the same metadata', async () => {
     const project = savedScenario()
     project.git = BINDING

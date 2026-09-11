@@ -4,6 +4,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import 'fake-indexeddb/auto'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogEntryDetail from '@/views/CatalogEntryDetail.vue'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import catalogEn from '@/locales/en/catalog.json'
@@ -58,7 +59,7 @@ async function mountDetail({ writable }) {
   await router.isReady()
 
   const wrapper = mount(CatalogEntryDetail, {
-    global: { plugins: [pinia, makeI18n(), router] },
+    global: { plugins: [pinia, makeI18n(), router], stubs: { CatalogProjectHandoff: true } },
   })
   // Entry loading includes IndexedDB and dynamic imports. Wait for its rendered
   // result instead of assuming a fixed number of event-loop turns completes it.
@@ -83,12 +84,13 @@ describe('CatalogEntryDetail — customize gating by write access', () => {
     vi.restoreAllMocks()
   })
 
-  it('disables the customize button when the source is read-only', async () => {
+  it('allows customizing a read-only original through a separate destination review', async () => {
     const wrapper = await mountDetail({ writable: false })
     const btn = customizeButton(wrapper)
     expect(btn).toBeTruthy()
-    expect(btn.attributes('disabled')).toBeDefined()
-    expect(btn.attributes('title')).toBe(catalogEn.verbs.customize_readonly_hint)
+    expect(btn.attributes('disabled')).toBeUndefined()
+    await btn.trigger('click')
+    expect(wrapper.findComponent(CatalogProjectHandoff).props()).toMatchObject({ entry: ENTRY, mode: 'customize' })
   })
 
   it('enables the customize button when the source is writable', async () => {

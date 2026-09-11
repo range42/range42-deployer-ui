@@ -1,3 +1,4 @@
+import { publicCatalogReference } from '@/services/catalogReference'
 import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
 import { publicationBranch as publicationBranchFor } from '@/services/git/publicationBranch'
 import { captureProjectAuthoring, publicProjectOverlay, type AuthoringInput } from '@/services/projectAuthoring'
@@ -45,6 +46,7 @@ export interface ProjectGitBinding {
 }
 
 export interface PushToGitArgs {
+  catalogRef?: unknown
   projectId: string
   binding: ProjectGitBinding
   canvas: CanvasModel
@@ -71,6 +73,7 @@ export function buildPushArgs(
     attachments?: unknown[]
     files?: ProjectFiles
     overlay?: Record<string, unknown>
+    catalogRef?: unknown
     scenario?: unknown
     scenario_generated_paths?: unknown
     baseDoc?: { env?: unknown }
@@ -82,6 +85,7 @@ export function buildPushArgs(
   if (!project?.git) return null
   return {
     projectId: project.id,
+    catalogRef: project.catalogRef,
     binding: project.git,
     canvas: {
       nodes: (nodes ?? []) as CanvasModel['nodes'],
@@ -365,7 +369,8 @@ export function buildProjectFiles(args: PushToGitArgs): ProjectFiles {
 function captureProjectState(args: PushToGitArgs) {
   validateAuthoredFiles(args.files || {})
   const authoring = captureProjectAuthoring(args.projectId, args.authoring)
-  const state = buildProjectState(args.canvas, args.meta, { ui_project: authoring })
+  const catalogRef = publicCatalogReference(args.catalogRef)
+  const state = buildProjectState(args.canvas, args.meta, { ui_project: authoring, ...(catalogRef ? { ui_catalog: catalogRef } : {}) })
   if (args.overlay !== undefined) state.overlay = JSON.stringify(publicProjectOverlay(args.overlay, authoring.variables), null, 2)
   if (args.files) state.files = cloneFiles(args.files)
   return state

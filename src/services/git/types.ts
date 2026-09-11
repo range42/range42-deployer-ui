@@ -390,7 +390,7 @@ export interface GitProviderV1 {
     repo: string
     ref?: string
     path?: string
-  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>>
+  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string; mode?: string }>>
   listCommits(opts: {
     owner: string
     repo: string

@@ -388,7 +388,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common', 'reopening'])
+  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog'])
 })
 
 onUnmounted(() => {
@@ -1138,6 +1138,10 @@ const handleInfrastructureImport = (result) => {
         <span v-if="gitSaving">{{ translate('project.git.saving') }}</span>
         <span v-else-if="gitSaveError" role="alert" class="text-error">{{ gitSaveError }}</span>
         <span v-else-if="currentProject.head_sha">{{ translate('project.git.saved', { branch: currentProject.git.working_branch || '—', sha: currentProject.head_sha.slice(0, 7) }) }}</span>
+      </div>
+      <div v-if="currentProject?.catalogRef" class="px-3 py-2 text-xs text-base-content/70 break-all" data-testid="project-catalog-origin">
+        <p>{{ translate('catalog.handoff.origin') }}: {{ currentProject.catalogRef.repo_owner || currentProject.catalogRef.source_id }}/{{ currentProject.catalogRef.repo_name || '' }} · {{ currentProject.catalogRef.path }} · {{ currentProject.catalogRef.sha || '—' }}</p>
+        <p v-if="currentProject.catalogRef.kind === 'ansible_role'">{{ translate('catalog.handoff.role_editor') }}</p>
       </div>
       <div v-if="currentProject?.git_opened" class="px-3 py-1 text-xs text-base-content/70 break-all" data-testid="project-opened-revision">
         <p>{{ translate('reopening.opened_revision', { branch: currentProject.git_opened.branch, sha: currentProject.git_opened.commit_sha }) }}</p>

@@ -320,22 +320,31 @@ export class GitLabProvider implements GitProviderV1 {
     repo: string
     ref?: string
     path?: string
-  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string }>> {
+  }): Promise<Array<{ path: string; type: 'blob' | 'tree'; sha: string; mode?: string }>> {
     const pid = this.projectId(opts.owner, opts.repo)
     const params = new URLSearchParams()
     if (opts.ref) params.set('ref', opts.ref)
     if (opts.path) params.set('path', opts.path)
     params.set('recursive', 'true')
     params.set('per_page', '100')
-    const url = this.url(`/projects/${pid}/repository/tree?${params.toString()}`)
-    const items = await this.json<Array<{ path: string; type: string; id: string }>>(
-      url,
-      { headers: this.headers() },
-    )
+    const items: Array<{ path: string; type: string; id: string; mode?: string }> = []
+    const seen = new Set<string>()
+    for (let page = 1; ; page += 1) {
+      if (page > 100) throw new Error('Repository tree exceeds the 10,000-entry import limit')
+      params.set('page', String(page))
+      const rows = await this.json<typeof items>(this.url(`/projects/${pid}/repository/tree?${params.toString()}`), { headers: this.headers() })
+      for (const row of rows) {
+        if (seen.has(row.path)) throw new Error('Repository tree pagination repeated a path; retry the pinned revision')
+        seen.add(row.path)
+        items.push(row)
+      }
+      if (rows.length < 100) break
+    }
     return items.map((it) => ({
       path: it.path,
       type: it.type === 'tree' ? 'tree' : 'blob',
       sha: it.id,
+      ...(it.mode ? { mode: it.mode } : {}),
     }))
   }
 
