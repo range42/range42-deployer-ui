@@ -107,4 +107,33 @@ describe('scenario authoring review', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('Unsupported canvas kind: docker')
     expect(wrapper.find('[data-testid="scenario-apply"]').exists()).toBe(false)
   })
+
+  it('reviews explicit per-team assignments and keeps source forms when applying', async () => {
+    const wrapper = modal({ edges: [{ id: 'edge-management', source: 'vm', target: 'net' }] })
+    await flushPromises()
+    await wrapper.get('[data-testid="replication-enable"]').setValue(true)
+    await wrapper.get('[data-testid="replication-add-team"]').trigger('click')
+    await wrapper.get('[data-testid="replication-add-team"]').trigger('click')
+    await wrapper.get('[data-testid="replication-vm-scope-vm"]').setValue('per_team')
+    await wrapper.get('[data-testid="replication-network-scope-net"]').setValue('per_team')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="replication-counts"]').text()).toMatch(/2 VMs.*2 networks.*2 NICs/)
+    expect(wrapper.findComponent({ name: 'ScenarioAllocationPanel' }).exists()).toBe(false)
+    for (const [index, row] of wrapper.findAll('[data-testid="replication-network-assignment"]').entries()) {
+      await row.get('[data-testid="replication-vnet"]').setValue(`team${index + 1}`)
+      await row.get('[data-testid="replication-subnet"]').setValue(`10.42.${index + 20}.0/24`)
+      await row.get('[data-testid="replication-gateway"]').setValue(`10.42.${index + 20}.1`)
+    }
+    for (const [index, row] of wrapper.findAll('[data-testid="replication-vm-assignment"]').entries()) {
+      await row.get('[data-testid="replication-vmid"]').setValue(3301 + index)
+      await row.get('[data-testid="replication-ip"]').setValue(`10.42.${index + 20}.10`)
+    }
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(result.scenario.vms).toHaveLength(1)
+    expect(result.scenario.replication.teams).toHaveLength(2)
+    expect(JSON.parse(result.files['scenarios/demo/manifest/scenario_vms.json']).vms.map(vm => vm.vm_id)).toEqual([3301, 3302])
+  })
+
 })

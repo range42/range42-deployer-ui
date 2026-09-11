@@ -1,39 +1,9 @@
-import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
-import { expandScenarioReplication, scenarioInstanceKey } from '@/services/scenarioReplication'
+import { expandScenarioReplication, scenarioInstanceKey, planScenarioReplication } from '@/services/scenarioReplication'
 import { emitConcreteScenario } from '@/services/concreteScenario'
 
-const key = (kind, source, team, user = null) => `${kind}-${createHash('sha256').update(JSON.stringify(['course-1', source, team, user])).digest('hex')}`
-
-function fixture() {
-  return {
-    nodes: [{ id: 'vm1', type: 'vm', data: {} }, { id: 'net1', type: 'network-segment', data: {} }],
-    edges: [{ id: 'nic-primary', source: 'vm1', target: 'net1' }],
-    scenario: {
-      label: 'replicated', network_mode: 'sdn', zone: 'r42repl',
-      vms: [{ node_id: 'vm1', vm_name: 'workstation', vm_id: 3100, template_vm_id: 9901, ssh_user: 'alice',
-        nics: [{ key: 'nic-primary', network_id: 'net1', ip: '10.42.9.10' }] }],
-      networks: [{ id: 'net1', vnet: 'source1', subnet: '10.42.9.0/24', gateway: '10.42.9.1', snat: false }],
-      content: [{ id: 'copy', kind: 'file', target_node: 'vm1', path: 'content/example.txt', destination: '/tmp/example.txt' }],
-      replication: {
-        version: 1, scenario_id: 'course-1',
-        teams: [{ id: 'blue', users: [{ id: 'bob' }, { id: 'alice' }] }, { id: 'red', users: [{ id: 'eve' }] }],
-        node_scopes: { vm1: 'per_user' }, network_scopes: { net1: 'per_team' },
-        vm_assignments: {
-          [key('vm', 'vm1', 'blue', 'alice')]: { vm_id: 3101, nics: { 'nic-primary': { ip: '10.42.10.11' } } },
-          [key('vm', 'vm1', 'blue', 'bob')]: { vm_id: 3102, nics: { 'nic-primary': { ip: '10.42.10.12' } } },
-          [key('vm', 'vm1', 'red', 'eve')]: { vm_id: 3103, nics: { 'nic-primary': { ip: '10.42.11.11' } } },
-        },
-        network_assignments: {
-          [key('net', 'net1', 'blue')]: { vnet: 'blue1', subnet: '10.42.10.0/24', gateway: '10.42.10.1', snat: false },
-          [key('net', 'net1', 'red')]: { vnet: 'red1', subnet: '10.42.11.0/24', gateway: '10.42.11.1', snat: true },
-        },
-      },
-    },
-    files: { 'scenarios/replicated/content/example.txt': 'shared bytes\n' },
-  }
-}
+import { replicatedScenario as fixture, replicationKey as key } from './fixtures/replicatedScenario'
 
 describe('concrete scenario replication', () => {
   it('emits every user and only its own team network as literal VM, NIC and content targets', () => {
@@ -94,7 +64,7 @@ describe('concrete scenario replication', () => {
     expect(() => expandScenarioReplication(input)).toThrow(/content.*target|select.*VM/i)
   })
 
-  it.each(['missing VM', 'extra VM', 'unsupported node', 'unknown scope', 'empty roster', 'empty user roster', 'nested domain', 'scope conflict'])('rejects invalid authoring: %s', reason => {
+  it.each(['missing VM', 'extra VM', 'unsupported node', 'unknown scope', 'empty roster', 'empty user roster', 'nested domain'])('rejects invalid authoring: %s', reason => {
     const input = fixture()
     if (reason === 'missing VM') input.nodes = input.nodes.filter(node => node.id !== 'vm1')
     if (reason === 'extra VM') input.nodes.push({ id: 'unconfigured', type: 'vm', data: {} })
@@ -106,7 +76,6 @@ describe('concrete scenario replication', () => {
       input.nodes.push({ id: 'outer', type: 'group', data: { kind: 'team_scope' } }, { id: 'inner', type: 'group', parentNode: 'outer', data: { kind: 'team_scope' } })
       input.nodes[0].parentNode = 'inner'
     }
-    if (reason === 'scope conflict') input.nodes[0].data.replication = { scope: 'per_team' }
     expect(() => expandScenarioReplication(input)).toThrow(/canvas|source|scope|roster|domain|users/i)
   })
 
@@ -259,6 +228,33 @@ describe('concrete scenario replication', () => {
 
   it.each(['Unicode', 'oversized', 'user without team'])('rejects unsupported identity tuples: %s', reason => {
     expect(() => scenarioInstanceKey('vm', reason === 'Unicode' ? 'équipe' : 'course-1', reason === 'oversized' ? 'a'.repeat(129) : 'vm1', null, reason === 'user without team' ? 'alice' : null)).toThrow(/ASCII|128|team/i)
+  })
+
+
+  it('uses reviewed scope maps as authority while retaining valid original canvas hints', () => {
+    const input = fixture()
+    input.nodes[0].data.replication = { scope: 'per_team' }
+    const result = expandScenarioReplication(input)
+    expect(result.manifest.instances).toHaveLength(3)
+    expect(result.warnings.join(' ')).toMatch(/canvas.*hint|hint.*scope/i)
+    expect(input.nodes[0].data.replication.scope).toBe('per_team')
+    input.nodes[0].data.replication.scope = 'unknown'
+    expect(() => expandScenarioReplication(input)).toThrow(/scope/i)
+  })
+
+
+  it('plans exact keyed rows before manual assignments without making an executable manifest', () => {
+    const input = fixture()
+    input.scenario.replication.vm_assignments = {}
+    input.scenario.replication.network_assignments = {}
+    const plan = planScenarioReplication(input)
+    expect(plan.counts).toEqual({ vms: 3, networks: 2, nics: 3 })
+    expect(plan.instances.map(vm => vm.instance_key)).toEqual([key('vm', 'vm1', 'blue', 'alice'), key('vm', 'vm1', 'blue', 'bob'), key('vm', 'vm1', 'red', 'eve')])
+    expect(plan.vms.every(vm => vm.vm_id === '' && vm.nics[0].ip === '')).toBe(true)
+    expect(plan.networks.every(network => network.subnet === '' && /^[a-z][a-z0-9]{7}$/.test(network.vnet))).toBe(true)
+    expect(plan.manifest).toBeUndefined()
+    expect(() => expandScenarioReplication(input)).toThrow(/review.*assignment/i)
+    expect(input.scenario.replication.vm_assignments).toEqual({})
   })
 
 })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildPushArgs, buildProjectFiles } from '@/composables/useProjectGitSync'
 import { inspectProjectAuthoring } from '@/services/projectAuthoring'
 import { loadCanvasFromState } from '@/overlay/projectState'
+import { replicatedScenario } from './fixtures/replicatedScenario'
 import { savedScenario } from './fixtures/savedScenario'
 import { emitConcreteScenario } from '@/services/concreteScenario'
 
@@ -79,4 +80,41 @@ describe('saved project authoring metadata', () => {
     expect(inspected.scenario).toBeUndefined()
     expect(inspected.generated_paths).toEqual([])
   })
+
+  it('reopens the original replication roster and source NIC keys without double expansion or credential values', () => {
+    const project = { ...savedScenario(), ...replicatedScenario() }
+    project.nodes[0].data.replication = { scope: 'per_team' }
+    project.scenario.vms[0].primary_nic_key = 'nic-primary'
+    const generated = emitConcreteScenario(project)
+    project.files = generated.files
+    project.scenario_generated_paths = generated.generatedPaths
+    project.scenario.replication.ownership_token = 'private-owner'
+    project.scenario.replication.teams[0].credentials = { token: 'private-team' }
+    Object.values(project.scenario.replication.vm_assignments)[0].vault_password = 'private-vm'
+    const state = snapshot(project)
+    expect(state.meta.ui_project.scenario.replication.scenario_id).toBe('course-1')
+    expect(JSON.stringify(state.meta)).not.toMatch(/private-|ownership_token|credentials|vault_password/)
+    const canvas = loadCanvasFromState(state)
+    const reopened = inspectProjectAuthoring(state, canvas)
+    expect(reopened.status).toBe('structured')
+    expect(reopened.scenario.vms).toHaveLength(1)
+    expect(reopened.scenario.vms[0].nics[0].key).toBe('nic-primary')
+    expect(reopened.scenario.vms[0].primary_nic_key).toBe('nic-primary')
+    expect(canvas.nodes).toHaveLength(2)
+    const again = emitConcreteScenario({ scenario: reopened.scenario, ...canvas, files: state.files, generatedPaths: reopened.generated_paths, baseDoc: { env: reopened.variables }, overlay: JSON.parse(state.overlay) })
+    expect(again.files).toEqual(project.files)
+    expect(JSON.parse(again.files['scenarios/replicated/manifest/scenario_vms.json']).vms).toHaveLength(3)
+  })
+
+
+  it.each(['scenario_id', 'vm_id', 'ip', 'subnet'])('rejects nested data smuggled through replication scalar %s before a Git snapshot', field => {
+    const project = { ...savedScenario(), ...replicatedScenario() }
+    const unsafe = { credentials: 'private-value' }
+    if (field === 'scenario_id') project.scenario.replication.scenario_id = unsafe
+    else if (field === 'vm_id') Object.values(project.scenario.replication.vm_assignments)[0].vm_id = unsafe
+    else if (field === 'ip') Object.values(project.scenario.replication.vm_assignments)[0].nics['nic-primary'].ip = unsafe
+    else Object.values(project.scenario.replication.network_assignments)[0].subnet = unsafe
+    expect(() => snapshot(project)).toThrow(/replication|assignment|identifier|scalar/i)
+  })
+
 })

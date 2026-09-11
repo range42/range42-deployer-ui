@@ -118,16 +118,24 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
     const connected = edges.filter(edge => edge.source === vm.node_id || edge.target === vm.node_id)
       .map(edge => ({ edge, id: edge.source === vm.node_id ? edge.target : edge.source }))
       .filter(connection => networks.some(network => network.id === connection.id))
-    // Keep the management connection first if the canvas reorders its edges.
-    connected.sort((a, b) => Number(b.id === oldNics[0]?.network_id) - Number(a.id === oldNics[0]?.network_id))
+    // Exact edge keys retain parallel links and the management interface.
+    const primaryKey = configured.primary_nic_key || oldNics[0]?.key
+    connected.sort((a, b) => primaryKey
+      ? Number(b.edge.id === primaryKey) - Number(a.edge.id === primaryKey)
+        || oldNics.findIndex(nic => nic.key === a.edge.id) - oldNics.findIndex(nic => nic.key === b.edge.id)
+      : Number(b.id === oldNics[0]?.network_id) - Number(a.id === oldNics[0]?.network_id))
     const remaining = [...oldNics]
     const nics = connected.map(({ edge, id }) => {
-      const index = remaining.findIndex(nic => nic.network_id === id)
+      let index = edge.id ? remaining.findIndex(nic => nic.key === edge.id) : -1
+      if (index < 0) index = remaining.findIndex(nic => !nic.key && nic.network_id === id)
       const old = index >= 0 ? remaining.splice(index, 1)[0] : null
-      return { network_id: id, ip: old?.ip || String(edge.data?.connection?.ipAddress || '').split('/')[0] }
+      // An old unkeyed parallel connection is ambiguous: the operator must map
+      // it explicitly before replication; do not invent a stable association.
+      const key = old?.key || (connected.filter(connection => connection.id === id).length === 1 ? edge.id : undefined)
+      return { ...(key ? { key } : {}), network_id: id, ip: old?.ip || String(edge.data?.connection?.ipAddress || '').split('/')[0] }
     })
     if (!nics.length) nics.push({ network_id: '', ip: configured.ip || '' })
-    return { ...vm, ...previous, nics, network_id: nics[0].network_id, ip: nics[0].ip }
+    return { ...vm, ...previous, ...(nics[0].key ? { primary_nic_key: nics[0].key } : {}), nics, network_id: nics[0].network_id, ip: nics[0].ip }
   })
   return result
 }

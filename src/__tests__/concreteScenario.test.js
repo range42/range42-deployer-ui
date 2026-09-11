@@ -272,4 +272,15 @@ describe('concrete scenario emitter', () => {
     mutate(input)
     expect(() => emitConcreteScenario(input)).toThrow(pattern)
   })
+
+  it('keeps exact saved NIC keys and their addresses when parallel canvas edges reorder', () => {
+    const input = fixture()
+    input.edges = [{ id: 'primary', source: 'vm1', target: 'net1' }, { id: 'secondary', source: 'vm1', target: 'net1' }]
+    input.scenario.vms[0].primary_nic_key = 'primary'
+    input.scenario.vms[0].nics = [{ key: 'primary', network_id: 'net1', ip: '10.42.10.10' }, { key: 'secondary', network_id: 'net1', ip: '10.42.10.11' }]
+    const draft = createScenarioDraft({ name: 'Demo', scenario: input.scenario }, input.nodes, [...input.edges].reverse())
+    expect(draft.vms[0].nics).toEqual(input.scenario.vms[0].nics)
+    expect(draft.vms[0].primary_nic_key).toBe('primary')
+  })
+
 })

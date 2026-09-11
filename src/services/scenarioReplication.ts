@@ -92,6 +92,7 @@ function sourceNics(vm: Record<string, unknown>, edges: CanvasEdge[]): SourceNic
 }
 
 function validateCanvas(nodes: CanvasNode[], edges: CanvasEdge[], nodeScopes: Record<string, ScenarioScope>, networkScopes: Record<string, ScenarioScope>) {
+  const warnings: string[] = []
   unique(nodes.map(node => identifier(node.id, 'Canvas node ID')), 'canvas node ID')
   unique(edges.map(edge => identifier(edge.id, 'Canvas edge ID')), 'canvas edge ID')
   const byId = new Map(nodes.map(node => [node.id, node]))
@@ -105,7 +106,7 @@ function validateCanvas(nodes: CanvasNode[], edges: CanvasEdge[], nodeScopes: Re
       if (raw === undefined) continue
       const declared = record(raw, 'Canvas replication').scope
       requireValue(declared === 'shared' || declared === 'per_team' || declared === 'per_user', `Unsupported canvas replication scope for ${node.id}`)
-      if (node.type !== 'group') requireValue(declared === scope, `Canvas replication scope conflicts with explicit source scope for ${node.id}`)
+      if (node.type !== 'group' && declared !== scope) warnings.push(`Source ${node.id} uses reviewed ${scope} replication; its original canvas hint is ${declared}.`)
     }
     const visited = new Set<string>()
     let cursor: CanvasNode | undefined = node
@@ -127,10 +128,12 @@ function validateCanvas(nodes: CanvasNode[], edges: CanvasEdge[], nodeScopes: Re
     const ranks = { shared: 0, per_team: 1, per_user: 2 }
     requireValue(ranks[nodeScopes[vm]] >= ranks[networkScopes[network]], 'A shared VM cannot fan out to scoped networks; a team VM cannot select an arbitrary user network')
   }
+  return warnings
 }
 
 /** Expand authoring intent into literal deployment rows without mutating the source canvas. */
-export function expandScenarioReplication(input: { scenario: unknown; nodes: CanvasNode[]; edges: CanvasEdge[] }) {
+interface ReplicationInput { scenario: unknown; nodes: CanvasNode[]; edges: CanvasEdge[] }
+function expand(input: ReplicationInput, planning: boolean) {
   const scenario = record(input.scenario, 'Scenario')
   if (scenario.replication === undefined) return null
   const replication = record(scenario.replication, 'Replication')
@@ -147,7 +150,7 @@ export function expandScenarioReplication(input: { scenario: unknown; nodes: Can
   const sourceNetworks = rows(scenario.networks, 'Source networks').sort((a, b) => compare(String(a.id), String(b.id)))
   const nodeScopes = scopeMap(replication.node_scopes, sourceVms.map(vm => identifier(vm.node_id, 'Source VM ID')), 'VM scopes')
   const networkScopes = scopeMap(replication.network_scopes, sourceNetworks.map(network => identifier(network.id, 'Source network ID')), 'Network scopes')
-  validateCanvas(input.nodes, input.edges, nodeScopes, networkScopes)
+  const canvasWarnings = validateCanvas(input.nodes, input.edges, nodeScopes, networkScopes)
   const scopes = [...Object.values(nodeScopes), ...Object.values(networkScopes)]
   requireValue(!scopes.some(scope => scope !== 'shared') || teams.length > 0, 'Replicated scopes require a nonempty team roster')
   requireValue(!scopes.includes('per_user') || teams.every(team => team.users.length > 0), 'Per-user scopes require listed users in every team')
@@ -172,9 +175,9 @@ export function expandScenarioReplication(input: { scenario: unknown; nodes: Can
     const id = identifier(source.id, 'Source network ID')
     return cohorts(networkScopes[id], teams).map(cohort => {
       const item = identity('net', id, cohort)
-      const assigned = networkScopes[id] === 'shared' ? source : record(networkAssignments[item.instance_key], `Review subnet/VNet assignment for ${id}/${cohort.team_id}/${cohort.user_id ?? 'team'}`)
+      const assigned = networkScopes[id] === 'shared' ? source : record(networkAssignments[item.instance_key] ?? (planning ? { vnet: scenario.network_mode === 'sdn' ? `r${item.instance_key.slice(4, 11)}` : '', subnet: '', gateway: '', snat: scenario.network_mode === 'sdn' && source.snat === true } : undefined), `Review subnet/VNet assignment for ${id}/${cohort.team_id}/${cohort.user_id ?? 'team'}`)
       const row = { ...clone(source), id: item.instance_key, vnet: assigned.vnet, subnet: assigned.subnet, gateway: assigned.gateway, snat: assigned.snat }
-      if (scenario.network_mode === 'existing_bridge') {
+      if (scenario.network_mode === 'existing_bridge' && !planning) {
         requireValue(typeof row.vnet === 'string' && /^vmbr[0-9]+$/.test(row.vnet) && row.vnet.length <= 15, 'Existing bridge names must be vmbr plus digits, at most 15 characters')
         requireValue(row.snat === false, 'Existing bridges cannot declare managed SNAT')
       }
@@ -188,14 +191,14 @@ export function expandScenarioReplication(input: { scenario: unknown; nodes: Can
     const nics = sourceNicMap.get(id)!
     return cohorts(nodeScopes[id], teams).map(cohort => {
       const item = identity('vm', id, cohort)
-      const assigned = nodeScopes[id] === 'shared' ? source : record(vmAssignments[item.instance_key], `Review VM/IP assignment for ${id}/${cohort.team_id}/${cohort.user_id ?? 'team'}`)
+      const assigned = nodeScopes[id] === 'shared' ? source : record(vmAssignments[item.instance_key] ?? (planning ? { vm_id: '', nics: {} } : undefined), `Review VM/IP assignment for ${id}/${cohort.team_id}/${cohort.user_id ?? 'team'}`)
       const assignedNics = nodeScopes[id] === 'shared' ? null : record(assigned.nics, `NIC assignments for ${item.instance_key}`)
-      if (assignedNics) requireValue(JSON.stringify(Object.keys(assignedNics).sort()) === JSON.stringify(nics.map(nic => nic.key).sort()), `NIC assignments must match the current source NIC keys for ${id}`)
+      if (assignedNics && !planning) requireValue(JSON.stringify(Object.keys(assignedNics).sort()) === JSON.stringify(nics.map(nic => nic.key).sort()), `NIC assignments must match the current source NIC keys for ${id}`)
       const mappedNics = nics.map(nic => {
         const target = networkCohort(cohort, networkScopes[nic.network_id])
         const networkId = scenarioInstanceKey('net', scenarioId, nic.network_id, target.team_id, target.user_id)
         requireValue(networks.some(network => network.id === networkId), `Missing matching network instance for ${id}/${nic.key}`)
-        const ip = assignedNics ? record(assignedNics[nic.key], `IP assignment for ${id}/${nic.key}`).ip : nic.ip
+        const ip = assignedNics ? record(assignedNics[nic.key] ?? (planning ? { ip: '' } : undefined), `IP assignment for ${id}/${nic.key}`).ip : nic.ip
         expandedEdges.push({ id: `${item.instance_key}:${nic.key}`, source: item.instance_key, target: networkId })
         return { key: nic.key, network_id: networkId, ip }
       })
@@ -212,8 +215,18 @@ export function expandScenarioReplication(input: { scenario: unknown; nodes: Can
   const content = sourceContent.flatMap(source => manifest.instances.filter(vm => vm.source_node_id === source.target_node)
     .map(vm => ({ ...clone(source), id: `${source.id}:${vm.instance_key}`, target_node: vm.instance_key })))
   const expandedNodes: CanvasNode[] = [...vms.map(vm => ({ id: vm.node_id, type: 'vm' })), ...networks.map(network => ({ id: network.id, type: 'network-segment' }))]
-  const warnings = manifest.networks.filter(network => manifest.instances.filter(vm => vm.nics.some(nic => nic.network_instance_key === network.instance_key)).length > 1)
-    .map(network => `Instances on ${network.vnet} share a subnet and its internet policy (SNAT ${network.snat ? 'enabled' : 'disabled'}). Per-user internet isolation requires per-user networks.`)
+  const warnings = [...canvasWarnings, ...manifest.networks.filter(network => manifest.instances.filter(vm => vm.nics.some(nic => nic.network_instance_key === network.instance_key)).length > 1)
+    .map(network => `Instances on ${network.vnet} share a subnet and its internet policy (SNAT ${network.snat ? 'enabled' : 'disabled'}). Per-user internet isolation requires per-user networks.`)]
   return { scenario: { ...clone(scenario), vms, networks, content }, nodes: expandedNodes, edges: expandedEdges, manifest,
     counts: { vms: vmCount, networks: networkCount, nics: nicCount }, warnings }
 }
+
+/** Planning contains unassigned rows and is never an executable manifest. */
+export function planScenarioReplication(input: ReplicationInput) {
+  const expanded = expand(input, true)
+  if (!expanded) return null
+  return { counts: expanded.counts, warnings: expanded.warnings, instances: expanded.manifest.instances,
+    network_instances: expanded.manifest.networks, vms: expanded.scenario.vms, networks: expanded.scenario.networks }
+}
+
+export function expandScenarioReplication(input: ReplicationInput) { return expand(input, false) }

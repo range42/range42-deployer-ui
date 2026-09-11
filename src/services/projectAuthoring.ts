@@ -40,14 +40,53 @@ function rows(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) throw new Error(`${label} must be a list`)
   return value
 }
+function replicationSnapshot(value: unknown): ObjectValue {
+  const source = objectValue(value, 'Replication')
+  const result = fields(source, ['version', 'scenario_id'], 'Replication')
+  if (result.version !== 1 || typeof result.scenario_id !== 'string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(result.scenario_id)) throw new Error('Invalid replication version or scenario identifier')
+  const scalarAssignment = (row: unknown, keys: string[]) => {
+    const item = fields(row, keys, 'Replication assignment')
+    if (Object.entries(item).some(([key, value]) => key === 'snat' ? typeof value !== 'boolean'
+      : key === 'vm_id' ? !['number', 'string'].includes(typeof value)
+        : typeof value !== 'string')) throw new Error('Replication assignment fields must be scalar values')
+    return item
+  }
+  const named = (row: unknown, label: string) => {
+    const item = fields(row, ['id', 'label'], label)
+    if (typeof item.id !== 'string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(item.id)) throw new Error(`${label} needs a stable ASCII identifier`)
+    if (item.label !== undefined && (typeof item.label !== 'string' || item.label.length > 256)) throw new Error(`${label} label must be text up to 256 characters`)
+    return item
+  }
+  result.teams = rows(source.teams, 'Teams').map(row => ({ ...named(row, 'Team'),
+    users: rows(objectValue(row, 'Team').users, 'Users').map(user => named(user, 'User')) }))
+  for (const key of ['node_scopes', 'network_scopes']) {
+    const scopes = objectValue(source[key], 'Replication scopes')
+    if (Object.entries(scopes).some(([id, scope]) => !/^[A-Za-z0-9_.-]{1,128}$/.test(id) || (typeof scope !== 'string' || !['shared', 'per_team', 'per_user'].includes(scope)))) throw new Error('Invalid explicit replication scopes')
+    result[key] = copy(scopes)
+  }
+  result.vm_assignments = Object.fromEntries(Object.entries(objectValue(source.vm_assignments ?? {}, 'VM assignments')).map(([key, row]) => {
+    if (!/^vm-[a-f0-9]{64}$/.test(key)) throw new Error('Invalid VM instance assignment key')
+    const vm = scalarAssignment(row, ['vm_id'])
+    vm.nics = Object.fromEntries(Object.entries(objectValue(objectValue(row, 'VM assignment').nics, 'NIC assignments'))
+      .map(([nic, assignment]) => [nic, scalarAssignment(assignment, ['ip'])]))
+    return [key, vm]
+  }))
+  result.network_assignments = Object.fromEntries(Object.entries(objectValue(source.network_assignments ?? {}, 'Network assignments')).map(([key, row]) => {
+    if (!/^net-[a-f0-9]{64}$/.test(key)) throw new Error('Invalid network instance assignment key')
+    return [key, scalarAssignment(row, ['vnet', 'subnet', 'gateway', 'snat'])]
+  }))
+  return result
+}
+
 function scenarioSnapshot(value: unknown): ObjectValue {
   const source = objectValue(value, 'Scenario')
   const result = fields(source, ['label', 'network_mode', 'zone'], 'Scenario')
+  if (source.replication !== undefined) result.replication = replicationSnapshot(source.replication)
   result.networks = rows(source.networks, 'Scenario networks').map(row => fields(row, ['id', 'vnet', 'subnet', 'gateway', 'snat'], 'Network'))
   result.vms = rows(source.vms, 'Scenario VMs').map(row => {
-    const vm = fields(row, ['node_id', 'vm_id', 'vm_name', 'template_vm_id', 'network_id', 'ip', 'ssh_user', 'cores', 'memory_mb', 'disk_gb', 'disk_device'], 'VM')
+    const vm = fields(row, ['node_id', 'vm_id', 'vm_name', 'template_vm_id', 'network_id', 'ip', 'ssh_user', 'cores', 'memory_mb', 'disk_gb', 'disk_device', 'primary_nic_key'], 'VM')
     const sourceVm = objectValue(row, 'VM')
-    if (sourceVm.nics !== undefined) vm.nics = rows(sourceVm.nics, 'VM NICs').map(nic => fields(nic, ['network_id', 'ip'], 'NIC'))
+    if (sourceVm.nics !== undefined) vm.nics = rows(sourceVm.nics, 'VM NICs').map(nic => fields(nic, ['key', 'network_id', 'ip'], 'NIC'))
     return vm
   })
   result.content = rows(source.content ?? [], 'Scenario content').map(row => {

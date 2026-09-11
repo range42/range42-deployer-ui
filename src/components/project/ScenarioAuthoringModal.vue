@@ -5,6 +5,7 @@ import { fileContentEquals } from '@/services/projectFiles'
 import { nextTick, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
+import ScenarioReplicationPanel from '@/components/project/ScenarioReplicationPanel.vue'
 import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
 
@@ -73,6 +74,10 @@ function releaseAllocation({ reservation_id, target_host_id, backend_url }) {
   }
 }
 
+function connectedEdges(vm, networkId) {
+  return props.edges.filter(edge => (edge.source === vm.node_id && edge.target === networkId) || (edge.target === vm.node_id && edge.source === networkId))
+}
+
 function review() {
   error.value = ''
   try {
@@ -121,19 +126,22 @@ function review() {
             </div>
             <p v-if="draft.network_mode === 'sdn'" class="text-sm text-base-content/70 mb-4">Uses the current Hyde SDN bootstrap bundle with a Simple zone. Outbound NAT is explicit per subnet. Backend preflight checks the installed bundle and target network conflicts.</p>
 
-            <h3 class="font-semibold mb-2">Networks</h3>
+            <ScenarioReplicationPanel v-model="draft.replication" :scenario="draft" :project-id="project.id" :nodes="nodes" :edges="edges" />
+
+            <h3 class="font-semibold mb-2">Source networks</h3>
             <p v-if="!draft.networks.length" class="text-sm text-warning">No network nodes found. Add a network segment to the canvas.</p>
             <fieldset v-for="network in draft.networks" :key="network.id" class="border border-base-300 rounded-lg p-3 mb-3 min-w-0">
               <legend class="text-sm px-1">{{ network.id }}</legend>
-              <div class="grid gap-3 sm:grid-cols-3">
+              <p v-if="draft.replication && draft.replication.network_scopes[network.id] !== 'shared'" class="text-sm">The explicit subnet and VNet assignments for this source are in the replication plan above.</p>
+              <div v-else class="grid gap-3 sm:grid-cols-3">
                 <label class="form-control gap-1"><span>{{ draft.network_mode === 'sdn' ? 'VNet name' : 'Bridge name' }}</span><input v-model="network.vnet" class="input input-bordered w-full" /></label>
                 <label class="form-control gap-1"><span>IPv4 subnet</span><input v-model="network.subnet" class="input input-bordered w-full" placeholder="10.42.1.0/24" /></label>
                 <label class="form-control gap-1"><span>Gateway</span><input v-model="network.gateway" class="input input-bordered w-full" placeholder="10.42.1.1" /></label>
               </div>
-              <label v-if="draft.network_mode === 'sdn'" class="flex items-center gap-2 mt-3"><input v-model="network.snat" type="checkbox" class="checkbox checkbox-sm" /> Outbound NAT</label>
+              <label v-if="draft.network_mode === 'sdn' && (!draft.replication || draft.replication.network_scopes[network.id] === 'shared')" class="flex items-center gap-2 mt-3"><input v-model="network.snat" type="checkbox" class="checkbox checkbox-sm" /> Outbound NAT</label>
             </fieldset>
 
-            <ScenarioAllocationPanel v-if="project.id" :project-id="project.id" :vms="draft.vms" :networks="draft.networks"
+            <ScenarioAllocationPanel v-if="project.id && !draft.replication" :project-id="project.id" :vms="draft.vms" :networks="draft.networks"
               @reserved="applyAllocation" @released="releaseAllocation" />
 
             <h3 class="font-semibold mt-5 mb-2">Virtual machines</h3>
@@ -141,8 +149,8 @@ function review() {
             <fieldset v-for="vm in draft.vms" :key="vm.node_id" class="border border-base-300 rounded-lg p-3 mb-3 min-w-0">
               <legend class="text-sm px-1">{{ vm.node_id }}</legend>
               <div class="grid gap-3 sm:grid-cols-3">
-                <label class="form-control gap-1"><span>VM name</span><input v-model="vm.vm_name" class="input input-bordered w-full" /></label>
-                <label class="form-control gap-1"><span>New VMID</span><input v-model.number="vm.vm_id" type="number" min="100" class="input input-bordered w-full" /></label>
+                <label class="form-control gap-1"><span>{{ draft.replication && draft.replication.node_scopes[vm.node_id] !== 'shared' ? 'VM name prefix' : 'VM name' }}</span><input v-model="vm.vm_name" class="input input-bordered w-full" /></label>
+                <label v-if="!draft.replication || draft.replication.node_scopes[vm.node_id] === 'shared'" class="form-control gap-1"><span>New VMID</span><input v-model.number="vm.vm_id" type="number" min="100" class="input input-bordered w-full" /></label>
                 <label class="form-control gap-1"><span>Existing template VMID</span><input v-model.number="vm.template_vm_id" type="number" min="100" class="input input-bordered w-full" /></label>
                 <label class="form-control gap-1"><span>Guest SSH user</span><input v-model="vm.ssh_user" class="input input-bordered w-full" /></label>
                 <label class="form-control gap-1"><span>CPU cores</span><input v-model.number="vm.cores" type="number" min="1" max="128" class="input input-bordered w-full" data-testid="scenario-vm-cores" placeholder="From template" /></label>
@@ -151,8 +159,9 @@ function review() {
                 <label v-if="vm.disk_gb" class="form-control gap-1"><span>Existing disk device</span><input v-model="vm.disk_device" class="input input-bordered w-full" placeholder="scsi0" /></label>
               </div>
               <div v-for="(nic, nicIndex) in vm.nics" :key="nicIndex" class="grid gap-3 sm:grid-cols-2 mt-3 border-t border-base-300 pt-3">
-                <label class="form-control gap-1"><span>net{{ nicIndex }} network{{ nicIndex === 0 ? ' (management)' : '' }}</span><select v-model="nic.network_id" class="select select-bordered w-full"><option value="" disabled>Choose connected network</option><option v-for="network in draft.networks" :key="network.id" :value="network.id">{{ network.vnet || network.id }}</option></select></label>
-                <label class="form-control gap-1"><span>net{{ nicIndex }} IPv4 address</span><input v-model="nic.ip" class="input input-bordered w-full" placeholder="10.42.1.10" /></label>
+                <label class="form-control gap-1"><span>net{{ nicIndex }} network{{ nicIndex === 0 ? ' (management)' : '' }}</span><select v-model="nic.network_id" :disabled="!!draft.replication" class="select select-bordered w-full"><option value="" disabled>Choose connected network</option><option v-for="network in draft.networks" :key="network.id" :value="network.id">{{ network.vnet || network.id }}</option></select></label>
+                <label v-if="!draft.replication || draft.replication.node_scopes[vm.node_id] === 'shared'" class="form-control gap-1"><span>net{{ nicIndex }} IPv4 address</span><input v-model="nic.ip" class="input input-bordered w-full" placeholder="10.42.1.10" /></label>
+                <label v-if="draft.replication" class="form-control gap-1"><span>Stable source NIC key</span><select v-model="nic.key" class="select select-bordered w-full" @change="nicIndex === 0 && (vm.primary_nic_key = nic.key)"><option value="" disabled>Select the matching canvas link</option><option v-for="edge in connectedEdges(vm, nic.network_id)" :key="edge.id" :value="edge.id">{{ edge.id }}</option></select></label>
               </div>
             </fieldset>
 
@@ -180,6 +189,7 @@ function review() {
           </template>
 
           <template v-else>
+            <p v-for="warning in preview.warnings || []" :key="warning" class="text-sm rounded-lg border border-warning/50 bg-warning/10 p-3 mb-3">{{ warning }}</p>
             <p class="mb-3">Review these files before adding them to the project. Saving the project checkpoints them on its working branch; deployment still requires backend preflight.</p>
             <details v-for="path in Object.keys(preview.files).sort()" :key="path" class="border border-base-300 rounded-lg p-3 mb-2 min-w-0">
               <summary class="font-mono text-sm cursor-pointer break-all">{{ path }}</summary>
