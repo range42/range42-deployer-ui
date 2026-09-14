@@ -70,6 +70,46 @@ received F1–F4 during this review; the September14 baseline already records F5
 | F4 | Imported-VM Apply calls v0 setters backed by the server's global inventory rather than an exact registered target, then copies desired values into `actualConfig` without fresh readback. API553 has no equivalent safe v1 configuration-write endpoint. | Block unsupported writes while preserving desired/pending edits and allow exact-target readback. A later write flow needs a target-bound backend endpoint and verified completion; refreshing alone cannot make the old write safe. |
 | F5 | API553 readiness's Git `ok` derives from source registration count, not a repository connection. | Label registration separately from connectivity; failed provider/network access must remain distinct from missing implementation. |
 
+## UI/backend follow-up on 14 September
+
+The findings above retain their assessed source pins. The follow-up implements
+these corrections. The [production browser report](acceptance/2026-09-14-interface-routes.md)
+describes controlled-service coverage; shared installation is separate evidence.
+
+- **F1:** both Fork & publish buttons now open the existing reviewed catalog
+  handoff in Customize mode. Supported pinned files and provenance are imported
+  into a real local project. The review explains the subsequent Save/Publish
+  step; provider refusal and cancellation preserve the original project/source.
+- **F2:** Home Deploy opens Project Editor with a review prompt. Deployment uses
+  the editor's normal saved-revision, backend registration and allocation checks.
+  The former shortcut also supplied a local project ID where the backend ID was
+  required, so replacing just its unauthenticated codename lookup was insufficient.
+- **F3:** live Proxmox operations resolve the intended node or explicit host from
+  a fresh, complete registry. Missing, ambiguous or incomplete matches are
+  refused. The backend/credential context remains fixed through lookup, action
+  and task polling; the returned UPID selects the task's node. Missing task IDs
+  remain unconfirmed instead of reporting success.
+- **F4:** legacy imported-VM configuration writes and automatic tag writes are
+  blocked. The review preserves desired edits and can refresh actual values for
+  the selected guest. This is a remaining **backend API** capability gap:
+  a registered-host configuration-write endpoint with verified task completion
+  and readback is required. Pinned deployment Configure is a separate supported
+  workflow; its existence does not make the old imported-VM setters safe.
+- **F5:** readiness now reports Git connectivity as `not_checked`, with a separate
+  registered-source count. It does not load source credentials or contact Git.
+  Required database/workspace/Proxmox failures still prevent backend readiness.
+  Settings and project configuration show dependency results and actionable
+  failure text; old registration-only Git responses also display as unchecked.
+- **F6:** project settings now discard a connection result if the URL, node,
+  credential, project or dialog context changes during verification. Only a
+  literal Boolean `ready: true` permits saving; verified settings persist when
+  reopening the project.
+- Deployment lists show loading explicitly, classify partial/unknown results as
+  terminal history, and use keyboard-accessible links without nested controls.
+  Cached catalog entries retain visible authentication failures and retry.
+  Home's create dialog has labelled fields, keyboard cancellation and restored
+  focus, and the reviewed routes fit desktop and mobile widths.
+
 ## Upstream dependencies and UI boundaries
 
 | Capability | Existing primitive / missing contract | Owner and UI status |
@@ -120,6 +160,7 @@ For each implemented action group, the remaining acceptance pass must cover
 success,401/403, unavailable dependency, validation, pending/partial/failed task,
 reload persistence and selected-backend changes at desktop/mobile sizes.
 Local edits, saved Git revisions, accepted API jobs, observed PVE state and
-successful guest execution are separate outcomes. Fix F1–F5 within UI/backend
-scope, retain disabled/unsupported boundaries, and then exercise the supported
-end-to-end flow using an approved usable template.
+successful guest execution are separate outcomes. The UI/backend follow-up
+addresses the findings without changing Hyde's code. Unsupported boundaries
+remain explicit; a fresh supported end-to-end guest run still needs an approved
+usable template.
