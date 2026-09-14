@@ -46,7 +46,7 @@ function makeRouter() {
   })
 }
 
-async function mountList(seedSource = true, backendHost) {
+async function mountList(seedSource = true, backendHost, visibleCount = PAGE.items.length) {
   const pinia = createPinia()
   setActivePinia(pinia)
   if (backendHost) useBackendApiStore().addHost(backendHost)
@@ -65,7 +65,7 @@ async function mountList(seedSource = true, backendHost) {
       },
     },
   })
-  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="catalog-grid"] article[data-kind]')).toHaveLength(PAGE.items.length))
+  await vi.waitFor(() => expect(wrapper.findAll('[data-testid="catalog-grid"] article[data-kind]')).toHaveLength(visibleCount))
   return wrapper
 }
 
@@ -159,6 +159,26 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     await wrapper.find('input[type="search"]').setValue('sqli')
     await flushPromises()
     expect(gridKinds(wrapper)).toEqual(['container'])
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders bounded batches while searching the complete catalog and resets the batch after filtering', async () => {
+    const items = Array.from({ length: 73 }, (_, index) => ({
+      kind: 'component', name: `Machine ${index}`, source_id: 'src-a', path: `machines/${index}`, tags: [],
+    }))
+    globalThis.fetch.mockResolvedValue({ ok: true, json: async () => ({ items, total: 73, offset: 0, limit: 500 }) })
+    const wrapper = await mountList(true, undefined, 24)
+    expect(wrapper.get('[data-testid="catalog-visible-count"]').text()).toContain('24 of 73')
+    await wrapper.get('[data-testid="catalog-load-more"]').trigger('click')
+    expect(gridKinds(wrapper)).toHaveLength(48)
+    await wrapper.get('#catalog-search').setValue('Machine 72')
+    expect(gridKinds(wrapper)).toHaveLength(1)
+    expect(wrapper.find('[data-testid="catalog-load-more"]').exists()).toBe(false)
+    await wrapper.get('#catalog-search').setValue('')
+    expect(gridKinds(wrapper)).toHaveLength(24)
+    for (let i = 0; i < 3; i++) await wrapper.get('[data-testid="catalog-load-more"]').trigger('click')
+    expect(gridKinds(wrapper)).toHaveLength(73)
+    expect(wrapper.find('[data-testid="catalog-load-more"]').exists()).toBe(false)
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
   })
 

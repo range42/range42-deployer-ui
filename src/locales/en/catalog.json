@@ -1,5 +1,7 @@
 {
   "title": "Catalog",
+  "visible_results": "Showing {count} of {total} matching items",
+  "load_more": "Show more items",
   "new_role": "New Ansible role",
   "subtitle": "Browse labs, gamenets, and components across your Git sources.",
   "filters": {

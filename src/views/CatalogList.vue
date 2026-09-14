@@ -105,6 +105,11 @@ const entriesView = computed(() =>
   }),
 )
 
+const batchSize = 24
+const visibleCount = ref(batchSize)
+const visibleEntries = computed(() => entriesView.value.slice(0, visibleCount.value))
+watch(entriesView, () => { visibleCount.value = batchSize })
+
 function toggleKind(kind) {
   const i = selectedKinds.value.indexOf(kind)
   if (i >= 0) selectedKinds.value.splice(i, 1)
@@ -335,7 +340,7 @@ function openFork(entry) {
         data-testid="catalog-grid"
       >
         <div
-          v-for="entry in entriesView"
+          v-for="entry in visibleEntries"
           :key="`${entry.source_id}:${entry.path}`"
           class="relative"
         >
@@ -356,6 +361,13 @@ function openFork(entry) {
           :title="t('catalog.empty.no_entries_title')"
           :description="t('catalog.empty.no_entries_desc')"
         />
+      </div>
+      <div v-if="entriesView.length" class="mt-6 flex flex-col items-center gap-3">
+        <p class="text-sm text-base-content/70" role="status" data-testid="catalog-visible-count">
+          {{ t('catalog.visible_results', { count: visibleEntries.length, total: entriesView.length }) }}
+        </p>
+        <button v-if="visibleEntries.length < entriesView.length" type="button" class="btn btn-outline"
+          data-testid="catalog-load-more" @click="visibleCount += batchSize">{{ t('catalog.load_more') }}</button>
       </div>
     </template>
 

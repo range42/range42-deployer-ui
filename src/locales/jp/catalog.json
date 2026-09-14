@@ -1,5 +1,7 @@
 {
   "title": "カタログ",
+  "visible_results": "一致する {total} 件中 {count} 件を表示",
+  "load_more": "さらに表示",
   "new_role": "Ansible ロールを作成",
   "subtitle": "複数のGitソースをまたいで、ラボ、ゲームネット、コンポーネントを閲覧できます。",
   "filters": {
