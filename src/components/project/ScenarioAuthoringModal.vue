@@ -196,9 +196,9 @@ function applyReview() {
 
 <template>
   <Teleport to="body">
-    <FocusTrap v-if="open && draft" :active="focusReady && !bundleLibraryOpen && !rolePickerOpen"
+    <FocusTrap initial-focus="#scenario-authoring-title" v-if="open && draft" :active="focusReady && !bundleLibraryOpen && !rolePickerOpen"
       :fallback-focus="() => heading" :escape-deactivates="false" :return-focus-on-deactivate="true">
-      <div class="modal modal-open p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="scenario-authoring-title" @keydown.esc.prevent="emit('close')">
+      <div class="modal modal-open transition-none p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="scenario-authoring-title" @keydown.esc.prevent="emit('close')">
         <section class="modal-box max-w-5xl w-full max-h-[92vh] overflow-y-auto min-w-0">
           <header class="flex items-start justify-between gap-3 mb-4">
             <div class="min-w-0">

@@ -71,7 +71,7 @@ function keydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div v-if="open" ref="dialog" class="modal modal-open z-[110]" role="dialog" aria-modal="true" aria-labelledby="new-role-title" @keydown="keydown">
+  <div v-if="open" ref="dialog" class="modal modal-open transition-none z-[110]" role="dialog" aria-modal="true" aria-labelledby="new-role-title" @keydown="keydown">
     <div class="modal-box max-w-4xl max-h-[90vh]">
       <h2 id="new-role-title" class="text-xl font-semibold">{{ t('title') }}</h2>
       <p class="text-sm text-base-content/70 mt-2">{{ t('intro') }}</p>

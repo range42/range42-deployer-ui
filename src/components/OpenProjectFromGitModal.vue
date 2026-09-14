@@ -122,8 +122,8 @@ function back() { preview.value = null; reviewedConnection = null; error.value =
 </script>
 
 <template>
-  <FocusTrap v-if="open" :active="focusReady" fallback-focus="#open-git-title" :escape-deactivates="false">
-    <div class="modal modal-open z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="open-git-title" @keydown.esc.prevent="emit('close')">
+  <FocusTrap initial-focus="#open-git-title" v-if="open" :active="focusReady" fallback-focus="#open-git-title" :escape-deactivates="false">
+    <div class="modal modal-open transition-none z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="open-git-title" @keydown.esc.prevent="emit('close')">
       <section class="modal-box w-full max-w-3xl max-h-[92vh] min-w-0 overflow-y-auto space-y-4">
         <header class="flex justify-between gap-3 items-start">
           <h2 id="open-git-title" ref="heading" tabindex="-1" class="font-bold text-xl">{{ t('reopening.title') }}</h2>

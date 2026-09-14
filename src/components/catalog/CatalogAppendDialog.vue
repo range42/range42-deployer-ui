@@ -115,8 +115,8 @@ const workload = computed(() => preview.value?.review as undefined | {
 </script>
 
 <template>
-  <FocusTrap :active="focusReady" fallback-focus="#catalog-append-title" :escape-deactivates="false">
-    <div class="modal modal-open z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="catalog-append-title" data-testid="catalog-append-dialog" @keydown.esc.stop.prevent="close">
+  <FocusTrap initial-focus="#catalog-append-title" :active="focusReady" fallback-focus="#catalog-append-title" :escape-deactivates="false">
+    <div class="modal modal-open transition-none z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="catalog-append-title" data-testid="catalog-append-dialog" @keydown.esc.stop.prevent="close">
       <section class="modal-box w-full max-w-3xl max-h-[92vh] overflow-y-auto overscroll-contain space-y-5">
         <header class="flex items-start justify-between gap-4">
           <div class="min-w-0">

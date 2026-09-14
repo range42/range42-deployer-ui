@@ -46,8 +46,8 @@ function attach() {
 </script>
 <template>
   <Teleport to="body">
-    <FocusTrap v-if="open" :active="focusReady" :fallback-focus="() => heading" :escape-deactivates="false">
-      <div class="modal modal-open p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="role-attachment-title" @keydown.esc.stop.prevent="emit('close')">
+    <FocusTrap initial-focus="#role-attachment-title" v-if="open" :active="focusReady" :fallback-focus="() => heading" :escape-deactivates="false">
+      <div class="modal modal-open transition-none p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="role-attachment-title" @keydown.esc.stop.prevent="emit('close')">
         <section class="modal-box max-w-2xl w-full max-h-[90vh] overflow-y-auto min-w-0">
           <h2 id="role-attachment-title" ref="heading" tabindex="-1" class="text-xl font-bold">Attach an imported catalog role</h2>
           <p class="text-sm mt-3">Use or Customize an Ansible role from Catalog first. This copies its current local files into this scenario. The role runs with facts and privilege escalation on the selected VM, after bootstrap. Replicated VMs each receive the role.</p>
