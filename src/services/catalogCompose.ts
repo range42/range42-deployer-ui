@@ -58,11 +58,13 @@ function literal(value: unknown, label: string): string {
   return value
 }
 
-function serviceExtras(config: ObjectValue, files: ProjectFiles, volumes: string[], names: string[]): string[] {
+function serviceExtras(config: ObjectValue, files: ProjectFiles, volumes: string[], names: string[], secretBindings: Record<string, string>, usedSecrets: Set<string>): string[] {
   if (config.environment !== undefined) {
     const env = object(config.environment, 'Compose environment')
     for (const [name, value] of Object.entries(env)) {
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error('Use literal environment names')
+      const reference = typeof value === 'string' && /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)
+      if (reference && Object.hasOwn(secretBindings, reference[1])) { usedSecrets.add(reference[1]); continue }
       if (/(?:^|_)(?:password|passwd|token|api_?key|secret|private_?key)(?:_|$)/i.test(name)) throw new Error('Environment secrets need runtime provisioning; do not publish secret values to Git')
       literal(value, 'environment value')
     }
@@ -101,7 +103,7 @@ function serviceExtras(config: ObjectValue, files: ProjectFiles, volumes: string
   return config.depends_on as string[]
 }
 
-export function composeContract(files: ProjectFiles, hostPorts?: unknown) {
+export function composeContract(files: ProjectFiles, hostPorts?: unknown, secretBindings: Record<string, string> = {}) {
   const choices = composeNames.filter(path => Object.hasOwn(files, path))
   if (choices.length !== 1) throw new Error('Select a workload containing exactly one root Compose file; PoC metadata alone cannot run')
   const entrypoint = choices[0], document = yaml(fileText(files[entrypoint]), entrypoint)
@@ -114,11 +116,12 @@ export function composeContract(files: ProjectFiles, hostPorts?: unknown) {
     keys(object(value === null ? {} : value, 'Compose volume'), [], 'volume; external names and drivers are not supported')
   }
   const dependencies = new Map<string, string[]>()
+  const usedSecrets = new Set<string>()
   const rows = names.map(service => {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/.test(service)) throw new Error('Use a literal Compose service name')
     const config = object(services[service], 'Compose service')
     keys(config, ['image', 'build', 'container_name', 'ports', 'restart', 'environment', 'volumes', 'healthcheck', 'depends_on', 'command', 'entrypoint'], 'Compose service')
-    dependencies.set(service, serviceExtras(config, files, Object.keys(volumes), names))
+    dependencies.set(service, serviceExtras(config, files, Object.keys(volumes), names, secretBindings, usedSecrets))
     if (config.container_name !== undefined && (typeof config.container_name !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(config.container_name))) throw new Error('Use a literal container name; the adapter assigns a project-scoped identity')
     if (config.restart !== undefined && !['no', 'always', 'on-failure', 'unless-stopped'].includes(String(config.restart))) throw new Error('Unsupported Compose restart policy')
     if ((config.image === undefined) === (config.build === undefined)) throw new Error('Choose one image or local build; combined image/build publishing needs separate review')
@@ -149,6 +152,7 @@ export function composeContract(files: ProjectFiles, hostPorts?: unknown) {
     visiting.delete(service); visited.add(service)
   }
   names.forEach(visit)
+  if (Object.keys(secretBindings).some(name => !usedSecrets.has(name))) throw new Error('Every secret binding must be referenced by a Compose environment placeholder')
   const portMappings = rows.flatMap(row => row.portMappings)
   if (hostPorts !== undefined) {
     if (!Array.isArray(hostPorts) || hostPorts.length !== portMappings.length || hostPorts.some(port => !Number.isInteger(port) || port < 1 || port > 65535)) throw new Error('Supply one integer host port (1–65535) for each original port mapping')

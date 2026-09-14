@@ -18,12 +18,13 @@ import fixture from './fixtures/catalogComposeApache.json'
 const backend = process.env.R42_WORKLOAD_BACKEND
 const temporary: string[] = []
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }) })
-async function setup(mode: string, hostPorts?: number[], document?: object) {
+async function setup(mode: string, hostPorts?: number[], document?: object, secretBindings: Record<string, string> = {}) {
   const root = mkdtempSync(join(tmpdir(), 'r42-workload-consumer-')); temporary.push(root)
   const project = savedScenario(); project.scenario.content = []
+  project.baseDoc.env.push(...Object.values(secretBindings).map(name => ({ name, secret: true })))
   const sourceFiles: Record<string, string> = { ...fixture.files, ...(document ? { [`${fixture.path}/compose.yml`]: stringify(document) } : {}) }
   const provider = { listTree: async () => fixture.tree, getFile: async () => { throw new Error('text fallback unused') }, getFileContent: async ({ path }: { path: string }) => ({ content: sourceFiles[path], sha: fixture.tree.find(row => row.path === path)!.sha }) }
-  const result = await prepareCatalogWorkload({ project, scenario: project.scenario, targetNode: 'vm1', attachmentId: 'catalog-1', hostPorts,
+  const result = await prepareCatalogWorkload({ project, scenario: project.scenario, targetNode: 'vm1', attachmentId: 'catalog-1', hostPorts, secretBindings,
     entry: { source_id: 'catalog', kind: 'container', name: 'Apache', path: fixture.path, sha: fixture.sha },
     source: { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' }, repos: [{ owner: 'range42', repo: 'range42-catalog', branch: 'main' }] } }, provider)
   const emitted = emitConcreteScenario({ ...project, files: result.files, scenario: result.scenario, generatedPaths: project.scenario_generated_paths })
@@ -37,6 +38,8 @@ async function setup(mode: string, hostPorts?: number[], document?: object) {
   writeFileSync(join(root, 'expected.json'), JSON.stringify(expected))
   const marker = JSON.parse(result.files['scenarios/saved/content/workloads/catalog-1/review.json'] as string).compose_project
   writeFileSync(join(root, 'consumer.json'), JSON.stringify({ mode, marker, services: result.summary.services }))
+  mkdirSync(join(root, 'active/secrets'), { recursive: true })
+  writeFileSync(join(root, 'active/secrets/default_vault.yml'), mode === 'missing-secret' ? '{}\n' : 'workload_password: consumer-fixture-value\n')
   const stub = readFileSync(join(process.cwd(), 'src/__tests__/fixtures/workloadDockerConsumer.py'), 'utf8')
   writeFileSync(join(bin, 'docker'), `#!${python}\n${stub}`)
   execFileSync('/bin/chmod', ['0755', join(bin, 'docker')])
@@ -50,7 +53,7 @@ async function setup(mode: string, hostPorts?: number[], document?: object) {
   writeFileSync(join(root, 'test-hosts.yml'), stringify({ all: { hosts: { 'saved-vm': { ansible_connection: 'local', ansible_python_interpreter: python }, 'unselected-vm': { ansible_connection: 'local', ansible_python_interpreter: python } } } }))
   writeFileSync(join(root, 'ansible.cfg'), '[defaults]\n')
   const run = (cleanup = false) => {
-    try { return { rc: 0, output: execFileSync(ansible, ['-i', join(root, 'test-hosts.yml'), join(root, cleanup ? 'scenarios/saved/content/workloads/catalog-1/cleanup.yml' : 'scenarios/saved/configure.yml'), '-e', 'global_vm_ssh_name=saved-vm'], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, ANSIBLE_CONFIG: join(root, 'ansible.cfg'), ANSIBLE_STDOUT_CALLBACK: 'default', ANSIBLE_NOCOLOR: '1', ANSIBLE_LOCAL_TEMP: join(root, 'ansible-tmp') } }) } }
+    try { return { rc: 0, output: execFileSync(ansible, ['-i', join(root, 'test-hosts.yml'), join(root, cleanup ? 'scenarios/saved/content/workloads/catalog-1/cleanup.yml' : 'scenarios/saved/configure.yml'), '-e', 'global_vm_ssh_name=saved-vm'], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, RANGE42_ACTIVE_CONFIG_DIR: join(root, 'active'), ANSIBLE_CONFIG: join(root, 'ansible.cfg'), ANSIBLE_STDOUT_CALLBACK: 'default', ANSIBLE_NOCOLOR: '1', ANSIBLE_LOCAL_TEMP: join(root, 'ansible-tmp') } }) } }
     catch (error) { const failure = error as { status?: number; stdout?: string }; return { rc: failure.status || 1, output: String(failure.stdout || '') } }
   }
   return { root, result, run, calls, guest, marker }
@@ -99,5 +102,14 @@ describe.skipIf(!backend)('actual backend + local Ansible workload consumer', ()
     expect(cleaned.rc).not.toBe(0)
     expect(cleaned.output).toContain('Refuse changed or linked cleanup configuration')
     expect(readFileSync(f.calls, 'utf8')).not.toContain('"down"')
+  }, 60000)
+  it.each(['secret', 'missing-secret'])('resolves runtime-only vault bindings for %s without including values in logs or Git', async mode => {
+    const f = await setup(mode, undefined, { services: { db: { image: 'postgres:17', environment: { POSTGRES_PASSWORD: '${DB_PASSWORD}' } } } }, { DB_PASSWORD: 'workload_password' })
+    const executed = f.run()
+    expect(executed.rc).toBe(mode === 'secret' ? 0 : 2)
+    expect(executed.output).not.toContain('consumer-fixture-value')
+    expect(JSON.stringify(f.result.files)).not.toContain('consumer-fixture-value')
+    if (mode === 'secret') expect(readFileSync(f.calls, 'utf8')).toContain('"up"')
+    else expect(existsSync(f.calls)).toBe(false)
   }, 60000)
 })

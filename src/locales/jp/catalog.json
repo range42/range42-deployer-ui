@@ -65,6 +65,9 @@
     "publication_next": "まずファイルを確認してインポートしてください。その後、プロジェクトの Save と Publish で書き込み先ブランチと公開方法を選択します。まだ何も公開されていません。"
   },
   "append": {
+    "secret_bindings": "実行時シークレットの参照（任意の JSON）",
+    "secret_bindings_hint": "Compose のプレースホルダー名をバックエンドの vault 変数名に関連付けます。名前のみを保存し、必要な宣言をプロジェクトに追加します。実行前に管理者が vault に値を設定してください。",
+    "invalid_secret_bindings": "プレースホルダー名と vault 変数名を JSON で指定してください。秘密の値は入力しないでください。",
     "eyebrow": "プロジェクトを構成",
     "title": "カタログ項目を追加",
     "action": "プロジェクトに追加",

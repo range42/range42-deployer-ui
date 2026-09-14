@@ -173,6 +173,42 @@ describe('catalog Compose workload attachment', () => {
     first.scenario.content.at(-1)!.path = 'content/workloads/catalog-1/cleanup.yml'
     await expect(prepareCatalogWorkload({ ...f.input, project: { ...f.input.project, files: first.files }, scenario: first.scenario, attachmentId: 'catalog-2' }, f.provider)).rejects.toThrow(/8888/)
   })
+  it('binds declared vault variables at runtime without storing secret values in the payload or review', async () => {
+    const f = setup()
+    f.input.project.baseDoc.env.push({ name: 'workload_password', secret: true, required: true })
+    f.setCompose({ services: { db: { image: 'postgres:17', environment: { POSTGRES_PASSWORD: '${DB_PASSWORD}' } } } })
+    const result = await prepareCatalogWorkload({ ...f.input, secretBindings: { DB_PASSWORD: 'workload_password' } }, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1'
+    const deploy = parse(result.files[`${prefix}/deploy.yml`] as string)[0]
+    expect(deploy.vars_files).toEqual(["{{ lookup('env', 'RANGE42_ACTIVE_CONFIG_DIR') }}/secrets/default_vault.yml"])
+    const commands = deploy.tasks.filter(task => task['ansible.builtin.command']?.argv.includes('compose') && !task['ansible.builtin.command'].argv.includes('version'))
+    expect(commands.length).toBeGreaterThan(1)
+    for (const task of commands) {
+      expect(task.no_log).toBe(true)
+      expect(task.environment.DB_PASSWORD).toBe("{{ lookup('vars', 'workload_password') }}")
+    }
+    expect(result.summary.required_secrets).toEqual(['workload_password'])
+    expect(parse(result.files[`${prefix}/runtime.compose.yml`] as string).services.db.environment.POSTGRES_PASSWORD).toBe('${DB_PASSWORD}')
+  })
+  it('rejects missing, unused and undeclared runtime secret bindings before changing the project', async () => {
+    const f = setup()
+    f.setCompose({ services: { db: { image: 'postgres:17', environment: { POSTGRES_PASSWORD: '${DB_PASSWORD}' } } } })
+    for (const secretBindings of [undefined, { DB_PASSWORD: 'unknown' }, { UNUSED: 'password' }, { DB_PASSWORD: "name') }}" }]) {
+      await expect(prepareCatalogWorkload({ ...f.input, secretBindings }, f.provider)).rejects.toThrow(/secret|declared|variable|interpolation/i)
+    }
+  })
+  it('captures runtime secret names before asynchronous source reads', async () => {
+    const f = setup()
+    f.input.project.baseDoc.env.push({ name: 'workload_password', secret: true })
+    f.setCompose({ services: { db: { image: 'postgres:17', environment: { POSTGRES_PASSWORD: '${DB_PASSWORD}' } } } })
+    let release!: (tree: typeof f.tree) => void
+    f.provider.listTree.mockImplementation(() => new Promise(resolve => { release = resolve }))
+    const input = { ...f.input, secretBindings: { DB_PASSWORD: 'workload_password' } }
+    const pending = prepareCatalogWorkload(input, f.provider)
+    input.secretBindings.DB_PASSWORD = 'changed'
+    release(f.tree)
+    expect((await pending).summary.required_secrets).toEqual(['workload_password'])
+  })
   it('rejects secret files, interpolation and credential URLs without echoing values', async () => {
     for (const [path, value] of [['.env', 'TOKEN=secret'], ['private.key', '-----BEGIN OPENSSH PRIVATE KEY-----\nsecret'], ['config.txt', 'https://user:secret@example.test/path']]) {
       const f = setup(), full = `${fixture.path}/${path}`; f.files[full] = value; f.tree.push({ path: full, type: 'blob', mode: '100644', sha: 'd'.repeat(40) })

@@ -148,6 +148,19 @@ describe('immutable catalog append', () => {
     await expect(prepare({ entry: { ...roleEntry, kind: 'container' }, source, project: project() }, provider)).rejects.toThrow(/target.*VM|VM.*target/i)
     expect(provider.listTree).not.toHaveBeenCalled()
   })
+  it('adds secret declarations with a reviewed workload while preserving existing project variables', async () => {
+    const current = savedScenario(), before = structuredClone(current)
+    const item = { ...roleEntry, name: 'Database', kind: 'container', path: '03_container_layer/docker/db' }
+    const provider = { listTree: async () => [{ path: `${item.path}/compose.yml`, mode: '100644', type: 'blob', sha }],
+      getFileContent: async () => ({ sha, content: 'services:\n  db:\n    image: postgres:17\n    environment:\n      POSTGRES_PASSWORD: "${DB_PASSWORD}"\n' }) }
+    const result = await prepare({ entry: item, source, project: current, targetNode: 'vm1', secretBindings: { DB_PASSWORD: 'workload_password' } }, provider)
+    expect(current).toEqual(before)
+    expect(result.project.baseDoc.env).toEqual([...before.baseDoc.env, { name: 'workload_password', secret: true, required: true, scope: 'shared' }])
+    expect(result.review.required_secrets).toEqual(['workload_password'])
+    const conflict = structuredClone(current)
+    conflict.baseDoc.env.push({ name: 'workload_password', secret: false, default: 'stored' })
+    await expect(prepare({ entry: item, source, project: conflict, targetNode: 'vm1', secretBindings: { DB_PASSWORD: 'workload_password' } }, provider)).rejects.toThrow(/secret|declared/i)
+  })
   it('uses one captured project snapshot across asynchronous pinned source reads', async () => {
     const current = savedScenario(); const before = structuredClone(current)
     const provider = roleProvider(); let release

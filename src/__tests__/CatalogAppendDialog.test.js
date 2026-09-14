@@ -40,6 +40,19 @@ async function review(wrapper) {
 }
 
 describe('append catalog review', () => {
+  it('captures secret variable bindings without requesting or persisting secret values', async () => {
+    const container = { ...entry, kind: 'container' }
+    getEntry.mockResolvedValue(container)
+    const { wrapper } = await modal({ entry: container, initialNodeId: 'existing' })
+    await wrapper.get('[name="secret-bindings"]').setValue('{"DB_PASSWORD":"workload_password"}')
+    await review(wrapper)
+    expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ secretBindings: { DB_PASSWORD: 'workload_password' } }))
+    await wrapper.get('[name="secret-bindings"]').setValue('{"DB_PASSWORD":"other_password"}')
+    expect(wrapper.find('[data-testid="catalog-append-open"]').exists()).toBe(false)
+    await wrapper.get('[name="secret-bindings"]').setValue('{"DB_PASSWORD":123}')
+    await review(wrapper)
+    expect(wrapper.get('[role="alert"]').text()).toMatch(/names|mapping|JSON/)
+  })
   it('prefills the requested project and previews typed VM settings before persisting a local addition', async () => {
     const { wrapper, projects } = await modal()
     expect(wrapper.get('[name="project"]').element.value).toBe(original.id)

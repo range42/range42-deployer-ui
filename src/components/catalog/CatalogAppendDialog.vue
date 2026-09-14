@@ -21,6 +21,7 @@ const projectId = ref(projects.getProject(props.initialProjectId) ? props.initia
 const targetNode = ref(props.initialNodeId || '')
 const instanceName = ref('')
 const hostPorts = ref('')
+const secretBindings = ref('')
 const busy = ref(false), error = ref(''), heading = ref<HTMLElement | null>(null), focusReady = ref(false)
 const preview = ref<Awaited<ReturnType<typeof prepareCatalogAppend>>>()
 const project = computed(() => projects.getProject(projectId.value))
@@ -28,7 +29,7 @@ const source = computed(() => inventory.getSource(props.entry.source_id))
 const needsTarget = computed(() => ['ansible_role', 'container'].includes(props.entry.kind))
 const vms = computed(() => (project.value?.nodes || []).filter(node => node.type === 'vm'))
 const identity = computed(() => JSON.stringify([props.entry, source.value, project.value, projectId.value, targetNode.value,
-  instanceName.value, hostPorts.value, backend.url, backend.activeHost?.id, backend.activeHost?.token]))
+  instanceName.value, hostPorts.value, secretBindings.value, backend.url, backend.activeHost?.id, backend.activeHost?.token]))
 let epoch = 0
 let reviewed: { identity: string; token: string | null } | undefined
 let closed = false, applied = false
@@ -54,6 +55,14 @@ async function review() {
   busy.value = true
   try {
     let chosenPorts: number[] | undefined
+    let chosenSecrets: Record<string, string> | undefined
+    if (props.entry.kind === 'container' && secretBindings.value.trim()) {
+      try {
+        const value = JSON.parse(secretBindings.value)
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(name => typeof name !== 'string')) throw new Error()
+        chosenSecrets = value
+      } catch { throw new Error(t('catalog.append.invalid_secret_bindings')) }
+    }
     if (props.entry.kind === 'container' && hostPorts.value.trim()) {
       chosenPorts = hostPorts.value.split(',').map(value => {
         if (!/^\d+$/.test(value.trim()) || Number(value) < 1 || Number(value) > 65535) throw new Error(t('catalog.append.invalid_ports'))
@@ -66,7 +75,7 @@ async function review() {
     if (detail.source_id !== props.entry.source_id || detail.path !== props.entry.path || detail.kind !== props.entry.kind
       || (props.entry.sha && detail.sha !== props.entry.sha)) throw new Error(t('catalog.append.revision_changed'))
     const result = await prepareCatalogAppend({ entry: detail, source: source.value, project: snapshot,
-      targetNode: targetNode.value || undefined, instanceName: instanceName.value || undefined, ...(chosenPorts ? { hostPorts: chosenPorts } : {}) })
+      targetNode: targetNode.value || undefined, instanceName: instanceName.value || undefined, ...(chosenPorts ? { hostPorts: chosenPorts } : {}), ...(chosenSecrets ? { secretBindings: chosenSecrets } : {}) })
     if (closed || current !== epoch) return
     if (captured.identity !== identity.value || captured.token !== inventory.getToken(props.entry.source_id)) throw new Error(t('catalog.append.changed'))
     preview.value = result; reviewed = captured
@@ -141,6 +150,11 @@ const workload = computed(() => preview.value?.review as undefined | {
             <span class="text-sm font-medium">{{ t('catalog.append.host_ports') }}</span>
             <input v-model="hostPorts" name="host-ports" autocomplete="off" spellcheck="false" class="input input-bordered w-full" :placeholder="t('catalog.append.host_ports_example')" aria-describedby="catalog-host-ports-hint" />
             <span id="catalog-host-ports-hint" class="text-xs text-base-content/60">{{ t('catalog.append.host_ports_hint') }}</span>
+          </label>
+          <label v-if="entry.kind === 'container'" class="form-control gap-1 sm:col-span-2">
+            <span class="text-sm font-medium">{{ t('catalog.append.secret_bindings') }}</span>
+            <textarea v-model="secretBindings" name="secret-bindings" autocomplete="off" spellcheck="false" class="textarea textarea-bordered font-mono w-full" rows="2" placeholder='{"DB_PASSWORD":"workload_password"}' aria-describedby="catalog-secret-bindings-hint" />
+            <span id="catalog-secret-bindings-hint" class="text-xs text-base-content/60">{{ t('catalog.append.secret_bindings_hint') }}</span>
           </label>
         </div>
         <p v-if="!projects.projects.length" class="text-sm" role="status">{{ t('catalog.append.no_projects') }}</p>

@@ -65,6 +65,9 @@
     "publication_next": "Vérifiez et importez d’abord les fichiers. Utilisez ensuite Enregistrer et Publier depuis le projet pour choisir la branche et le mode de publication. Rien n’a encore été publié."
   },
   "append": {
+    "secret_bindings": "Références des secrets à l’exécution (JSON facultatif)",
+    "secret_bindings_hint": "Associez les paramètres Compose aux noms des variables du coffre du backend. Seuls les noms sont enregistrés ; les déclarations manquantes sont ajoutées au projet. L’opérateur doit fournir les valeurs dans le coffre avant l’exécution.",
+    "invalid_secret_bindings": "Utilisez un objet JSON associant les noms des paramètres aux variables du coffre ; ne saisissez pas les valeurs secrètes.",
     "eyebrow": "Composer votre projet",
     "title": "Ajouter un élément du catalogue",
     "action": "Ajouter au projet",

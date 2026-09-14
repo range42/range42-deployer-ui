@@ -26,9 +26,11 @@ function literalPath(path: string): void {
   if (!/^[A-Za-z0-9_.\-/]+$/.test(path)) throw new Error('Workload paths must be literal portable file paths without interpolation')
 }
 function secretFree(path: string, content: string): void {
+  const literalSecret = content.split(/\r?\n/).some(line => /^\s*["']?(?:password|passwd|token|api[_-]?key|secret|private[_-]?key)["']?\s*[:=]\s*\S/i.test(line)
+    && !/:\s*["']?\$\{[A-Za-z_][A-Za-z0-9_]*\}["']?\s*$/.test(line))
   if (/(?:^|\/)\.env(?:\.|$)/i.test(path) || /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content)
     || /https?:\/\/[^\s/@]+:[^\s/@]+@/i.test(content)
-    || /^\s*["']?(?:password|passwd|token|api[_-]?key|secret|private[_-]?key)["']?\s*[:=]\s*\S/im.test(content)) {
+    || literalSecret) {
     throw new Error(`Secret-bearing or credential configuration is unsupported: ${path}; remove it from the source before import`)
   }
 }
@@ -63,13 +65,15 @@ async function loadTree(owner: string, repo: string, root: string, sha: string, 
   return { files, modes }
 }
 
-function playbook(projectName: string, services: string[], volumes: string[], modes: Record<string, string>, marker: string, runtimeHash: string, cleanup = false): string {
+function playbook(projectName: string, services: string[], volumes: string[], modes: Record<string, string>, marker: string, runtimeHash: string, secretBindings: Record<string, string>, cleanup = false): string {
   const root = `/opt/range42/workloads/${projectName}`, payload = `${root}/payload`
   const containers = services.map(service => services.length === 1 ? `${projectName}-service` : `${projectName}-${service}`)
   const docker = ['docker', '--host', 'unix:///var/run/docker.sock']
   const compose = [...docker, 'compose', '--project-name', projectName, '--project-directory', payload,
     '--env-file', '/dev/null', '-f', `${root}/runtime.compose.yml`]
-  const command = (name: string, argv: string[], extra: ObjectValue = {}) => ({ name, 'ansible.builtin.command': { argv }, changed_when: false, ...extra })
+  const environment = Object.fromEntries(Object.entries(secretBindings).map(([name, variable]) => [name, `{{ lookup('vars', '${variable}') }}`]))
+  const command = (name: string, argv: string[], extra: ObjectValue = {}) => ({ name, 'ansible.builtin.command': { argv }, changed_when: false, ...extra,
+    ...(Object.keys(environment).length && argv.includes('--project-name') ? { environment, no_log: true } : {}) })
   const assertion = (name: string, conditions: string[], message: string, extra: ObjectValue = {}) => ({ name, 'ansible.builtin.assert': { that: conditions, fail_msg: message, quiet: true }, ...extra })
   const directories = new Set([root, payload])
   for (const path of Object.keys(modes)) {
@@ -77,6 +81,7 @@ function playbook(projectName: string, services: string[], volumes: string[], mo
     while (parts.length) { directories.add(`${payload}/${parts.join('/')}`); parts.pop() }
   }
   const tasks: ObjectValue[] = [
+    ...Object.values(secretBindings).map(variable => assertion('Require declared workload secret from the backend vault', [`${variable} is defined`, `${variable} is string`, `${variable} | length > 0`], 'A declared workload secret is unavailable in the backend workspace vault', { no_log: true })),
     command('Require Docker Compose on the selected guest (install its prerequisite separately)', [...docker, 'compose', 'version']),
     command('Require the selected guest local Docker daemon', [...docker, 'info'], { no_log: true }),
     { name: 'Inspect workload destination', 'ansible.builtin.stat': { path: root, follow: false }, register: 'r42_workload_root' },
@@ -122,12 +127,28 @@ function playbook(projectName: string, services: string[], volumes: string[], mo
       assertion('Require the selected workload container to be running', [`(r42_workload_started.stdout | from_json | length) == 1`, `(r42_workload_started.stdout | from_json)[0].Config.Labels['io.range42.workload'] | default('') == '${marker}'`, '(r42_workload_started.stdout | from_json)[0].State.Running == true'], 'Compose returned but the selected workload container is not running'),
     ]),
   )
-  return stringify([{ name: cleanup ? 'Clean up owned catalog Compose workload on the selected guest' : 'Catalog Compose workload on the selected guest', hosts: '{{ global_vm_ssh_name }}', gather_facts: false, become: true, tasks }], { lineWidth: 0 })
+  return stringify([{ name: cleanup ? 'Clean up owned catalog Compose workload on the selected guest' : 'Catalog Compose workload on the selected guest', hosts: '{{ global_vm_ssh_name }}', gather_facts: false, become: true,
+    ...(Object.keys(secretBindings).length ? { vars_files: ["{{ lookup('env', 'RANGE42_ACTIVE_CONFIG_DIR') }}/secrets/default_vault.yml"] } : {}), tasks }], { lineWidth: 0 })
+}
+
+function validatedSecretBindings(value: unknown, variables: unknown): Record<string, string> {
+  const bindings = object(value === undefined ? {} : value, 'Workload secret bindings')
+  const declared = Array.isArray(variables) ? variables : []
+  for (const [name, variable] of Object.entries(bindings)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || typeof variable !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(variable)
+      || /^(?:ansible_|proxmox_|r42_|global_|deployer_cli_|RANGE42_|DOCKER_|COMPOSE_|PATH$|HOME$|LD_|PYTHON)/i.test(name)
+      || /^(?:ansible_|proxmox_|r42_|global_|deployer_cli_)/i.test(variable)
+      || ['__proto__', 'constructor', 'prototype', 'hostvars', 'groups', 'inventory_hostname'].includes(variable)) throw new Error('Use literal non-reserved secret environment and vault variable names')
+    const definition = declared.find(row => row && typeof row === 'object' && row.name === variable)
+    if (!definition?.secret || (definition.default !== undefined && definition.default !== null && definition.default !== '')) throw new Error('Each workload secret must reference a declared secret project variable with no stored default value')
+  }
+  return bindings as Record<string, string>
 }
 
 /** Stage an ordinary project-contained playbook; no provider, backend or guest writes. */
-export async function prepareCatalogWorkload(input: { entry: CatalogEntry; source: GitSource; project: { id: string; files?: ProjectFiles; nodes?: Array<{ id: string; type?: string }> }; scenario: unknown; targetNode: string; attachmentId: string; hostPorts?: number[] }, provider: Provider) {
-  const { entry, source, targetNode, attachmentId, project, hostPorts, scenario: requestedScenario } = structuredClone(input)
+export async function prepareCatalogWorkload(input: { entry: CatalogEntry; source: GitSource; project: { id: string; files?: ProjectFiles; nodes?: Array<{ id: string; type?: string }>; baseDoc?: { env?: unknown } }; scenario: unknown; targetNode: string; attachmentId: string; hostPorts?: number[]; secretBindings?: Record<string, string> }, provider: Provider) {
+  const { entry, source, targetNode, attachmentId, project, hostPorts, secretBindings: requestedBindings, scenario: requestedScenario } = structuredClone(input)
+  const secretBindings = validatedSecretBindings(requestedBindings, project.baseDoc?.env)
   const scenario = object(requestedScenario, 'Scenario') as Scenario
   const files = cloneFiles(project.files || {})
   if (entry.kind !== 'container' || source.id !== entry.source_id || source.repos.length !== 1) throw new Error('Choose one exact catalog container repository')
@@ -143,7 +164,7 @@ export async function prepareCatalogWorkload(input: { entry: CatalogEntry; sourc
   const origin = publicCatalogReference({ version: 1, mode: 'use', kind: 'container', source_id: source.id, provider: source.provider, base_url: source.base_url,
     repo_owner: repo.owner, repo_name: repo.repo, branch: repo.branch, path: entry.path, sha: entry.sha, ...(source.backend_url ? { backend_url: source.backend_url } : {}) })!
   const loaded = await loadTree(repo.owner, repo.repo, entry.path, entry.sha!, provider)
-  const contract = composeContract(loaded.files, hostPorts)
+  const contract = composeContract(loaded.files, hostPorts, secretBindings)
   for (const item of scenario.content) {
     if (item.target_node !== targetNode || item.kind !== 'playbook' || typeof item.path !== 'string' || !/^content\/workloads\/[^/]+\/(?:deploy|cleanup)\.yml$/.test(item.path)) continue
     const reviewPath = `scenarios/${scenario.label}/${item.path.replace(/(?:deploy|cleanup)\.yml$/, 'review.json')}`
@@ -156,7 +177,7 @@ export async function prepareCatalogWorkload(input: { entry: CatalogEntry; sourc
     if (Object.keys(existingFiles).length !== Object.keys(expectedHashes).length || Object.entries(existingFiles).some(([path, content]) => expectedHashes[path] !== digest(fileBytes(content)))) throw new Error('Existing workload files changed since review; review its current Config before appending another workload')
     const runtimePath = reviewPath.replace(/review\.json$/, 'runtime.compose.yml')
     if (!Object.hasOwn(files, runtimePath) || digest(fileBytes(files[runtimePath])) !== review.runtime_sha256) throw new Error('Existing workload execution config changed since review; review its current Config before appending another workload')
-    const actualPorts = composeContract(existingFiles, review.host_ports).ports
+    const actualPorts = composeContract(existingFiles, review.host_ports, validatedSecretBindings(review.secret_bindings, project.baseDoc?.env)).ports
     if (JSON.stringify(actualPorts) !== JSON.stringify(review.published_ports)) throw new Error('Existing workload port review changed; review its current Config before appending another workload')
     const collision = contract.ports.find(port => (review.published_ports as unknown[]).includes(port))
     if (collision) throw new Error(`Host port ${collision} is already assigned to another workload on this VM; choose different Host ports in the append dialog and review again`)
@@ -171,13 +192,13 @@ export async function prepareCatalogWorkload(input: { entry: CatalogEntry; sourc
   }])), networks: { default: { labels: { 'io.range42.workload': marker } } },
   ...(contract.volumes.length ? { volumes: Object.fromEntries(contract.volumes.map(name => [name, { labels: { 'io.range42.workload': marker } }])) } : {}) })
   add(`${prefix}/runtime.compose.yml`, runtime)
-  add(`${prefix}/review.json`, JSON.stringify({ version: 1, origin, compose_project: projectName, published_ports: contract.ports, host_ports: contract.portMappings.map(port => port.host_port), runtime_sha256: digest(runtime), file_hashes: Object.fromEntries(Object.entries(loaded.files).map(([path, content]) => [path, digest(fileBytes(content))])), file_modes: loaded.modes }, null, 2) + '\n')
-  add(`${prefix}/deploy.yml`, playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime)))
-  add(`${prefix}/cleanup.yml`, playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), true))
+  add(`${prefix}/review.json`, JSON.stringify({ version: 1, origin, compose_project: projectName, secret_bindings: secretBindings, published_ports: contract.ports, host_ports: contract.portMappings.map(port => port.host_port), runtime_sha256: digest(runtime), file_hashes: Object.fromEntries(Object.entries(loaded.files).map(([path, content]) => [path, digest(fileBytes(content))])), file_modes: loaded.modes }, null, 2) + '\n')
+  add(`${prefix}/deploy.yml`, playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), secretBindings))
+  add(`${prefix}/cleanup.yml`, playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), secretBindings, true))
   validateFileMap(files)
   scenario.content.push({ id: attachmentId, kind: 'playbook', target_node: targetNode, path: `content/workloads/${attachmentId}/deploy.yml`, vars: {} })
-  return { files, scenario, summary: { addedContentIds: [attachmentId], addedFilePaths, source_sha: entry.sha!, service: contract.service, services: contract.services, readiness: contract.readiness, cleanup_file: `${prefix}/cleanup.yml`,
+  return { files, scenario, summary: { addedContentIds: [attachmentId], addedFilePaths, source_sha: entry.sha!, service: contract.service, services: contract.services, required_secrets: [...new Set(Object.values(secretBindings))], readiness: contract.readiness, cleanup_file: `${prefix}/cleanup.yml`,
     published_ports: contract.ports, original_ports: contract.portMappings.map(port => `${port.original_host_port}/${port.protocol}`), port_mappings: contract.portMappings, compose_project: projectName, images: contract.images, build: contract.build, destination: `/opt/range42/workloads/${projectName}`, container_names: contract.services.map(service => contract.services.length === 1 ? `${projectName}-service` : `${projectName}-${service}`), ...(contract.services.length === 1 ? { container_name: `${projectName}-service` } : {}), selected_file: `${prefix}/deploy.yml`,
     prerequisites: ['Docker Engine and Docker Compose v2 or later with --wait and --wait-timeout support must already work on the selected guest; the playbook checks both.'],
-    limitations: ['Pinned Git files do not pin mutable registry image tags or prove package availability.', 'Up to 32 services; literal public environment values, owned named volumes and pinned read-only relative mounts. No environment secrets, arbitrary host mounts, external dependencies or binary source files.', contract.readiness, 'The workload must be trusted executable source. Cleanup is an explicit reviewed playbook and preserves named volumes, images and copied files.', 'The reviewed published ports expose the workload on the guest; external port conflicts fail during Compose execution.'] } }
+    limitations: ['Pinned Git files do not pin mutable registry image tags or prove package availability.', 'Up to 32 services; literal public environment values, owned named volumes and pinned read-only relative mounts. Secrets use explicit bindings to declared backend vault variables; literal secret values, arbitrary host mounts, external dependencies and binary source files are not imported.', contract.readiness, 'The workload must be trusted executable source. Cleanup is an explicit reviewed playbook and preserves named volumes, images and copied files.', 'The reviewed published ports expose the workload on the guest; external port conflicts fail during Compose execution.'] } }
 }

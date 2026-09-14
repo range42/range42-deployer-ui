@@ -33,6 +33,8 @@ if args[:2] == ["container", "inspect"]:
     print(json.dumps([{"Config": {"Labels": {"io.range42.workload": label}}, "State": {"Running": mode != "stopped"}}]))
     sys.exit(0)
 assert args[0] == "compose"
+if mode == "secret":
+    assert os.environ.get("DB_PASSWORD") == "consumer-fixture-value"
 payload = pathlib.Path(args[args.index("--project-directory") + 1])
 expected = json.loads((root / "expected.json").read_text())
 assert all((payload / name).read_bytes() == value.encode() for name, value in expected.items()), "copy bytes/path mismatch"

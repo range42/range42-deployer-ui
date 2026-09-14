@@ -31,6 +31,7 @@ export interface CatalogAppendInput {
   targetNode?: string
   instanceName?: string
   hostPorts?: number[]
+  secretBindings?: Record<string, string>
 }
 export interface CatalogAppendPreview {
   project: CatalogAppendProject
@@ -85,7 +86,7 @@ function regenerateOwnedContent(original: CatalogAppendProject, result: CatalogA
 
 /** Read-only source reads, then one complete candidate; callers choose when to apply. */
 export async function prepareCatalogAppend(input: CatalogAppendInput, provider?: GitProviderV1): Promise<CatalogAppendPreview> {
-  const { entry, source, targetNode, instanceName, hostPorts } = copy(input)
+  const { entry, source, targetNode, instanceName, hostPorts, secretBindings } = copy(input)
   const original = copy(input.project)
   const project = copy(original)
   if (source.id !== entry.source_id || source.repos.length !== 1) throw new Error('The catalog source must identify exactly one repository')
@@ -127,8 +128,15 @@ export async function prepareCatalogAppend(input: CatalogAppendInput, provider?:
     result.counts.files = Object.keys(project.files || {}).filter(path => !Object.hasOwn(original.files || {}, path)).length
   } else if (entry.kind === 'container') {
     if (!targetNode || !project.nodes.some(node => node.id === targetNode && node.type === 'vm')) throw new Error('Choose an existing target VM before appending a workload')
+    if (secretBindings) {
+      const variables = captureProjectAuthoring(project.id, { variables: project.baseDoc?.env }).variables
+      const names = new Set(variables.map(row => row.name))
+      const additions = [...new Set(Object.values(secretBindings))].filter(name => !names.has(name))
+        .map(name => ({ name, secret: true, required: true, scope: 'shared' }))
+      project.baseDoc = { ...project.baseDoc, env: [...variables, ...additions] }
+    }
     const workload = await prepareCatalogWorkload({ entry, source, project, scenario: project.scenario || createScenarioDraft(project, project.nodes, project.edges),
-      targetNode, attachmentId: id, hostPorts }, provider || providerForBinding({ source_id: source.id, provider: source.provider, base_url: source.base_url }))
+      targetNode, attachmentId: id, hostPorts, secretBindings }, provider || providerForBinding({ source_id: source.id, provider: source.provider, base_url: source.base_url }))
     project.files = workload.files
     project.scenario = workload.scenario
     provenance.content_ids.push(...workload.summary.addedContentIds)

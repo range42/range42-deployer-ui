@@ -65,6 +65,9 @@
     "publication_next": "Review and import the files first. Then use Save and Publish from the project to choose the writable branch and review or direct publication. Nothing has been published yet."
   },
   "append": {
+    "secret_bindings": "Runtime secret bindings (optional JSON)",
+    "secret_bindings_hint": "Map Compose placeholder names to backend vault variable names. Only names are saved; missing secret declarations are added to the project. The backend operator must supply values in the workspace vault before execution.",
+    "invalid_secret_bindings": "Use a JSON mapping of placeholder names to vault variable names; do not enter secret values.",
     "eyebrow": "Build your project",
     "title": "Add a catalog item",
     "action": "Add to project",
