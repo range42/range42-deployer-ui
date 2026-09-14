@@ -15,6 +15,7 @@ import { useDeploymentStore } from '@/stores/deploymentStore.ts'
 import RuntimeControls from '@/components/deployment/RuntimeControls.vue'
 import RuntimeGitRecords from '@/components/deployment/RuntimeGitRecords.vue'
 import DeploymentAllocations from '@/components/deployment/DeploymentAllocations.vue'
+import SnapshotSets from '@/components/deployment/SnapshotSets.vue'
 import TeamCard from '@/components/ui/TeamCard.vue'
 import TeardownConfirmModal from '@/components/TeardownConfirmModal.vue'
 import ResetTeamModal from '@/components/ResetTeamModal.vue'
@@ -665,6 +666,8 @@ onBeforeUnmount(() => {
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
       <DeploymentAllocations v-if="meta && !loadError" :deployment-id="String(route.params.id)" :disabled="allocationReleaseDisabled" />
+      <SnapshotSets v-if="supportsConcreteActions && meta && !loadError" :deployment-id="String(route.params.id)"
+        :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
       <RuntimeControls v-if="supportsConcreteActions" :deployment-id="String(route.params.id)"
         :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
       <RuntimeGitRecords v-if="supportsConcreteActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
