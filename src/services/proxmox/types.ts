@@ -85,6 +85,7 @@ export interface VmListItem {
 }
 
 export interface VmActionRequest {
+  proxmox_host_id?: string
   vmtype?: 'qemu' | 'lxc'
   proxmox_node: ProxmoxNode
   vm_id: string | number
@@ -251,6 +252,7 @@ export interface TemplateInfo {
 }
 
 export interface StorageDownloadIsoRequest {
+  proxmox_host_id?: string
   proxmox_node: ProxmoxNode
   storage: string // e.g., 'local'
   url: string

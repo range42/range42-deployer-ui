@@ -9,7 +9,7 @@
  * the VM cache; on failure or timeout it reverts the node and logs an error.
  */
 
-import { getTaskStatus } from '@/services/proxmox/api'
+import { captureBackendGuard, getTaskStatus } from '@/services/proxmox/api'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { useActivityLogStore } from '@/stores/activityLogStore'
 import { useToast } from '@/composables/useToast'
@@ -62,9 +62,13 @@ export function useProxmoxTasks(opts: ProxmoxTasksOptions = {}) {
     o.node.data.pendingAction = action
 
     let upid: string | undefined
+    let checkBackend: () => void
     try {
+      checkBackend = captureBackendGuard()
       const res = await o.apiCall()
+      checkBackend()
       upid = res?.upid
+      if (!upid) throw new Error('No task ID returned. Completion is unconfirmed; refresh the guest before retrying.')
     } catch (err) {
       o.node.data.pendingAction = undefined
       const msg = err instanceof Error ? err.message : String(err)
@@ -73,10 +77,6 @@ export function useProxmoxTasks(opts: ProxmoxTasksOptions = {}) {
       return
     }
 
-    if (!upid) {
-      finishSuccess(action, o, entryId)
-      return
-    }
     log.update(entryId, { upid })
 
     let settled = false
@@ -84,7 +84,17 @@ export function useProxmoxTasks(opts: ProxmoxTasksOptions = {}) {
       await delay(pollIntervalMs)
       let ts
       try {
+        checkBackend()
+      } catch {
+        revert(o, prevStatus)
+        const message = 'Backend context changed. Task completion is unconfirmed; refresh the original backend.'
+        log.update(entryId, { level: 'error', message })
+        showToast(message, 'error')
+        return
+      }
+      try {
         ts = await getTaskStatus(upid)
+        checkBackend()
       } catch {
         continue
       }

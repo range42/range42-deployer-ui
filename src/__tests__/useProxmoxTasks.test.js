@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-const { getTaskStatus } = vi.hoisted(() => ({ getTaskStatus: vi.fn() }))
-vi.mock('@/services/proxmox/api', () => ({ getTaskStatus }))
+const { getTaskStatus, context } = vi.hoisted(() => ({ getTaskStatus: vi.fn(), context: { current: true } }))
+vi.mock('@/services/proxmox/api', () => ({ getTaskStatus, captureBackendGuard: () => () => { if (!context.current) throw new Error('Backend context changed') } }))
 vi.mock('@/services/proxmox/cache', () => ({ proxmoxCache: { invalidate: vi.fn() } }))
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
 
@@ -20,6 +20,7 @@ describe('useProxmoxTasks.launch', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     getTaskStatus.mockReset()
+    context.current = true
   })
 
   it('pending → transitional status → poll OK → confirmed status', async () => {
@@ -105,4 +106,36 @@ describe('useProxmoxTasks.launch', () => {
     expect(node.data.status).toBe('running')
     expect(log.entries.some((e) => e.level === 'error' && /tim/i.test(e.message))).toBe(true)
   })
+})
+
+
+describe('task backend context', () => {
+  it('never confirms a task after the backend changes during a successful poll', async () => {
+    setActivePinia(createPinia())
+    context.current = true
+    getTaskStatus.mockImplementation(async () => {
+      context.current = false
+      return { status: 'stopped', exitstatus: 'OK' }
+    })
+    const node = { id: 'n', data: { status: 'stopped' } }
+    const onSuccess = vi.fn()
+    const tasks = useProxmoxTasks({ setTimeoutFn: fn => fn(), maxPolls: 1 })
+    await tasks.launch('start', { node, vmId: 42, vmtype: 'qemu', apiCall: async () => ({ upid: 'UPID:pve-b:1:task::' }), onSuccess })
+    expect(onSuccess).not.toHaveBeenCalled()
+    expect(node.data.status).toBe('stopped')
+    expect(node.data.pendingAction).toBeUndefined()
+  })
+})
+
+
+it('keeps a successful HTTP response without a task ID unconfirmed', async () => {
+  setActivePinia(createPinia())
+  context.current = true
+  const node = makeNode('stopped')
+  const onSuccess = vi.fn()
+  const tasks = useProxmoxTasks({ setTimeoutFn: immediateTimeout })
+  await tasks.launch('start', { node, vmId: 42, vmtype: 'qemu', apiCall: async () => ({}), onSuccess })
+  expect(onSuccess).not.toHaveBeenCalled()
+  expect(node.data.status).toBe('stopped')
+  expect(node.data.pendingAction).toBeUndefined()
 })

@@ -225,7 +225,7 @@ export function useInfrastructureImport() {
       // so extractNetworkInterfaces() can rebuild bridge/network edges.
       try {
         const vmtype = vm.type === 'lxc' ? 'lxc' : 'qemu'
-        const cfg = await proxmoxApi.vm.getConfig(vmid, vmtype)
+        const cfg = await proxmoxApi.vm.getConfig(vmid, vmtype, { node: proxmoxNode.value })
         return { ...summary, ...cfg }
       } catch (cfgErr) {
         console.warn(`[useInfrastructureImport] no per-NIC config for VM ${vmid}:`, cfgErr)
@@ -247,7 +247,7 @@ export function useInfrastructureImport() {
         ? { vmid, name: lxc.name, status: lxc.status, node: proxmoxNode.value }
         : { vmid }
       // LXC config carries cores/memory + net0 with inline ip/gw/bridge.
-      const cfg = await proxmoxApi.vm.getConfig(vmid, 'lxc')
+      const cfg = await proxmoxApi.vm.getConfig(vmid, 'lxc', { node: proxmoxNode.value })
       return { ...summary, ...cfg }
     } catch (err) {
       console.warn(`[useInfrastructureImport] no config for LXC ${vmid}:`, err)

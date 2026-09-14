@@ -11,7 +11,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   setBaseUrl('https://api.test')
   globalThis.fetch = vi.fn(async url => url.endsWith('/hosts')
-    ? response({ items: [{ id: 'host-1', node_name: 'pve' }] })
+    ? response({ total: 1, offset: 0, items: [{ id: 'host-1', node_name: 'pve' }] })
     : response({ items: [{ name: 'item' }], status: 'accepted', upid: 'UPID:1' }))
 })
 
@@ -22,11 +22,11 @@ const lastRequest = () => {
 
 describe('v1 storage and snapshots', () => {
   it('lists pools and storage content from Page envelopes', async () => {
-    expect(await storage.list('ignored')).toEqual([{ name: 'item' }])
+    expect(await storage.list('pve')).toEqual([{ name: 'item' }])
     expect(lastRequest()).toMatchObject({ method: 'GET', url: 'https://api.test/v1/proxmox/hosts/host-1/storage' })
-    expect(await storage.listIsos('ignored', 'local')).toEqual([{ name: 'item' }])
+    expect(await storage.listIsos('pve', 'local')).toEqual([{ name: 'item' }])
     expect(lastRequest().url).toContain('/storage/local/content?content=iso')
-    expect(await storage.listTemplates('ignored', 'local')).toEqual([{ name: 'item' }])
+    expect(await storage.listTemplates('pve', 'local')).toEqual([{ name: 'item' }])
     expect(lastRequest().url).toContain('/storage/local/content?content=vztmpl')
   })
 
@@ -38,7 +38,7 @@ describe('v1 storage and snapshots', () => {
   it('creates and lists LXC snapshots without accidentally targeting qemu', async () => {
     await snapshot.create({ vm_id: 501, vm_snapshot_name: 'ready', vm_snapshot_description: 'Before changes', vmtype: 'lxc' })
     expect(lastRequest()).toMatchObject({ method: 'POST', url: 'https://api.test/v1/proxmox/hosts/host-1/vms/501/snapshots?vmtype=lxc', body: { snapname: 'ready', description: 'Before changes' } })
-    expect(await snapshot.list('ignored', 501, 'lxc')).toEqual([{ name: 'item' }])
+    expect(await snapshot.list('pve', 501, 'lxc')).toEqual([{ name: 'item' }])
     expect(lastRequest()).toMatchObject({ method: 'GET', url: 'https://api.test/v1/proxmox/hosts/host-1/vms/501/snapshots?vmtype=lxc' })
   })
 
@@ -54,10 +54,10 @@ describe('v1 storage and snapshots', () => {
     const backend = useBackendApiStore()
     backend.addHost({ url: 'https://api.test', token: 'matching-token' })
     backend.addHost({ url: 'https://other.test', token: 'other-token' })
-    await storage.list('ignored')
+    await storage.list('pve')
     expect(lastRequest().headers.Authorization).toBe('Bearer matching-token')
     setBaseUrl('https://untrusted.test')
-    await storage.list('ignored')
+    await storage.list('pve')
     expect(lastRequest().headers.Authorization).toBeUndefined()
   })
 })

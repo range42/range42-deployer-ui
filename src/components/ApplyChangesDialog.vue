@@ -1,30 +1,28 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { vm as vmApi } from '@/services/proxmox/api'
+import { ref, computed, onBeforeUnmount } from 'vue'
+import { vm as vmApi, captureBackendGuard } from '@/services/proxmox/api'
+import { CONFIG_WRITE_UNAVAILABLE, observedConfig } from '@/services/proxmox/observedConfig'
 import type { PendingChange } from '@/services/proxmox/types'
 
 const props = defineProps<{
-  node: { data: Record<string, unknown>; id: string }
+  node: { data: Record<string, unknown>; id: string; type?: string }
   pendingChanges: PendingChange[]
 }>()
-
-const emit = defineEmits<{
-  close: []
-  applied: []
-}>()
-
-const isApplying = ref(false)
-const applyError = ref<string | null>(null)
-const applyProgress = ref('')
-
+const emit = defineEmits<{ close: []; applied: [] }>()
+const isRefreshing = ref(false)
+const refreshError = ref('')
+const refreshStatus = ref('')
+let mounted = true
+onBeforeUnmount(() => { mounted = false })
 const liveChanges = computed(() => props.pendingChanges.filter(c => c.category === 'live'))
 const restartChanges = computed(() => props.pendingChanges.filter(c => c.category === 'restart'))
 const redeployChanges = computed(() => props.pendingChanges.filter(c => c.category === 'redeploy'))
 
-const needsRestart = computed(() => restartChanges.value.length > 0)
-const proxmoxNode = computed(() => (props.node.data.config as Record<string, unknown>)?.proxmoxNode as string || 'pve01')
-const vmId = computed(() => Number(props.node.data.vmId))
-const currentStatus = computed(() => props.node.data.status as string)
+function target() {
+  const config = props.node.data.config as Record<string, unknown> | undefined
+  return { id: props.node.id, vmId: Number(props.node.data.vmId), node: config?.proxmoxNode,
+    vmtype: props.node.type === 'lxc' || props.node.data.type === 'lxc' ? 'lxc' as const : 'qemu' as const }
+}
 
 function formatValue(value: unknown): string {
   if (Array.isArray(value)) return value.join(', ') || '(none)'
@@ -32,106 +30,46 @@ function formatValue(value: unknown): string {
   return String(value)
 }
 
-async function applyChange(change: PendingChange): Promise<void> {
-  const node = proxmoxNode.value
-  const id = vmId.value
-  switch (change.field) {
-    case 'tags':
-      await vmApi.setTags(node, id, change.desired as string[])
-      break
-    case 'name':
-      await vmApi.setName(node, id, change.desired as string)
-      break
-    case 'description':
-      await vmApi.setDescription(node, id, change.desired as string)
-      break
-    case 'cores':
-      await vmApi.setCpu(node, id, change.desired as number)
-      break
-    case 'memory':
-      await vmApi.setMemory(node, id, change.desired as number)
-      break
-  }
-}
-
-function waitForStatus(targetStatus: string, timeoutMs = 60000): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const start = Date.now()
-    const check = () => {
-      if (props.node.data.status === targetStatus) return resolve()
-      if (Date.now() - start > timeoutMs) return reject(new Error(`Timeout waiting for ${targetStatus}`))
-      setTimeout(check, 2000)
-    }
-    check()
-  })
-}
-
-async function handleApply() {
-  isApplying.value = true
-  applyError.value = null
-
+async function refreshActual() {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  refreshError.value = ''
+  refreshStatus.value = ''
+  const selectedNode = props.node
+  const selected = target()
   try {
-    // 1. Apply live changes
-    if (liveChanges.value.length > 0) {
-      applyProgress.value = 'Applying live changes...'
-      await Promise.all(liveChanges.value.map(c => applyChange(c)))
+    if (!Number.isSafeInteger(selected.vmId) || selected.vmId < 1 || typeof selected.node !== 'string' || !selected.node) {
+      throw new Error('A selected guest and node are required.')
     }
-
-    // 2. Apply restart changes
-    if (restartChanges.value.length > 0) {
-      const wasRunning = currentStatus.value === 'running'
-
-      if (wasRunning) {
-        applyProgress.value = 'Stopping VM...'
-        await vmApi.stop({ proxmox_node: proxmoxNode.value, vm_id: String(vmId.value) })
-        await waitForStatus('stopped')
-      }
-
-      applyProgress.value = 'Applying config changes...'
-      await Promise.all(restartChanges.value.map(c => applyChange(c)))
-
-      if (wasRunning) {
-        applyProgress.value = 'Starting VM...'
-        await vmApi.start({ proxmox_node: proxmoxNode.value, vm_id: String(vmId.value) })
-        await waitForStatus('running')
-      }
-    }
-
-    // 3. Sync actualConfig to match desiredConfig
-    applyProgress.value = 'Syncing state...'
-    const desired = props.node.data.desiredConfig as Record<string, unknown>
-    if (desired) {
-      const newActual: Record<string, unknown> = {}
-      for (const [key, value] of Object.entries(desired)) {
-        newActual[key] = Array.isArray(value) ? [...value] : value
-      }
-      props.node.data.actualConfig = newActual // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive, direct mutation is the established pattern
-    }
-
-    emit('applied')
-  } catch (err) {
-    applyError.value = err instanceof Error ? err.message : 'Failed to apply changes'
+    const checkBackend = captureBackendGuard()
+    const raw = await vmApi.getConfig(selected.vmId, selected.vmtype, { node: selected.node })
+    checkBackend()
+    if (!mounted || props.node !== selectedNode || JSON.stringify(target()) !== JSON.stringify(selected)) return
+    const actual = observedConfig(raw, selected.vmtype)
+    props.node.data.actualConfig = actual // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
+    refreshStatus.value = 'Actual configuration refreshed. Desired edits are preserved.'
+  } catch {
+    if (mounted && props.node === selectedNode) refreshError.value = 'Could not refresh the selected guest. Check the backend, target and connection; your edits are unchanged.'
   } finally {
-    isApplying.value = false
-    applyProgress.value = ''
+    if (mounted) isRefreshing.value = false
   }
 }
 </script>
 
 <template>
-  <div class="modal modal-open">
+  <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="apply-changes-title">
     <div class="modal-box max-w-md">
-      <h3 class="font-bold text-lg mb-4">
+      <h3 id="apply-changes-title" class="font-bold text-lg mb-4">
         Apply Changes &mdash; {{ (node.data.desiredConfig as Record<string, unknown>)?.name || node.data.label }}
       </h3>
 
       <!-- Live changes -->
       <div v-if="liveChanges.length > 0" class="mb-3">
         <div class="text-xs font-semibold text-success uppercase tracking-wider mb-1">
-          Immediate (no downtime)
+          Desired changes
         </div>
         <div v-for="c in liveChanges" :key="c.field" class="flex items-center gap-2 text-sm py-1">
-          <span class="text-success">&#x2713;</span>
+
           <span class="font-medium">{{ c.label }}:</span>
           <span class="text-base-content/50">{{ formatValue(c.actual) }}</span>
           <span>&rarr;</span>
@@ -167,34 +105,19 @@ async function handleApply() {
         </div>
       </div>
 
-      <!-- Warning -->
-      <div v-if="needsRestart" class="alert alert-warning text-sm mb-4">
-        <span>The VM will be stopped and restarted to apply restart-required changes.</span>
+      <div class="alert alert-warning text-sm mb-4" role="note">
+        <span>{{ CONFIG_WRITE_UNAVAILABLE }}</span>
       </div>
-
-      <!-- Error -->
-      <div v-if="applyError" class="alert alert-error text-sm mb-4">
-        <span>{{ applyError }}</span>
-      </div>
-
-      <!-- Progress -->
-      <div v-if="isApplying" class="flex items-center gap-2 mb-4">
-        <span class="loading loading-spinner loading-sm"></span>
-        <span class="text-sm">{{ applyProgress }}</span>
-      </div>
-
-      <!-- Actions -->
-      <div class="modal-action">
-        <button class="btn btn-ghost" :disabled="isApplying" @click="emit('close')">Cancel</button>
-        <button
-          class="btn btn-warning"
-          :disabled="isApplying"
-          @click="handleApply"
-        >
-          {{ isApplying ? 'Applying...' : 'Apply Changes' }}
+      <div v-if="refreshError" class="alert alert-error text-sm mb-4" role="alert">{{ refreshError }}</div>
+      <p v-if="refreshStatus" class="text-sm mb-4" role="status">{{ refreshStatus }}</p>
+      <div class="modal-action flex-wrap">
+        <button class="btn btn-ghost" @click="emit('close')">Close</button>
+        <button class="btn btn-outline" :disabled="isRefreshing" @click="refreshActual">
+          {{ isRefreshing ? 'Refreshing…' : 'Refresh actual configuration' }}
         </button>
+        <button class="btn btn-warning" disabled>Apply Changes</button>
       </div>
     </div>
-    <div class="modal-backdrop" @click="!isApplying && emit('close')"></div>
+    <div class="modal-backdrop" @click="emit('close')"></div>
   </div>
 </template>

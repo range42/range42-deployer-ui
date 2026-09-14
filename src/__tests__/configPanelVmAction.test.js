@@ -129,3 +129,26 @@ describe('ConfigPanel — lifecycle actions route through task core (no optimist
   })
 
 })
+
+
+it('shows desired tag edits while preserving observed tags and exposing the write limit', async () => {
+  setActivePinia(createPinia())
+  const node = { ...makeDeployedVmNode('running'), data: {
+    deployed: true, vmId: 42, status: 'running', tags: ['observed'],
+    desiredConfig: { tags: ['observed'] }, actualConfig: { tags: ['observed'] },
+  } }
+  const wrapper = mountPanel(node)
+  await flushPromises()
+  await wrapper.vm.addPredefinedTag('wanted')
+  await flushPromises()
+  expect(node.data.desiredConfig.tags).toEqual(['observed', 'wanted'])
+  expect(node.data.actualConfig.tags).toEqual(['observed'])
+  expect(wrapper.find('[aria-label="Remove tag wanted"]').exists()).toBe(true)
+  expect(wrapper.text()).toContain('selected host')
+  await wrapper.vm.removeTag('observed')
+  await flushPromises()
+  expect(node.data.desiredConfig.tags).toEqual(['wanted'])
+  expect(node.data.tags).toEqual(['observed'])
+  expect(wrapper.find('[aria-label="Remove tag observed"]').exists()).toBe(false)
+  wrapper.unmount()
+})

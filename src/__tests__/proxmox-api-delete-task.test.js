@@ -20,7 +20,7 @@ function install(handler) {
 }
 
 function defaultHandler(url) {
-  if (url.endsWith('/v1/proxmox/hosts')) return jsonResp({ items: HOSTS })
+  if (url.endsWith('/v1/proxmox/hosts')) return jsonResp({ items: HOSTS, total: 1, offset: 0 })
   if (url.includes('/tasks/')) {
     return jsonResp({ upid: 'UPID:x', status: 'stopped', exitstatus: 'OK', node: 'pve01' })
   }

@@ -26,7 +26,7 @@ import { getBaseUrl } from '@/services/proxmox/api'
 import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
-import { useTagSync } from '@/composables/useTagSync'
+import { CONFIG_WRITE_UNAVAILABLE } from '@/services/proxmox/observedConfig'
 import { usePendingChanges } from '@/composables/usePendingChanges'
 import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
 import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
@@ -208,12 +208,13 @@ const isValid = computed(() => {
 
 
 // Tag editor state
-const tagSync = useTagSync()
 const tagInput = ref('')
 const showTagDropdown = ref(false)
+const displayedTags = computed(() => props.node?.data?.deployed && props.node?.data?.desiredConfig
+  ? props.node.data.desiredConfig.tags || [] : props.node?.data?.tags || [])
 
 const filteredPredefinedTags = computed(() => {
-  const currentTags = props.node?.data?.tags || []
+  const currentTags = displayedTags.value
   const search = tagInput.value.toLowerCase()
   return PREDEFINED_TAGS.filter(t =>
     !currentTags.includes(t.name) &&
@@ -229,9 +230,6 @@ function addTag() {
     const currentTags = props.node.data.desiredConfig.tags || []
     if (currentTags.includes(tag)) return
     props.node.data.desiredConfig.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
-    if (props.node.data.vmId) {
-      tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
-    }
   } else {
     const currentTags = props.node.data.tags || []
     if (currentTags.includes(tag)) return
@@ -247,9 +245,6 @@ function addPredefinedTag(tagName) {
     const currentTags = props.node.data.desiredConfig.tags || []
     if (currentTags.includes(tagName)) return
     props.node.data.desiredConfig.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
-    if (props.node.data.vmId) {
-      tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
-    }
   } else {
     const currentTags = props.node.data.tags || []
     if (currentTags.includes(tagName)) return
@@ -262,9 +257,6 @@ function removeTag(tagToRemove) {
   if (!props.node) return
   if (props.node.data.deployed && props.node.data.desiredConfig) {
     props.node.data.desiredConfig.tags = (props.node.data.desiredConfig.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
-    if (props.node.data.vmId) {
-      tagSync.pushTags('pve01', Number(props.node.data.vmId), props.node.data.desiredConfig.tags)
-    }
   } else {
     props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props
   }
@@ -338,8 +330,8 @@ const onDeleteProxmox = async () => {
     vmId,
     vmtype,
     apiCall: () => props.node.type === 'lxc'
-      ? proxmoxApi.lxc.delete(vmId)
-      : proxmoxApi.vm.delete(vmId),
+      ? proxmoxApi.lxc.delete(vmId, { node: getProxmoxNode() })
+      : proxmoxApi.vm.delete(vmId, { node: getProxmoxNode() }),
     onSuccess: () => {
       emit('delete', props.node.id)
       emit('close')
@@ -470,14 +462,15 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           />
         </FormSection>
 
+        <p v-if="node.data.deployed" class="text-sm text-base-content/70 mb-3">{{ CONFIG_WRITE_UNAVAILABLE }}</p>
         <!-- Tag Editor (VM and LXC) -->
         <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2">
           <label class="text-xs font-medium uppercase tracking-wide opacity-60">
             {{ t('configPanel.tags.label') }}
           </label>
-          <div v-if="(node.data.tags || []).length" class="flex min-h-[24px] flex-wrap gap-1.5">
+          <div v-if="displayedTags.length" class="flex min-h-[24px] flex-wrap gap-1.5">
             <span
-              v-for="tag in (node.data.tags || [])"
+              v-for="tag in displayedTags"
               :key="tag"
               class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white"
               :style="{ backgroundColor: getTagColor(tag).hex }"
