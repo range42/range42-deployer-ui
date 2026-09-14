@@ -114,6 +114,7 @@ export class GitLabProvider implements GitProviderV1 {
   }
 
   async putFile(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     path: string
@@ -154,6 +155,7 @@ export class GitLabProvider implements GitProviderV1 {
     // GitLab uses PUT to update and POST to create. Never retry an update as
     // creation: a failed concurrency or permission check must stay visible.
     const method = opts.sha ? 'PUT' : 'POST'
+    opts.assertCurrent?.()
     const res = await this.fetchImpl(fileUrl, {
       method,
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -191,6 +193,7 @@ export class GitLabProvider implements GitProviderV1 {
       actions.push({ action: file.sha ? 'update' : 'create', file_path: file.path,
         content: fileBase64(file.content), encoding: 'base64', last_commit_id: lastCommitId })
     }
+    opts.assertCurrent?.()
     const commit = await this.json<{ id: string }>(this.url(`/projects/${pid}/repository/commits`), {
       method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ branch: opts.branch, commit_message: opts.message, actions }),
@@ -218,6 +221,7 @@ export class GitLabProvider implements GitProviderV1 {
   }
 
   async createPullRequest(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     from: string
@@ -232,6 +236,7 @@ export class GitLabProvider implements GitProviderV1 {
     )).id : undefined
     const pid = this.projectId(opts.source?.owner ?? opts.owner, opts.source?.repo ?? opts.repo)
     const url = this.url(`/projects/${pid}/merge_requests`)
+    opts.assertCurrent?.()
     const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),

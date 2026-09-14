@@ -311,6 +311,8 @@ export interface RepoRef {
 }
 
 export interface CommitFilesOptions {
+  /** Recheck editor ownership/lifetime immediately before provider mutations. */
+  assertCurrent?: () => void
   owner: string
   repo: string
   branch: string
@@ -362,6 +364,7 @@ export interface GitProviderV1 {
     ref?: string
   }): Promise<{ content: string; sha: string }>
   putFile(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     path: string
@@ -377,6 +380,7 @@ export interface GitProviderV1 {
     name: string
   }): Promise<void>
   createPullRequest(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     from: string

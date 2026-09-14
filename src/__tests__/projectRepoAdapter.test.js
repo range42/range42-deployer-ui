@@ -35,9 +35,23 @@ function makeMockProvider() {
         heads.set(branch, `commit-${newSha}`);
         return { sha: newSha };
       },
+      async commitFiles({ owner, repo, branch, files: changes, message }) {
+        for (const change of changes) if (files.get(`${branch}:${change.path}`)?.sha !== change.sha) throw new Error('409 CAS conflict');
+        for (const change of changes) {
+          calls.push({ op: 'putFile', owner, repo, branch, path: change.path, sha: change.sha, message });
+          files.set(`${branch}:${change.path}`, { content: change.content, sha: nextSha() });
+        }
+        const sha = `commit-${nextSha()}`; heads.set(branch, sha);
+        snapshots.set(sha, new Map([...files.entries()].filter(([key]) => key.startsWith(`${branch}:`)).map(([key, value]) => [key.slice(branch.length + 1), JSON.parse(JSON.stringify(value))])));
+        return { sha };
+      },
       async createBranch({ owner, repo, from, name }) {
         calls.push({ op: 'createBranch', owner, repo, from, name });
+        if (branches.has(name)) throw new Error('Branch already exists');
         branches.add(name);
+        const seed = snapshots.get(from) || new Map([...files.entries()].filter(([key]) => key.startsWith(`${from}:`)).map(([key, value]) => [key.slice(from.length + 1), value]));
+        for (const [path, file] of seed) files.set(`${name}:${path}`, file);
+        heads.set(name, from);
       },
       async createPullRequest({ owner, repo, from, to, title }) {
         calls.push({ op: 'createPullRequest', owner, repo, from, to, title });
@@ -46,6 +60,7 @@ function makeMockProvider() {
       async listTree() { return []; },
       async listCommits({ ref }) {
         calls.push({ op: 'listCommits', ref });
+        if (snapshots.has(ref)) return [{ sha: ref, message: 'm', author: 'a', date: 'd' }];
         if (!branches.has(ref) && ![...files.keys()].some(key => key.startsWith(`${ref}:`))) throw new Error('404 not found');
         const sha = heads.get(ref) ?? 'commit-initial';
         snapshots.set(sha, new Map([...files.entries()].filter(([key]) => key.startsWith(`${ref}:`))
@@ -166,9 +181,9 @@ describe('ProjectRepoAdapter', () => {
     const branches = mock.calls.filter((c) => c.op === 'createBranch');
     expect(branches.length).toBe(1);
     expect(branches[0].name).toBe('draft-bi-123');
-    expect(branches[0].from).toBe('main');
+    expect(branches[0].from).toBe('commit-initial');
 
-    const puts = mock.calls.filter((c) => c.op === 'putFile');
+    const puts = mock.calls.filter((c) => c.op === 'putFile' && !c.path.endsWith('/.lock'));
     expect(puts.length).toBe(4);
     for (const p of puts) {
       expect(p.branch).toBe('draft-bi-123');
@@ -209,10 +224,10 @@ describe('ProjectRepoAdapter', () => {
     const state = { overlay: 'new', canvas_layout: '{}', meta: {} };
     await adapter.autosave('proj-1', state);
     await adapter.publishDirect('proj-1', 'Publish');
-    const before = mock.calls.filter(call => call.op === 'putFile').length;
+    const before = mock.calls.filter(call => call.op === 'putFile' && !call.path.endsWith('/.lock')).length;
     await adapter.autosave('proj-1', state);
     await adapter.publishDirect('proj-1', 'Publish');
-    expect(mock.calls.filter(call => call.op === 'putFile').length).toBe(before);
+    expect(mock.calls.filter(call => call.op === 'putFile' && !call.path.endsWith('/.lock')).length).toBe(before);
   });
 
   it('save: pins the dedicated branch and never writes the base branch', async () => {
@@ -246,7 +261,8 @@ describe('ProjectRepoAdapter', () => {
     const branch = 'range42-ui/project-1';
     mock.impl.createBranch = async () => { throw new Error('Branch already exists'); };
     mock.files.set(`${branch}:projects/demo/overlay.json`, { content: 'previous', sha: 'branch-sha' });
-    const adapter = makeAdapter(mock, { workingBranch: branch });
+    const reviewed = (await mock.impl.listCommits({ ref: branch }))[0].sha;
+    const adapter = makeAdapter(mock, { workingBranch: branch, expectedRevision: reviewed });
     await adapter.autosave('proj-1', { overlay: 'next', canvas_layout: '{}', meta: {} });
     expect(mock.calls.find(c => c.op === 'putFile' && c.path.endsWith('/overlay.json')))
       .toMatchObject({ branch, sha: 'branch-sha' });
@@ -259,7 +275,7 @@ describe('ProjectRepoAdapter', () => {
   it('save: fails when the working branch HEAD cannot be pinned', async () => {
     const mock = makeMockProvider();
     mock.impl.listCommits = async () => [];
-    await expect(makeAdapter(mock).save('proj-1', 'save')).rejects.toThrow(/revision|HEAD/i);
+    await expect(makeAdapter(mock).acquireLock('proj-1')).rejects.toThrow(/revision|HEAD/i);
   });
 
   it('autosave: refuses to write when repository permission is read-only', async () => {
@@ -280,23 +296,18 @@ describe('ProjectRepoAdapter', () => {
 
   it('heartbeat: writes its lock only on the dedicated branch', async () => {
     const mock = makeMockProvider();
-    await makeAdapter(mock).heartbeat('proj-1');
+    const adapter = makeAdapter(mock);
+    await adapter.acquireLock('proj-1');
+    await adapter.heartbeat('proj-1');
     expect(mock.calls.find(c => c.op === 'putFile')).toMatchObject({ branch: 'draft-bi-123' });
   });
 
-  it('checkLockOwnership: owner when .lock matches browser_instance_id', async () => {
+  it('checkLockOwnership: owner requires this acquired lease, not just a saved browser id', async () => {
     const mock = makeMockProvider();
-    mock.files.set('draft-bi-123:projects/demo/.lock', {
-      content: JSON.stringify({
-        editor_id: 'proj-1',
-        browser_instance_id: 'bi-123',
-        heartbeat_at: '2026-04-14T00:00:00Z',
-      }),
-      sha: 'sha-lock-0',
-    });
     const adapter = makeAdapter(mock);
-    const out = await adapter.checkLockOwnership('proj-1');
-    expect(out).toBe('owner');
+    await adapter.acquireLock('proj-1');
+    expect(await adapter.checkLockOwnership('proj-1')).toBe('owner');
+    expect(await makeAdapter(mock).checkLockOwnership('proj-1')).toBe('lost');
   });
 
   it('checkLockOwnership: lost + fires onOrphanedDraft when mismatch', async () => {

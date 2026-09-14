@@ -11,6 +11,8 @@ const { getProvider, fakeAdapter } = vi.hoisted(() => ({
   fakeAdapter: {
     load: vi.fn(async () => ({ overlay: '', canvas_layout: '', meta: {} })),
     autosave: vi.fn(async () => {}),
+    releaseLock: vi.fn(async () => {}),
+    heartbeat: vi.fn(async () => {}),
     save: vi.fn(async () => ({})),
     onOrphanedDraft: vi.fn(),
     checkLockOwnership: vi.fn(async () => 'owner'),
@@ -43,6 +45,7 @@ describe('useProjectRepo — PAT wiring (C2.1)', () => {
 
   it('passes the stored PAT for the source into getProvider, keyed by source id', async () => {
     const inv = useInventoryStore()
+    inv.addSource({ id: 'src-gh', provider: 'github', base_url: 'https://github.com', repos: [] })
     inv.setToken('src-gh', 'pat-xyz')
 
     mountWith({

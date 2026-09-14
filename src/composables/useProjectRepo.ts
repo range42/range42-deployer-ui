@@ -9,8 +9,7 @@
  */
 
 import { onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { getProvider } from '@/services/git'
-import { useInventoryStore } from '@/stores/inventoryStore'
+import { providerForBinding, gitContextGuard } from '@/composables/useProjectGitSync'
 import {
   createProjectRepoAdapter,
   type ProjectRepoAdapter,
@@ -46,20 +45,25 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
   const adapter = shallowRef<ProjectRepoAdapter | null>(null)
   const orphanedDraftId = ref<string | null>(null)
 
-  // 'generic' sources speak the Gitea API; github/gitlab/gitea map directly now
-  // that the GitHub v1 provider is implemented.
-  const providerKind = opts.source.provider === 'generic' ? 'gitea' : opts.source.provider
-  const inventory = useInventoryStore()
-  const provider = getProvider(providerKind, {
-    baseUrl: opts.source.base_url,
-    token: inventory.getToken(opts.source.id),
-  })
+  const binding = { source_id: opts.source.id, provider: opts.source.provider, base_url: opts.source.base_url || '' }
+  const provider = providerForBinding(binding)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let closed = false
+  function renew() {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(async () => {
+      if (closed || status.value === 'lock-lost') return
+      try { await adapter.value!.heartbeat(opts.projectId); renew() }
+      catch (cause) { error.value = cause as Error; status.value = 'lock-lost' }
+    }, 60_000)
+  }
   adapter.value = createProjectRepoAdapter({
     provider,
     source: opts.source,
     branchStrategy: opts.branchStrategy ?? 'shared_repo_subdir',
     projectPath: opts.projectPath,
     browserInstanceId: opts.browserInstanceId,
+    contextValid: gitContextGuard(binding),
   })
 
   adapter.value.onOrphanedDraft((draftId) => {
@@ -81,12 +85,13 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
   async function save(message: string): Promise<{ pr_url?: string; commit_sha?: string }> {
     status.value = 'saving'
     try {
+      await adapter.value!.autosave(opts.projectId, state.value)
       const res = await adapter.value!.save(opts.projectId, message)
-      status.value = 'ready'
+      status.value = 'ready'; renew()
       return res
     } catch (e) {
       error.value = e as Error
-      status.value = 'error'
+      status.value = 'lock-lost'
       throw e
     }
   }
@@ -95,10 +100,16 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
     state.value = newState
     try {
       await adapter.value!.autosave(opts.projectId, newState)
+      status.value = 'ready'; renew()
     } catch (e) {
       error.value = e as Error
-      status.value = 'error'
+      status.value = 'lock-lost'
     }
+  }
+
+  async function recoverExpired() {
+    await adapter.value!.acquireLock(opts.projectId, { recoverExpired: true })
+    error.value = null; status.value = 'ready'; renew()
   }
 
   const onVisibilityChange = async () => {
@@ -111,8 +122,8 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
           // save-as-new-draft). Pending IDB commits must NOT be flushed yet.
           status.value = 'lock-lost'
         }
-      } catch {
-        // transient; leave status alone
+      } catch (cause) {
+        error.value = cause as Error; status.value = 'lock-lost'
       }
     }
   }
@@ -125,6 +136,9 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
   })
 
   onUnmounted(() => {
+    closed = true
+    if (timer) clearTimeout(timer)
+    void adapter.value!.releaseLock(opts.projectId).catch(() => {})
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
@@ -139,5 +153,6 @@ export function useProjectRepo(opts: UseProjectRepoOpts) {
     load,
     save,
     autosave,
+    recoverExpired,
   }
 }

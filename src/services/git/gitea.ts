@@ -111,6 +111,7 @@ export class GiteaProvider implements GitProviderV1 {
   }
 
   async putFile(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     path: string
@@ -129,6 +130,7 @@ export class GiteaProvider implements GitProviderV1 {
     if (opts.branch) payload.branch = opts.branch
     if (opts.sha) payload.sha = opts.sha
     const method = opts.sha ? 'PUT' : 'POST'
+    opts.assertCurrent?.()
     const res = await this.fetchImpl(url, {
       method,
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -145,6 +147,7 @@ export class GiteaProvider implements GitProviderV1 {
   async commitFiles(opts: CommitFilesOptions): Promise<{ sha: string }> {
     if (!opts.files.length) return { sha: opts.expectedHead }
     validateFileMap(Object.fromEntries(opts.files.map(file => [file.path, file.content])))
+    opts.assertCurrent?.()
     const result = await this.json<{ commit: { sha: string } }>(this.url(
       `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/contents`,
     ), { method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -177,6 +180,7 @@ export class GiteaProvider implements GitProviderV1 {
   }
 
   async createPullRequest(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     from: string
@@ -188,6 +192,7 @@ export class GiteaProvider implements GitProviderV1 {
     const url = this.url(
       `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls`,
     )
+    opts.assertCurrent?.()
     const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),

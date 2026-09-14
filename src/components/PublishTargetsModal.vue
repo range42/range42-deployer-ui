@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { randomId } from '@/services/randomId'
 import { cloneFiles, type ProjectFiles } from '@/services/projectFiles'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { inject, computed, nextTick, onMounted, ref, watch } from 'vue'
+const editorGitSync = inject<{ publishFilesToTargets: typeof publishFilesToTargets } | null>('projectGitSync', null)
 import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n/index.js'
@@ -23,6 +24,7 @@ type TargetResult = PublishResult['targets'][number]
 type RepositoryDraft = Pick<ProjectPublishTarget, 'source_id' | 'repo_owner' | 'repo_name' | 'base_branch' | 'subdir'>
 type TargetDraft = ProjectPublishTarget & { selected: boolean }
 interface Preview {
+  expectedRevision?: string
   projectId: string
   binding: ProjectGitBinding
   files: ProjectFiles
@@ -35,6 +37,7 @@ interface Preview {
 
 const props = withDefaults(defineProps<{
   open: boolean
+  expectedRevision?: string
   projectId: string
   binding?: ProjectGitBinding
   files: ProjectFiles
@@ -167,6 +170,10 @@ function review() {
       ...(target.mode === 'pull_request' && target.fork_policy !== 'upstream' && target.fork_owner?.trim() ? { fork_owner: target.fork_owner.trim() } : {}),
     }))
     for (const target of resolvedTargets) {
+      const previous = props.binding?.publish_results?.find(result => result.target_id === target.id && result.status === 'published'
+        && result.destination && ['source_id', 'provider', 'base_url', 'repo_owner', 'repo_name', 'base_branch', 'mode', 'subdir', 'fork_policy', 'fork_owner'].every(key =>
+          (Reflect.get(result.destination!, key) || '') === (Reflect.get(target, key) || '')))
+      if (previous?.commit_sha) target.expected_revision = previous.commit_sha
       if (target.fork_owner && (!target.fork_owner.split('/').every(part => /^[\w][\w.-]*$/.test(part))
         || (target.provider !== 'gitlab' && target.fork_owner.includes('/')))) throw new Error(t('publishing.invalid_repo'))
     }
@@ -191,7 +198,7 @@ function review() {
     if (!Object.keys(files).length) throw new Error(t('publishing.no_files'))
     if (Object.keys(files).some((path) => !validPath(path))) throw new Error(t('publishing.invalid_path'))
     const sourceIds = new Set([binding.source_id, ...resolvedTargets.map((target) => target.source_id)])
-    preview.value = { projectId: props.projectId, binding, files, targets: resolvedTargets, message: props.message,
+    preview.value = { expectedRevision: props.expectedRevision, projectId: props.projectId, binding, files, targets: resolvedTargets, message: props.message,
       sourceSignatures: Object.fromEntries([...sourceIds].map((id) => [id, sourceSignature(id)])),
       createOnly: props.createOnly, componentPath: props.componentPath }
     results.value = {}
@@ -218,11 +225,12 @@ async function publish(onlyTarget?: ProjectPublishTarget) {
   busy.value = true
   stage.value = 'results'
   try {
-    const result = await publishFilesToTargets({
-      projectId: plan.projectId, binding: plan.binding, files: plan.files, message: plan.message,
+    const result = await (editorGitSync?.publishFilesToTargets || publishFilesToTargets)({
+      expectedRevision: plan.expectedRevision, projectId: plan.projectId, binding: plan.binding, files: plan.files, message: plan.message,
       createOnly: plan.createOnly, componentPath: plan.componentPath,
     }, selected)
     checkpoint.value = { branch: result.branch, commit_sha: result.commit_sha }
+    plan.expectedRevision = result.commit_sha
     if (result.binding) plan.binding = result.binding
     for (const target of result.targets) results.value[target.target_id] = target
     emit('update:targets', plan.targets)

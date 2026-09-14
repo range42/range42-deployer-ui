@@ -56,7 +56,8 @@ import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection, normalizeAttachment } from '../composables/useInfraBuilder'
 import { useTopologyResolver } from '../composables/useTopologyResolver'
 import { useApiConfig } from '../composables/useApiConfig'
-import { useWebSocketStatus } from '../composables/useWebSocketStatus'
+import { useObservedGuestStatus } from '@/composables/useObservedGuestStatus'
+import { prepareEditorBranchRecovery, editorAuthoredSignature } from '@/services/gitEditorRecovery'
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
 
 // setBaseUrl is managed via useApiConfig composable
@@ -97,11 +98,16 @@ onNodesInitialized(() => { measureTick.value++ })
 
 const { showToast } = useToast()
 const gitSync = useProjectGitSync()
+provide('projectGitSync', gitSync)
+const gitLockBlocked = computed(() => gitSync.lockStatus?.value === 'blocked')
+const gitLockError = computed(() => gitSync.lockError?.value || '')
 const { t: translate } = useI18n({ useScope: 'global' })
 const gitSaving = ref(0)
 const gitSaveError = ref('')
 const showPublishTargets = ref(false)
 const publicationFiles = ref({})
+const publicationRevision = ref('')
+const publicationBinding = ref('')
 const showScenarioAuthoring = ref(false)
 const scenarioContentTarget = ref('')
 const showRepositoryConnection = ref(false)
@@ -290,93 +296,6 @@ watch(canvasLiveStatuses, (map) => {
   }
 }, { deep: true })
 
-// WebSocket live status — updates deployed nodes in real-time
-const wsStatus = useWebSocketStatus()
-
-// Sync WebSocket status changes to canvas nodes via VueFlow's updateNodeData
-watch(() => wsStatus.vmStatuses.value, (statuses) => {
-  if (!statuses || statuses.size === 0) return
-  const allNodes = flowGetNodes?.value || nodes.value || []
-
-  for (const node of allNodes) {
-    const vmId = Number(node.data?.vmId)
-    if (!vmId || !statuses.has(vmId)) continue
-
-    const vm = statuses.get(vmId)
-    const newStatus = vm.status === 'running' ? 'running' : vm.status === 'paused' ? 'paused' : 'stopped'
-
-    const dataUpdate = {}
-    let needsUpdate = false
-
-    // Runtime status: always sync
-    if (node.data.status !== newStatus) {
-      dataUpdate.status = newStatus
-      needsUpdate = true
-    }
-
-    // Live metrics: always sync
-    if (vm.status === 'running') {
-      dataUpdate.liveMetrics = {
-        cpu: vm.cpu,
-        mem: vm.mem,
-        maxmem: vm.maxmem,
-        memPercent: vm.maxmem > 0 ? Math.round((vm.mem / vm.maxmem) * 100) : 0,
-        uptime: vm.uptime,
-      }
-      needsUpdate = true
-    } else if (node.data.liveMetrics) {
-      dataUpdate.liveMetrics = null
-      needsUpdate = true
-    }
-
-    // For deployed nodes: update actualConfig (not top-level tags)
-    if (node.data.deployed) {
-      const wsTags = vm.tags ? vm.tags.split(';').filter(Boolean) : []
-      const currentActual = node.data.actualConfig || {}
-
-      const newActual = {
-        ...currentActual,
-        tags: wsTags,
-        name: vm.name,
-        cores: vm.cores || currentActual.cores,
-        memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : currentActual.memory,
-      }
-
-      if (JSON.stringify(newActual) !== JSON.stringify(currentActual)) {
-        dataUpdate.actualConfig = newActual
-        needsUpdate = true
-      }
-
-      // Initialize desiredConfig on first sync if missing
-      if (!node.data.desiredConfig) {
-        dataUpdate.desiredConfig = {
-          ...newActual,
-          cores: node.data.config?.cores ? Number(node.data.config.cores) : undefined,
-          memory: typeof node.data.config?.memory === 'string'
-            ? parseInt(node.data.config.memory)
-            : node.data.config?.memory,
-        }
-        needsUpdate = true
-      }
-    } else {
-      // Non-deployed nodes: sync tags to top-level (legacy behavior for draft nodes)
-      if (vm.tags) {
-        const wsTags = vm.tags.split(';').filter(Boolean)
-        const currentTags = node.data.tags || []
-        if (JSON.stringify(wsTags) !== JSON.stringify(currentTags)) {
-          dataUpdate.tags = wsTags
-          needsUpdate = true
-        }
-      }
-    }
-
-    if (needsUpdate) {
-      updateNodeData(node.id, dataUpdate)
-    }
-  }
-}, { deep: true })
-
-////
 
 onMounted(() => {
   if (!projectStore.projects.length) projectStore.loadProjects()
@@ -429,7 +348,7 @@ function scheduleAutosave() {
   }, 1500)
 }
 
-watch([nodes, edges], () => {
+watch(() => editorAuthoredSignature(nodes.value || [], edges.value || []), () => {
   if (!currentProject.value) return
   canvasHistory.push(cloneSnapshot())
   scheduleAutosave()
@@ -466,8 +385,9 @@ function applyCanvasSnapshot(snapshot) {
 
 onBeforeUnmount(() => {
   // Capture this project's graph and Git write before another editor mounts.
-  if (autosaveTimer !== null) void manualSave({ quiet: true })
+  const finalSave = autosaveTimer !== null ? manualSave({ quiet: true }) : Promise.resolve()
   editorActive = false
+  void finalSave.finally(() => gitSync.releaseEditor?.())
 })
 
 onUnmounted(() => {
@@ -497,6 +417,15 @@ function recordCheckpoint(result, project = currentProject.value) {
   }
 }
 
+function recordPublicationCheckpoint(result) {
+  if (gitBindingIdentity(currentProject.value?.git) !== publicationBinding.value) {
+    gitSaveError.value = 'The repository connection changed during publication. Results belong to the previous reviewed destination; this project was not rebound.'
+    return
+  }
+  recordCheckpoint(result)
+  publicationBinding.value = gitBindingIdentity(currentProject.value?.git)
+}
+
 function recordPublicationReview(result) {
   const project = currentProject.value
   if (!project?.git) return
@@ -508,6 +437,7 @@ function recordPublicationReview(result) {
 const manualSave = async ({ quiet = false } = {}) => {
   const project = currentProject.value
   if (!project) return null
+  const originalBinding = gitBindingIdentity(project.git)
   if (autosaveTimer !== null) {
     clearTimeout(autosaveTimer)
     autosaveTimer = null
@@ -516,10 +446,12 @@ const manualSave = async ({ quiet = false } = {}) => {
   gitSaving.value += 1
   gitSaveError.value = ''
   try {
+    if (quiet && gitLockBlocked.value) return null
     const args = currentPushArgs()
     if (!args) return null
     if (project.scenario) projectStore.updateProject(project.id, { files: args.files })
     const result = await gitSync.pushToGit(args)
+    if (gitBindingIdentity(project.git) !== originalBinding) throw new Error('Git connection changed while saving. The previous repository result was retained remotely; this project binding was not changed.')
     recordCheckpoint(result, project)
     if (!quiet) showToast(translate('project.git.saved', { branch: result.branch, sha: result.commit_sha.slice(0, 7) }), 'success')
     return result
@@ -532,11 +464,40 @@ const manualSave = async ({ quiet = false } = {}) => {
   }
 }
 
+function gitBindingIdentity(git) {
+  if (!git) return ''
+  return JSON.stringify([git?.source_id, git?.provider, git?.base_url, git?.repo_owner, git?.repo_name,
+    git?.branch || 'main', git?.working_branch || `range42-ui/${encodeURIComponent(currentProject.value?.id || '').replace(/\./g, '%2E')}`, git?.subdir || ''])
+}
+watch(() => gitBindingIdentity(currentProject.value?.git), (next, previous) => {
+  if (previous && previous !== next) void gitSync.releaseEditor?.()
+})
+
+async function recoverExpiredGitLock() {
+  try { await gitSync.recoverExpired(); gitSaveError.value = '' }
+  catch (error) { gitSaveError.value = error.message || String(error) }
+}
+
+async function recoverGitBranch() {
+  const project = currentProject.value
+  if (!project || gitSaving.value) return
+  try {
+    const git = prepareEditorBranchRecovery(project)
+    projectStore.updateProject(project.id, { nodes: liveNodes.value, edges: liveEdges.value })
+    await gitSync.releaseEditor()
+    projectStore.updateProject(project.id, { git })
+    await nextTick()
+    await manualSave()
+  } catch (error) { gitSaveError.value = error.message || String(error) }
+}
+
 function openPublishTargets() {
   try {
     const args = currentPushArgs()
     if (!args) return
     publicationFiles.value = buildProjectFiles(args)
+    publicationRevision.value = args.expectedRevision || ''
+    publicationBinding.value = gitBindingIdentity(currentProject.value.git)
     showPublishTargets.value = true
   } catch (error) { showToast(error.message || String(error), 'error', 6000) }
 }
@@ -996,19 +957,14 @@ const importApiConfig = useApiConfig(projectId, { autoSync: true })
 // Provide API config to child components (ConfigPanel, etc.)
 provide('apiConfig', importApiConfig)
 
-// Reactively connect WebSocket when API settings become ready
-watch(
-  () => importApiConfig.isReady.value,
-  (ready) => {
-    if (ready) {
-      importApiConfig.configure()
-      wsStatus.connect(importApiConfig.node.value || 'pve01')
-    } else {
-      wsStatus.disconnect()
-    }
-  },
-  { immediate: true }
-)
+watch(() => importApiConfig.isReady.value, ready => { if (ready) importApiConfig.configure() }, { immediate: true })
+const observedGuestStatus = useObservedGuestStatus({
+  nodes: () => liveNodes.value,
+  projectId: () => projectId.value,
+  enabled: () => importApiConfig.isReady.value,
+  target: () => ({ node: importApiConfig.node.value }),
+  apply: (node, patch) => updateNodeData(node.id, patch),
+})
 
 const handleOpenImport = () => {
   // Ensure the API client has the correct base URL from per-project settings
@@ -1189,6 +1145,15 @@ const handleInfrastructureImport = (result) => {
         <span v-else-if="gitSaveError" role="alert" class="text-error">{{ gitSaveError }}</span>
         <span v-else-if="currentProject.head_sha">{{ translate('project.git.saved', { branch: currentProject.git.working_branch || '—', sha: currentProject.head_sha.slice(0, 7) }) }}</span>
       </div>
+      <section v-if="currentProject?.git && gitLockBlocked" role="alert" class="px-3 py-3 bg-warning/10 text-sm space-y-2" data-testid="git-lock-recovery">
+        <p>{{ gitLockError }}</p>
+        <p>Local edits are kept. Reopen a remote copy from Home to compare changes, or save this draft on a separate branch. Expired-lock recovery checks ownership again and never merges remote changes automatically.</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="btn btn-sm btn-outline" data-testid="git-recover-expired" :disabled="gitSaving > 0" @click="recoverExpiredGitLock">Recover expired lock</button>
+          <button type="button" class="btn btn-sm btn-outline" data-testid="git-recover-branch" :disabled="gitSaving > 0" @click="recoverGitBranch">Save local draft on new branch</button>
+          <button type="button" class="btn btn-sm btn-ghost" @click="router.push('/')">Home / open remote copy</button>
+        </div>
+      </section>
       <div v-if="currentProject?.catalogRef" class="px-3 py-2 text-xs text-base-content/70 break-all" data-testid="project-catalog-origin">
         <p>{{ translate('catalog.handoff.origin') }}: {{ currentProject.catalogRef.repo_owner || currentProject.catalogRef.source_id }}/{{ currentProject.catalogRef.repo_name || '' }} · {{ currentProject.catalogRef.path }} · {{ currentProject.catalogRef.sha || '—' }}</p>
         <p v-if="currentProject.catalogRef.kind === 'ansible_role'">{{ translate('catalog.handoff.role_editor') }}</p>
@@ -1198,6 +1163,10 @@ const handleInfrastructureImport = (result) => {
         <p v-if="currentProject.git_opened.mode === 'files' && !currentProject.scenario">{{ translate('reopening.files_notice') }}</p>
       </div>
 
+      <div v-if="importApiConfig.isReady.value" class="px-3 py-1 flex flex-wrap gap-2 items-center text-xs">
+        <button type="button" class="btn btn-ghost btn-xs" :disabled="observedGuestStatus.isRefreshing.value" @click="observedGuestStatus.refresh">Refresh guest status</button>
+        <span v-if="observedGuestStatus.error.value" role="status">{{ observedGuestStatus.error.value }}</span>
+      </div>
       <!-- Tab strip -->
       <div role="tablist" class="tabs tabs-lift px-3 pt-1 border-b border-base-300" data-testid="project-tabs">
         <button
@@ -1456,9 +1425,9 @@ const handleInfrastructureImport = (result) => {
     <PublishTargetsModal
       v-if="showPublishTargets && currentProject?.git"
       :open="showPublishTargets" :project-id="currentProject.id" :binding="currentProject.git"
-      :files="publicationFiles" :message="`Publish ${currentProject.name}`"
+      :files="publicationFiles" :expected-revision="publicationRevision" :message="`Publish ${currentProject.name}`"
       :initial-targets="currentProject.git.publish_targets || []"
-      @close="showPublishTargets = false" @published="recordCheckpoint" @reviewed="recordPublicationReview"
+      @close="showPublishTargets = false" @published="recordPublicationCheckpoint" @reviewed="recordPublicationReview"
       @update:targets="updatePublicationTargets"
     />
 

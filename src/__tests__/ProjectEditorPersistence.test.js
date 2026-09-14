@@ -21,10 +21,12 @@ import { useProjectStore } from '@/stores/projectStore'
 import projectMessages from '@/locales/en/project.json'
 import historyTab from '@/locales/en/historyTab.json'
 
-const { pushToGit, loadDeployments, registerProject } = vi.hoisted(() => ({ pushToGit: vi.fn(), loadDeployments: vi.fn(), registerProject: vi.fn() }))
-vi.mock('@/composables/useProjectGitSync', async (original) => ({
-  ...await original(), useProjectGitSync: () => ({ pushToGit }),
-}))
+const { pushToGit, loadDeployments, registerProject, lockSession } = vi.hoisted(() => ({ pushToGit: vi.fn(), loadDeployments: vi.fn(), registerProject: vi.fn(), lockSession: { releaseEditor: vi.fn(async () => {}), recoverExpired: vi.fn(async () => {}) } }))
+vi.mock('@/composables/useProjectGitSync', async (original) => {
+  const { ref } = await import('vue')
+  lockSession.lockStatus = ref('idle'); lockSession.lockError = ref('')
+  return { ...await original(), useProjectGitSync: () => ({ pushToGit, ...lockSession }) }
+})
 vi.mock('@/composables/useDeploymentIndex', async () => {
   const { ref } = await import('vue')
   return { useDeploymentIndex: () => ({ items: ref([]), load: loadDeployments }) }
@@ -36,6 +38,7 @@ let wrapper
 beforeEach(() => {
   vi.useFakeTimers()
   localStorage.clear()
+  lockSession.lockStatus.value = 'idle'; lockSession.lockError.value = ''; lockSession.releaseEditor.mockClear()
   pushToGit.mockReset().mockResolvedValue({ commit_sha: 'a'.repeat(40), branch: 'range42-ui/saved' })
   loadDeployments.mockReset().mockResolvedValue(undefined)
   registerProject.mockReset().mockResolvedValue({ id: 'registered-backend-project' })
@@ -76,6 +79,38 @@ async function editor(saved, { hydrate = true, shell = false } = {}) {
 }
 
 describe('ProjectEditor saved project integration', () => {
+  it('shows heartbeat lock loss with explicit recovery while retaining local files', async () => {
+    const { store } = await editor(project({ files: { 'draft.yml': 'local only' }, head_sha: 'b'.repeat(40) }))
+    lockSession.lockStatus.value = 'blocked'; lockSession.lockError.value = 'Another editor owns this branch'
+    await flushPromises()
+    expect(wrapper.get('[data-testid="git-lock-recovery"]').text()).toContain('Another editor')
+    expect(wrapper.get('[data-testid="git-recover-expired"]').text()).toContain('expired')
+    await wrapper.get('[data-testid="git-recover-branch"]').trigger('click'); await flushPromises()
+    expect(store.getProject('saved').files).toEqual({ 'draft.yml': 'local only' })
+    expect(store.getProject('saved').git.branch_from).toBe('b'.repeat(40))
+    expect(pushToGit.mock.calls.at(-1)[0].binding.working_branch).toMatch(/^range42-ui\/recovery-/)
+  })
+
+  it('releases the exact editor session after its final pending checkpoint on unmount', async () => {
+    await editor(project())
+    wrapper.unmount(); wrapper = undefined; await flushPromises()
+    expect(lockSession.releaseEditor).toHaveBeenCalledOnce()
+  })
+
+  it('does not record an old in-flight Git result into a newly connected repository', async () => {
+    const { store } = await editor(project())
+    await vi.advanceTimersByTimeAsync(1500)
+    let finish
+    pushToGit.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    wrapper.findComponent(VariablesTab).vm.$emit('update:overlay', { param_overrides: { label: 'edit' } })
+    await flushPromises(); await vi.advanceTimersByTimeAsync(1500)
+    const replacement = { ...store.getProject('saved').git, repo_name: 'different', working_branch: 'different-work' }
+    store.updateProject('saved', { git: replacement, head_sha: '' })
+    finish({ commit_sha: 'c'.repeat(40), branch: 'old-branch' }); await flushPromises()
+    expect(store.getProject('saved').git).toEqual(replacement)
+    expect(store.getProject('saved').head_sha).toBe('')
+  })
+
   it('lists authored file-map paths in the command palette without a render error', async () => {
     const { errors } = await editor(project({ files: {
       'scenarios/demo/main.yml': '- hosts: localhost\n',

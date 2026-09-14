@@ -126,6 +126,7 @@ export class GitHubV1Provider implements GitProviderV1 {
   }
 
   async putFile(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     path: string
@@ -144,6 +145,7 @@ export class GitHubV1Provider implements GitProviderV1 {
     if (opts.branch) payload.branch = opts.branch
     if (opts.sha) payload.sha = opts.sha
     // GitHub uses PUT for both create and update on the contents API.
+    opts.assertCurrent?.()
     const body = await this.json<{ content: { sha: string }; commit?: { sha: string } }>(url, {
       method: 'PUT',
       headers: this.headers({ 'Content-Type': 'application/json' }),
@@ -167,6 +169,7 @@ export class GitHubV1Provider implements GitProviderV1 {
       const entry = { path: file.path, mode: modes.get(file.path) || '100644', type: 'blob' }
       if (typeof file.content === 'string') entries.push({ ...entry, content: file.content })
       else {
+        opts.assertCurrent?.()
         const blob = await this.json<{ sha: string }>(this.url(`${root}/blobs`), {
           method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ content: fileBase64(file.content), encoding: 'base64' }),
@@ -174,14 +177,17 @@ export class GitHubV1Provider implements GitProviderV1 {
         entries.push({ ...entry, sha: blob.sha })
       }
     }
+    opts.assertCurrent?.()
     const tree = await this.json<{ sha: string }>(this.url(`${root}/trees`), {
       method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ base_tree: base.tree.sha, tree: entries }),
     })
+    opts.assertCurrent?.()
     const commit = await this.json<{ sha: string }>(this.url(`${root}/commits`), {
       method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ message: opts.message, tree: tree.sha, parents: [opts.expectedHead] }),
     })
+    opts.assertCurrent?.()
     await this.json(this.url(`${root}/refs/heads/${encodeURIComponent(opts.branch)}`), {
       method: 'PATCH', headers: this.headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ sha: commit.sha, force: false }),
@@ -220,6 +226,7 @@ export class GitHubV1Provider implements GitProviderV1 {
   }
 
   async createPullRequest(opts: {
+    assertCurrent?: () => void
     owner: string
     repo: string
     from: string
@@ -228,6 +235,7 @@ export class GitHubV1Provider implements GitProviderV1 {
     body?: string
     source?: { owner: string; repo: string }
   }): Promise<{ url: string; number: number }> {
+    opts.assertCurrent?.()
     const res = await this.fetchImpl(
       this.url(
         `/repos/${encodeURIComponent(opts.owner)}/${encodeURIComponent(opts.repo)}/pulls`,

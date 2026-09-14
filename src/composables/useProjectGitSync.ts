@@ -1,17 +1,13 @@
+import { ref } from 'vue'
 import { publicCatalogImports, publicCatalogReference } from '@/services/catalogReference'
 import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
 import { publicationBranch as publicationBranchFor } from '@/services/git/publicationBranch'
 import { captureProjectAuthoring, inspectProjectAuthoring, publicProjectOverlay, type AuthoringInput } from '@/services/projectAuthoring'
 import { authoredFilesMetadata, validateAuthoredFiles, cloneFiles, fileContentEquals, validateFileMap, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
 /**
- * useProjectGitSync — on-demand "serialize canvas → push to git → pin SHA".
- *
- * Unlike useProjectRepo (which binds an editor session to a repo at mount with
- * lock heartbeats), this is a lifecycle-free action invoked when the operator
- * explicitly saves/deploys. It serializes the live canvas into the canonical
- * topology.json (via the tested overlay serializer), autosaves it to the
- * project's dedicated working branch and returns its commit SHA for deployment.
- * Publication to base branches is a separate explicit operation.
+ * Capture immutable project snapshots and synchronize them through one owned
+ * Git editor session. The adapter fences every write; this composable handles
+ * heartbeat, release and visible recovery state without background publishing.
  */
 
 import { getProvider } from '@/services/git'
@@ -49,6 +45,7 @@ export interface PushToGitArgs {
   catalogRef?: unknown
   catalogImports?: unknown
   projectId: string
+  expectedRevision?: string
   binding: ProjectGitBinding
   canvas: CanvasModel
   meta: ProjectMeta
@@ -68,6 +65,7 @@ export function buildPushArgs(
   project: {
     id: string
     name: string
+    head_sha?: string
     git?: ProjectGitBinding
     gamenet?: boolean
     bridge_base?: number
@@ -87,6 +85,7 @@ export function buildPushArgs(
   if (!project?.git) return null
   return {
     projectId: project.id,
+    expectedRevision: project.head_sha || project.git.branch_from,
     catalogRef: project.catalogRef,
     catalogImports: project.catalogImports,
     binding: project.git,
@@ -108,44 +107,114 @@ export function buildPushArgs(
 }
 
 export function useProjectGitSync() {
+  const lockStatus = ref<'idle' | 'owned' | 'blocked'>('idle')
+  const lockError = ref('')
+  let generation = 0
+  let session: { key: string; projectId: string; adapter: ReturnType<typeof createProjectRepoAdapter>; timer?: ReturnType<typeof setTimeout>; visibility?: () => void; renewing?: boolean } | undefined
 
-  function pushToGit(
-    args: PushToGitArgs,
-  ): Promise<{ commit_sha: string; branch: string; binding?: ProjectGitBinding }> {
+  function blocked(error: unknown) {
+    lockStatus.value = 'blocked'
+    lockError.value = error instanceof Error ? error.message : String(error)
+    if (session?.timer) clearTimeout(session.timer)
+  }
+
+  async function renew(active: NonNullable<typeof session>) {
+    if (session !== active || lockStatus.value === 'blocked' || active.renewing) return
+    active.renewing = true
+    try {
+      await active.adapter.heartbeat(active.projectId)
+      if (session === active) { lockStatus.value = 'owned'; scheduleHeartbeat(active) }
+    } catch (error) { if (session === active) blocked(error) }
+    finally { active.renewing = false }
+  }
+
+  function scheduleHeartbeat(active: NonNullable<typeof session>) {
+    if (active.timer) clearTimeout(active.timer)
+    active.timer = setTimeout(() => { void renew(active) }, 60_000)
+    // Timers do not keep command-line consumers alive.
+    ;(active.timer as unknown as { unref?: () => void }).unref?.()
+  }
+
+  async function releaseEditor() {
+    generation += 1
+    const old = session; session = undefined
+    if (old?.timer) clearTimeout(old.timer)
+    if (old?.visibility && typeof document !== 'undefined') document.removeEventListener('visibilitychange', old.visibility)
+    lockStatus.value = 'idle'; lockError.value = ''
+    if (old) {
+      try { await old.adapter.releaseLock(old.projectId) }
+      catch { /* A changed credential context cannot release; its lease expires. */ }
+    }
+  }
+
+  async function recoverExpired() {
+    const active = session
+    if (!active) throw new Error('Attempt a save to inspect the working branch first.')
+    try {
+      await active.adapter.acquireLock(active.projectId, { recoverExpired: true })
+      if (session !== active) return
+      lockStatus.value = 'owned'; lockError.value = ''; scheduleHeartbeat(active)
+    } catch (error) { blocked(error); throw error }
+  }
+
+  function pushToGit(args: PushToGitArgs): Promise<{ commit_sha: string; branch: string; binding?: ProjectGitBinding }> {
     validateFileMap(buildProjectFiles(args))
     const { projectId, meta, message } = args
     const binding = { ...args.binding }
     const provider = providerForBinding(binding)
+    const contextValid = gitContextGuard(binding)
     const branch = binding.working_branch ?? workingBranchForProject(projectId)
     const state = captureProjectState(args)
+    const capturedGeneration = generation
     return withWritableCheckpoint(binding, branch, provider, async (actual, adapter) => {
-      await adapter.autosave(projectId, state)
-      const saved = await adapter.save(projectId, message ?? `Update ${meta.name}`)
-      return { ...saved, ...(actual !== binding ? { binding: actual } : {}) }
-    })
+      try {
+        await adapter.autosave(projectId, state)
+        const saved = await adapter.save(projectId, message ?? `Update ${meta.name}`)
+        if (session?.adapter === adapter) { lockStatus.value = 'owned'; lockError.value = ''; scheduleHeartbeat(session) }
+        return { ...saved, ...(actual !== binding ? { binding: actual } : {}) }
+      } catch (error) { if (session?.adapter === adapter) blocked(error); throw error }
+    }, sessionAdapter(args, binding, branch, provider, contextValid, capturedGeneration))
+  }
+
+  function sessionAdapter(args: { projectId: string; expectedRevision?: string }, binding: ProjectGitBinding, branch: string,
+    provider: GitProviderV1, contextValid: () => boolean, capturedGeneration: number): AdapterFactory {
+    const { projectId } = args
+    return async (actual, branchFrom) => {
+      if (generation !== capturedGeneration || !contextValid()) throw new Error('The editor or Git connection changed before saving. The local draft is preserved.')
+      const key = JSON.stringify([projectId, actual.source_id, actual.provider, actual.base_url, actual.repo_owner, actual.repo_name, branch, actual.subdir || ''])
+      if (session && session.key !== key) await releaseEditor()
+      if (!session) {
+        session = { key, projectId, adapter: adapterForBinding(actual, branch, provider, branchFrom, {
+          expectedRevision: args.expectedRevision, contextValid,
+        }).adapter }
+        const active = session
+        active.visibility = () => { if (document.visibilityState === 'visible') void renew(active) }
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', active.visibility)
+        scheduleHeartbeat(active)
+      }
+      return session.adapter
+    }
+  }
+
+  function publishFromEditor(args: Parameters<typeof publishFilesToTargets>[0], targets: ProjectPublishTarget[]) {
+    const binding = { ...args.binding }, branch = binding.working_branch || workingBranchForProject(args.projectId)
+    const capturedGeneration = generation
+    return publishFilesToTargets(args, targets, sessionAdapter(args, binding, branch, providerForBinding(binding), gitContextGuard(binding), capturedGeneration), () => generation === capturedGeneration)
+      .then(result => { if (session && generation === capturedGeneration) { lockStatus.value = 'owned'; scheduleHeartbeat(session) }; return result })
+      .catch(error => { if (generation === capturedGeneration) blocked(error); throw error })
   }
 
   async function proposeMerge(args: PushToGitArgs) {
-    const provider = providerForBinding(args.binding)
-    const adapter = createProjectRepoAdapter({
-      provider,
-      source: { id: args.binding.source_id, provider: args.binding.provider,
-        repos: [{ owner: args.binding.repo_owner, repo: args.binding.repo_name, branch: args.binding.branch || 'main' }] },
-      branchStrategy: args.binding.branch_strategy, projectPath: args.binding.subdir || '', workingBranch: args.binding.working_branch ?? workingBranchForProject(args.projectId),
-    })
     const saved = await pushToGit(args)
-    if (saved.binding) {
-      const pr = await provider.createPullRequest({ owner: args.binding.repo_owner, repo: args.binding.repo_name,
-        source: { owner: saved.binding.repo_owner, repo: saved.binding.repo_name }, from: saved.branch,
-        to: args.binding.branch || 'main', title: args.message || `Publish ${args.meta.name}`,
-      })
-      return { ...saved, pr_url: pr.url }
-    }
-    return { ...saved, ...await adapter.proposeMerge(args.projectId, args.message || `Publish ${args.meta.name}`) }
+    const active = session
+    if (!active) throw new Error('The editor session changed before publication')
+    if (saved.binding) return { ...saved, ...await active.adapter.proposeMerge(args.projectId, args.message || `Publish ${args.meta.name}`,
+      { owner: args.binding.repo_owner, repo: args.binding.repo_name }) }
+
+    return { ...saved, ...await active.adapter.proposeMerge(args.projectId, args.message || `Publish ${args.meta.name}`) }
   }
 
-  return { pushToGit, proposeMerge, publishFilesToTargets }
-
+  return { pushToGit, proposeMerge, publishFilesToTargets: publishFromEditor, releaseEditor, recoverExpired, lockStatus, lockError }
 }
 
 
@@ -158,6 +227,8 @@ export interface ProjectPublishTarget {
   repo_name: string
   base_branch: string
   mode: 'pull_request' | 'direct'
+  /** Prior reviewed publication, scoped to this exact destination. */
+  expected_revision?: string
   fork_policy?: ForkPolicy
   fork_owner?: string
   subdir?: string
@@ -184,13 +255,14 @@ export function workingBranchForProject(projectId: string): string {
 }
 
 export async function publishFilesToTargets(args: {
+  expectedRevision?: string
   projectId: string
   binding: ProjectGitBinding
   files: ProjectFiles
   message: string
   createOnly?: boolean
   componentPath?: string
-}, targets: ProjectPublishTarget[]): Promise<{commit_sha:string;branch:string;binding?:ProjectGitBinding;targets:ProjectPublishResult[]}> {
+}, targets: ProjectPublishTarget[], ownedAdapter?: AdapterFactory, editorCurrent: () => boolean = () => true): Promise<{commit_sha:string;branch:string;binding?:ProjectGitBinding;targets:ProjectPublishResult[]}> {
   args = { ...args, binding: { ...args.binding }, files: cloneFiles(args.files) }
   const files = args.files
   validateFiles(files)
@@ -220,12 +292,13 @@ export async function publishFilesToTargets(args: {
       const ownCheckpoint = await matchesCheckpoint(primaryProvider, actual, branch, primaryFiles)
       await assertComponentAbsent(primaryProvider, binding, primaryFiles, args.componentPath, ownCheckpoint)
     }
-    await adapter.stageFiles(args.projectId, primaryFiles, args.message)
+    await adapter.stageFiles(args.projectId, primaryFiles, args.message, { expectedRevision: args.expectedRevision })
     return { ...await adapter.save(args.projectId, args.message), ...(actual !== binding ? { binding: actual } : {}) }
-  })
+  }, ownedAdapter, args.projectId)
   const results: ProjectPublishResult[] = []
   for (const { target, destination, connection, publicationBranch, error: setupError } of prepared) {
     try {
+      if (!editorCurrent()) throw new Error('The editor closed or changed before destination publication. The saved checkpoint is retained.')
       if (setupError) throw setupError
       if (!connection) throw new Error('Publication connection is unavailable')
       if (!['pull_request', 'direct'].includes(target.mode)) throw new Error('Choose a publication mode')
@@ -236,21 +309,19 @@ export async function publishFilesToTargets(args: {
       const actual = resolved.binding
       const fork = actual !== destination ? { owner: actual.repo_owner, repo: actual.repo_name } : undefined
       const published = await runOnBranch(actual, publicationBranch, async () => {
-        const { adapter } = adapterForBinding(actual, publicationBranch, provider, resolved.branchFrom)
+        const { adapter } = adapterForBinding(actual, publicationBranch, provider, resolved.branchFrom, { contextValid: () => editorCurrent() && connection.contextValid(), expectedRevision: target.expected_revision, expectedPublicationRevision: target.mode === 'direct' ? target.expected_revision : undefined })
         const targetFiles = prefixFiles(files, target.subdir)
         if (args.createOnly) {
           const ownCheckpoint = await matchesCheckpoint(provider, actual, publicationBranch, targetFiles)
           await assertComponentAbsent(provider, destination, targetFiles, args.componentPath, ownCheckpoint)
         }
+        try {
         await adapter.stageFiles(args.projectId, targetFiles, args.message)
         const checkpoint = await adapter.save(args.projectId, args.message)
-        if (target.mode === 'direct') return runOnBranch(destination, target.base_branch, () => adapter.publishDirect(args.projectId, args.message))
-        const pr = await provider.createPullRequest({
-          owner: destination.repo_owner, repo: destination.repo_name, from: publicationBranch,
-          to: target.base_branch, title: args.message, body: 'Changes prepared in Range42 Deployer UI.',
-          ...(fork ? { source: fork } : {}),
-        })
-        return { ...checkpoint, pr_url: pr.url, pr_number: pr.number, ...(fork ? { fork } : {}) }
+        if (target.mode === 'direct') return await runOnBranch(destination, target.base_branch, () => adapter.publishDirect(args.projectId, args.message))
+        const pr = await adapter.proposeMerge(args.projectId, args.message, { owner: destination.repo_owner, repo: destination.repo_name })
+        return { ...checkpoint, ...pr, ...(fork ? { fork } : {}) }
+        } finally { await adapter.releaseLock(args.projectId).catch(() => {}) }
       })
       results.push({ target_id: target.id, status: 'published', mode: target.mode, destination: target, ...published })
     } catch (error) {
@@ -263,13 +334,13 @@ export async function publishFilesToTargets(args: {
 }
 
 
-function adapterForBinding(binding: ProjectGitBinding, workingBranch: string, provider = providerForBinding(binding), branchFrom?: string) {
+function adapterForBinding(binding: ProjectGitBinding, workingBranch: string, provider = providerForBinding(binding), branchFrom?: string, options: { expectedRevision?: string; expectedPublicationRevision?: string; contextValid?: () => boolean } = {}) {
   const adapter = createProjectRepoAdapter({
-    provider, source: { id: binding.source_id, provider: binding.provider, repos: [{
+    provider, source: { id: binding.source_id, provider: binding.provider, base_url: binding.base_url, repos: [{
       owner: binding.repo_owner, repo: binding.repo_name, branch: binding.branch || 'main',
-    }] }, branchStrategy: binding.branch_strategy, projectPath: binding.subdir || '', workingBranch, branchFrom: branchFrom || binding.branch_from,
+    }] }, branchStrategy: binding.branch_strategy, projectPath: binding.subdir || '', workingBranch, branchFrom: branchFrom || binding.branch_from, contextValid: options.contextValid || gitContextGuard(binding), expectedRevision: options.expectedRevision, expectedPublicationRevision: options.expectedPublicationRevision,
   })
-  return { adapter, provider }
+  return { adapter, provider, contextValid: options.contextValid || gitContextGuard(binding) }
 }
 
 async function resolveWritableBinding(binding: ProjectGitBinding, provider: GitProviderV1, policy: ForkPolicy): Promise<{ binding: ProjectGitBinding; branchFrom?: string }> {
@@ -283,11 +354,19 @@ async function resolveWritableBinding(binding: ProjectGitBinding, provider: GitP
   return { binding: { ...binding, repo_owner: fork.owner, repo_name: fork.repo, fork_policy: 'upstream' }, branchFrom: commits[0].sha }
 }
 
+type AdapterFactory = (actual: ProjectGitBinding, branchFrom?: string) => Promise<ReturnType<typeof createProjectRepoAdapter>>
+
 function withWritableCheckpoint<T>(binding: ProjectGitBinding, branch: string, provider: GitProviderV1,
-  operation: (actual: ProjectGitBinding, adapter: ReturnType<typeof createProjectRepoAdapter>) => Promise<T>): Promise<T> {
+  operation: (actual: ProjectGitBinding, adapter: ReturnType<typeof createProjectRepoAdapter>) => Promise<T>,
+  ownedAdapter?: AdapterFactory, projectId?: string): Promise<T> {
   return runOnBranch(binding, branch, async () => {
     const resolved = await resolveWritableBinding(binding, provider, binding.fork_policy || 'auto')
-    const run = () => operation(resolved.binding, adapterForBinding(resolved.binding, branch, provider, resolved.branchFrom).adapter)
+    const run = async () => {
+      const adapter = ownedAdapter ? await ownedAdapter(resolved.binding, resolved.branchFrom)
+        : adapterForBinding(resolved.binding, branch, provider, resolved.branchFrom).adapter
+      try { return await operation(resolved.binding, adapter) }
+      finally { if (!ownedAdapter && projectId) await adapter.releaseLock(projectId).catch(() => {}) }
+    }
     return resolved.binding === binding ? run() : runOnBranch(resolved.binding, branch, run)
   })
 }
@@ -386,6 +465,8 @@ function captureProjectState(args: PushToGitArgs) {
 
 
 export function providerForBinding(binding: Pick<ProjectGitBinding, 'source_id' | 'provider' | 'base_url'>) {
+  const url = new URL(binding.base_url)
+  if (url.username || url.password || url.search || url.hash || !['https:', 'http:'].includes(url.protocol)) throw new Error('Use a public Git base URL without credentials, query or fragment.')
   const inventory = useInventoryStore()
   const token = inventory.getToken(binding.source_id)
   const providerKind = binding.provider === 'generic' ? 'gitea' : binding.provider
@@ -397,7 +478,22 @@ export function providerForBinding(binding: Pick<ProjectGitBinding, 'source_id' 
       throw new Error('The project connection does not match the configured Git source. Reconnect the source before saving.')
     }
   }
-  return getProvider(providerKind, { baseUrl: binding.base_url, token })
+  const valid = gitContextGuard(binding)
+  return getProvider(providerKind, { baseUrl: binding.base_url, token, fetchImpl: async (...args) => {
+    if (!valid()) throw new Error('Git connection changed before the provider request. The local draft is preserved.')
+    return fetch(...args)
+  } })
+}
+
+
+export function gitContextGuard(binding: Pick<ProjectGitBinding, 'source_id' | 'provider' | 'base_url'>): () => boolean {
+  const inventory = useInventoryStore()
+  const snapshot = () => {
+    const source = inventory.getSource(binding.source_id)
+    return JSON.stringify([source?.provider, source?.base_url, inventory.getToken(binding.source_id)])
+  }
+  const original = snapshot()
+  return () => snapshot() === original
 }
 
 

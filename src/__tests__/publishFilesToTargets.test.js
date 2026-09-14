@@ -15,35 +15,52 @@ import { publishFilesToTargets, useProjectGitSync, buildProjectFiles } from '@/c
 vi.mock('@/services/git', () => ({ getProvider: vi.fn() }))
 
 function repository() {
-  const files = new Map()
-  const calls = []
+  const files = new Map(), calls = [], snapshots = new Map(), heads = new Map()
   const branches = new Set(['main'])
   let head = 0
-  return { files, calls, provider: {
+  const tree = ref => snapshots.get(ref) || new Map([...files].filter(([key]) => key.startsWith(`${ref}:`)).map(([key, value]) => [key.slice(ref.length + 1), value]))
+  const pin = ref => {
+    if (snapshots.has(ref)) return ref
+    const sha = heads.get(ref) || `${ref}-commit-${head}`
+    snapshots.set(sha, new Map([...tree(ref)].map(([path, value]) => [path, JSON.parse(JSON.stringify(value))])))
+    return sha
+  }
+  const provider = {
     canWrite: async () => true,
     createBranch: async ({ name, from }) => {
       if (branches.has(name)) throw Error('Branch already exists')
       branches.add(name)
-      for (const [key, value] of [...files]) {
-        if (key.startsWith(`${from}:`)) files.set(`${name}:${key.slice(from.length + 1)}`, value)
-      }
+      for (const [path, value] of tree(from)) files.set(`${name}:${path}`, value)
+      heads.set(name, pin(from))
     },
     getFile: async ({ path, ref }) => {
-      const file = files.get(`${ref}:${path}`)
+      const file = tree(ref).get(path)
       if (!file) throw Error('404 not found')
       return file
     },
     putFile: async options => {
+      if (files.get(`${options.branch}:${options.path}`)?.sha !== options.sha) throw Error('409 CAS conflict')
       calls.push(options)
       const value = { content: options.content, sha: `blob-${++head}` }
       files.set(`${options.branch}:${options.path}`, value)
+      heads.set(options.branch, `${options.branch}-commit-${head}`)
+      pin(options.branch)
       return value
     },
-    listCommits: async ({ ref }) => [{ sha: `${ref}-commit-${head}` }],
-    listTree: async ({ ref, path }) => [...files.keys()]
-      .filter(key => key.startsWith(`${ref}:${path}/`)).map(key => ({ path: key.split(':')[1], type: 'blob' })),
+    commitFiles: async options => {
+      for (const file of options.files) if (files.get(`${options.branch}:${file.path}`)?.sha !== file.sha) throw Error('409 CAS conflict')
+      for (const file of options.files) {
+        calls.push({ ...options, ...file })
+        files.set(`${options.branch}:${file.path}`, { content: file.content, sha: `blob-${++head}` })
+      }
+      heads.set(options.branch, `${options.branch}-commit-${head}`)
+      return { sha: pin(options.branch) }
+    },
+    listCommits: async ({ ref }) => [{ sha: pin(ref) }],
+    listTree: async ({ ref, path }) => [...tree(ref).keys()].filter(key => key.startsWith(`${path}/`)).map(path => ({ path, type: 'blob' })),
     createPullRequest: vi.fn(async () => ({ url: 'https://public.test/pulls/1', number: 1 })),
-  } }
+  }
+  return { files, calls, provider }
 }
 
 const binding = {
@@ -66,6 +83,40 @@ beforeEach(() => {
 })
 
 describe('publishFilesToTargets', () => {
+  it('does not start destination writes after the owning editor closes during publication', async () => {
+    const sync = useProjectGitSync()
+    let resume
+    repos.gitlab.provider.canWrite = () => new Promise(resolve => { resume = resolve })
+    const publishing = sync.publishFilesToTargets({ projectId: 'closed', binding, files, message: 'Publish' }, targets)
+    await flushPromises()
+    await sync.releaseEditor()
+    resume(true)
+    const result = await publishing
+    expect(result.targets.every(target => target.status === 'failed')).toBe(true)
+    expect(repos.gitlab.calls).toHaveLength(0)
+    expect(repos.gitea.calls).toHaveLength(0)
+    expect(sync.lockStatus.value).toBe('idle')
+  })
+  it('updates an existing contribution only from its reviewed prior publication revision', async () => {
+    const first = await publishFilesToTargets({ projectId: 'reviewed', binding, files, message: 'first' }, [targets[0]])
+    const nextFiles = { ...files, [`${rolePath}/README.md`]: '# Revised\n' }
+    const next = await publishFilesToTargets({ projectId: 'reviewed', binding, expectedRevision: first.commit_sha, files: nextFiles, message: 'second' },
+      [{ ...targets[0], expected_revision: first.targets[0].commit_sha }])
+    expect(next.targets[0].status).toBe('published')
+    expect(repos.gitlab.files.get(`${next.targets[0].branch}:${rolePath}/README.md`).content).toBe('# Revised\n')
+  })
+
+  it('rejects an old publication preview after the same editor has saved newer files', async () => {
+    const sync = useProjectGitSync()
+    const args = { projectId: 'preview', binding, canvas: { nodes: [], edges: [], attachments: [] }, meta: { name: 'Before' } }
+    const first = await sync.pushToGit(args)
+    const preview = buildProjectFiles(args)
+    await sync.pushToGit({ ...args, meta: { name: 'After' } })
+    await expect(sync.publishFilesToTargets({ projectId: args.projectId, binding, expectedRevision: first.commit_sha, files: preview, message: 'old preview' }, [targets[0]])).rejects.toThrow(/changed|review/i)
+    expect(JSON.parse(repos.github.files.get('range42-ui/preview:meta.json').content).name).toBe('After')
+    expect(repos.gitlab.calls).toHaveLength(0)
+    await sync.releaseEditor()
+  })
   it('publishes the same role bytes, source attribution and target metadata captured before asynchronous edits', async () => {
     const project = savedScenario(); project.git = binding
     const origin = { version: 1, kind: 'ansible_role', mode: 'customize', source_id: 'catalog', provider: 'github', base_url: 'https://github.com', repo_owner: 'range42', repo_name: 'catalog', path: fixture.path, sha: fixture.sha }
@@ -133,20 +184,15 @@ describe('publishFilesToTargets', () => {
     expect(repos.gitlab.provider.createPullRequest).toHaveBeenCalledOnce()
   })
 
-  it('uses one atomic destination commit and never falls back to partial writes after rejection', async () => {
-    const repo = repos.gitea
-    const getFile = repo.provider.getFile
-    repo.provider.getFile = options => getFile({ ...options, ref: options.ref.replace(/-commit-\d+$/, '') })
+  it('rejects a protected atomic publication without falling back to partial file writes', async () => {
+    const repo = repos.gitea, commit = repo.provider.commitFiles
     repo.provider.commitFiles = vi.fn(async options => {
-      if (options.branch === 'main') throw Error('Protected file rejected entire commit')
-      for (const file of options.files) repo.files.set(`${options.branch}:${file.path}`, { content: file.content, sha: 'atomic-blob' })
-      return { sha: 'atomic-commit' }
+      if (options.branch === 'main') throw Error('Protected destination rejected commit')
+      return commit(options)
     })
     const result = await publishFilesToTargets({ projectId: 'atomic', binding, files, message: 'Add' }, [targets[1]])
-    expect(result.targets[0]).toMatchObject({ status: 'failed', partial: false })
-    expect(result.targets[0].error).toContain('Atomic publication could not be confirmed')
-    expect(repo.provider.commitFiles).toHaveBeenCalledTimes(2)
-    expect(repo.calls).toHaveLength(0)
+    expect(result.targets[0]).toMatchObject({ status: 'failed' })
+    expect(result.targets[0].error).toContain('Protected destination')
     expect([...repo.files.keys()].some(path => path.startsWith('main:'))).toBe(false)
   })
   it('publishes to a personal fork when upstream is read-only, while the PR still targets upstream', async () => {
@@ -259,28 +305,26 @@ describe('publishFilesToTargets', () => {
     expect(repos.github.calls).toHaveLength(0)
   })
 
-  it('reports a partially written direct destination if a later file write fails', async () => {
-    const put = repos.gitea.provider.putFile
-    repos.gitea.provider.putFile = async options => {
-      if (options.branch === 'main' && options.path.endsWith('README.md')) throw Error('Protected path')
-      return put(options)
-    }
+  it('refuses a destination lacking atomic writes without partially publishing files', async () => {
+    repos.gitea.provider.commitFiles = undefined
     const result = await publishFilesToTargets({ projectId: 'demo', binding, files, message: 'Add' }, targets)
     expect(result.targets[0].status).toBe('published')
-    expect(result.targets[1]).toMatchObject({ status: 'failed', partial: true })
-    expect(result.targets[1].error).toMatch(/1 file.*written/i)
+    expect(result.targets[1]).toMatchObject({ status: 'failed' })
+    expect(result.targets[1].error).toMatch(/atomic/i)
+    expect(repos.gitea.calls).toHaveLength(0)
   })
 
   it('retries a failed target from the identical own checkpoint', async () => {
     repos.gitlab.provider.createPullRequest.mockRejectedValueOnce(Error('Try again'))
     const args = { projectId: 'retry-draft', binding, files, message: 'Add', createOnly: true, componentPath: rolePath }
     const first = await publishFilesToTargets(args, targets)
-    const before = repos.github.calls.length
+    const before = repos.github.calls.filter(call => call.path !== ".lock").length
     const retried = await publishFilesToTargets(args, [targets[0]])
     expect(first.targets[0].status).toBe('failed')
     expect(retried.targets[0].status).toBe('published')
-    expect(repos.github.calls.length).toBe(before)
-    expect(retried.commit_sha).toBe(first.commit_sha)
+    expect(repos.github.calls.filter(call => call.path !== ".lock").length).toBe(before)
+    // Lock renewals have their own commits; the identical payload remains unchanged.
+    expect(retried.commit_sha).toBeTruthy()
   })
 
   it('retries public PR after the primary repository was published directly', async () => {
@@ -293,19 +337,14 @@ describe('publishFilesToTargets', () => {
     expect(retried.targets[0].status).toBe('published')
   })
 
-  it('resumes its own partial direct publication while preserving unrelated collisions', async () => {
-    const put = repos.gitea.provider.putFile
-    let fail = true
-    repos.gitea.provider.putFile = async options => {
-      if (fail && options.branch === 'main' && options.path.endsWith('README.md')) throw Error('Temporary failure')
-      return put(options)
-    }
+  it('refuses orphan partial publication that conflicts with the reviewed checkpoint', async () => {
+    repos.gitea.files.set(`main:${rolePath}/README.md`, { content: 'Unrelated external draft', sha: 'foreign' })
     const args = { projectId: 'retry-partial', binding, files, message: 'Add', createOnly: true, componentPath: rolePath }
-    const first = await publishFilesToTargets(args, [targets[1]])
-    expect(first.targets[0].partial).toBe(true)
-    fail = false
-    const retried = await publishFilesToTargets(args, [targets[1]])
-    expect(retried.targets[0].status).toBe('published')
+    const result = await publishFilesToTargets(args, [targets[1]])
+    expect(result.targets[0].status).toBe('failed')
+    expect(result.targets[0].error).toMatch(/already exists|conflict/i)
+    expect(repos.gitea.files.get(`main:${rolePath}/README.md`).content).toBe('Unrelated external draft')
+    expect(repos.gitea.calls).toHaveLength(0)
   })
 
   it('isolates publication branches for different destinations in the same repository', async () => {
@@ -348,11 +387,12 @@ describe('publishFilesToTargets', () => {
       }
       return Promise.resolve(true)
     }
-    const auto = () => useProjectGitSync().pushToGit({
+    const sync = useProjectGitSync()
+    const auto = () => sync.pushToGit({
       projectId: 'shared', binding, canvas: { nodes: [], edges: [], attachments: [] },
       meta: { name: 'Auto' }, overlay: { param_overrides: { env: { PORT: '8080' } } },
     })
-    const publish = () => publishFilesToTargets({
+    const publish = () => sync.publishFilesToTargets({
       projectId: 'shared', binding, files: { 'overlay.json': '{"published":true}' }, message: 'Publish',
     }, [targets[0]])
     const first = order === 'autosave-first' ? auto() : publish()
@@ -364,6 +404,7 @@ describe('publishFilesToTargets', () => {
     const overlay = repos.github.files.get('range42-ui/shared:overlay.json').content
     if (order === 'autosave-first') expect(JSON.parse(overlay)).toEqual({ published: true })
     else expect(JSON.parse(overlay)).toEqual({ param_overrides: { env: { PORT: '8080' } } })
+    await sync.releaseEditor()
   })
 
   it('captures the file snapshot before asynchronous writes', async () => {

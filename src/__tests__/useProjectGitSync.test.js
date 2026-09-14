@@ -9,6 +9,9 @@ const { getProvider, createProjectRepoAdapter, fakeAdapter } = vi.hoisted(() => 
     autosave: vi.fn(async () => {}),
     save: vi.fn(async () => ({ commit_sha: 'deadbeef', branch: 'range42-ui/p1' })),
     proposeMerge: vi.fn(async () => ({ pr_url: 'https://git.test/pr/1' })),
+    acquireLock: vi.fn(async () => ({})),
+    heartbeat: vi.fn(async () => {}),
+    releaseLock: vi.fn(async () => {}),
   }
   return {
     fakeAdapter,
@@ -19,7 +22,7 @@ const { getProvider, createProjectRepoAdapter, fakeAdapter } = vi.hoisted(() => 
 vi.mock('@/services/git', () => ({ getProvider }))
 vi.mock('@/services/projectRepo', () => ({ createProjectRepoAdapter }))
 
-import { useProjectGitSync, buildPushArgs, buildProjectFiles } from '@/composables/useProjectGitSync'
+import { useProjectGitSync, buildPushArgs, buildProjectFiles, providerForBinding } from '@/composables/useProjectGitSync'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { savedScenario } from './fixtures/savedScenario'
 
@@ -42,6 +45,74 @@ const BINDING = {
 }
 
 describe('useProjectGitSync', () => {
+  it('checks the exact lease immediately on visibility restore and removes that observer on release', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const sync = useProjectGitSync()
+    await sync.pushToGit({ projectId: 'visible', binding: BINDING, canvas: CANVAS, meta: { name: 'Visible' } })
+    fakeAdapter.heartbeat.mockClear()
+    document.dispatchEvent(new Event('visibilitychange')); await flushPromises()
+    expect(fakeAdapter.heartbeat).toHaveBeenCalledWith('visible')
+    await sync.releaseEditor(); fakeAdapter.heartbeat.mockClear()
+    document.dispatchEvent(new Event('visibilitychange')); await flushPromises()
+    expect(fakeAdapter.heartbeat).not.toHaveBeenCalled()
+    visibility.mockRestore()
+  })
+
+  it('marks heartbeat failure visible and stops automatic retries until explicit recovery', async () => {
+    vi.useFakeTimers()
+    const sync = useProjectGitSync()
+    await sync.pushToGit({ projectId: 'offline', binding: BINDING, canvas: CANVAS, meta: { name: 'Offline' } })
+    fakeAdapter.heartbeat.mockClear().mockRejectedValueOnce(new Error('Editor lease expired'))
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(sync.lockStatus.value).toBe('blocked')
+    expect(sync.lockError.value).toContain('expired')
+    await vi.advanceTimersByTimeAsync(240_000)
+    expect(fakeAdapter.heartbeat).toHaveBeenCalledOnce()
+    await sync.releaseEditor(); vi.useRealTimers()
+  })
+  it('blocks each provider request after a source change, including a multi-request commit continuation', async () => {
+    providerForBinding(BINDING)
+    const transport = getProvider.mock.calls[0][1].fetchImpl
+    useInventoryStore().sources[0].base_url = 'https://replacement.test'
+    const fetcher = vi.spyOn(globalThis, 'fetch')
+    await expect(transport('https://github.com/api/write', { method: 'PATCH' })).rejects.toThrow(/changed/i)
+    expect(fetcher).not.toHaveBeenCalled()
+    fetcher.mockRestore()
+  })
+  it('carries the last reviewed project revision into a single owned editor session', async () => {
+    const project = { id: 'p1', name: 'Draft', git: BINDING, head_sha: 'reviewed' }
+    const args = buildPushArgs(project, CANVAS.nodes, [])
+    expect(args.expectedRevision).toBe('reviewed')
+    const sync = useProjectGitSync()
+    await sync.pushToGit(args)
+    await sync.pushToGit(args)
+    expect(createProjectRepoAdapter).toHaveBeenCalledTimes(1)
+    expect(createProjectRepoAdapter.mock.calls[0][0].expectedRevision).toBe('reviewed')
+    await sync.releaseEditor()
+    expect(fakeAdapter.releaseLock).toHaveBeenCalledWith('p1')
+  })
+  it('stops target-bound heartbeat and refuses queued writes after editor disposal', async () => {
+    vi.useFakeTimers()
+    const sync = useProjectGitSync()
+    const args = { projectId: 'p1', binding: BINDING, canvas: CANVAS, meta: { name: 'Draft' } }
+    await sync.pushToGit(args)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fakeAdapter.heartbeat).toHaveBeenCalledWith('p1')
+    await sync.releaseEditor()
+    fakeAdapter.heartbeat.mockClear()
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(fakeAdapter.heartbeat).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+  it('invalidates a captured Git context when its source token or provider URL changes', async () => {
+    const sync = useProjectGitSync()
+    await sync.pushToGit({ projectId: 'p1', binding: BINDING, canvas: CANVAS, meta: { name: 'Draft' } })
+    const valid = createProjectRepoAdapter.mock.calls[0][0].contextValid
+    expect(valid()).toBe(true)
+    useInventoryStore().sources[0].base_url = 'https://another.test'
+    expect(valid()).toBe(false)
+    await sync.releaseEditor()
+  })
   it('captures catalog provenance for ordinary and publication snapshots before asynchronous saving', async () => {
     const project = savedScenario()
     project.git = BINDING

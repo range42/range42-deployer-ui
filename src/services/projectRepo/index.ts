@@ -3,8 +3,8 @@ import type { ProjectFiles } from '@/services/projectFiles'
  * ProjectRepoAdapter — git-backed project state with IndexedDB offline cache.
  *
  * Spec §4: project documents live in a git repo; the adapter encapsulates
- * load / autosave / save plus lock acquisition + heartbeat coordination
- * (SharedWorker + navigator.locks come online in C1.11).
+ * load / autosave / save plus CAS-protected Git editor leases.
+ * The owning composable renews the lease and releases it on editor exit.
  *
  * NOTE: `SourceRecord` is defined here as a minimal local type because the
  * full `GitSource` model in `inventoryStore` lands in Task C2.1; this file
@@ -45,6 +45,10 @@ export interface LockInfo {
   editor_id: string
   browser_instance_id: string
   heartbeat_at: string
+  target?: string
+  lease_id?: string
+  revision?: string
+  released?: boolean
 }
 
 export type BranchStrategy = 'shared_repo_subdir' | 'dedicated_repo'
@@ -54,11 +58,12 @@ export interface ProjectRepoAdapter {
   autosave(projectId: string, state: ProjectState): Promise<void>
   /** Save checkpoints the working branch; publishing is always explicit. */
   save(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
-  stageFiles(projectId: string, files: ProjectFiles, message: string): Promise<void>
-  proposeMerge(projectId: string, message: string): Promise<{ pr_url: string }>
+  stageFiles(projectId: string, files: ProjectFiles, message: string, options?: { expectedRevision?: string }): Promise<void>
+  proposeMerge(projectId: string, message: string, target?: { owner: string; repo: string }): Promise<{ pr_url: string; pr_number?: number }>
   publishDirect(projectId: string, message: string): Promise<{ commit_sha: string; branch: string }>
-  acquireLock(projectId: string): Promise<LockInfo>
+  acquireLock(projectId: string, options?: { recoverExpired?: boolean }): Promise<LockInfo>
   heartbeat(projectId: string): Promise<void>
+  releaseLock(projectId: string): Promise<void>
   /**
    * Fired on tab-visibility restore when the remote .lock owner no longer
    * matches our browser_instance_id. Listener decides: merge, discard, or
@@ -80,6 +85,9 @@ export interface AdapterConstructorOpts {
   browserInstanceId?: string
   workingBranch?: string
   branchFrom?: string
+  expectedRevision?: string
+  expectedPublicationRevision?: string
+  contextValid?: () => boolean
 }
 
 export { createProjectRepoAdapter } from './adapter'

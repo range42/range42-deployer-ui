@@ -44,3 +44,7 @@ Sanitized live results are in `docs/acceptance/reopen-{github,gitlab,gitea}-2026
 GitHub/GitLab tests use retained `range42-acceptance-20260910-*` repositories on fresh branches, with review destinations also on fresh branches. Their PR/MR and branch identifiers are recorded for cleanup. The disposable Gitea container is removed with its volumes after acceptance; its report remains as evidence. No source catalog or PVE resources are modified.
 
 Production browser checks cover preview-before-import, desktop/mobile layout and modal accessibility, identity collision without local draft loss, structured forms, binary download after reload, and files-only Save without overwrite. The same flow is exercised on a real non-secure HTTP origin with `crypto.randomUUID` absent.
+
+## Editor ownership after reopening
+
+Preview/import do not acquire a Git lock. A subsequent save owns the new dedicated working branch, seeded from the reviewed SHA. A lock inherited in that new branch is rebound only there; the original editor branch remains untouched. Existing local working branches require current ownership and reviewed file state before writes. See [Git editor locking and recovery](git-editor-locking.md). The historical live acceptance above predates this new source-only lock protocol.
