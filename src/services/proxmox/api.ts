@@ -10,6 +10,7 @@ import { getActivePinia } from 'pinia'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { CONFIG_WRITE_UNAVAILABLE } from './observedConfig'
 import { validateConfigChanges, validateConfigReview, validateConfigResult, type VmConfigReview } from './configReview'
+import { validateHardwareReview, validateHardwareResult, validateNicChanges, validateNicId, validateDiskGrowth, type HardwareReview } from './hardwareReview'
 
 import type {
   ApiResponse,
@@ -474,6 +475,37 @@ export const vm = {
     const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/config?vmtype=${expected.vmtype}`,
       { method: 'PUT', body: JSON.stringify({ digest: expected.digest, changes: patch }) }, context)
     return validateConfigResult(raw, expected)
+  },
+
+  async getHardwareReview(vmId: number, target: ProxmoxTarget) {
+    if (!Number.isSafeInteger(vmId) || vmId < 100) throw new Error('Invalid hardware target.')
+    const context = backendContext()
+    const host = await resolveHost(target, context)
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${vmId}/hardware/review`, { method: 'GET' }, context)
+    return validateHardwareReview(raw, { host_id: host.id, node: host.node_name, vmid: vmId })
+  },
+
+  async updateHardwareNic(review: HardwareReview, nic: string, changes: unknown, assertReviewCurrent: () => void) {
+    const expected = validateHardwareReview(review, review)
+    validateNicId(nic)
+    const patch = validateNicChanges(changes)
+    assertReviewCurrent()
+    const context = backendContext(), host = await resolveHost({ hostId: expected.host_id, node: expected.node }, context)
+    assertReviewCurrent()
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/hardware/nics/${nic}`,
+      { method: 'PUT', body: JSON.stringify({ digest: expected.digest, changes: patch }) }, context)
+    return validateHardwareResult(raw, expected)
+  },
+
+  async growHardwareDisk(review: HardwareReview, disk: string, size: number, assertReviewCurrent: () => void) {
+    const expected = validateHardwareReview(review, review)
+    validateDiskGrowth(disk, size)
+    assertReviewCurrent()
+    const context = backendContext(), host = await resolveHost({ hostId: expected.host_id, node: expected.node }, context)
+    assertReviewCurrent()
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/hardware/disks/${disk}/grow`,
+      { method: 'PUT', body: JSON.stringify({ digest: expected.digest, size_gb: size }) }, context)
+    return validateHardwareResult(raw, expected)
   },
 
   /**

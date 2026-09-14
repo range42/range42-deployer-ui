@@ -29,6 +29,7 @@ import { proxmoxCache } from '@/services/proxmox/cache'
 import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
 import { usePendingChanges } from '@/composables/usePendingChanges'
 import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
+import VmHardwareDialog from '@/components/VmHardwareDialog.vue'
 import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
 import { useProxmoxTasks } from '@/composables/useProxmoxTasks'
 import NodeAttachmentsSection from '@/components/project/attachments/NodeAttachmentsSection.vue'
@@ -37,6 +38,13 @@ import { resolveNodeStatus } from '@/composables/useNodeStatus'
 const { t } = useI18n({ useScope: 'global' })
 const tasks = useProxmoxTasks()
 const showDeleteModal = ref(false)
+const showHardwareDialog = ref(false)
+const hardwareTarget = computed(() => {
+  const data = props.node?.data, config = data?.config
+  return props.node?.type === 'vm' && data?.deployed && Number.isSafeInteger(Number(data.vmId))
+    && typeof config?.proxmoxNode === 'string' && config.proxmoxNode && typeof config?.proxmoxHostId === 'string' && config.proxmoxHostId
+    ? { vmid: Number(data.vmId), node: config.proxmoxNode, hostId: config.proxmoxHostId } : null
+})
 
 // Modal shell refs — focus is moved into the panel on open (mirrors
 // ConfirmDialog's pattern) and Escape closes via the root keydown handler.
@@ -546,9 +554,14 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           :node="node" :status-view="statusView" :status-dot-class="statusDotClass"
           @action="handleVmAction" @revert-field="revertField" @update-desired="updateDesired" />
 
+        <div v-if="node.type === 'vm' && node.data?.deployed" class="space-y-2 my-4">
+          <button class="btn btn-outline btn-sm" :disabled="!hardwareTarget || !!node.data.pendingAction" @click="showHardwareDialog = true">Review NICs and disks</button>
+          <p v-if="!hardwareTarget" class="text-sm">Import this guest from its explicit registered host before reviewing hardware edits.</p>
+        </div>
+
 
         <!-- VM Specific Fields (non-deployed) -->
-        <VmFields v-else-if="node.type === 'vm'" v-model="config" :available-templates="availableTemplates" :available-storages="availableStorages" :loading-templates="loadingTemplates" @refresh-templates="loadTemplates(true)" @select-template="selectTemplate" />
+        <VmFields v-if="node.type === 'vm' && !node.data?.deployed" v-model="config" :available-templates="availableTemplates" :available-storages="availableStorages" :loading-templates="loadingTemplates" @refresh-templates="loadTemplates(true)" @select-template="selectTemplate" />
 
         <!-- Network Segment Specific Fields -->
         <NetworkFields v-if="node.type === 'network-segment'" v-model="config" />
@@ -672,6 +685,8 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
     @close="showApplyDialog = false"
     @applied="showApplyDialog = false"
   />
+
+  <VmHardwareDialog v-if="showHardwareDialog && hardwareTarget" :target="hardwareTarget" @close="showHardwareDialog = false" />
 
   <DeleteNodeModal
     :open="showDeleteModal"
