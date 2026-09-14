@@ -56,6 +56,7 @@ for (const width of [1440, 390]) {
     const machineCard = page.locator('article[data-kind="component"]')
     await machineCard.getByTestId('catalog-add-to-project').click()
     let dialog = page.getByTestId('catalog-append-dialog')
+    await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement))).toBe(true)
     await expect(dialog.locator('[name="project"]')).toHaveValue(project.id)
     await dialog.getByTestId('catalog-append-review').click()
     await expect(dialog.getByTestId('catalog-append-preview')).toContainText('9902')
