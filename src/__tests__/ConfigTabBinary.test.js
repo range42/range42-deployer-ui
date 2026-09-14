@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { enableAutoUnmount, flushPromises, shallowMount } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
+import project from '@/locales/en/project.json'
 import ConfigTab from '@/components/project/ConfigTab.vue'
 import FileTree from '@/components/project/FileTree.vue'
 import TwoPaneEditor from '@/components/project/TwoPaneEditor.vue'
@@ -12,7 +14,7 @@ const asset = assetFromBytes(Uint8Array.of(0, 255, 10))
 describe('Config tab binary files', () => {
   it('opens binary files in the asset view and saves replacements through the same file system', async () => {
     const overlayFs = createMemoryFs({ files: { 'content/a.bin': asset } })
-    const wrapper = shallowMount(ConfigTab, { props: { overlayFs, baseFs: createMemoryFs({ files: {} }) }, global: { stubs: { FileAssetField: false } } })
+    const wrapper = shallowMount(ConfigTab, { props: { overlayFs, baseFs: createMemoryFs({ files: {} }) }, global: { stubs: { FileAssetField: false }, plugins: [createI18n({ legacy: false, locale: 'en', messages: { en: { project } } })] } })
     wrapper.findComponent(FileTree).vm.$emit('select', { path: 'content/a.bin', fsKind: 'overlay' })
     await flushPromises()
     expect(wrapper.findComponent(TwoPaneEditor).exists()).toBe(false)

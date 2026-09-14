@@ -29,6 +29,7 @@ vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn().mockResolvedValue(
 
 import ConfigPanel from '@/components/ConfigPanel.vue'
 import configPanel from '@/locales/en/configPanel.json'
+import { proxmoxCache } from '@/services/proxmox/cache'
 
 function makeI18n() {
   return createI18n({ legacy: false, locale: 'en', messages: { en: { configPanel } }, missingWarn: false, fallbackWarn: false })
@@ -52,7 +53,7 @@ function mountPanel(node) {
 }
 
 describe('ConfigPanel — lifecycle actions route through task core (no optimistic flip)', () => {
-  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks() })
+  beforeEach(() => { setActivePinia(createPinia()); vi.clearAllMocks(); proxmoxCache.templates.value = [] })
 
   it('stop → calls launch("stop", …) and does NOT synchronously set status', async () => {
     const node = makeDeployedVmNode('running')
@@ -119,6 +120,90 @@ describe('ConfigPanel — lifecycle actions route through task core (no optimist
     const wrapper = mountPanel({ id: 'vm', type: 'vm', data: { config: { name: 'Guest', cores: 2, memory: 2048 } } })
     await flushPromises()
     expect(wrapper.text()).toContain('Configuration valid')
+  })
+
+  it('prefills canonical VM resources and saves their original field names', async () => {
+    const config = { name: 'Catalog guest', cores: 6, memory_mb: 6144, disk_gb: 48 }
+    const node = { id: 'vm', type: 'vm', data: { config } }
+    const wrapper = mountPanel(node)
+    await flushPromises()
+    const field = label => wrapper.findAllComponents({ name: 'FormField' }).find(item => item.props('label') === label)
+    expect(field('CPU Cores').props('modelValue')).toBe(6)
+    expect(field('Memory (MB)').props('modelValue')).toBe(6144)
+    expect(field('Disk').props('modelValue')).toBe('48G')
+    expect(wrapper.text()).toContain('Configuration valid')
+    await wrapper.vm.handleSave()
+    expect(wrapper.emitted('update')[0][1].config).toMatchObject(config)
+    expect(wrapper.emitted('update')[0][1].config).not.toHaveProperty('memory')
+    expect(wrapper.emitted('update')[0][1].config).not.toHaveProperty('diskSize')
+    expect(node.data.config).toEqual(config)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('edits canonical resources without retaining conflicting UI aliases (duplicates: %s)', async duplicates => {
+    const config = { name: 'Catalog guest', cores: 6, memory_mb: 6144, disk_gb: 48,
+      ...(duplicates ? { memory: 1024, diskSize: '16G' } : {}) }
+    const wrapper = mountPanel({ id: 'vm', type: 'vm', data: { config } })
+    await flushPromises()
+    const field = label => wrapper.findAllComponents({ name: 'FormField' }).find(item => item.props('label') === label)
+    field('Memory (MB)').vm.$emit('update:modelValue', 8192)
+    field('Disk').vm.$emit('update:modelValue', '64GiB')
+    await flushPromises()
+    await wrapper.vm.handleSave()
+    const saved = wrapper.emitted('update')[0][1].config
+    expect(saved).toMatchObject({ memory_mb: 8192, disk_gb: 64 })
+    expect(saved).not.toHaveProperty('memory')
+    expect(saved).not.toHaveProperty('diskSize')
+    expect(config.memory_mb).toBe(6144)
+    expect(config.disk_gb).toBe(48)
+    wrapper.unmount()
+  })
+
+  it.each([
+    { memory: 6144, diskSize: '48G' },
+    { memory_mb: 6144, disk_gb: 48 },
+  ])('preserves configured resources on hydration and fills only explicitly selected templates: %j', async resources => {
+    proxmoxCache.templates.value = [
+      { vmid: 9901, maxcpu: 2, maxmem: 2048 * 1024 * 1024 },
+      { vmid: 9902, maxcpu: 4, maxmem: 4096 * 1024 * 1024 },
+    ]
+    const config = { name: 'Configured guest', template: '9901', cores: 6, ...resources }
+    const wrapper = mountPanel({ id: 'vm', type: 'vm', data: { config } })
+    await flushPromises()
+    const field = label => wrapper.findAllComponents({ name: 'FormField' }).find(item => item.props('label') === label)
+    expect(field('CPU Cores').props('modelValue')).toBe(6)
+    expect(field('Memory (MB)').props('modelValue')).toBe(6144)
+    field('Clone from template').vm.$emit('update:modelValue', '9902')
+    await flushPromises()
+    expect(field('CPU Cores').props('modelValue')).toBe(4)
+    expect(field('Memory (MB)').props('modelValue')).toBe(4096)
+    await wrapper.vm.handleSave()
+    const saved = wrapper.emitted('update')[0][1].config
+    expect(saved[Object.hasOwn(resources, 'memory_mb') ? 'memory_mb' : 'memory']).toBe(4096)
+    expect(saved).not.toHaveProperty(Object.hasOwn(resources, 'memory_mb') ? 'memory' : 'memory_mb')
+    expect(config.cores).toBe(6)
+    await wrapper.setProps({ node: { id: 'another', type: 'vm', data: { config: {
+      name: 'Another saved guest', template: '9901', cores: 8, memory: 8192,
+    } } } })
+    await flushPromises()
+    expect(field('CPU Cores').props('modelValue')).toBe(8)
+    expect(field('Memory (MB)').props('modelValue')).toBe(8192)
+    wrapper.unmount()
+  })
+
+  it('focuses VM settings for Escape before slow template loading finishes', async () => {
+    let finishLoading
+    proxmoxCache.fetchVms.mockImplementationOnce(() => new Promise(resolve => { finishLoading = resolve }))
+    const wrapper = mountPanel({ id: 'vm', type: 'vm', data: { config: { name: 'Guest' } } })
+    document.body.appendChild(wrapper.element)
+    await flushPromises()
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(document.activeElement).toBe(dialog.element)
+    await dialog.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+    finishLoading([])
+    await flushPromises()
   })
 
   it('uses the translated refresh-templates label for keyboard and pointer users', async () => {

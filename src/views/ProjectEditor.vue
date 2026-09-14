@@ -62,7 +62,7 @@ const ConfigTab = defineAsyncComponent(() => import('../components/project/Confi
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useToast } from '../composables/useToast'
-import { useProjectGitSync, buildPushArgs } from '../composables/useProjectGitSync'
+import { useProjectGitSync, buildPushArgs, providerForBinding } from '../composables/useProjectGitSync'
 import { useProjectStore } from '../stores/projectStore'
 
 
@@ -201,14 +201,14 @@ function handleJumpTo(descriptor) {
   if (descriptor.kind === 'node') {
     const n = (liveNodes.value || []).find((x) => x.id === descriptor.id)
     if (n) {
-      selectedNode.value = n
-      showConfigPanel.value = true
+      router.push({ query: { ...route.query, tab: 'canvas', node: n.id } })
     }
+  } else if (descriptor.kind === 'file') {
+    router.push({ query: { ...route.query, tab: 'config', file: descriptor.id } })
   } else if (descriptor.kind === 'edge') {
     const e = (liveEdges.value || []).find((x) => x.id === descriptor.id)
-    if (e) selectedEdge.value = e
+    if (e) { selectedEdge.value = e; setTab('canvas') }
   }
-  // attachment / file jumps will be wired when the Config tab lands (C3.7).
 }
 
 const { zones } = useNetworkZones(liveNodes, liveEdges, measureTick)
@@ -414,6 +414,7 @@ function cloneSnapshot() {
 // on every canvas nudge. When the project is wired to a git-backed
 // ProjectRepoAdapter, the autosave body will also call adapter.autosave.
 let autosaveTimer = null
+let editorActive = true
 function scheduleAutosave() {
   if (!currentProject.value) return
   if (autosaveTimer !== null) clearTimeout(autosaveTimer)
@@ -466,6 +467,7 @@ function applyCanvasSnapshot(snapshot) {
 onBeforeUnmount(() => {
   // Capture this project's graph and Git write before another editor mounts.
   if (autosaveTimer !== null) void manualSave({ quiet: true })
+  editorActive = false
 })
 
 onUnmounted(() => {
@@ -633,11 +635,15 @@ onUnmounted(() => {
 const handleNodeClick = (event) => {
   onNodeClick(event)
   showConfigPanel.value = !!selectedNode.value
+  if (selectedNode.value) router.replace({ query: { ...route.query, node: selectedNode.value.id } })
 }
 
 const closeConfigPanel = () => {
   showConfigPanel.value = false
   selectedNode.value = null
+  const query = { ...route.query }
+  delete query.node
+  router.replace({ query })
 }
 
 // Node-card "Apply" strip → open that node's ConfigPanel and surface the apply dialog.
@@ -824,10 +830,8 @@ const confirmDeleteProject = () => {
 // ------------------------------------------------------------
 // Tab shell (Plan C C3.6)
 // ------------------------------------------------------------
-// Tabs are local state driven by the URL query (?tab=…). Switching tabs is a
-// router.replace — cheap, preserves history — and canvas / config panes use
-// v-show so viewport, selection, undo buffers, and CodeMirror state survive
-// cross-tab navigation.
+// URL state supports direct entry, reload and browser Back/Forward.
+// Canvas and the cached Config editor retain their local buffers across tabs.
 const TABS = ['canvas', 'config', 'variables', 'history', 'settings']
 const tab = computed(() => {
   const q = route.query.tab
@@ -838,7 +842,60 @@ const tab = computed(() => {
 function setTab(next) {
   if (!TABS.includes(next)) return
   if (route.query.tab === next) return
-  router.replace({ query: { ...route.query, tab: next } })
+  return router.push({ query: { ...route.query, tab: next } })
+}
+
+async function handleTabKeydown(event, current) {
+  const index = TABS.indexOf(current)
+  const next = event.key === 'ArrowRight' ? TABS[(index + 1) % TABS.length]
+    : event.key === 'ArrowLeft' ? TABS[(index + TABS.length - 1) % TABS.length]
+      : event.key === 'Home' ? TABS[0] : event.key === 'End' ? TABS.at(-1) : null
+  if (!next) return
+  event.preventDefault()
+  const tablist = event.currentTarget.closest('[role=tablist]')
+  await setTab(next)
+  await nextTick()
+  tablist?.querySelector(`[data-testid="project-tab-${next}"]`)?.focus()
+}
+
+function queryText(value) {
+  return typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : ''
+}
+const selectedFilePath = computed(() => queryText(route.query.file))
+function selectConfigFile(path) {
+  if (selectedFilePath.value !== path) router.replace({ query: { ...route.query, file: path } })
+}
+watch(() => [currentProject.value?.id, route.query.node], () => {
+  const id = queryText(route.query.node)
+  selectedNode.value = (liveNodes.value || []).find(node => node.id === id) || null
+  showConfigPanel.value = !!selectedNode.value
+}, { flush: 'post' })
+
+function openCatalog() {
+  if (!currentProject.value) return
+  try {
+    projectStore.updateProject(currentProject.value.id, { nodes: liveNodes.value, edges: liveEdges.value })
+    // This action preserves the local draft. Leaving the editor must not turn
+    // the pending debounce into an unrelated Git write.
+    if (autosaveTimer !== null) clearTimeout(autosaveTimer)
+    autosaveTimer = null
+    router.push({ path: '/catalog', query: { project: currentProject.value.id,
+      ...(selectedNode.value ? { node: selectedNode.value.id } : {}) } })
+  } catch (error) { showToast(error.message || String(error), 'error', 6000) }
+}
+
+const settingsName = ref('')
+const settingsError = ref('')
+watch(() => currentProject.value?.name, name => { settingsName.value = name || '' }, { immediate: true })
+function saveProjectSettings() {
+  const name = settingsName.value.trim()
+  if (!name) { settingsError.value = translate('project.settings.nameRequired'); return }
+  try {
+    projectStore.updateProject(currentProject.value.id, { name })
+    settingsError.value = ''
+    scheduleAutosave()
+    showToast(translate('project.settings.saved'), 'success')
+  } catch (error) { settingsError.value = error.message || String(error) }
 }
 
 // Provide project state + a thin adapter to descendant tab panels (variables,
@@ -861,18 +918,19 @@ provide('projectAdapter', {
 const overlayFiles = computed(() => currentProject.value?.files || {})
 const baseFiles = ref({})
 
-const configOverlayFs = computed(() =>
-  createMemoryFs({
+const configOverlayFs = computed(() => {
+  const ownerId = currentProject.value?.id
+  return createMemoryFs({
     files: overlayFiles.value || {},
     onChange: (files) => {
-      if (!currentProject.value) return
-      projectStore.updateProject(currentProject.value.id, {
-        files: { ...files },
-      })
+      if (!editorActive || currentProject.value?.id !== ownerId) {
+        throw new Error(translate('project.config.closed'))
+      }
+      projectStore.updateProject(ownerId, { files: { ...files } })
       scheduleAutosave()
     },
-  }),
-)
+  })
+})
 const configBaseFs = computed(() => createMemoryFs({ files: baseFiles.value }))
 
 function handleConfigSave() {
@@ -888,34 +946,33 @@ function handleAttachmentsUpdate(next) {
   scheduleAutosave()
 }
 
-// HistoryTab wiring (C3.9). When the project is linked to a git source
-// (`project.gitSource = { provider, owner, repo, path, ref }`), we return
-// a live provider + locator. Otherwise the tab shows an empty-state hint.
-const historyProvider = computed(() => {
-  const src = currentProject.value?.gitSource
-  if (!src?.provider) return null
+// Read the same source/credential binding used for project saves. Legacy
+// gitSource projects keep their previous locator until explicitly reconnected.
+const historyState = computed(() => {
+  if (tab.value !== 'history') return {}
+  const project = currentProject.value
+  const binding = project?.git
   try {
-    if (src.provider === 'github') {
-      // GitHub uses the legacy provider interface; it also exposes
-      // `listCommits` + `getFile` — adapt the call shape here so
-      // HistoryTab can talk to it via the same surface as GitLab/Gitea.
-      const gh = getGitProvider('github')
-      return {
-        listCommits: (opts) => gh.listCommits(opts),
-        getFile: async (opts) => {
-          const content = await gh.getFile(opts.owner, opts.repo, opts.path, opts.ref)
-          return { content, sha: '' }
-        },
-      }
+    if (binding) {
+      const prefix = binding.subdir ? binding.subdir.replace(/\/+$/, '') + '/' : ''
+      return { provider: providerForBinding(binding), locator: {
+        owner: binding.repo_owner, repo: binding.repo_name,
+        path: `${prefix}topology.json`, ref: binding.working_branch || binding.branch || 'main',
+      } }
     }
-    return getV1Provider(src.provider, {
-      baseUrl: src.baseUrl,
-      token: src.token ?? null,
-    })
-  } catch {
-    return null
-  }
+    const src = project?.gitSource
+    if (!src?.provider || !src.owner || !src.repo) return {}
+    const provider = src.provider === 'github' ? (() => {
+      const gh = getGitProvider('github')
+      return { listCommits: opts => gh.listCommits(opts), getFile: async opts => ({
+        content: await gh.getFile(opts.owner, opts.repo, opts.path, opts.ref), sha: '',
+      }) }
+    })() : getV1Provider(src.provider, { baseUrl: src.baseUrl, token: src.token ?? null })
+    return { provider, locator: { owner: src.owner, repo: src.repo, path: src.path || 'range42.yaml', ref: src.ref || 'main' } }
+  } catch (error) { return { error: error.message || String(error) } }
 })
+const historyProvider = computed(() => historyState.value.provider)
+const historyLocator = computed(() => historyState.value.locator)
 
 // VariablesTab wiring (C3.10). The effective env[] comes from the catalog
 // base doc embedded in the project (`project.baseDoc`) — missing today for
@@ -932,17 +989,6 @@ function handleOverlayUpdate(nextOverlay) {
   })
   scheduleAutosave()
 }
-
-const historyLocator = computed(() => {
-  const src = currentProject.value?.gitSource
-  if (!src?.owner || !src?.repo) return null
-  return {
-    owner: src.owner,
-    repo: src.repo,
-    path: src.path || 'range42.yaml',
-    ref: src.ref || 'main',
-  }
-})
 
 // Import config: resolved from per-project settings at setup level
 const importApiConfig = useApiConfig(projectId, { autoSync: true })
@@ -990,7 +1036,7 @@ const handleInfrastructureImport = (result) => {
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
-      @openInventory="router.push('/catalog')"
+      @openInventory="openCatalog"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
       class="hidden lg:flex shrink-0"
@@ -1019,7 +1065,7 @@ const handleInfrastructureImport = (result) => {
           @openExport="showExportModal = true; closeMobileSidebar()"
           @openDeploy="(p) => { handleOpenDeploy(p); closeMobileSidebar() }"
           @openValidate="handleOpenValidate(); closeMobileSidebar()"
-          @openInventory="router.push('/catalog'); closeMobileSidebar()"
+          @openInventory="openCatalog(); closeMobileSidebar()"
           @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
           @openImport="handleOpenImport(); closeMobileSidebar()"
         />
@@ -1072,6 +1118,7 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Save button -->
           <button type="button" class="btn btn-ghost btn-sm" data-testid="project-repository" :disabled="gitSaving > 0" @click="openRepositoryConnection">Repository</button>
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-add-catalog" @click="openCatalog">{{ translate('project.addCatalog') }}</button>
           <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="openScenarioContent()">Scenario</button>
           <button class="btn btn-ghost btn-sm gap-2" :disabled="gitSaving > 0" @click="manualSave()" title="Save (Ctrl+S)">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1161,10 +1208,12 @@ const handleInfrastructureImport = (result) => {
           class="tab"
           :class="{ 'tab-active': tab === t }"
           :aria-selected="tab === t"
+          :tabindex="tab === t ? 0 : -1"
           :data-testid="`project-tab-${t}`"
+          @keydown="handleTabKeydown($event, t)"
           @click="setTab(t)"
         >
-          {{ t }}
+          {{ translate(`project.tabs.${t}`) }}
         </button>
       </div>
 
@@ -1283,8 +1332,10 @@ const handleInfrastructureImport = (result) => {
           <ConfigTab
             :key="currentProject.id"
             v-if="currentProject && tab === 'config'"
+            :path="selectedFilePath"
             :overlay-fs="configOverlayFs"
             :base-fs="configBaseFs"
+            @select="selectConfigFile"
             :attachments="attachmentsRef"
             :nodes="liveNodes"
             @update:attachments="handleAttachmentsUpdate"
@@ -1305,22 +1356,49 @@ const handleInfrastructureImport = (result) => {
       </div>
 
       <!-- History tab (C3.9) -->
-      <div v-show="tab === 'history'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-history">
+      <div v-show="tab === 'history'" class="flex-1 min-h-0 overflow-auto" data-testid="tab-history">
+        <p v-if="historyLocator" class="p-2 text-sm text-base-content/70 break-all" data-testid="project-history-path">{{ translate('project.history.file', { path: historyLocator.path, ref: historyLocator.ref }) }}</p>
         <HistoryTab
           v-if="historyProvider && historyLocator"
           :provider="historyProvider"
           :locator="historyLocator"
         />
+        <div v-else-if="historyState.error" role="alert" class="p-4 text-sm text-error">{{ historyState.error }}</div>
         <div v-else class="p-4 text-sm text-base-content/60">
           {{ $t ? $t('historyTab.noSource') : 'Link this project to a git source to see its history.' }}
         </div>
       </div>
 
-      <!-- Settings tab placeholder -->
-      <div v-show="tab === 'settings'" class="flex-1 overflow-y-auto p-4" data-testid="tab-settings">
-        <div class="alert alert-info text-sm">
-          Settings tab — per-project settings live here in a later phase.
-        </div>
+      <div v-show="tab === 'settings'" class="flex-1 overflow-y-auto p-4 space-y-5" data-testid="tab-settings">
+        <form class="max-w-xl space-y-3" data-testid="project-settings-form" @submit.prevent="saveProjectSettings">
+          <h2 class="font-semibold">{{ translate('project.settings.title') }}</h2>
+          <p class="text-sm text-base-content/70 break-all">{{ translate('project.settings.identity') }}: {{ currentProject.id }}</p>
+          <label for="project-settings-name" class="block text-sm">{{ translate('project.settings.name') }}</label>
+          <input id="project-settings-name" v-model="settingsName" name="project_name" autocomplete="off" maxlength="120" required class="input input-bordered w-full" data-testid="project-settings-name" />
+          <p v-if="settingsError" role="alert" class="text-sm text-error">{{ settingsError }}</p>
+          <button type="submit" class="btn btn-primary btn-sm">{{ translate('project.settings.save') }}</button>
+        </form>
+        <details v-if="currentProject.catalogImports?.length" class="max-w-xl space-y-2" data-testid="project-catalog-imports">
+          <summary class="cursor-pointer font-semibold">{{ translate('project.settings.catalogImports', { count: currentProject.catalogImports.length }) }}</summary>
+          <ul class="space-y-3 pt-2 text-sm">
+            <li v-for="item in currentProject.catalogImports" :key="item.id" class="space-y-1 rounded border border-base-300 p-3" data-testid="project-catalog-import">
+              <p class="break-all">{{ item.origin.kind }} · {{ item.origin.path }}</p>
+              <p class="break-all text-base-content/70">{{ translate('project.settings.sourceRevision') }}: {{ item.origin.sha }}</p>
+              <p>{{ translate('project.settings.importCounts', { nodes: item.node_ids.length, content: item.content_ids.length, attachments: item.attachment_ids.length }) }}</p>
+            </li>
+          </ul>
+        </details>
+        <section class="max-w-xl space-y-2">
+          <h2 class="font-semibold">{{ translate('project.settings.repository') }}</h2>
+          <p class="text-sm break-all">{{ currentProject.git ? `${currentProject.git.repo_owner}/${currentProject.git.repo_name}` : translate('project.settings.localOnly') }}</p>
+          <p v-if="currentProject.git" class="text-sm break-all">{{ translate('project.settings.branch') }}: {{ currentProject.git.working_branch || translate('project.settings.notSaved') }}</p>
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-settings-repository" :disabled="gitSaving > 0" @click="openRepositoryConnection">{{ translate('project.settings.configureRepository') }}</button>
+        </section>
+        <section class="max-w-xl space-y-2">
+          <h2 class="font-semibold">{{ translate('project.settings.target') }}</h2>
+          <p class="text-sm break-all">{{ importApiConfig.node.value || translate('project.settings.noTarget') }}</p>
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-settings-target" @click="openProxmoxSettings">{{ translate('project.settings.configureTarget') }}</button>
+        </section>
       </div>
     </div>
 

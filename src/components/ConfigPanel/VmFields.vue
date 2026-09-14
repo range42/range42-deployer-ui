@@ -1,4 +1,6 @@
 <script setup>
+import { computed } from 'vue'
+import { vmMemoryMb, setVmMemoryMb, setVmDiskSize } from '@/services/vmResources'
 import FormDivider from '@/components/ui/FormDivider.vue'
 import FormSection from '@/components/ui/FormSection.vue'
 import FormField from '@/components/ui/FormField.vue'
@@ -6,7 +8,14 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 const config = defineModel({ type: Object, required: true })
 defineProps({ availableTemplates: { type: Array, default: () => [] }, availableStorages: { type: Array, default: () => [] }, loadingTemplates: Boolean })
-const emit = defineEmits(['refresh-templates'])
+const emit = defineEmits(['refresh-templates', 'select-template'])
+const memory = computed({ get: () => vmMemoryMb(config.value), set: value => setVmMemoryMb(config.value, value) })
+const diskSize = computed({
+  get: () => Object.hasOwn(config.value, 'disk_gb')
+    ? config.value.disk_gb == null || config.value.disk_gb === '' ? '' : `${config.value.disk_gb}G`
+    : config.value.diskSize,
+  set: value => setVmDiskSize(config.value, value),
+})
 </script>
 
 <template>
@@ -17,6 +26,7 @@ const emit = defineEmits(['refresh-templates'])
       <div class="flex-1">
         <FormField
           v-model="config.template"
+          @update:model-value="emit('select-template', $event)"
           label="Clone from template"
           type="select"
           :options="availableTemplates"
@@ -52,7 +62,7 @@ const emit = defineEmits(['refresh-templates'])
       icon=""
     />
     <FormField
-      v-model="config.memory"
+      v-model="memory"
       label="Memory (MB)"
       type="number"
       placeholder="2048"
@@ -61,7 +71,7 @@ const emit = defineEmits(['refresh-templates'])
       icon=""
     />
     <FormField
-      v-model="config.diskSize"
+      v-model="diskSize"
       label="Disk"
       type="text"
       placeholder="32G"

@@ -179,6 +179,43 @@ describe('concrete scenario emitter', () => {
     expect(tasks[1].when).toContain('3101')
   })
 
+  it('prefills new Scenario VM resources and explicit SNAT from configured catalog nodes', () => {
+    const input = fixture()
+    Object.assign(input.nodes[0].data.config, { cores: 6, memory: 6144, diskSize: '48G' })
+    Object.assign(input.nodes[1].data.config, { cidr: '10.42.10.0/24', gateway: '10.42.10.1', snat: false })
+    const draft = createScenarioDraft({ name: 'Catalog project' }, input.nodes, input.edges)
+    expect(draft.vms[0]).toMatchObject({ cores: 6, memory_mb: 6144, disk_gb: 48 })
+    expect(draft.networks[0]).toMatchObject({ subnet: '10.42.10.0/24', snat: false })
+  })
+
+  it('prefills canonical resource units without letting old UI aliases override them', () => {
+    const input = fixture()
+    Object.assign(input.nodes[0].data.config, { cores: 6, memory_mb: 6144, disk_gb: 48, memory: 1024, diskSize: '16G' })
+    const draft = createScenarioDraft({ name: 'Canonical project' }, input.nodes, input.edges)
+    expect(draft.vms[0]).toMatchObject({ cores: 6, memory_mb: 6144, disk_gb: 48 })
+    expect(input.nodes[0].data.config).toMatchObject({ memory_mb: 6144, disk_gb: 48 })
+  })
+
+  it('keeps saved Scenario resources and SNAT authoritative after later canvas edits', () => {
+    const input = fixture()
+    Object.assign(input.nodes[0].data.config, { cores: 6, memory: 6144, diskSize: '48G' })
+    Object.assign(input.scenario.vms[0], { cores: 2, memory_mb: 1024, disk_gb: 24 })
+    input.nodes[1].data.config.snat = true
+    input.scenario.networks[0].snat = false
+    const draft = createScenarioDraft({ name: 'Saved project', scenario: input.scenario }, input.nodes, input.edges)
+    expect(draft.vms[0]).toMatchObject({ cores: 2, memory_mb: 1024, disk_gb: 24 })
+    expect(draft.networks[0].snat).toBe(false)
+  })
+
+  it('keeps inherited template resources unset in an existing saved Scenario', () => {
+    const input = fixture()
+    Object.assign(input.nodes[0].data.config, { cores: 6, memory: 6144, diskSize: '48G' })
+    const draft = createScenarioDraft({ name: 'Saved project', scenario: input.scenario }, input.nodes, input.edges)
+    expect(draft.vms[0]).not.toHaveProperty('cores')
+    expect(draft.vms[0]).not.toHaveProperty('memory_mb')
+    expect(draft.vms[0]).not.toHaveProperty('disk_gb')
+  })
+
   it('adds newly drawn VMs when reopening configuration while preserving configured rows', () => {
     const input = fixture()
     input.nodes.push({ id: 'vm2', type: 'vm', data: { config: { name: 'new-vm' } } })

@@ -22,8 +22,9 @@
  * amber dot (`driftMap[path] === 'drift'`).
  */
 import FileAssetField from './FileAssetField.vue'
-import { isBinaryFile } from '@/services/projectFiles'
-import { computed, ref, watch } from 'vue'
+import { fileContentEquals, isBinaryFile } from '@/services/projectFiles'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import FileTree from './FileTree.vue'
 import TwoPaneEditor from './TwoPaneEditor.vue'
 import AttachmentManager from './AttachmentManager.vue'
@@ -31,12 +32,14 @@ import { readForkHeaderSha } from './fileTree'
 import { parseYamlDoc, hasAnchorsOrAliases } from '@/services/yaml'
 
 const props = defineProps({
+  path: { type: String, default: '' },
   overlayFs: { type: Object, required: true },
   baseFs: { type: Object, required: true },
   attachments: { type: Array, default: () => [] },
   nodes: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:attachments', 'save', 'open-content'])
+const emit = defineEmits(['update:attachments', 'save', 'open-content', 'select'])
+const { t } = useI18n({ useScope: 'global' })
 
 const selectedPath = ref('')
 const selectedFsKind = ref('overlay')
@@ -52,7 +55,12 @@ const binaryContent = computed(() => {
   const value = selectedFsKind.value === 'base' ? baseContent.value : overlayExists.value ? overlayContent.value : baseContent.value
   return isBinaryFile(value) ? value : null
 })
+const loading = ref(false)
+const conflict = ref(false)
+let loadedOverlayContent = ''
 let selectionRead = 0
+onBeforeUnmount(() => { selectionRead += 1 })
+
 async function readFile(fs, path) {
   try { return await (fs.getFileContent ? fs.getFileContent(path) : fs.getFile(path)) }
   catch (error) {
@@ -61,73 +69,94 @@ async function readFile(fs, path) {
   }
 }
 
-async function loadSelected() {
+async function loadSelected({ preserveDraft = false } = {}) {
   const request = ++selectionRead
   const path = selectedPath.value
-  if (!selectedPath.value) {
-    baseContent.value = ''
-    overlayContent.value = ''
-    baseSha.value = ''
-    overlaySha.value = ''
-    baseExists.value = false
-    overlayExists.value = false
-    return
-  }
+  if (!path) return
+  const dirty = preserveDraft && !fileContentEquals(overlayContent.value, loadedOverlayContent)
+  loading.value = true
   loadError.value = null
   try {
     const [b, o] = await Promise.all([readFile(props.baseFs, path), readFile(props.overlayFs, path)])
     if (request !== selectionRead) return
-    if (b) {
-      baseContent.value = b.content ?? ''
-      baseSha.value = b.sha ?? ''
-      baseExists.value = true
+    if (!b && !o) throw new Error(t('project.config.missing', { path }))
+    baseContent.value = b?.content ?? ''
+    baseSha.value = b?.sha ?? ''
+    baseExists.value = !!b
+    const nextContent = o?.content ?? ''
+    if (dirty && !fileContentEquals(overlayContent.value, nextContent)) {
+      conflict.value = !fileContentEquals(loadedOverlayContent, nextContent)
     } else {
-      baseContent.value = ''
-      baseSha.value = ''
-      baseExists.value = false
+      overlayContent.value = nextContent
+      conflict.value = false
     }
-    if (o) {
-      overlayContent.value = o.content ?? ''
-      overlaySha.value = o.sha ?? ''
-      overlayExists.value = true
-    } else {
-      overlayContent.value = ''
-      overlaySha.value = ''
-      overlayExists.value = false
-    }
-  } catch (e) {
-    loadError.value = e
+    loadedOverlayContent = nextContent
+    overlaySha.value = o?.sha ?? ''
+    overlayExists.value = !!o
+  } catch (error) {
+    if (request === selectionRead) loadError.value = error
+  } finally {
+    if (request === selectionRead) loading.value = false
   }
 }
 
-watch([selectedPath, selectedFsKind], () => loadSelected(), { immediate: false })
+async function refreshSelection() {
+  if (props.path || selectedPath.value) {
+    const next = props.path || selectedPath.value
+    const samePath = next === selectedPath.value
+    selectedPath.value = next
+    return loadSelected({ preserveDraft: samePath })
+  }
+  const request = ++selectionRead
+  loading.value = true
+  loadError.value = null
+  try {
+    const [base, overlay] = await Promise.all([props.baseFs.listTree(), props.overlayFs.listTree()])
+    if (request !== selectionRead) return
+    const available = [...overlay, ...base].filter(entry => entry.type === 'blob').sort((a, b) => a.path.localeCompare(b.path))
+    const first = available.find(entry => /(^|\/)tasks\/main\.ya?ml$/.test(entry.path)) || available[0]
+    if (!first) return
+    selectedPath.value = first.path
+    selectedFsKind.value = overlay.some(entry => entry.path === first.path) ? 'overlay' : 'base'
+    await loadSelected()
+  } catch (error) {
+    if (request === selectionRead) loadError.value = error
+  } finally {
+    if (request === selectionRead) loading.value = false
+  }
+}
+watch(() => [props.path, props.overlayFs, props.baseFs], refreshSelection, { immediate: true })
 
 function onSelect({ path, fsKind }) {
+  const samePath = path === selectedPath.value
   selectedPath.value = path
   selectedFsKind.value = fsKind
+  void loadSelected({ preserveDraft: samePath })
+  emit('select', path)
 }
 
 function onFork({ path }) {
-  // After forking, the overlay now has the file — select it on the overlay side.
-  selectedPath.value = path
-  selectedFsKind.value = 'overlay'
+  onSelect({ path, fsKind: 'overlay' })
 }
 
 async function onSave(payload) {
+  if (loading.value || loadError.value || conflict.value || payload.path !== selectedPath.value) return
+  const request = selectionRead
   try {
     const res = await props.overlayFs.putFile({
       path: payload.path,
       content: payload.content,
       message: `edit ${payload.path}`,
     })
-    if (selectedPath.value === payload.path) {
+    if (selectedPath.value === payload.path && request === selectionRead) {
       overlaySha.value = res?.sha ?? overlaySha.value
       overlayContent.value = payload.content
+      loadedOverlayContent = payload.content
       overlayExists.value = true
     }
-    emit('save', { ...payload, sha: overlaySha.value })
-  } catch (e) {
-    loadError.value = e
+    if (request === selectionRead && selectedPath.value === payload.path) emit('save', { ...payload, sha: res?.sha ?? '' })
+  } catch (error) {
+    if (request === selectionRead) loadError.value = error
   }
 }
 
@@ -194,7 +223,14 @@ const yamlWarning = computed(() => {
       >
         {{ $t ? $t('configTab.yamlAnchorsWarning') : 'This YAML uses anchors/aliases; round-trip may rewrite them.' }}
       </div>
-      <div class="flex-1 min-h-0">
+      <div v-if="conflict" class="alert alert-warning text-sm rounded-none" role="alert" data-testid="config-file-conflict">
+        <span>{{ t('project.config.changed') }}</span>
+        <button type="button" class="btn btn-sm" data-testid="config-reload-file" @click="loadSelected()">{{ t('project.config.reload') }}</button>
+        <button type="button" class="btn btn-sm" data-testid="config-keep-draft" @click="conflict = false">{{ t('project.config.keepDraft') }}</button>
+      </div>
+      <div v-if="loading" role="status" class="p-4 text-sm" data-testid="config-file-loading">{{ t('project.config.loading') }}</div>
+      <div v-else-if="!selectedPath && !loadError" class="p-4 text-sm text-base-content/70" data-testid="config-no-files">{{ t('project.config.empty') }}</div>
+      <div v-else-if="!loadError" class="flex-1 min-h-0">
         <FileAssetField v-if="binaryContent" :key="selectedPath" :model-value="binaryContent" :filename="selectedPath.split('/').at(-1)" :readonly="selectedFsKind === 'base'" class="p-4" @update:model-value="content => onSave({ path: selectedPath, content })" />
         <TwoPaneEditor
           v-else
@@ -207,7 +243,7 @@ const yamlWarning = computed(() => {
           @save="onSave"
         />
       </div>
-      <div v-if="loadError" class="alert alert-error text-xs py-1 px-2 rounded-none">
+      <div v-if="loadError" role="alert" data-testid="config-file-error" class="alert alert-error text-xs py-1 px-2 rounded-none">
         {{ String(loadError.message || loadError) }}
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { vmMemoryMb, vmDiskGb } from './vmResources'
 import { validateRoleAttachment } from './catalogRoleExecution'
 import { expandScenarioReplication } from './scenarioReplication'
 import { validateFileMap } from '@/services/projectFiles'
@@ -94,7 +95,7 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
   const label = String(project.name || 'scenario').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'scenario'
   const networks = nodes.filter(node => node.type === 'network-segment').map((node, index) => ({
     id: node.id, vnet: nodeConfig(node).vnet || `r42net${index + 1}`,
-    subnet: nodeConfig(node).cidr || '', gateway: nodeConfig(node).gateway || '', snat: true,
+    subnet: nodeConfig(node).cidr || '', gateway: nodeConfig(node).gateway || '', snat: nodeConfig(node).snat ?? true,
   }))
   const draft = {
     label, network_mode: 'sdn', zone: 'r42lab', networks,
@@ -102,7 +103,17 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
       const edge = edges.find(edge => (edge.source === node.id && networks.some(n => n.id === edge.target))
         || (edge.target === node.id && networks.some(n => n.id === edge.source)))
       const config = nodeConfig(node)
-      return { node_id: node.id, vm_id: node.data?.vmId || config.vmid || '',
+      const resources = {}
+      // Existing reviewed rows may deliberately inherit their template's
+      // resources. Seed canvas values only for a newly added VM.
+      if (!saved?.vms?.some(vm => vm.node_id === node.id)) {
+        if (config.cores != null && config.cores !== '') resources.cores = config.cores
+        const memory = vmMemoryMb(config)
+        const disk = vmDiskGb(config)
+        if (memory != null && memory !== '') resources.memory_mb = memory
+        if (disk != null && disk !== '') resources.disk_gb = disk
+      }
+      return { ...resources, node_id: node.id, vm_id: node.data?.vmId || config.vmid || '',
         vm_name: config.name || node.data?.label || node.id, template_vm_id: config.template || '',
         network_id: edge ? (edge.source === node.id ? edge.target : edge.source) : '',
         ip: String(edge?.data?.connection?.ipAddress || config.ipAddress || '').split('/')[0], ssh_user: 'alice' }

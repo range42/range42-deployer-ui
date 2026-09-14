@@ -1,5 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, useId } from 'vue'
+
+const fieldId = `form-field-${useId()}`
+const labelId = `${fieldId}-label`
+const hintId = `${fieldId}-hint`
 
 const props = defineProps({
   modelValue: {
@@ -106,14 +110,14 @@ const labelClasses = computed(() => [
 <template>
   <div :class="wrapperClasses">
     <!-- Label -->
-    <label v-if="type !== 'checkbox'" class="label pb-1">
-      <span :class="labelClasses">
+    <label v-if="type !== 'checkbox'" :for="fieldId" class="label pb-1">
+      <span :id="labelId" :class="labelClasses">
         <span v-if="icon" class="mr-1">{{ icon }}</span>
         {{ label }}
         <span v-if="required" class="text-error ml-0.5">*</span>
       </span>
-      <span v-if="hint && !error" class="label-text-alt text-xs opacity-60">{{ hint }}</span>
-      <span v-if="error" class="label-text-alt text-xs text-error font-medium">{{ error }}</span>
+      <span v-if="hint && !error" :id="hintId" class="label-text-alt text-xs opacity-60">{{ hint }}</span>
+      <span v-if="error" :id="hintId" class="label-text-alt text-xs text-error font-medium">{{ error }}</span>
     </label>
 
     <!-- Input with icon wrapper -->
@@ -130,6 +134,9 @@ const labelClasses = computed(() => [
       <input
         v-if="type === 'text' || type === 'number' || type === 'password' || type === 'email' || type === 'url'"
         v-model="inputValue"
+        :id="fieldId"
+        :aria-labelledby="labelId"
+        :aria-describedby="hint || error ? hintId : undefined"
         :type="type"
         :placeholder="placeholder"
         :disabled="disabled"
@@ -144,6 +151,9 @@ const labelClasses = computed(() => [
       <textarea
         v-else-if="type === 'textarea'"
         v-model="inputValue"
+        :id="fieldId"
+        :aria-labelledby="labelId"
+        :aria-describedby="hint || error ? hintId : undefined"
         :placeholder="placeholder"
         :disabled="disabled"
         :rows="rows"
@@ -156,6 +166,9 @@ const labelClasses = computed(() => [
       <select
         v-else-if="type === 'select'"
         v-model="inputValue"
+        :id="fieldId"
+        :aria-labelledby="labelId"
+        :aria-describedby="hint || error ? hintId : undefined"
         :disabled="disabled"
         :class="inputClasses"
         @focus="isFocused = true"

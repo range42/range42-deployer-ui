@@ -19,6 +19,7 @@ import EdgeFirewallFields from '@/components/ConfigPanel/EdgeFirewallFields.vue'
 import LxcFields from '@/components/ConfigPanel/LxcFields.vue'
 import VulnerableTargetFields from '@/components/ConfigPanel/VulnerableTargetFields.vue'
 import SharedServiceFields from '@/components/ConfigPanel/SharedServiceFields.vue'
+import { vmMemoryMb, setVmMemoryMb } from '@/services/vmResources'
 import VmFields from '@/components/ConfigPanel/VmFields.vue'
 import NodeContextNotice from '@/components/ConfigPanel/NodeContextNotice.vue'
 import DeployedVmFields from '@/components/ConfigPanel/DeployedVmFields.vue'
@@ -144,15 +145,15 @@ async function loadTemplates(force = false) {
   }
 }
 
-// Auto-fill cores/memory/disk when template selection changes
-watch(() => config.value.template, (newTemplate) => {
+// Hydration must preserve saved resources; only a deliberate selection fills defaults.
+function selectTemplate(newTemplate) {
   if (!newTemplate) return
-  const templateVm = proxmoxCache.templates.value.find(t => String(t.vmid) === newTemplate)
+  const templateVm = proxmoxCache.templates.value.find(t => String(t.vmid) === String(newTemplate))
   if (templateVm) {
     config.value.cores = templateVm.maxcpu || config.value.cores
-    config.value.memory = templateVm.maxmem ? Math.floor(templateVm.maxmem / 1024 / 1024) : config.value.memory
+    if (templateVm.maxmem) setVmMemoryMb(config.value, Math.floor(templateVm.maxmem / 1024 / 1024))
   }
-})
+}
 
 onMounted(async () => {
   if (props.node?.data?.config) {
@@ -165,17 +166,14 @@ onMounted(async () => {
   }
   config.value.role = config.value.role ?? ''
 
+  // Keyboard controls must work while optional backend reads are still pending.
+  await nextTick()
+  modalBox.value?.focus()
+  ensureNamespaces(['configPanel', 'project', 'common'])
+
   if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
     await loadTemplates()
   }
-
-  // Load i18n namespaces used by this panel
-  ensureNamespaces(['configPanel', 'project', 'common'])
-
-  // Move focus into the panel on open so keyboard/AT users land inside the
-  // dialog (mirrors ConfirmDialog). The box is focusable via tabindex="-1".
-  await nextTick()
-  modalBox.value?.focus()
 })
 
 // Add validation
@@ -192,7 +190,7 @@ const validateConfig = () => {
       if (!Number.isInteger(Number(config.value.cores ?? config.value.cpu)) || Number(config.value.cores ?? config.value.cpu) < 1) {
         errors.value.push(t('configPanel.validation.cpuMin'))
       }
-      if (!String(config.value.memory || '').trim()) {
+      if (!String(vmMemoryMb(config.value) || '').trim()) {
         errors.value.push(t('configPanel.validation.memoryRequired'))
       }
       break
@@ -538,7 +536,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
 
         <!-- VM Specific Fields (non-deployed) -->
-        <VmFields v-else-if="node.type === 'vm'" v-model="config" :available-templates="availableTemplates" :available-storages="availableStorages" :loading-templates="loadingTemplates" @refresh-templates="loadTemplates(true)" />
+        <VmFields v-else-if="node.type === 'vm'" v-model="config" :available-templates="availableTemplates" :available-storages="availableStorages" :loading-templates="loadingTemplates" @refresh-templates="loadTemplates(true)" @select-template="selectTemplate" />
 
         <!-- Network Segment Specific Fields -->
         <NetworkFields v-if="node.type === 'network-segment'" v-model="config" />
