@@ -148,7 +148,7 @@ export function publicProjectOverlay(overlay: unknown, variables: ObjectValue[])
 }
 
 /** Recompute ownership before enabling forms; never trust imported deletion paths. */
-export function inspectProjectAuthoring(state: ProjectState, canvas: CanvasModel): AuthoringInspection {
+export function inspectProjectAuthoring(state: Pick<ProjectState, 'meta' | 'files' | 'overlay'>, canvas: CanvasModel): AuthoringInspection {
   if (state.meta.ui_project === undefined) return { status: 'legacy', generated_paths: [], variables: [] }
   const input = objectValue(state.meta.ui_project, 'Authoring metadata')
   // Secret classifications must survive a scenario/ownership conflict. Invalid

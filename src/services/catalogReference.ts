@@ -26,3 +26,34 @@ export function publicCatalogReference(value: unknown): Record<string, string | 
   }
   return result
 }
+
+export interface CatalogImportReference {
+  version: 1
+  id: string
+  origin: Record<string, string | number>
+  node_ids: string[]
+  attachment_ids: string[]
+  content_ids: string[]
+}
+
+/** Append history is public provenance, never a provider credential or lease. */
+export function publicCatalogImports(value: unknown): CatalogImportReference[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > 1024) throw new Error('Invalid catalog append history')
+  const ids = new Set<string>()
+  return value.map(raw => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid catalog append record')
+    const row = raw as Record<string, unknown>
+    if (row.version !== 1 || typeof row.id !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(row.id) || ids.has(row.id)) throw new Error('Invalid catalog append identity')
+    ids.add(row.id)
+    const origin = publicCatalogReference(row.origin)
+    if (origin?.version !== 1) throw new Error('Catalog append requires exact source provenance')
+    const references = (name: string) => {
+      const entries = row[name]
+      if (!Array.isArray(entries) || entries.length > 4096 || entries.some(id => typeof id !== 'string' || !id || id.length > 256)
+        || new Set(entries).size !== entries.length) throw new Error(`Invalid catalog append ${name}`)
+      return [...entries] as string[]
+    }
+    return { version: 1, id: row.id, origin, node_ids: references('node_ids'), attachment_ids: references('attachment_ids'), content_ids: references('content_ids') }
+  })
+}

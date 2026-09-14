@@ -26,7 +26,7 @@ function retains(original: unknown, restored: unknown, path: string): void {
   } else if (original !== restored) throw new Error(`Unsupported catalog field ${path}; its content cannot be preserved`)
 }
 
-function catalogCanvas(entry: CatalogEntry) {
+export function catalogCanvas(entry: CatalogEntry) {
   const doc = objectValue(entry.document ?? {}, 'Catalog document')
   if (!['lab', 'gamenet', 'component'].includes(entry.kind) || doc.schema_version !== '1.0'
     || !['lab', 'gamenet', 'component'].includes(String(doc.kind)) || typeof doc.name !== 'string'

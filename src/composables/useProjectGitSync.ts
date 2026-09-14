@@ -1,7 +1,7 @@
-import { publicCatalogReference } from '@/services/catalogReference'
+import { publicCatalogImports, publicCatalogReference } from '@/services/catalogReference'
 import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
 import { publicationBranch as publicationBranchFor } from '@/services/git/publicationBranch'
-import { captureProjectAuthoring, publicProjectOverlay, type AuthoringInput } from '@/services/projectAuthoring'
+import { captureProjectAuthoring, inspectProjectAuthoring, publicProjectOverlay, type AuthoringInput } from '@/services/projectAuthoring'
 import { authoredFilesMetadata, validateAuthoredFiles, cloneFiles, fileContentEquals, validateFileMap, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
 /**
  * useProjectGitSync — on-demand "serialize canvas → push to git → pin SHA".
@@ -47,6 +47,7 @@ export interface ProjectGitBinding {
 
 export interface PushToGitArgs {
   catalogRef?: unknown
+  catalogImports?: unknown
   projectId: string
   binding: ProjectGitBinding
   canvas: CanvasModel
@@ -74,6 +75,7 @@ export function buildPushArgs(
     files?: ProjectFiles
     overlay?: Record<string, unknown>
     catalogRef?: unknown
+    catalogImports?: unknown
     scenario?: unknown
     scenario_generated_paths?: unknown
     baseDoc?: { env?: unknown }
@@ -86,6 +88,7 @@ export function buildPushArgs(
   return {
     projectId: project.id,
     catalogRef: project.catalogRef,
+    catalogImports: project.catalogImports,
     binding: project.git,
     canvas: {
       nodes: (nodes ?? []) as CanvasModel['nodes'],
@@ -370,9 +373,14 @@ function captureProjectState(args: PushToGitArgs) {
   validateAuthoredFiles(args.files || {})
   const authoring = captureProjectAuthoring(args.projectId, args.authoring)
   const catalogRef = publicCatalogReference(args.catalogRef)
-  const state = buildProjectState(args.canvas, args.meta, { ui_project: authoring, ...(catalogRef ? { ui_catalog: catalogRef } : {}) })
+  const catalogImports = publicCatalogImports(args.catalogImports)
+  const state = buildProjectState(args.canvas, args.meta, { ui_project: authoring, ...(catalogRef ? { ui_catalog: catalogRef } : {}),
+    ...(catalogImports.length ? { ui_catalog_imports: catalogImports } : {}) })
   if (args.overlay !== undefined) state.overlay = JSON.stringify(publicProjectOverlay(args.overlay, authoring.variables), null, 2)
   if (args.files) state.files = cloneFiles(args.files)
+  if (catalogImports.length && authoring.scenario && inspectProjectAuthoring(state, args.canvas).status !== 'structured') {
+    throw new Error('Review Scenario and generate files before saving catalog additions; the current canvas, settings and generated files must match.')
+  }
   return state
 }
 
