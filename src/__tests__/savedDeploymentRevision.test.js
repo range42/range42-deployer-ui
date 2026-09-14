@@ -16,13 +16,36 @@ it('saves without writing main and creates a deployment pinned to that working b
   localStorage.clear()
   setActivePinia(createPinia())
   const revision = '1234567890abcdef1234567890abcdef12345678'
-  const puts = []
+  const commits = [], main = 'a'.repeat(40), lockRevision = 'b'.repeat(40)
+  const snapshots = new Map([[main, new Map()]])
+  const heads = new Map([['main', main]])
   const provider = {
     canWrite: async () => true,
-    createBranch: async () => {},
-    getFile: async () => { throw new Error('404 not found') },
-    putFile: async options => { puts.push(options); return { sha: 'blob' } },
-    listCommits: async ({ ref }) => [{ sha: ref === 'range42-ui/project-1' ? revision : 'wrong-main-revision' }],
+    createBranch: async ({ from, name }) => {
+      expect(heads.has(name)).toBe(false)
+      heads.set(name, heads.get(from) || from)
+    },
+    getFile: async ({ path, ref }) => {
+      const file = snapshots.get(heads.get(ref) || ref)?.get(path)
+      if (!file) throw new Error('404 not found')
+      return file
+    },
+    commitFiles: async options => {
+      options.assertCurrent?.()
+      expect(options.expectedHead).toBe(heads.get(options.branch))
+      const current = new Map(snapshots.get(options.expectedHead))
+      for (const file of options.files) {
+        expect(file.sha).toBe(current.get(file.path)?.sha)
+        current.set(file.path, { content: file.content, sha: `blob-${commits.length}-${file.path}` })
+      }
+      const sha = commits.length ? revision : lockRevision
+      snapshots.set(sha, current); heads.set(options.branch, sha); commits.push(options)
+      return { sha }
+    },
+    listCommits: async ({ ref }) => {
+      if (!heads.has(ref) && !snapshots.has(ref)) throw new Error('404 not found')
+      return [{ sha: heads.get(ref) || ref }]
+    },
   }
   const adapter = createProjectRepoAdapter({
     provider, source: { id: 'source', provider: 'github', repos: [{ owner: 'owner', repo: 'project', branch: 'main' }] },
@@ -30,7 +53,12 @@ it('saves without writing main and creates a deployment pinned to that working b
   })
   await adapter.autosave('project-1', { overlay: '', canvas_layout: '{}', meta: {}, topology: '{}' })
   const saved = await adapter.save('project-1', 'Save')
-  expect(puts.every(write => write.branch === 'range42-ui/project-1')).toBe(true)
+  expect(commits).toHaveLength(2) // owned lease, then one atomic content checkpoint
+  expect(commits.every(write => write.branch === 'range42-ui/project-1')).toBe(true)
+  expect(commits[0].files.map(file => file.path)).toEqual(['.lock'])
+  expect(commits[1].files.map(file => file.path)).toContain('topology.json')
+  expect(heads.get('main')).toBe(main)
+  expect(saved.commit_sha).toBe(revision)
   const fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () => url.includes('/hosts')
     ? { items: [{ id: 'host', name: 'pve01' }], total: 1 }
     : { id: 'deployment-1' },

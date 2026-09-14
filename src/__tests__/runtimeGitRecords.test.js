@@ -6,7 +6,8 @@ const { state, provider } = vi.hoisted(() => ({ state: { scope: 'https://backend
 vi.mock('@/services/backendApi', () => ({ getBackendScope: () => state.scope,
   backendRequest: async (path, options) => ({ id: path.split('/').at(-1), ...JSON.parse(options.body) }) }))
 vi.mock('@/services/git', () => ({ getProvider: () => provider }))
-vi.mock('@/stores/inventoryStore', () => ({ useInventoryStore: () => ({ getToken: () => null }) }))
+vi.mock('@/stores/inventoryStore', () => ({ useInventoryStore: () => ({ getToken: () => null,
+  getSource: () => ({ id: 'source-1', provider: 'github', base_url: 'https://github.com' }) }) }))
 
 const project = () => ({ id: 'browser-1', name: 'Lab', scenario: { label: 'demo' }, head_sha: 'a'.repeat(40),
   git: { source_id: 'source-1', provider: 'github', base_url: 'https://github.com', repo_owner: 'team', repo_name: 'lab',
