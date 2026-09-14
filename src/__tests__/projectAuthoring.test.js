@@ -27,6 +27,18 @@ describe('saved project authoring metadata', () => {
     expect(restored.status).toBe('structured')
     expect(restored.scenario.content.at(-1)).toEqual(project.scenario.content.at(-1))
   })
+  it.each([false, true])('preserves reviewed storage through Git save/reopen and regeneration (replicated: %s)', replicated => {
+    const project = { ...savedScenario(), ...(replicated ? replicatedScenario() : {}) }
+    project.scenario.vms[0].storage = 'fast-pool'
+    const generated = emitConcreteScenario({ ...project, generatedPaths: project.scenario_generated_paths })
+    project.files = generated.files; project.scenario_generated_paths = generated.generatedPaths
+    const state = snapshot(project), restored = inspectProjectAuthoring(state, loadCanvasFromState(state))
+    expect(restored.status).toBe('structured')
+    expect(restored.scenario.vms[0].storage).toBe('fast-pool')
+    const manifest = JSON.parse(project.files[`scenarios/${project.scenario.label}/manifest/scenario_vms.json`])
+    expect(manifest.vms).toHaveLength(replicated ? 3 : 1)
+    expect(manifest.vms.every(vm => vm.storage === 'fast-pool')).toBe(true)
+  })
   it('restores structured configuration, variable declarations and exact generated ownership', () => {
     const project = savedScenario()
     const state = snapshot(project)

@@ -20,6 +20,16 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('keeps storage edits local until Review and emits selected or inherited clone placement', async () => {
+    const wrapper = modal(), project = wrapper.props('project')
+    await wrapper.get('[data-testid="scenario-vm-storage"]').setValue('fast-pool')
+    expect(project.scenario.vms[0]).not.toHaveProperty('storage')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(result.scenario.vms[0].storage).toBe('fast-pool')
+    expect(JSON.parse(result.files['scenarios/demo/manifest/scenario_vms.json']).vms[0].storage).toBe('fast-pool')
+  })
   it('stages an existing workload cleanup playbook for explicit review and preserves edited deployment content', async () => {
     const wrapper = modal(), project = JSON.parse(JSON.stringify(wrapper.props('project')))
     const prefix = 'content/workloads/test'

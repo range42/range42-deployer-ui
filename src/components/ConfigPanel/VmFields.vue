@@ -88,7 +88,7 @@ const diskSize = computed({
       type="select"
       :options="availableStorages"
       placeholder="Use project default"
-      hint="Saved preference. Concrete scenario clones currently inherit their template’s storage; this field does not move disks."
+      hint="Prefills clone destination storage in Scenario configuration. Review and save it there before deployment; it does not move disks of existing guests."
       icon=""
     />
   </FormSection>

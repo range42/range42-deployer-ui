@@ -86,6 +86,37 @@ describe('concrete scenario emitter', () => {
     expect(() => emitConcreteScenario(input)).toThrow(/library|resolve|verified/i)
   })
 
+  it('emits reviewed clone storage separately for selected and inherited VMs', () => {
+    const input = fixture()
+    input.scenario.vms[0].storage = 'fast-pool'
+    input.nodes.push({ id: 'vm2', type: 'vm', data: { config: {} } })
+    input.edges.push({ source: 'vm2', target: 'net1' })
+    input.scenario.vms.push({ ...input.scenario.vms[0], node_id: 'vm2', vm_id: 3102, vm_name: 'second', ip: '10.42.10.11', storage: '' })
+    const { files } = emitConcreteScenario(input)
+    const manifest = JSON.parse(files['scenarios/demo/manifest/scenario_vms.json'])
+    expect(manifest.guest_preferences_version).toBe(1)
+    expect(manifest.vms.map(vm => vm.storage)).toEqual(['fast-pool', null])
+    const boot = parse(files['scenarios/demo/01_vm_bootstrap.yml'])
+    expect(boot[0].vars.proxmox_dest_vm_storage_name).toBe('fast-pool')
+    expect(boot[1].vars).not.toHaveProperty('proxmox_dest_vm_storage_name')
+  })
+  it('keeps old generated storage behavior unchanged until storage is explicitly reviewed', () => {
+    const result = emitConcreteScenario(fixture())
+    expect(JSON.parse(result.files['scenarios/demo/manifest/scenario_vms.json'])).not.toHaveProperty('guest_preferences_version')
+  })
+  it.each(['../fast', '{{ pool }}', 'bad pool', 'a'.repeat(65), 42])('refuses unsafe clone storage %j', storage => {
+    const input = fixture(); input.scenario.vms[0].storage = storage
+    expect(() => emitConcreteScenario(input)).toThrow(/storage/i)
+  })
+  it('prefills storage from the canvas while preserving a reviewed destination or inheritance', () => {
+    const input = fixture(); input.nodes[0].data.config.storage = 'canvas-pool'
+    expect(createScenarioDraft({ name: 'Demo' }, input.nodes, input.edges).vms[0].storage).toBe('canvas-pool')
+    input.scenario.vms[0].storage = 'reviewed-pool'
+    expect(createScenarioDraft({ scenario: input.scenario }, input.nodes, input.edges).vms[0].storage).toBe('reviewed-pool')
+    input.scenario.vms[0].storage = ''
+    expect(createScenarioDraft({ scenario: input.scenario }, input.nodes, input.edges).vms[0].storage).toBe('')
+  })
+
   it('compiles multiple NICs and explicit resource overrides while retaining the management address', () => {
     const input = fixture()
     input.nodes.push({ id: 'net2', type: 'network-segment', data: { config: {} } })

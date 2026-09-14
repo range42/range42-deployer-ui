@@ -51,6 +51,10 @@ function normalizedVms(rows) {
         requireValue(Number.isInteger(value[key]) && value[key] >= min && value[key] <= max, `Invalid ${label} for ${vm.vm_name}: choose ${min}–${max}`)
       }
     }
+    if (Object.hasOwn(value, 'storage')) {
+      if (value.storage === '' || value.storage === null) value.storage = null
+      else requireValue(typeof value.storage === 'string' && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.storage), `Invalid destination storage for ${vm.vm_name}`)
+    }
     if (value.disk_gb !== undefined) {
       value.disk_device ||= 'scsi0'
       requireValue(/^(?:scsi(?:[0-9]|[12][0-9]|30)|virtio(?:[0-9]|1[0-5])|sata[0-5])$/.test(value.disk_device), `Choose a VM disk device, not a CD-ROM, for ${vm.vm_name}`)
@@ -107,13 +111,14 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
       // Existing reviewed rows may deliberately inherit their template's
       // resources. Seed canvas values only for a newly added VM.
       if (!saved?.vms?.some(vm => vm.node_id === node.id)) {
+        if (config.storage != null && config.storage !== '') resources.storage = config.storage
         if (config.cores != null && config.cores !== '') resources.cores = config.cores
         const memory = vmMemoryMb(config)
         const disk = vmDiskGb(config)
         if (memory != null && memory !== '') resources.memory_mb = memory
         if (disk != null && disk !== '') resources.disk_gb = disk
       }
-      return { ...resources, node_id: node.id, vm_id: node.data?.vmId || config.vmid || '',
+      return { storage: '', ...resources, node_id: node.id, vm_id: node.data?.vmId || config.vmid || '',
         vm_name: config.name || node.data?.label || node.id, template_vm_id: config.template || '',
         network_id: edge ? (edge.source === node.id ? edge.target : edge.source) : '',
         ip: String(edge?.data?.connection?.ipAddress || config.ipAddress || '').split('/')[0], ssh_user: 'alice' }
@@ -275,9 +280,12 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     : { mode: 'existing_bridge', bridges: networks.map(network => network.vnet) }
   write('manifest/scenario_networks.json', networkManifest, json)
   if (expanded) write('manifest/scenario_instances.json', expanded.manifest, json)
+  const storageReviewed = vms.some(vm => Object.hasOwn(vm, 'storage'))
   write('manifest/scenario_vms.json', { scenario: scenario.label, version: 3,
+    ...(storageReviewed ? { guest_preferences_version: 1 } : {}),
     vms: vms.map(vm => ({ vm_id: Number(vm.vm_id), vm_name: vm.vm_name, ip: vm.ip, role: 'vm',
       bridge: networks.find(network => network.id === vm.network_id).vnet, template_vm_id: Number(vm.template_vm_id),
+      ...(storageReviewed ? { storage: vm.storage ?? null } : {}),
       nics: vm.nics.map((nic, index) => ({ index, ip: nic.ip,
         bridge: networks.find(network => network.id === nic.network_id).vnet,
         prefix: Number(ranges.get(nic.network_id).prefix),
@@ -313,6 +321,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
       global_vm_description: 'range42-deployment:{{ r42_deployment_id }}',
       global_vm_tag_name: scenario.label.replace(/_/g, '-'), global_vm_ci_ip: vm.ip,
       global_template_vm_id: Number(vm.template_vm_id), global_vm_net_virtio_bridge: network.vnet,
+      ...(vm.storage ? { proxmox_dest_vm_storage_name: vm.storage } : {}),
       global_vm_ci_ip_gw: network.gateway, global_vm_ci_netmask: ranges.get(network.id).prefix,
       default_admin_vm_ci_user: vm.ssh_user,
       ...(Object.keys(extra).length ? { global_vm_extra_config: extra } : {}),
