@@ -21,3 +21,17 @@ A topology change, an unfinished scenario, or manually edited generated files re
 ## Source validation
 
 `catalogProjectAppend.test.js` exercises immutable/repeated graph append, NIC/parent/attachment/host remapping, templates/resources, variable and file conflicts, execution-identity refusal, role target selection, public provenance through the actual Git serializer/reopener, safe generated-file ownership, and refusal before provider lookup for a pending Scenario review. This is source validation with local provider fixtures; it is not shared-host or guest deployment acceptance.
+
+## Editor and catalog workflow
+
+Use **Add from catalog** in a project to keep its context while browsing, or choose **Add to project** on a catalog card or detail page. Select the destination project and, for a role or Compose workload, its existing VM. Review the populated settings, then choose **Add and keep browsing** to compose several items or **Add and open project** to inspect the result. **Create project**, repository saving and publication remain separate actions.
+
+Canonical graph additions open their first node's settings with `?tab=canvas&node=<id>`. Role and workload additions open their actual authored file with `?tab=config&file=<path>`. Config handles file changes, loading errors, unsaved-content conflicts and project navigation without applying stale content. Tabs support direct links, browser navigation and keyboard selection. Settings shows project/repository/backend controls and a list of added catalog origins. History currently shows the saved topology file's history, with that scope labelled.
+
+Canonical `memory_mb`/`disk_gb` values and existing UI `memory`/`diskSize` values prefill VM and Scenario settings. Editing preserves one consistent field representation. Hydrating a VM does not overwrite its saved resources with cached template defaults; defaults apply only after an explicit template selection.
+
+## Compose limits
+
+The supported slice is one service with a literal image or supported local Dockerfile build. Its complete pinned regular-file tree is retained, while a separate `runtime.compose.yml` carries reviewed host-port and workload-identity settings. Host ports can be overridden in original mapping order; overlapping ports among known workloads on the same VM are refused. Ansible checks the local guest Docker daemon, Compose availability, owned destination/container/network identities and the resulting container's running state.
+
+This does not install Docker, build a Proxmox template, prove application readiness or automatically remove Docker workloads. Multi-service Compose, environment/secrets, host mounts, unresolved build inputs and binary source files require further support. Mutable image tags and external package availability remain external dependencies. Existing workload files edited after their import need a fresh review before another append can rely on their port record. Local tests use the real backend validator, local Ansible with a disposable fake Docker command, and Compose configuration without a daemon; no live guest execution is implied.

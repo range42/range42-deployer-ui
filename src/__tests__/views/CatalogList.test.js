@@ -105,6 +105,15 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     expect(gridKinds(wrapper)).toEqual(['lab', 'container'])
   })
 
+  it('offers adding a catalog item to an existing project without starting a repository handoff', async () => {
+    const wrapper = await mountList()
+    const button = wrapper.find('[data-testid="catalog-add-to-project"]')
+    expect(button.exists()).toBe(true)
+    await button.trigger('click')
+    expect(wrapper.find('[data-testid="catalog-append-dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="connection"]').exists()).toBe(false)
+  })
+
   it('narrows to a single kind, then WIDENS to multiple without a refetch (the bug)', async () => {
     const wrapper = await mountList()
 

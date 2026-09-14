@@ -14,7 +14,7 @@
  * Plan C §4 (Task C2.7).
  */
 
-import { ref, computed, onMounted, markRaw } from 'vue'
+import { ref, computed, onMounted, markRaw, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { VueFlow } from '@vue-flow/core'
@@ -22,6 +22,7 @@ import { Background } from '@vue-flow/background'
 
 import { useCatalog } from '@/composables/useCatalog'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
+import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import { ensureNamespaces } from '@/i18n'
 
 const route = useRoute()
@@ -32,6 +33,17 @@ const catalog = useCatalog()
 const entry = ref(null)
 const loading = ref(false)
 const loadError = ref('')
+const addition = ref(false)
+const addedMessage = ref('')
+const targetProjectId = computed(() => typeof route.query.project === 'string' ? route.query.project : '')
+const targetNodeId = computed(() => typeof route.query.node === 'string' ? route.query.node : '')
+const contextQuery = computed(() => targetProjectId.value ? { project: targetProjectId.value, ...(targetNodeId.value ? { node: targetNodeId.value } : {}) } : {})
+function onAdded(result) {
+  addition.value = false
+  if (result.open) router.push({ path: `/project/${result.projectId}`, query: { tab: result.tab,
+    ...(result.nodeId ? { node: result.nodeId } : {}), ...(result.file ? { file: result.file } : {}) } })
+  else { addedMessage.value = t('catalog.append.added_short'); router.replace({ query: { ...route.query, project: result.projectId } }) }
+}
 
 const sourceParam = computed(() => String(route.params.source || ''))
 const entryParam = computed(() => String(route.params.entry || ''))
@@ -112,18 +124,25 @@ function openFork() {
 
 // ---------- Lifecycle ----------
 async function load() {
+  const current = ++loadGeneration
+  handoff.value = null; addition.value = false
   loading.value = true
+  entry.value = null
   loadError.value = ''
   try {
     const got = await catalog.getEntry(sourceParam.value, entryParam.value)
+    if (current !== loadGeneration) return
     entry.value = got
     if (!got) loadError.value = catalog.error.value || 'Entry not found'
   } catch (e) {
-    loadError.value = e?.message || String(e)
+    if (current === loadGeneration) loadError.value = e?.message || String(e)
   } finally {
-    loading.value = false
+    if (current === loadGeneration) loading.value = false
   }
 }
+let loadGeneration = 0
+watch([sourceParam, entryParam], () => load())
+onBeforeUnmount(() => { loadGeneration += 1 })
 
 onMounted(async () => {
   await ensureNamespaces(['catalog', 'common'])
@@ -134,11 +153,12 @@ onMounted(async () => {
 <template>
   <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
     :entry="handoff.entry" :mode="handoff.mode" :publish-after-import="handoff.publish" @close="handoff = null" @opened="openCreatedProject" />
-  <section class="max-w-5xl mx-auto p-6">
+  <CatalogAppendDialog v-if="addition && entry" :entry="entry" :initial-project-id="targetProjectId" :initial-node-id="targetNodeId" @close="addition = false" @added="onAdded" />
+  <section class="max-w-5xl mx-auto p-4 sm:p-6">
     <!-- Back link -->
     <div class="mb-4">
-      <button class="btn btn-ghost btn-sm gap-2" @click="router.push('/catalog')">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <RouterLink class="btn btn-ghost btn-sm gap-2" :to="{ path: '/catalog', query: contextQuery }">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -147,8 +167,9 @@ onMounted(async () => {
           />
         </svg>
         <span>{{ t('catalog.detail.back') }}</span>
-      </button>
+      </RouterLink>
     </div>
+    <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
 
     <!-- Loading / error -->
     <div v-if="loading" class="space-y-3" data-testid="entry-loading">
@@ -186,7 +207,8 @@ onMounted(async () => {
 
           <!-- Verbs -->
           <div class="flex items-center gap-2 flex-wrap" data-testid="entry-verbs">
-            <button type="button" class="btn btn-primary btn-sm" @click="useEntry">
+            <button type="button" class="btn btn-primary btn-sm" data-testid="catalog-add-to-project" @click="addition = true">{{ t('catalog.append.action') }}</button>
+            <button type="button" class="btn btn-outline btn-sm" @click="useEntry">
               {{ t('catalog.verbs.use') }}
             </button>
             <button

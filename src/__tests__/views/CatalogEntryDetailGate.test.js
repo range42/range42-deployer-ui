@@ -93,6 +93,14 @@ describe('CatalogEntryDetail — customize gating by write access', () => {
     expect(wrapper.findComponent(CatalogProjectHandoff).props()).toMatchObject({ entry: ENTRY, mode: 'customize' })
   })
 
+  it('reloads the entry when a catalog detail link reuses this route component', async () => {
+    const wrapper = await mountDetail({ writable: true })
+    globalThis.fetch.mockResolvedValue({ ok: true, json: async () => ({ ...ENTRY, name: 'Second machine', path: 'machines/second' }) })
+    await wrapper.vm.$router.push('/catalog/src-ro/machines%2Fsecond?project=training')
+    await vi.waitFor(() => expect(wrapper.get('h1').text()).toBe('Second machine'))
+    expect(wrapper.find('a').attributes('href')).toContain('project=training')
+  })
+
   it('enables the customize button when the source is writable', async () => {
     const wrapper = await mountDetail({ writable: true })
     const btn = customizeButton(wrapper)
