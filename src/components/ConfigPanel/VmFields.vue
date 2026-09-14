@@ -93,6 +93,13 @@ const diskSize = computed({
     />
   </FormSection>
 
+  <FormSection title="Cloud-init for new clones" icon="" variant="bordered" :columns="1">
+    <p class="text-sm text-base-content/70">These fields prefill Scenario configuration for new clones. Review and save them there before deployment. Keys and passwords come from the backend workspace.</p>
+    <FormField v-model="config.ssh_user" label="Guest SSH user" placeholder="alice" />
+    <FormField v-model="config.dns_servers" label="DNS servers" placeholder="1.1.1.1" hint="Up to three IPv4 addresses separated by spaces or commas. Blank inherits template DNS." />
+    <FormField v-model="config.dns_search_domain" label="DNS search domain" placeholder="Inherit template domain" />
+  </FormSection>
+
   <FormSection title="Network & Details" icon="" variant="bordered" :columns="2">
     <FormField
       v-model="config.ipAddress"

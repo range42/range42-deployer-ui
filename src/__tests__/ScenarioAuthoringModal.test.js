@@ -20,6 +20,17 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('reviews DNS and SSH preferences locally before emitting their manifest', async () => {
+    const wrapper = modal(), project = wrapper.props('project')
+    await wrapper.get('[data-testid="scenario-vm-ssh-user"]').setValue('operator')
+    await wrapper.get('[data-testid="scenario-vm-dns"]').setValue('10.42.1.2 1.1.1.1')
+    await wrapper.get('[data-testid="scenario-vm-domain"]').setValue('lab.example')
+    expect(project.scenario.vms[0].ssh_user).toBe('alice')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(JSON.parse(result.files['scenarios/demo/manifest/scenario_vms.json']).vms[0].cloud_init).toEqual({ ssh_user: 'operator', dns_servers: ['10.42.1.2', '1.1.1.1'], dns_search_domain: 'lab.example' })
+  })
   it('keeps storage edits local until Review and emits selected or inherited clone placement', async () => {
     const wrapper = modal(), project = wrapper.props('project')
     await wrapper.get('[data-testid="scenario-vm-storage"]').setValue('fast-pool')

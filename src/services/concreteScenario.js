@@ -39,6 +39,19 @@ function unique(values, label) {
 }
 function nodeConfig(node) { return node.data?.config || {} }
 
+function cloudInitPreferences(vm) {
+  const input = vm.dns_servers === undefined ? '1.1.1.1' : vm.dns_servers ?? ''
+  requireValue(typeof input === 'string' && input.length <= 128, `DNS servers for ${vm.vm_name} must be up to three IPv4 addresses`)
+  const servers = input.trim() ? input.trim().split(/[\s,]+/) : null
+  if (servers) {
+    requireValue(servers.length <= 3, `Choose up to three DNS servers for ${vm.vm_name}`)
+    servers.forEach(server => address(server, 'DNS server'))
+  }
+  const domain = vm.dns_search_domain ?? ''
+  requireValue(typeof domain === 'string' && domain.length <= 253 && (!domain || domain.split('.').every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))), `Invalid DNS search domain for ${vm.vm_name}`)
+  return { ssh_user: vm.ssh_user, dns_servers: servers, dns_search_domain: domain || null }
+}
+
 function normalizedVms(rows) {
   return rows.map(vm => {
     requireValue(vm.nics === undefined || (Array.isArray(vm.nics) && vm.nics.length > 0 && vm.nics.length <= 32), `Choose 1–32 NICs for ${vm.vm_name}`)
@@ -55,6 +68,7 @@ function normalizedVms(rows) {
       if (value.storage === '' || value.storage === null) value.storage = null
       else requireValue(typeof value.storage === 'string' && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.storage), `Invalid destination storage for ${vm.vm_name}`)
     }
+    if (Object.hasOwn(value, 'dns_servers') || Object.hasOwn(value, 'dns_search_domain')) cloudInitPreferences(value)
     if (value.disk_gb !== undefined) {
       value.disk_device ||= 'scsi0'
       requireValue(/^(?:scsi(?:[0-9]|[12][0-9]|30)|virtio(?:[0-9]|1[0-5])|sata[0-5])$/.test(value.disk_device), `Choose a VM disk device, not a CD-ROM, for ${vm.vm_name}`)
@@ -65,7 +79,7 @@ function normalizedVms(rows) {
 
 function validateVariableName(name) {
   requireValue(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name), `Invalid Ansible variable name: ${name}`)
-  requireValue(!/^(?:ansible_|proxmox_|r42_|global_vm_|global_template_|BUNDLE_SDN_|default_admin_vm_ci_|deployer_cli_|INFRASTRUCTURE_)/i.test(name)
+  requireValue(!/^(?:ansible_|proxmox_|r42_|vm_ci_|global_vm_|global_template_|BUNDLE_SDN_|default_admin_vm_ci_|deployer_cli_|INFRASTRUCTURE_)/i.test(name)
     && !['__proto__', 'constructor', 'prototype', 'hostvars', 'groups', 'inventory_hostname', 'playbook_dir', 'role_path'].includes(name), `Reserved connection or ownership variable: ${name}`)
 }
 
@@ -111,6 +125,7 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
       // Existing reviewed rows may deliberately inherit their template's
       // resources. Seed canvas values only for a newly added VM.
       if (!saved?.vms?.some(vm => vm.node_id === node.id)) {
+        for (const key of ['ssh_user', 'dns_servers', 'dns_search_domain']) if (config[key] !== undefined) resources[key] = config[key]
         if (config.storage != null && config.storage !== '') resources.storage = config.storage
         if (config.cores != null && config.cores !== '') resources.cores = config.cores
         const memory = vmMemoryMb(config)
@@ -118,10 +133,10 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
         if (memory != null && memory !== '') resources.memory_mb = memory
         if (disk != null && disk !== '') resources.disk_gb = disk
       }
-      return { storage: '', ...resources, node_id: node.id, vm_id: node.data?.vmId || config.vmid || '',
+      return { storage: '', dns_servers: '1.1.1.1', dns_search_domain: '', ...resources, node_id: node.id, vm_id: node.data?.vmId || config.vmid || '',
         vm_name: config.name || node.data?.label || node.id, template_vm_id: config.template || '',
         network_id: edge ? (edge.source === node.id ? edge.target : edge.source) : '',
-        ip: String(edge?.data?.connection?.ipAddress || config.ipAddress || '').split('/')[0], ssh_user: 'alice' }
+        ip: String(edge?.data?.connection?.ipAddress || config.ipAddress || '').split('/')[0], ssh_user: resources.ssh_user ?? 'alice' }
     }),
     content: [],
   }
@@ -280,12 +295,14 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     : { mode: 'existing_bridge', bridges: networks.map(network => network.vnet) }
   write('manifest/scenario_networks.json', networkManifest, json)
   if (expanded) write('manifest/scenario_instances.json', expanded.manifest, json)
-  const storageReviewed = vms.some(vm => Object.hasOwn(vm, 'storage'))
+  const cloudInitReviewed = vms.some(vm => Object.hasOwn(vm, 'dns_servers') || Object.hasOwn(vm, 'dns_search_domain'))
+  const storageReviewed = cloudInitReviewed || vms.some(vm => Object.hasOwn(vm, 'storage'))
   write('manifest/scenario_vms.json', { scenario: scenario.label, version: 3,
-    ...(storageReviewed ? { guest_preferences_version: 1 } : {}),
+    ...(storageReviewed ? { guest_preferences_version: cloudInitReviewed ? 2 : 1 } : {}),
     vms: vms.map(vm => ({ vm_id: Number(vm.vm_id), vm_name: vm.vm_name, ip: vm.ip, role: 'vm',
       bridge: networks.find(network => network.id === vm.network_id).vnet, template_vm_id: Number(vm.template_vm_id),
       ...(storageReviewed ? { storage: vm.storage ?? null } : {}),
+      ...(cloudInitReviewed ? { cloud_init: cloudInitPreferences(vm) } : {}),
       nics: vm.nics.map((nic, index) => ({ index, ip: nic.ip,
         bridge: networks.find(network => network.id === nic.network_id).vnet,
         prefix: Number(ranges.get(nic.network_id).prefix),
@@ -308,6 +325,7 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     BUNDLE_SDN_ZONE: scenario.zone, BUNDLE_SDN_VNETS: networkManifest.vnets,
   })])
   write('01_vm_bootstrap.yml', vms.map(vm => {
+    const cloudInit = cloudInitReviewed ? cloudInitPreferences(vm) : null
     const network = networks.find(network => network.id === vm.network_id)
     const extra = Object.fromEntries(vm.nics.slice(1).flatMap((nic, offset) => {
       const index = offset + 1
@@ -324,6 +342,8 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
       ...(vm.storage ? { proxmox_dest_vm_storage_name: vm.storage } : {}),
       global_vm_ci_ip_gw: network.gateway, global_vm_ci_netmask: ranges.get(network.id).prefix,
       default_admin_vm_ci_user: vm.ssh_user,
+      ...(cloudInit?.dns_servers ? { global_vm_ci_dns_ips: cloudInit.dns_servers.join(' ') } : {}),
+      ...(cloudInit?.dns_search_domain ? { vm_ci_dns_domain: cloudInit.dns_search_domain } : {}),
       ...(Object.keys(extra).length ? { global_vm_extra_config: extra } : {}),
       ...(vm.disk_gb !== undefined ? { global_vm_disk: { disk: vm.disk_device, size_gb: vm.disk_gb } } : {}),
     })

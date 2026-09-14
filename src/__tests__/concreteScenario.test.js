@@ -26,6 +26,36 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it('records reviewed SSH and DNS preferences on every literal VM', () => {
+    const input = fixture()
+    Object.assign(input.scenario.vms[0], { ssh_user: 'operator', dns_servers: '10.42.10.2, 1.1.1.1', dns_search_domain: 'lab.example' })
+    const { files } = emitConcreteScenario(input)
+    const manifest = JSON.parse(files['scenarios/demo/manifest/scenario_vms.json'])
+    expect(manifest.guest_preferences_version).toBe(2)
+    expect(manifest.vms[0]).toMatchObject({ storage: null, cloud_init: { ssh_user: 'operator', dns_servers: ['10.42.10.2', '1.1.1.1'], dns_search_domain: 'lab.example' } })
+    expect(parse(files['scenarios/demo/01_vm_bootstrap.yml'])[0].vars).toMatchObject({ default_admin_vm_ci_user: 'operator', global_vm_ci_dns_ips: '10.42.10.2 1.1.1.1', vm_ci_dns_domain: 'lab.example' })
+    expect(parse(files['scenarios/demo/hosts.yml']).all.children.scenario_guests.hosts['demo-vm'].ansible_user).toBe('operator')
+    input.scenario.vms[0].dns_servers = ''
+    input.scenario.vms[0].dns_search_domain = ''
+    const inherited = JSON.parse(emitConcreteScenario(input).files['scenarios/demo/manifest/scenario_vms.json'])
+    expect(inherited.vms[0].cloud_init).toEqual({ ssh_user: 'operator', dns_servers: null, dns_search_domain: null })
+  })
+  it.each([
+    { dns_servers: '8.8.8.999' }, { dns_servers: '{{ lookup("env", "SECRET") }}' },
+    { dns_servers: '1.1.1.1 2.2.2.2 3.3.3.3 4.4.4.4' }, { dns_servers: ['1.1.1.1'] },
+    { dns_search_domain: 'bad domain' }, { dns_search_domain: '-bad.example' }, { dns_search_domain: '{{ domain }}' },
+  ])('refuses unsupported DNS preferences %j', preferences => {
+    const input = fixture(); Object.assign(input.scenario.vms[0], preferences)
+    expect(() => emitConcreteScenario(input)).toThrow(/DNS|domain/i)
+  })
+  it('prefills cloud-init preferences from new canvas nodes without replacing saved choices', () => {
+    const input = fixture()
+    Object.assign(input.nodes[0].data.config, { ssh_user: 'operator', dns_servers: '10.42.10.2', dns_search_domain: 'lab.example' })
+    const fresh = createScenarioDraft({ name: 'Demo' }, input.nodes, input.edges)
+    expect(fresh.vms[0]).toMatchObject({ ssh_user: 'operator', dns_servers: '10.42.10.2', dns_search_domain: 'lab.example' })
+    Object.assign(input.scenario.vms[0], { ssh_user: 'reviewed', dns_servers: '', dns_search_domain: '' })
+    expect(createScenarioDraft({ scenario: input.scenario }, input.nodes, input.edges).vms[0]).toMatchObject({ ssh_user: 'reviewed', dns_servers: '', dns_search_domain: '' })
+  })
   it('keeps binary file bytes outside YAML and copies the checked-out asset by source path', () => {
     const input = fixture()
     const asset = assetFromBytes(Uint8Array.of(0, 255, 128, 10))
@@ -284,6 +314,7 @@ describe('concrete scenario emitter', () => {
     ['secret step override', input => { input.baseDoc = { env: [{ name: 'PASSWORD', secret: true }] }; input.scenario.content[0].vars = { PASSWORD: 'secret-value' } }, /secret/i],
     ['runtime connection override', input => { input.baseDoc = { env: [{ name: 'ansible_host', default: 'bad-host' }] } }, /reserved/i],
     ['ownership override', input => { input.scenario.content[0].vars = { r42_deployment_id: 'different-deployment' } }, /reserved/i],
+    ['cloud-init override', input => { input.scenario.content[0].vars = { vm_ci_user: 'other-user' } }, /reserved/i],
     ['undeclared project override', input => { input.overlay = { param_overrides: { env: { UNKNOWN: 'value' } } } }, /declared/i],
   ])('rejects %s before any scenario can be saved', (_name, mutate, message) => {
     const input = fixture()

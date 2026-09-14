@@ -91,7 +91,7 @@ function scenarioSnapshot(value: unknown): ObjectValue {
   if (source.replication !== undefined) result.replication = replicationSnapshot(source.replication)
   result.networks = rows(source.networks, 'Scenario networks').map(row => ({ ...fields(row, ['id', 'vnet', 'subnet', 'gateway', 'snat'], 'Network'), ...reservedIpFields(row) }))
   result.vms = rows(source.vms, 'Scenario VMs').map(row => {
-    const vm = fields(row, ['node_id', 'vm_id', 'vm_name', 'template_vm_id', 'network_id', 'ip', 'ssh_user', 'cores', 'memory_mb', 'disk_gb', 'disk_device', 'storage', 'primary_nic_key'], 'VM')
+    const vm = fields(row, ['node_id', 'vm_id', 'vm_name', 'template_vm_id', 'network_id', 'ip', 'ssh_user', 'dns_servers', 'dns_search_domain', 'cores', 'memory_mb', 'disk_gb', 'disk_device', 'storage', 'primary_nic_key'], 'VM')
     const sourceVm = objectValue(row, 'VM')
     if (sourceVm.nics !== undefined) vm.nics = rows(sourceVm.nics, 'VM NICs').map(nic => fields(nic, ['key', 'network_id', 'ip'], 'NIC'))
     return vm
