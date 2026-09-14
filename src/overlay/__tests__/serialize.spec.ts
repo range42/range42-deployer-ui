@@ -149,12 +149,12 @@ describe('buildNetworks — compute→network edges', () => {
     const e = { id: 'e', source: 'na', target: 'nb', data: {} };
     expect(buildNetworks('na', [e], [a, b])).toEqual([]);
   });
-  it('buildNetworks: dedups multiple edges to the same network (keeps last)', () => {
+  it('buildNetworks: preserves repeated network attachments in NIC order', () => {
     const vm = { id: 'vm1', type: 'vm', data: {} };
     const net = { id: 'net1', type: 'network-segment', data: {} };
     const e1 = { id: 'e1', source: 'vm1', target: 'net1', data: { connection: { ipAddress: '10.0.0.5' } } };
     const e2 = { id: 'e2', source: 'vm1', target: 'net1', data: { useDhcp: true, connection: { ipAddress: '' } } };
-    expect(buildNetworks('vm1', [e1, e2], [vm, net])).toEqual([{ node_ref: 'net1', dhcp: true }]);
+    expect(buildNetworks('vm1', [e1, e2], [vm, net])).toEqual([{ node_ref: 'net1', ip: '10.0.0.5' }, { node_ref: 'net1', dhcp: true }]);
   });
 });
 
@@ -446,5 +446,33 @@ describe('serialize/deserialize — broader kind coverage', () => {
     expect(doc.nodes!.find((n) => n.id === 'c1')!.host_ref).toBe('host');
     const back = deserializeToCanvas(doc, extractLayout(canvas));
     expect(back.nodes.find((n) => n.id === 'c1')!.data?.host_ref).toBe('host');
+  });
+});
+
+describe('repeated NIC layout identity', () => {
+  it('round-trips two directions/handles on one network while preserving the legacy first-edge key', () => {
+    const canvas = { nodes: [
+      { id: 'vm', type: 'vm', data: {} }, { id: 'lan', type: 'network-segment', data: {} },
+    ], edges: [
+      { id: 'net0', source: 'vm', target: 'lan', sourceHandle: 'first', data: { connection: { ipAddress: '10.0.0.2' } } },
+      { id: 'net1', source: 'lan', target: 'vm', targetHandle: 'second', data: { connection: { ipAddress: '10.0.0.3' } } },
+    ], attachments: [] };
+    const doc = serializeToCatalogEntry(canvas, { name: 'NICs' });
+    const layout = extractLayout(canvas);
+    expect(Object.keys(layout.edges)).toHaveLength(2);
+    expect(layout.edges['vm|lan'].id).toBe('net0');
+    const restored = deserializeToCanvas(doc, layout);
+    expect(restored.edges.map(edge => [edge.id, edge.source, edge.target, edge.sourceHandle, edge.targetHandle, edge.data?.connection?.ipAddress])).toEqual([
+      ['net0', 'vm', 'lan', 'first', undefined, '10.0.0.2'], ['net1', 'lan', 'vm', undefined, 'second', '10.0.0.3'],
+    ]);
+    expect(serializeToCatalogEntry(restored, { name: 'NICs' })).toEqual(doc);
+  });
+  it('gives repeated canonical refs distinct deterministic IDs without a layout', () => {
+    const doc = { schema_version: '1.0', kind: 'lab', name: 'NICs', naming_prefix: 'nics', bridge_base: 140, nodes: [
+      { id: 'vm', kind: 'vm', networks: [{ node_ref: 'lan', ip: '10.0.0.2' }, { node_ref: 'lan', ip: '10.0.0.3' }] },
+      { id: 'lan', kind: 'network' },
+    ] };
+    const restored = deserializeToCanvas(doc as CatalogEntry, { nodes: {}, edges: {}, unsupported: [] });
+    expect(new Set(restored.edges.map(edge => edge.id)).size).toBe(2);
   });
 });

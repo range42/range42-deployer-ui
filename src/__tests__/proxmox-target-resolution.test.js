@@ -49,7 +49,7 @@ describe('registered Proxmox target resolution', () => {
   it('refuses an incomplete registry rather than assuming the unseen nodes differ', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => response({ ...registry([intended]), total: 2 })))
     await expect(vm.start({ proxmox_node: 'pve-b', vm_id: 42 })).rejects.toThrow(/incomplete|complete|registry/i)
-    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
   it('rechecks registrations instead of retaining a deleted or changed host', async () => {
@@ -117,4 +117,45 @@ it.each(['', null, 0])('refuses an explicitly invalid target node %s rather than
   backend([intended])
   await expect(vm.start({ proxmox_node: node, vm_id: 42 })).rejects.toThrow(/target|node/i)
   expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true)
+})
+
+it('follows all host registry pages before resolving an explicit target', async () => {
+  vi.stubGlobal('fetch', vi.fn(async url => {
+    const parsed = new URL(url)
+    if (parsed.pathname === '/v1/proxmox/hosts') {
+      return response(parsed.searchParams.get('offset') === '1'
+        ? { items: [intended], offset: 1, total: 2, limit: 100 }
+        : { items: [first], offset: 0, total: 2, limit: 100 })
+    }
+    return response({ items: [], total: 0, offset: 0 })
+  }))
+  expect(await getRegisteredHost({ node: 'pve-b' })).toEqual(intended)
+  expect(fetch.mock.calls.map(([url]) => new URL(url).searchParams.get('offset'))).toEqual([null, '1'])
+})
+
+it('reads a fresh complete typed guest list from the explicit host and rejects partial or wrong-node results', async () => {
+  const { listRegisteredGuests } = await import('@/services/proxmox/api')
+  expect(listRegisteredGuests).toBeTypeOf('function')
+  const guest = { vmid: 42, type: 'qemu', node: 'pve-b', status: 'paused' }
+  for (const patch of [{ total: 2 }, { items: [{ ...guest, node: 'pve-a' }] }, { items: [{ ...guest, status: 'imagined' }] }]) {
+    vi.stubGlobal('fetch', vi.fn(async url => url.endsWith('/hosts') ? response(registry([intended])) : response({ items: [guest], offset: 0, total: 1, ...patch })))
+    await expect(listRegisteredGuests({ node: 'pve-b', hostId: intended.id })).rejects.toThrow(/guest|complete|invalid/i)
+  }
+  vi.stubGlobal('fetch', vi.fn(async url => url.endsWith('/hosts') ? response(registry([intended])) : response({ items: [guest], offset: 0, total: 1 })))
+  expect(await listRegisteredGuests({ node: 'pve-b', hostId: intended.id })).toMatchObject({ host: intended, guests: [{ vmid: 42, status: 'paused', node: 'pve-b', type: 'qemu' }] })
+})
+
+it('binds current-status readback to the exact host, guest and type, preserving private auth', async () => {
+  const { getGuestStatus } = await import('@/services/proxmox/api')
+  expect(getGuestStatus).toBeTypeOf('function')
+  useBackendApiStore().addHost({ url: 'https://backend.test', token: 'selected', nodeName: 'pve-b' })
+  const actual = { vmid: 42, node: 'pve-b', type: 'qemu', status: 'paused' }
+  vi.stubGlobal('fetch', vi.fn(async url => url.endsWith('/hosts') ? response(registry([intended])) : response(actual)))
+  expect(await getGuestStatus(42, 'qemu', { node: 'pve-b', hostId: intended.id })).toEqual(actual)
+  expect(fetch.mock.calls.at(-1)[0]).toBe('https://backend.test/v1/proxmox/hosts/host-b/vms/42/status?vmtype=qemu')
+  expect(fetch.mock.calls.at(-1)[1].headers.Authorization).toBe('Bearer selected')
+  for (const patch of [{ vmid: 43 }, { node: 'pve-a' }, { type: 'lxc' }, { status: 'invented' }]) {
+    fetch.mockImplementation(async url => url.endsWith('/hosts') ? response(registry([intended])) : response({ ...actual, ...patch }))
+    await expect(getGuestStatus(42, 'qemu', { node: 'pve-b', hostId: intended.id })).rejects.toThrow(/status|target|invalid/i)
+  }
 })

@@ -87,6 +87,24 @@ describe('ConfigPanel — lifecycle actions route through task core (no optimist
     }))
   })
 
+  it('binds lifecycle and delete to the imported node host instead of global defaults', async () => {
+    const { proxmoxApi } = await import('@/services/proxmox')
+    const node = makeDeployedVmNode('stopped')
+    node.data.config = { proxmoxNode: 'pve-imported', proxmoxHostId: 'imported-host' }
+    const wrapper = mountPanel(node)
+    await flushPromises()
+    await wrapper.vm.handleVmAction('start')
+    const operation = launch.mock.calls[0][1]
+    expect(operation.target).toEqual({ node: 'pve-imported', hostId: 'imported-host' })
+    await operation.apiCall()
+    expect(proxmoxApi.vm.start).toHaveBeenCalledWith({ proxmox_node: 'pve-imported', proxmox_host_id: 'imported-host', vm_id: 4001, vmtype: 'qemu' })
+    await wrapper.vm.onDeleteProxmox()
+    const deletion = launch.mock.calls[1][1]
+    await deletion.apiCall()
+    expect(proxmoxApi.vm.delete).toHaveBeenCalledWith(4001, { node: 'pve-imported', hostId: 'imported-host' })
+    wrapper.unmount()
+  })
+
   it('pause and resume route through launch', async () => {
     const node = makeDeployedVmNode('running')
     const wrapper = mountPanel(node)

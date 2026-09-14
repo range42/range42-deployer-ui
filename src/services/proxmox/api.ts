@@ -263,22 +263,31 @@ async function resolveHost(target: ProxmoxTarget, context: BackendContext): Prom
     || (target.hostId !== undefined && (typeof target.hostId !== 'string' || !target.hostId.trim()))) {
     throw new ProxmoxApiError(0, 'A valid selected Proxmox target is required.')
   }
-  const raw = await request<{ items?: RegisteredHost[]; total?: number; offset?: number }>(
-    '/v1/proxmox/hosts',
-    { method: 'GET' },
-    context,
-  )
-  if (!Array.isArray(raw?.items) || raw.offset !== 0 || raw.total !== raw.items.length
-    || raw.items.some(host => !host || typeof host.id !== 'string' || !host.id
-      || typeof host.node_name !== 'string' || !host.node_name)
-    || new Set(raw.items.map(host => host.id)).size !== raw.items.length) {
-    throw new ProxmoxApiError(0, 'Proxmox host registry is incomplete or invalid. Check backend host registrations.')
-  }
-  if (raw.items.length === 0) {
+  const hosts: RegisteredHost[] = []
+  let offset = 0, total: number | undefined
+  do {
+    const raw = await request<{ items?: RegisteredHost[]; total?: number; offset?: number }>(
+      `/v1/proxmox/hosts${offset ? `?offset=${offset}` : ''}`, { method: 'GET' }, context,
+    )
+    if (!Array.isArray(raw?.items) || raw.offset !== offset || !Number.isSafeInteger(raw.total)
+      || raw.total! < 0 || raw.total! > 10000 || (total !== undefined && raw.total !== total)
+      || offset + raw.items.length > raw.total! || (!raw.items.length && offset < raw.total!)
+      || raw.items.some(host => !host || typeof host.id !== 'string' || !host.id
+        || typeof host.node_name !== 'string' || !host.node_name)) {
+      throw new ProxmoxApiError(0, 'Proxmox host registry is incomplete or invalid. Check backend host registrations.')
+    }
+    total = raw.total!
+    hosts.push(...raw.items)
+    if (new Set(hosts.map(host => host.id)).size !== hosts.length) {
+      throw new ProxmoxApiError(0, 'Proxmox host registry is incomplete or invalid. Reload registrations.')
+    }
+    offset = hosts.length
+  } while (offset < total)
+  if (hosts.length === 0) {
     throw new ProxmoxApiError(0, 'No Proxmox host registered. Configure a backend host registration.')
   }
   const node = target.node ?? context.node
-  const matches = raw.items.filter(host => (!node || host.node_name === node)
+  const matches = hosts.filter(host => (!node || host.node_name === node)
     && (!target.hostId || host.id === target.hostId))
   if (matches.length !== 1) {
     throw new ProxmoxApiError(0, 'No unambiguous registered Proxmox host matches the selected target.')
@@ -323,6 +332,44 @@ async function listHostVms(target: ProxmoxTarget): Promise<V1Vm[]> {
     { method: 'GET' },
   )
   return raw.items ?? []
+}
+
+/** Fresh observed inventory bound to one complete registered host; never uses the UI cache. */
+export async function listRegisteredGuests(target: ProxmoxTarget): Promise<{ host: RegisteredHost; guests: VmListItem[] }> {
+  const context = backendContext()
+  const host = await resolveHost(target, context)
+  const raw = await request<{ items?: V1Vm[]; total?: number; offset?: number }>(
+    `/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms`, { method: 'GET' }, context,
+  )
+  if (!Array.isArray(raw?.items) || raw.offset !== 0 || raw.total !== raw.items.length
+    || raw.items.some(guest => !guest || !Number.isSafeInteger(guest.vmid) || guest.vmid < 1
+      || guest.node !== host.node_name || !['qemu', 'lxc'].includes(guest.type)
+      || !['running', 'stopped', 'paused', 'unknown'].includes(guest.status))
+    || new Set(raw.items.map(guest => `${guest.type}:${guest.vmid}`)).size !== raw.items.length) {
+    throw new ProxmoxApiError(0, 'Guest inventory is incomplete or invalid. Refresh before continuing.')
+  }
+  return { host, guests: raw.items.map(normalizeVmV1) }
+}
+
+export interface GuestObservedStatus {
+  vmid: number
+  node: string
+  type: 'qemu' | 'lxc'
+  status: 'running' | 'stopped' | 'paused' | 'unknown'
+}
+
+/** The guest's run state, including QEMU pause, rather than process-list status. */
+export async function getGuestStatus(vmid: number, vmtype: 'qemu' | 'lxc', target: ProxmoxTarget): Promise<GuestObservedStatus> {
+  if (!Number.isSafeInteger(vmid) || vmid < 1) throw new ProxmoxApiError(0, 'A valid guest VMID is required.')
+  const context = backendContext(), host = await resolveHost(target, context)
+  const value = await request<GuestObservedStatus>(
+    `/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${vmid}/status?vmtype=${vmtype}`, { method: 'GET' }, context,
+  )
+  if (!value || value.vmid !== vmid || value.node !== host.node_name || value.type !== vmtype
+    || !['running', 'stopped', 'paused', 'unknown'].includes(value.status)) {
+    throw new ProxmoxApiError(0, 'Guest status response does not match the selected target.')
+  }
+  return value
 }
 
 /** Fetch the raw PVE guest config (net0/net1/ipconfig*, ...) through v1. The

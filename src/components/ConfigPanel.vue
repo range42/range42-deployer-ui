@@ -110,11 +110,17 @@ const config = ref({})
 const apiConfig = inject('apiConfig', null)
 
 function getProxmoxNode() {
+  if (props.node?.data?.deployed && props.node.data.config?.proxmoxNode) return props.node.data.config.proxmoxNode
   // Use per-project settings from injected apiConfig
   if (apiConfig?.node?.value) return apiConfig.node.value
   // Fallback to global settings
   const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
   return stored.defaultNode || 'pve01'
+}
+
+function getGuestTarget() {
+  const hostId = props.node?.data?.config?.proxmoxHostId
+  return { node: getProxmoxNode(), ...(hostId ? { hostId } : {}) }
 }
 
 async function loadTemplates(force = false) {
@@ -279,11 +285,13 @@ async function handleVmAction(action) {
   if (!method) return
 
   const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
-  const request = { proxmox_node: getProxmoxNode(), vm_id: vmId, vmtype }
+  const target = getGuestTarget()
+  const request = { proxmox_node: target.node, ...(target.hostId ? { proxmox_host_id: target.hostId } : {}), vm_id: vmId, vmtype }
   await tasks.launch(action, {
     node: props.node,
     vmId,
     vmtype,
+    target,
     apiCall: () => proxmoxApi.vm[method](request),
     onSuccess: () => {},
   })
@@ -322,13 +330,15 @@ const onDeleteProxmox = async () => {
   const vmId = props.node.data?.vmId
   if (!vmId) return
   const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
+  const target = getGuestTarget()
   await tasks.launch('delete', {
     node: props.node,
     vmId,
     vmtype,
+    target,
     apiCall: () => props.node.type === 'lxc'
-      ? proxmoxApi.lxc.delete(vmId, { node: getProxmoxNode() })
-      : proxmoxApi.vm.delete(vmId, { node: getProxmoxNode() }),
+      ? proxmoxApi.lxc.delete(vmId, target)
+      : proxmoxApi.vm.delete(vmId, target),
     onSuccess: () => {
       emit('delete', props.node.id)
       emit('close')
@@ -442,6 +452,9 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           </svg>
         </button>
       </header>
+      <p v-if="node.data?.statusError" role="status" class="mx-4 mt-2 text-sm text-base-content/80">
+        {{ node.data.statusError }}
+      </p>
 
       <!-- Content (scrolls between sticky header/footer) -->
       <div class="flex-1 space-y-5 overflow-y-auto px-6 py-5">

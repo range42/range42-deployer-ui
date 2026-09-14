@@ -195,7 +195,7 @@ export function buildNetworks(
   nodeId: string, edges: CanvasEdge[], allNodes: CanvasNode[],
 ): NetworkAttachment[] {
   if (isNetwork(nodeId, allNodes)) return [];
-  const byRef = new Map<string, NetworkAttachment>();
+  const attachments: NetworkAttachment[] = [];
   for (const e of edges || []) {
     let netId: string | null = null;
     if (e.source === nodeId && isNetwork(e.target, allNodes)) netId = e.target;
@@ -207,9 +207,9 @@ export function buildNetworks(
     const na: NetworkAttachment = { node_ref: netId };
     if (dhcp) na.dhcp = true;
     else na.ip = ip;
-    byRef.set(netId, na);
+    attachments.push(na);
   }
-  return [...byRef.values()];
+  return attachments;
 }
 
 export interface CanvasLayout {
@@ -230,8 +230,8 @@ export interface CanvasLayout {
   unsupported: CanvasNode[];
 }
 
-export function edgeKey(source: string, target: string): string {
-  return `${source}|${target}`;
+export function edgeKey(source: string, target: string, occurrence = 0): string {
+  return `${source}|${target}${occurrence ? `|${occurrence}` : ""}`;
 }
 
 export function extractLayout(canvas: CanvasModel): CanvasLayout {
@@ -248,19 +248,23 @@ export function extractLayout(canvas: CanvasModel): CanvasLayout {
       label: n.data?.label,
     };
   }
+  const occurrences = new Map<string, number>();
   for (const e of canvas.edges || []) {
     if (e.data?.synthetic) continue; // docker tethers are re-derived
     // Canonicalize compute<->network edges to edgeKey(computeEnd, networkEnd)
     // so the deserialize lookup (keyed compute|network) hits regardless of the
-    // direction the user drew the edge. buildNetworks dedupes by network, so a
-    // single layout entry per (compute, network) pair is the intended grain.
+    // direction the user drew the edge. Repeated NICs keep ordered layout
+    // entries; occurrence zero retains the legacy compute|network key.
     let from = e.source;
     let to = e.target;
     if (isNetwork(e.source, canvas.nodes) && !isNetwork(e.target, canvas.nodes)) {
       from = e.target;
       to = e.source;
     }
-    layout.edges[edgeKey(from, to)] = {
+    const pair = edgeKey(from, to);
+    const occurrence = occurrences.get(pair) ?? 0;
+    occurrences.set(pair, occurrence + 1);
+    layout.edges[edgeKey(from, to, occurrence)] = {
       id: e.id,
       source: e.source,
       target: e.target,
@@ -311,13 +315,16 @@ export function deserializeToCanvas(
     if (lay.style) node.style = lay.style;
     nodes.push(node);
 
+    const occurrences = new Map<string, number>();
     for (const na of n.networks ?? []) {
-      const key = edgeKey(n.id, na.node_ref);
+      const occurrence = occurrences.get(na.node_ref) ?? 0;
+      occurrences.set(na.node_ref, occurrence + 1);
+      const key = edgeKey(n.id, na.node_ref, occurrence);
       const le = layout.edges?.[key];
       const connection: Record<string, unknown> = { ...(le?.connection ?? {}) };
       if (na.ip) connection.ipAddress = na.ip;
       edges.push({
-        id: le?.id ?? `e-${n.id}-${na.node_ref}`,
+        id: le?.id ?? `e-${n.id}-${na.node_ref}${occurrence ? `-${occurrence}` : ""}`,
         source: le?.source ?? n.id,
         target: le?.target ?? na.node_ref,
         type: 'network',
