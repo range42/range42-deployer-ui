@@ -58,11 +58,53 @@ describe('catalog Compose workload attachment', () => {
     await expect(prepareCatalogWorkload(f.input, f.provider)).rejects.toThrow(/unsupported|secret/i)
     expect(f.input.project).toEqual(before)
   })
-  it('refuses multiple services and PoC-only metadata instead of inventing a workload', async () => {
-    const f = setup(), doc = f.compose(); doc.services.other = { image: 'httpd:2.4.49' }; f.setCompose(doc)
-    await expect(prepareCatalogWorkload(f.input, f.provider)).rejects.toThrow(/one service/)
+  it('refuses PoC-only metadata instead of inventing a workload', async () => {
     const poc = setup(); poc.input.entry.path += '/poc'; poc.input.entry.document = JSON.parse(poc.files[`${poc.input.entry.path}/meta.json`]); poc.tree.splice(0, poc.tree.length, ...poc.tree.filter(row => row.path.startsWith(`${poc.input.entry.path}/`)))
     await expect(prepareCatalogWorkload(poc.input, poc.provider)).rejects.toThrow(/Compose|compose/)
+  })
+  it('reviews multiple services, literal environment, dependencies, private volumes and readiness together', async () => {
+    const f = setup()
+    f.setCompose({ services: {
+      web: { image: 'nginx:alpine', ports: ['8080:80'], environment: { APP_MODE: 'training' }, depends_on: ['db'],
+        healthcheck: { test: ['CMD', 'curl', '-f', 'http://localhost/'], interval: '5s', timeout: '2s', retries: 3 } },
+      db: { image: 'redis:7', volumes: ['data:/data'] },
+    }, volumes: { data: {} } })
+    const result = await prepareCatalogWorkload(f.input, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1'
+    const runtime = parse(result.files[`${prefix}/runtime.compose.yml`] as string)
+    expect(Object.keys(runtime.services)).toEqual(['web', 'db'])
+    expect(runtime.services.web).toMatchObject({ environment: { APP_MODE: 'training' }, depends_on: ['db'] })
+    expect(runtime.services.db.volumes).toEqual(['data:/data'])
+    expect(runtime.volumes.data.labels['io.range42.workload']).toMatch(/^[a-f0-9]{64}$/)
+    expect(result.summary.services).toEqual(['web', 'db'])
+    expect(result.summary.readiness).toContain('health')
+    expect(result.files[`${prefix}/deploy.yml`]).toContain('--wait')
+    expect(result.files[`${prefix}/cleanup.yml`]).toContain('Refuse a foreign workload volume')
+    expect(result.files[`${prefix}/cleanup.yml`]).not.toContain('--volumes')
+    expect(result.summary.cleanup_file).toBe(`${prefix}/cleanup.yml`)
+  })
+  it('rejects duplicate ports across services, dependency cycles and external volume adoption', async () => {
+    const f = setup()
+    for (const doc of [
+      { services: { a: { image: 'nginx', ports: ['80:80'] }, b: { image: 'nginx', ports: ['80:80'] } } },
+      { services: { a: { image: 'nginx', depends_on: ['b'] }, b: { image: 'nginx', depends_on: ['a'] } } },
+      { services: { a: { image: 'nginx', volumes: ['data:/data'] } }, volumes: { data: { external: true } } },
+    ]) {
+      f.setCompose(doc)
+      await expect(prepareCatalogWorkload(f.input, f.provider)).rejects.toThrow(/same host port|cycle|external/i)
+    }
+  })
+  it('allows only complete pinned read-only relative bind mounts and rejects runtime interpolation', async () => {
+    const f = setup()
+    f.setCompose({ services: { web: { image: 'nginx', volumes: ['./hello.sh:/app/hello.sh:ro'] } } })
+    const result = await prepareCatalogWorkload(f.input, f.provider)
+    expect(parse(result.files['scenarios/saved/content/workloads/catalog-1/runtime.compose.yml'] as string).services.web.volumes).toEqual(['./hello.sh:/app/hello.sh:ro'])
+    for (const volumes of [['./missing:/app:ro'], ['./hello.sh:/app:rw'], ['/etc:/app:ro'], ['../secret:/app:ro']]) {
+      f.setCompose({ services: { web: { image: 'nginx', volumes } } })
+      await expect(prepareCatalogWorkload(f.input, f.provider)).rejects.toThrow(/mount|path|missing|unsupported/i)
+    }
+    f.setCompose({ services: { web: { image: 'nginx', environment: { APP_MODE: '${BACKEND_SECRET}' } } } })
+    await expect(prepareCatalogWorkload(f.input, f.provider)).rejects.toThrow(/literal|interpolation/i)
   })
   it.each(['../Dockerfile', 'dockerfile', 'https://example.test/Dockerfile'])('refuses unresolved Dockerfile %s', async path => {
     const f = setup(), doc = f.compose(); doc.services['apache-cve-2021-42013'].build.dockerfile = path; f.setCompose(doc)
@@ -125,6 +167,11 @@ describe('catalog Compose workload attachment', () => {
     const f = setup(); const result = await prepareCatalogWorkload(f.input, f.provider)
     result.files['scenarios/saved/content/workloads/catalog-1/payload/compose.yml'] += '# changed after review\n'
     await expect(prepareCatalogWorkload({ ...f.input, scenario: result.scenario, project: { ...f.input.project, files: result.files }, attachmentId: 'catalog-2' }, f.provider)).rejects.toThrow(/changed.*review|review.*changed/i)
+  })
+  it('keeps ports reserved while a workload cleanup is only staged in the project', async () => {
+    const f = setup(), first = await prepareCatalogWorkload(f.input, f.provider)
+    first.scenario.content.at(-1)!.path = 'content/workloads/catalog-1/cleanup.yml'
+    await expect(prepareCatalogWorkload({ ...f.input, project: { ...f.input.project, files: first.files }, scenario: first.scenario, attachmentId: 'catalog-2' }, f.provider)).rejects.toThrow(/8888/)
   })
   it('rejects secret files, interpolation and credential URLs without echoing values', async () => {
     for (const [path, value] of [['.env', 'TOKEN=secret'], ['private.key', '-----BEGIN OPENSSH PRIVATE KEY-----\nsecret'], ['config.txt', 'https://user:secret@example.test/path']]) {

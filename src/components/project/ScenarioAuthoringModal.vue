@@ -99,6 +99,23 @@ function moveContent(index, offset) {
   draft.value.content.splice(index + offset, 0, item)
 }
 
+function alternateWorkloadPath(item) {
+  if (item.kind !== 'playbook' || !/^content\/workloads\/[A-Za-z0-9_-]+\/(deploy|cleanup)\.yml$/.test(item.path)) return ''
+  const path = item.path.replace(/(deploy|cleanup)\.yml$/, item.path.endsWith('/deploy.yml') ? 'cleanup.yml' : 'deploy.yml')
+  const content = stagedRoleFiles.value[`scenarios/${draft.value.label}/${path}`] ?? props.project.files?.[`scenarios/${draft.value.label}/${path}`]
+  return typeof content === 'string' ? path : ''
+}
+
+function switchWorkloadAction(item) {
+  const path = alternateWorkloadPath(item)
+  if (!path) return
+  const prefix = `scenarios/${draft.value.label}/`
+  stagedRoleFiles.value[`${prefix}${item.path}`] = contentState.value[item.id].content
+  contentState.value[item.id].content = stagedRoleFiles.value[`${prefix}${path}`] ?? props.project.files[`${prefix}${path}`]
+  item.path = path
+  preview.value = null
+}
+
 function applyAllocation({ reservation, vms, target_host_id, backend_url }) {
   try {
     const updated = draft.value.replication
@@ -247,6 +264,11 @@ function applyReview() {
                 <label v-if="item.kind === 'file'" class="form-control gap-1"><span>File mode</span><input v-model="item.mode" class="input input-bordered w-full" placeholder="0644" /></label>
               </div>
               <p v-if="item.kind === 'bundle'" class="text-xs text-base-content/70 mt-2 break-all">{{ item.resolution ? `Source commit: ${item.resolution.source_sha} · Installed runtime: ${item.resolution.runtime.fingerprint}` : 'Remove this unverified attachment and select it from the bundle library.' }}</p>
+              <div v-if="alternateWorkloadPath(item)" class="mt-3 rounded-lg border border-base-300 p-3 text-sm">
+                <p>{{ item.path.endsWith('/cleanup.yml') ? 'Cleanup will stop and remove this workload’s owned containers and network. Named volumes, images and copied files are preserved.' : 'This playbook deploys the workload. To remove a running workload, select cleanup and run the reviewed Configure revision before removing the item.' }}</p>
+                <button type="button" class="btn btn-outline btn-sm mt-2" data-testid="workload-cleanup" @click="switchWorkloadAction(item)">{{ item.path.endsWith('/cleanup.yml') ? 'Use deployment playbook' : 'Use cleanup playbook' }}</button>
+                <p class="text-xs text-base-content/65 mt-2">Review generated files, save, and explicitly run Configure on the existing deployment to execute this selection.</p>
+              </div>
               <div v-if="item.kind === 'role'" class="text-sm mt-3">
                 <p class="break-all">Original catalog commit: {{ item.role?.origin?.sha }}. Current role files are copied into this project and checked against their reviewed hashes.</p>
                 <button type="button" class="btn btn-outline btn-sm mt-2" @click="roleBeingReviewed = item; rolePickerOpen = true">Review current role files</button>

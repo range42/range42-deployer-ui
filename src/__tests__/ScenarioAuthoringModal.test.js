@@ -20,6 +20,27 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('stages an existing workload cleanup playbook for explicit review and preserves edited deployment content', async () => {
+    const wrapper = modal(), project = JSON.parse(JSON.stringify(wrapper.props('project')))
+    const prefix = 'content/workloads/test'
+    const deploy = '- hosts: "{{ global_vm_ssh_name }}"\n  tasks: []\n'
+    const cleanup = '- hosts: "{{ global_vm_ssh_name }}"\n  tasks:\n    - ansible.builtin.debug:\n        msg: cleanup\n'
+    project.files = { [`scenarios/demo/${prefix}/deploy.yml`]: deploy, [`scenarios/demo/${prefix}/cleanup.yml`]: cleanup }
+    project.scenario.content = [{ id: 'test', kind: 'playbook', target_node: 'vm', path: `${prefix}/deploy.yml`, vars: {} }]
+    await wrapper.setProps({ open: false, project })
+    await wrapper.setProps({ open: true })
+    await wrapper.get('[data-testid="content-text"]').setValue(deploy + '# keep this edit\n')
+    await wrapper.get('[data-testid="workload-cleanup"]').trigger('click')
+    expect(wrapper.get('[data-testid="content-path"]').element.value).toBe(`${prefix}/cleanup.yml`)
+    expect(wrapper.get('[data-testid="content-text"]').element.value).toBe(cleanup)
+    expect(project.scenario.content[0].path).toBe(`${prefix}/deploy.yml`)
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const generated = wrapper.emitted('generated')[0][0]
+    expect(generated.scenario.content[0].path).toBe(`${prefix}/cleanup.yml`)
+    expect(generated.files[`scenarios/demo/${prefix}/deploy.yml`]).toContain('# keep this edit')
+    expect(generated.files['scenarios/demo/configure.yml']).toContain(`${prefix}/cleanup.yml`)
+  })
   it('stages copied role files and preserves explicit content order only after scenario review', async () => {
     const wrapper = modal()
     const project = wrapper.props('project')

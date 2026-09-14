@@ -18,10 +18,11 @@ import fixture from './fixtures/catalogComposeApache.json'
 const backend = process.env.R42_WORKLOAD_BACKEND
 const temporary: string[] = []
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }) })
-async function setup(mode: string, hostPorts?: number[]) {
+async function setup(mode: string, hostPorts?: number[], document?: object) {
   const root = mkdtempSync(join(tmpdir(), 'r42-workload-consumer-')); temporary.push(root)
   const project = savedScenario(); project.scenario.content = []
-  const provider = { listTree: async () => fixture.tree, getFile: async () => { throw new Error('text fallback unused') }, getFileContent: async ({ path }: { path: string }) => ({ content: fixture.files[path as keyof typeof fixture.files], sha: fixture.tree.find(row => row.path === path)!.sha }) }
+  const sourceFiles: Record<string, string> = { ...fixture.files, ...(document ? { [`${fixture.path}/compose.yml`]: stringify(document) } : {}) }
+  const provider = { listTree: async () => fixture.tree, getFile: async () => { throw new Error('text fallback unused') }, getFileContent: async ({ path }: { path: string }) => ({ content: sourceFiles[path], sha: fixture.tree.find(row => row.path === path)!.sha }) }
   const result = await prepareCatalogWorkload({ project, scenario: project.scenario, targetNode: 'vm1', attachmentId: 'catalog-1', hostPorts,
     entry: { source_id: 'catalog', kind: 'container', name: 'Apache', path: fixture.path, sha: fixture.sha },
     source: { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' }, repos: [{ owner: 'range42', repo: 'range42-catalog', branch: 'main' }] } }, provider)
@@ -32,20 +33,24 @@ async function setup(mode: string, hostPorts?: number[]) {
   expect(accepted.trim()).toBe('accepted:[3101]')
   const bin = join(root, 'bin'); mkdirSync(bin)
   const guest = join(root, 'guest'), calls = join(root, 'docker-calls.jsonl')
-  const expected = Object.fromEntries(Object.entries(fixture.files).map(([path, content]) => [path.slice(fixture.path.length + 1), content]))
+  const expected = Object.fromEntries(Object.entries(sourceFiles).map(([path, content]) => [path.slice(fixture.path.length + 1), content]))
   writeFileSync(join(root, 'expected.json'), JSON.stringify(expected))
   const marker = JSON.parse(result.files['scenarios/saved/content/workloads/catalog-1/review.json'] as string).compose_project
-  writeFileSync(join(bin, 'docker'), `#!${python}\nimport json, pathlib, sys\nroot=pathlib.Path(${JSON.stringify(root)})\nmode=${JSON.stringify(mode)}\nargs=sys.argv[1:]\nassert args[:2]==['--host','unix:///var/run/docker.sock']\nargs=args[2:]\nwith (root/'docker-calls.jsonl').open('a') as f: f.write(json.dumps(args)+'\\n')\nif args==['compose','version']:\n print('Docker Compose version v2.39.0'); sys.exit(1 if mode=='missing' else 0)\nif args==['info']: sys.exit(0)\nif args[:2]==['container','ls']:\n print('collision' if mode=='foreign' else ''); sys.exit(0)\nif args[:2]==['network','ls']:\n print('collision' if mode=='foreign-network' else ''); sys.exit(0)\nif args[:2]==['network','inspect']:\n print(json.dumps([{'Labels':{'io.range42.workload':'foreign'}}])); sys.exit(0)\nif args[:2]==['container','inspect']:\n owner=(root/'guest'/${JSON.stringify(marker)}/'owner.txt')\n label=owner.read_text() if owner.exists() else 'foreign'\n print(json.dumps([{'Config':{'Labels':{'io.range42.workload':label}},'State':{'Running':mode!='stopped'}}])); sys.exit(0)\nassert args[0]=='compose'\npayload=pathlib.Path(args[args.index('--project-directory')+1])\nexpected=json.loads((root/'expected.json').read_text())\nassert all((payload/name).read_bytes()==value.encode() for name,value in expected.items()), 'copy bytes/path mismatch'\nassert args[args.index('--env-file')+1]=='/dev/null'\nassert (payload/'compose.yml').is_file()\nassert len([x for x in args if x=='-f'])==1\nassert args[-2:]==['config','--quiet'] or args[-4:]==['up','--detach','--build','apache-cve-2021-42013']\n`)
+  writeFileSync(join(root, 'consumer.json'), JSON.stringify({ mode, marker, services: result.summary.services }))
+  const stub = readFileSync(join(process.cwd(), 'src/__tests__/fixtures/workloadDockerConsumer.py'), 'utf8')
+  writeFileSync(join(bin, 'docker'), `#!${python}\n${stub}`)
   execFileSync('/bin/chmod', ['0755', join(bin, 'docker')])
-  const playbook = join(root, 'scenarios/saved/content/workloads/catalog-1/deploy.yml')
-  const plays = parse(readFileSync(playbook, 'utf8').replaceAll('/opt/range42/workloads', guest))
-  plays[0].become = false
-  plays[0].environment = { PATH: `${bin}:/usr/bin:/bin` }
-  writeFileSync(playbook, stringify(plays, { lineWidth: 0 }))
+  for (const name of ['deploy.yml', 'cleanup.yml']) {
+    const playbook = join(root, `scenarios/saved/content/workloads/catalog-1/${name}`)
+    const plays = parse(readFileSync(playbook, 'utf8').replaceAll('/opt/range42/workloads', guest))
+    plays[0].become = false
+    plays[0].environment = { PATH: `${bin}:/usr/bin:/bin`, R42_WORKLOAD_TEST_ROOT: root }
+    writeFileSync(playbook, stringify(plays, { lineWidth: 0 }))
+  }
   writeFileSync(join(root, 'test-hosts.yml'), stringify({ all: { hosts: { 'saved-vm': { ansible_connection: 'local', ansible_python_interpreter: python }, 'unselected-vm': { ansible_connection: 'local', ansible_python_interpreter: python } } } }))
   writeFileSync(join(root, 'ansible.cfg'), '[defaults]\n')
-  const run = () => {
-    try { return { rc: 0, output: execFileSync(ansible, ['-i', join(root, 'test-hosts.yml'), join(root, 'scenarios/saved/configure.yml')], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, ANSIBLE_CONFIG: join(root, 'ansible.cfg'), ANSIBLE_STDOUT_CALLBACK: 'default', ANSIBLE_NOCOLOR: '1', ANSIBLE_LOCAL_TEMP: join(root, 'ansible-tmp') } }) } }
+  const run = (cleanup = false) => {
+    try { return { rc: 0, output: execFileSync(ansible, ['-i', join(root, 'test-hosts.yml'), join(root, cleanup ? 'scenarios/saved/content/workloads/catalog-1/cleanup.yml' : 'scenarios/saved/configure.yml'), '-e', 'global_vm_ssh_name=saved-vm'], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, ANSIBLE_CONFIG: join(root, 'ansible.cfg'), ANSIBLE_STDOUT_CALLBACK: 'default', ANSIBLE_NOCOLOR: '1', ANSIBLE_LOCAL_TEMP: join(root, 'ansible-tmp') } }) } }
     catch (error) { const failure = error as { status?: number; stdout?: string }; return { rc: failure.status || 1, output: String(failure.stdout || '') } }
   }
   return { root, result, run, calls, guest, marker }
@@ -74,5 +79,25 @@ describe.skipIf(!backend)('actual backend + local Ansible workload consumer', ()
     expect(executed.rc).not.toBe(0)
     expect(executed.output).toContain(task)
     if (mode !== 'stopped') expect(existsSync(join(f.guest, f.marker, 'payload'))).toBe(false)
+  }, 60000)
+  it('executes all reviewed services then verifies owned cleanup without removing volumes', async () => {
+    const f = await setup('ok', undefined, { services: { web: { image: 'nginx:alpine', depends_on: ['cache'] }, cache: { image: 'redis:7', volumes: ['data:/data'] } }, volumes: { data: {} } })
+    const deployed = f.run()
+    expect({ rc: deployed.rc, failure: deployed.rc ? deployed.output : '' }).toEqual({ rc: 0, failure: '' })
+    const cleaned = f.run(true)
+    expect({ rc: cleaned.rc, failure: cleaned.rc ? cleaned.output : '' }).toEqual({ rc: 0, failure: '' })
+    const calls = readFileSync(f.calls, 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    expect(calls.find(args => args.includes('up')).slice(-2)).toEqual(['web', 'cache'])
+    expect(calls.find(args => args.includes('down'))).not.toContain('--volumes')
+    expect(existsSync(join(f.guest, f.marker, 'payload/hello.sh'))).toBe(true)
+  }, 60000)
+  it('refuses changed installed configuration before cleanup dispatch', async () => {
+    const f = await setup('ok'), deployed = f.run()
+    expect(deployed.rc).toBe(0)
+    writeFileSync(join(f.guest, f.marker, 'runtime.compose.yml'), 'services: {}\n')
+    const cleaned = f.run(true)
+    expect(cleaned.rc).not.toBe(0)
+    expect(cleaned.output).toContain('Refuse changed or linked cleanup configuration')
+    expect(readFileSync(f.calls, 'utf8')).not.toContain('"down"')
   }, 60000)
 })
