@@ -1,4 +1,6 @@
 import { ref } from 'vue'
+import { clearCatalogCache } from '@/composables/useCatalog'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useInventoryStore, type GitSource, type GitSourceRepo } from '@/stores/inventoryStore'
 
@@ -47,6 +49,17 @@ function assertSameBackend(scope: string): void {
   if (getBackendScope() !== scope) throw new Error('The selected backend changed. Reload sources and retry.')
 }
 
+async function mutateSource<T>(path: string, init: RequestInit): Promise<T> {
+  const backend = useBackendApiStore()
+  const scope = getBackendScope(), token = backend.token
+  await clearCatalogCache()
+  if (scope !== getBackendScope() || token !== backend.token) {
+    throw new Error('The selected backend or credential changed. Reload sources and retry.')
+  }
+  try { return await backendRequest<T>(path, init) }
+  finally { await clearCatalogCache() }
+}
+
 /** Backend-owned catalog registrations. Tokens are sent once and never cached. */
 export function useCatalogSources() {
   const inventory = useInventoryStore()
@@ -91,7 +104,7 @@ export function useCatalogSources() {
 
   async function createSource(input: CatalogSourceInput): Promise<GitSource> {
     const scope = getBackendScope()
-    const source = await backendRequest<CatalogSourceResponse>('/v1/catalog/sources', {
+    const source = await mutateSource<CatalogSourceResponse>('/v1/catalog/sources', {
       method: 'POST', body: JSON.stringify(input),
     })
     return remember(source, scope)
@@ -99,7 +112,7 @@ export function useCatalogSources() {
 
   async function connectDefault(kind: 'catalog' | 'bundles' = 'catalog'): Promise<GitSource> {
     const scope = getBackendScope()
-    const source = await backendRequest<CatalogSourceResponse>(`/v1/catalog/sources/default${kind === 'bundles' ? '?kind=bundles' : ''}`, { method: 'POST' })
+    const source = await mutateSource<CatalogSourceResponse>(`/v1/catalog/sources/default${kind === 'bundles' ? '?kind=bundles' : ''}`, { method: 'POST' })
     return remember(source, scope)
   }
 
@@ -108,7 +121,7 @@ export function useCatalogSources() {
     if (inventory.getSource(id)?.backend_url !== scope) throw new Error('Reload sources before refreshing this repository.')
     inventory.updateSourceHealth(id, { status: 'unknown' })
     try {
-      const result = await backendRequest<RefreshResult>(`/v1/catalog/sources/${encodeURIComponent(id)}/refresh`, { method: 'POST' })
+      const result = await mutateSource<RefreshResult>(`/v1/catalog/sources/${encodeURIComponent(id)}/refresh`, { method: 'POST' })
       assertSameBackend(scope)
       const source = inventory.getSource(id)
       if (source) source.repos.forEach((repo) => { repo.last_refreshed_at = result.finished_at })
@@ -132,14 +145,14 @@ export function useCatalogSources() {
 
   async function deleteSource(id: string): Promise<void> {
     const scope = getBackendScope()
-    await backendRequest<void>(`/v1/catalog/sources/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    await mutateSource<void>(`/v1/catalog/sources/${encodeURIComponent(id)}`, { method: 'DELETE' })
     assertSameBackend(scope)
     inventory.removeSource(id)
   }
 
   async function rotateToken(id: string, token: string): Promise<void> {
     const scope = getBackendScope()
-    const source = await backendRequest<CatalogSourceResponse>(`/v1/catalog/sources/${encodeURIComponent(id)}`, {
+    const source = await mutateSource<CatalogSourceResponse>(`/v1/catalog/sources/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify({ auth_kind: token ? 'pat' : 'none', token_ref: token || null }),
     })

@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import 'fake-indexeddb/auto'
 import CatalogList from '@/views/CatalogList.vue'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import catalogEn from '@/locales/en/catalog.json'
 import commonEn from '@/locales/en/common.json'
@@ -45,9 +46,10 @@ function makeRouter() {
   })
 }
 
-async function mountList(seedSource = true) {
+async function mountList(seedSource = true, backendHost) {
   const pinia = createPinia()
   setActivePinia(pinia)
+  if (backendHost) useBackendApiStore().addHost(backendHost)
   const inv = useInventoryStore()
   if (seedSource) inv.addSource({ id: 'src-a', provider: 'gitlab', base_url: 'https://gl.example', auth: { kind: 'none' }, repos: [] })
 
@@ -86,6 +88,27 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
   })
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('reloads and clears private catalog list when backend authentication changes', async () => {
+    const wrapper = await mountList()
+    expect(wrapper.find('[data-testid="catalog-grid"]').exists()).toBe(true)
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
+    useBackendApiStore().addHost({ url: 'https://other.example', token: 'different-identity' })
+    await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('backend API token'))
+    expect(wrapper.find('[data-testid="catalog-grid"]').exists()).toBe(false)
+  })
+
+  it('waits for the complete backend edit before sending its new credential', async () => {
+    await mountList(true, { url: 'https://first.example', token: 'old-credential' })
+    globalThis.fetch.mockClear()
+    const backend = useBackendApiStore()
+    backend.updateHost(backend.activeHost.id, { url: 'https://second.example', token: 'new-credential' })
+    await flushPromises()
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(globalThis.fetch.mock.calls[0][0]).toContain('https://second.example/')
+    expect(globalThis.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer new-credential')
   })
 
   it('renders all fetched entries and fetches the full set once (no per-filter refetch)', async () => {

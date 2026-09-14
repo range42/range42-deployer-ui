@@ -1,11 +1,12 @@
 <script setup>
 import { randomId } from '@/services/randomId'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useCatalog, applyClientFilters } from '@/composables/useCatalog'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProjectStore } from '@/stores/projectStore'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
@@ -19,6 +20,7 @@ const router = useRouter()
 const route = useRoute()
 const inv = useInventoryStore()
 const projects = useProjectStore()
+const backend = useBackendApiStore()
 const catalog = useCatalog()
 // Expose composable refs as top-level template bindings for clean unwrap.
 const entries = catalog.entries
@@ -128,6 +130,12 @@ function clearFilters() {
 async function refresh() {
   await catalog.listEntries({ limit: 500 })
 }
+
+watch(() => [backend.url, backend.token], () => {
+  handoff.value = null
+  addition.value = null
+  void refresh()
+})
 
 onMounted(async () => {
   await ensureNamespaces(['catalog', 'common', 'sources'])

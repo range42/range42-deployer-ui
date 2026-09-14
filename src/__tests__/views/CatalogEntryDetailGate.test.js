@@ -6,6 +6,7 @@ import { createI18n } from 'vue-i18n'
 import 'fake-indexeddb/auto'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogEntryDetail from '@/views/CatalogEntryDetail.vue'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import catalogEn from '@/locales/en/catalog.json'
 import commonEn from '@/locales/en/common.json'
@@ -82,6 +83,16 @@ describe('CatalogEntryDetail — customize gating by write access', () => {
   })
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('reloads and clears private catalog detail when backend authentication changes', async () => {
+    const wrapper = await mountDetail({ writable: false })
+    expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(true)
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
+    useBackendApiStore().addHost({ url: 'https://other.example', token: 'different-identity' })
+    await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('backend API token'))
+    expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(false)
   })
 
   it('allows customizing a read-only original through a separate destination review', async () => {

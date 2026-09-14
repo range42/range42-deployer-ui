@@ -21,6 +21,7 @@ import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 
 import { useCatalog } from '@/composables/useCatalog'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import { ensureNamespaces } from '@/i18n'
@@ -29,6 +30,7 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const catalog = useCatalog()
+const backend = useBackendApiStore()
 
 const entry = ref(null)
 const loading = ref(false)
@@ -141,7 +143,7 @@ async function load() {
   }
 }
 let loadGeneration = 0
-watch([sourceParam, entryParam], () => load())
+watch([sourceParam, entryParam, () => backend.url, () => backend.token], () => load())
 onBeforeUnmount(() => { loadGeneration += 1 })
 
 onMounted(async () => {

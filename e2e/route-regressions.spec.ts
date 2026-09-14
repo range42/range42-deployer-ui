@@ -67,17 +67,18 @@ test('deployment loading, empty, terminal filtering and keyboard navigation are 
   expect(api.state.writes).toEqual([])
 })
 
-test('cached catalog entries keep a visible expired-auth warning and retry', async ({ page }) => {
+test('expired authentication hides cached catalog entries and keeps a visible warning and retry', async ({ page }) => {
   const api = await routeApi(page)
   await page.goto('/catalog')
   await expect(page.getByTestId('catalog-grid')).toBeVisible()
   api.state.status = 401
   await page.reload()
-  await expect(page.getByTestId('catalog-grid')).toBeVisible()
   await expect(page.getByTestId('catalog-error')).toContainText('backend API token')
+  await expect(page.getByTestId('catalog-grid')).toHaveCount(0)
   api.state.status = 200
   await page.getByTestId('catalog-error').getByRole('button', { name: 'Retry' }).click()
   await expect(page.getByTestId('catalog-error')).toHaveCount(0)
+  await expect(page.getByTestId('catalog-grid')).toBeVisible()
   expect(api.state.writes).toEqual([])
 })
 
