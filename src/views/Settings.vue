@@ -476,8 +476,8 @@ const clearAllData = async () => {
             <span class="badge badge-warning" data-testid="retention-inactive">Not enforced</span>
           </div>
           <p class="text-sm text-base-content/80 mb-3">
-            These values are stored only. The backend does not automatically expire or delete
-            snapshots. Manage existing snapshots manually.
+            These preferences select completed snapshot sets for retention review in the deployment's Snapshot sets panel.
+            The backend does not automatically expire or delete snapshots. Review and confirm each deletion there.
           </p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
             <fieldset class="fieldset">

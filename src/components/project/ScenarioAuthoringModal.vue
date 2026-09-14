@@ -7,6 +7,8 @@ import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
 import ScenarioReplicationPanel from '@/components/project/ScenarioReplicationPanel.vue'
 import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
+import SdnInventoryPicker from '@/components/project/SdnInventoryPicker.vue'
+import { getBackendScope } from '@/services/backendApi'
 import { applyReplicatedAllocation, prepareReplicatedAllocation } from '@/services/scenarioAllocation'
 import CatalogRoleAttachmentPicker from '@/components/project/CatalogRoleAttachmentPicker.vue'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
@@ -39,6 +41,20 @@ const allocationPlan = computed(() => {
   catch (reason) { return { error: reason.message || String(reason) } }
 })
 const playbookHint = 'Ansible playbook — use hosts: "{{ global_vm_ssh_name }}"'
+const reusableNetworks = computed(() => (draft.value?.networks || []).filter(network => !draft.value.replication || draft.value.replication.network_scopes[network.id] === 'shared'))
+const inventoryHostId = computed(() => draft.value?.allocation?.backend_url === getBackendScope() ? draft.value.allocation.target_host_id : '')
+
+function applySdnSettings(settings) {
+  preview.value = null
+  const network = reusableNetworks.value.find(row => row.id === settings.network_id)
+  if (settings.backend_url !== getBackendScope() || !network || (inventoryHostId.value && settings.host_id !== inventoryHostId.value)) {
+    error.value = 'SDN selection no longer matches this scenario or backend. Refresh inventory and review again.'
+    return
+  }
+  draft.value.zone = settings.zone
+  Object.assign(network, { vnet: settings.vnet, subnet: settings.subnet, gateway: settings.gateway, snat: settings.snat })
+  error.value = ''
+}
 
 watch(() => props.open, async open => {
   focusReady.value = false
@@ -202,6 +218,7 @@ function applyReview() {
             <p v-if="draft.network_mode === 'sdn'" class="text-sm text-base-content/70 mb-4">Uses the current Hyde SDN bootstrap bundle with a Simple zone. Outbound NAT is explicit per subnet. Backend preflight checks the installed bundle and target network conflicts.</p>
 
             <ScenarioReplicationPanel v-model="draft.replication" :scenario="draft" :project-id="project.id" :nodes="nodes" :edges="edges" />
+            <SdnInventoryPicker v-if="draft.network_mode === 'sdn'" :networks="reusableNetworks" :initial-host-id="inventoryHostId" @selected="applySdnSettings" />
 
             <h3 class="font-semibold mb-2">Source networks</h3>
             <p v-if="!draft.networks.length" class="text-sm text-warning">No network nodes found. Add a network segment to the canvas.</p>

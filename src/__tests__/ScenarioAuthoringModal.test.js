@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { assetFromBytes } from '@/services/projectFiles'
 import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
 import fixture from './fixtures/catalogRoleNtp.json'
@@ -8,6 +10,7 @@ import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.
 
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn() }))
 enableAutoUnmount(afterEach)
+beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()) })
 const nodes = [{ id: 'vm', type: 'vm', data: { config: { name: 'guest' } } },
   { id: 'net', type: 'network-segment', data: { config: {} } }]
 const edges = [{ source: 'vm', target: 'net' }]
@@ -16,10 +19,41 @@ function modal(overrides = {}) {
     id: 'local-project', name: 'Demo', files: {}, scenario: { label: 'demo', network_mode: 'sdn', zone: 'r42lab',
       networks: [{ id: 'net', vnet: 'r42net1', subnet: '10.42.1.0/24', gateway: '10.42.1.1', snat: true }],
       vms: [{ node_id: 'vm', vm_id: 3101, vm_name: 'guest', template_vm_id: 9232, network_id: 'net', ip: '10.42.1.10', ssh_user: 'alice' }], content: [] },
-    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, CatalogRoleAttachmentPicker: true, ScenarioAllocationPanel: true, FocusTrap: { template: '<div><slot /></div>' } } } })
+    }, ...overrides }, global: { stubs: { teleport: true, BundleLibraryModal: true, CatalogRoleAttachmentPicker: true, ScenarioAllocationPanel: true, SdnInventoryPicker: true, FocusTrap: { template: '<div><slot /></div>' } } } })
 }
 
 describe('scenario authoring review', () => {
+  it('copies explicitly reviewed SDN settings into the draft while preserving the project until file review', async () => {
+    setActivePinia(createPinia())
+    const backend = useBackendApiStore(); backend.addHost({ url: 'https://backend.test' })
+    const wrapper = modal(), project = wrapper.props('project')
+    const picker = wrapper.findComponent({ name: 'SdnInventoryPicker' })
+    await picker.vm.$emit('selected', {
+      host_id: 'host', backend_url: 'https://backend.test', zone: 'existing', network_id: 'net',
+      vnet: 'labnet', subnet: '10.42.1.0/24', gateway: '10.42.1.1', snat: false,
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="scenario-apply"]').exists()).toBe(false)
+    expect(project.scenario.zone).toBe('r42lab')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    expect(wrapper.emitted('generated')[0][0].scenario).toMatchObject({ zone: 'existing', networks: [{ id: 'net', vnet: 'labnet', snat: false }] })
+  })
+
+  it('rejects SDN inventory from a different backend before changing the draft', async () => {
+    useBackendApiStore().addHost({ url: 'https://backend.test' })
+    const wrapper = modal()
+    wrapper.findComponent({ name: 'SdnInventoryPicker' }).vm.$emit('selected', {
+      host_id: 'host', backend_url: 'https://other.test', zone: 'wrong', network_id: 'net',
+      vnet: 'wrong', subnet: '10.42.1.0/24', gateway: '10.42.1.1', snat: false,
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('SDN selection no longer matches')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    expect(wrapper.emitted('generated')[0][0].scenario.zone).toBe('r42lab')
+  })
+
   it('reviews DNS and SSH preferences locally before emitting their manifest', async () => {
     const wrapper = modal(), project = wrapper.props('project')
     await wrapper.get('[data-testid="scenario-vm-ssh-user"]').setValue('operator')
