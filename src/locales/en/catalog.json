@@ -113,5 +113,6 @@
     "service": "Service",
     "effective_ports": "Host → container",
     "directory": "Guest directory"
-  }
+  },
+  "new_container": "New Compose workload"
 }

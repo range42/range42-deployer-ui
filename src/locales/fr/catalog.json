@@ -113,5 +113,6 @@
     "service": "Service",
     "effective_ports": "Hôte → conteneur",
     "directory": "Répertoire dans la VM"
-  }
+  },
+  "new_container": "Nouvelle application Compose"
 }

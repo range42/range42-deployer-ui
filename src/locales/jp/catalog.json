@@ -113,5 +113,6 @@
     "service": "サービス",
     "effective_ports": "ホスト → コンテナ",
     "directory": "VM内のディレクトリ"
-  }
+  },
+  "new_container": "Compose ワークロードを作成"
 }

@@ -45,3 +45,9 @@ The adapter does not install Docker or build a Proxmox template. Unresolved buil
 For Compose environment entries such as `POSTGRES_PASSWORD: "${DB_PASSWORD}"`, the append dialog accepts a JSON mapping from the placeholder name to a backend vault variable, for example `{"DB_PASSWORD":"workload_password"}`. Only names and placeholders are copied to Git. Review adds missing `secret: true` variable declarations and refuses conflicts with non-secret variables or saved defaults. Existing declarations appear in Variables with a vault-managed hint; the UI does not accept secret-value overrides for Git storage.
 
 The operator must provide each value in the deployment workspace's `secrets/default_vault.yml`. The generated playbook loads that vault, checks required values, and supplies them only to the Compose command environment with `no_log: true`. Missing values stop execution before Docker mutation. The Compose source and runtime YAML keep placeholders; neither receives resolved secret values. Reserved process-control environment names and undeclared/unused bindings are rejected. Vault rotation takes effect when the reviewed Configure operation runs again; running containers are not changed automatically.
+
+## Author a Compose catalog item
+
+Use **New Compose workload** in Catalog. Enter its name, description, Compose YAML and any complete local dependencies as a JSON object of relative file paths to text contents. Preview uses the same supported Compose contract as Add to project. Files are created under `03_container_layer/docker/admin/<name>` with native metadata, README and Compose source.
+
+Secret placeholders can be declared by name; values are never entered here. When adding the item to a project, bind its placeholders to backend vault variables. The file preview is invalidated on every edit. Publication uses the existing create-only review, branch, PR/MR and multi-destination flow.

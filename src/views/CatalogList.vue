@@ -13,6 +13,7 @@ import CatalogTile from '@/components/ui/CatalogTile.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import NewRoleModal from '@/components/catalog/NewRoleModal.vue'
 import NewMachineModal from '@/components/catalog/NewMachineModal.vue'
+import NewContainerModal from '@/components/catalog/NewContainerModal.vue'
 import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { ensureNamespaces } from '@/i18n'
 
@@ -36,6 +37,7 @@ const tagInput = ref('')
 const searchQuery = ref('')
 const newRoleOpen = ref(false)
 const newMachineOpen = ref(false)
+const newContainerOpen = ref(false)
 const draftKind = ref('role')
 const rolePublisherOpen = ref(false)
 const roleDraft = ref(null)
@@ -72,16 +74,25 @@ function openNewMachine() {
   newMachineOpen.value = true
 }
 
+function openNewContainer() {
+  draftKind.value = 'container'
+  roleDraftId.value = `catalog-container-${randomId()}`
+  roleDraft.value = null
+  newContainerOpen.value = true
+}
+
 function publishRole(draft) {
   roleDraft.value = draft
   newRoleOpen.value = false
   newMachineOpen.value = false
+  newContainerOpen.value = false
   rolePublisherOpen.value = true
 }
 
 function closeRolePublisher() {
   rolePublisherOpen.value = false
-  if (draftKind.value === 'machine') newMachineOpen.value = true
+  if (draftKind.value === 'container') newContainerOpen.value = true
+  else if (draftKind.value === 'machine') newMachineOpen.value = true
   else newRoleOpen.value = true
 }
 
@@ -192,6 +203,7 @@ function openFork(entry) {
       </div>
       <div class="flex flex-wrap gap-2">
         <button type="button" class="btn btn-outline btn-sm" data-testid="new-catalog-role" @click="openNewRole">{{ t('catalog.new_role') }}</button>
+        <button type="button" class="btn btn-outline btn-sm" data-testid="new-catalog-container" @click="openNewContainer">{{ t('catalog.new_container') }}</button>
         <button type="button" class="btn btn-primary btn-sm" data-testid="new-catalog-machine" @click="openNewMachine">{{ t('catalog.new_machine') }}</button>
       </div>
     </header>
@@ -203,13 +215,14 @@ function openFork(entry) {
     <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
 
     <NewRoleModal :key="roleDraftId" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
+    <NewContainerModal :key="roleDraftId" :open="newContainerOpen" @close="newContainerOpen = false" @prepared="publishRole" />
     <NewMachineModal :key="roleDraftId" :open="newMachineOpen" @close="newMachineOpen = false" @prepared="publishRole" />
     <PublishTargetsModal
       v-if="roleDraft"
       :open="rolePublisherOpen"
       :project-id="roleDraftId"
       :files="roleDraft.files"
-      :message="`Add ${draftKind === 'machine' ? 'VM blueprint' : 'Ansible role'} ${roleDraft.name}`"
+      :message="`Add ${draftKind === 'machine' ? 'VM blueprint' : draftKind === 'container' ? 'Compose workload' : 'Ansible role'} ${roleDraft.name}`"
       :create-only="true"
       :component-path="roleDraft.path"
       @close="closeRolePublisher"

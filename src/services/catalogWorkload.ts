@@ -25,7 +25,7 @@ function literalPath(path: string): void {
   validateFilePath(path)
   if (!/^[A-Za-z0-9_.\-/]+$/.test(path)) throw new Error('Workload paths must be literal portable file paths without interpolation')
 }
-function secretFree(path: string, content: string): void {
+export function assertWorkloadFileSafe(path: string, content: string): void {
   const literalSecret = content.split(/\r?\n/).some(line => /^\s*["']?(?:password|passwd|token|api[_-]?key|secret|private[_-]?key)["']?\s*[:=]\s*\S/i.test(line)
     && !/:\s*["']?\$\{[A-Za-z_][A-Za-z0-9_]*\}["']?\s*$/.test(line))
   if (/(?:^|\/)\.env(?:\.|$)/i.test(path) || /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content)
@@ -57,7 +57,7 @@ async function loadTree(owner: string, repo: string, root: string, sha: string, 
     const relative = entry.path.slice(root.length + 1)
     // The initial adapter cannot inspect arbitrary binary configuration for credentials.
     if (typeof file.content !== 'string') throw new Error(`Binary workload file needs separate review: ${relative}`)
-    secretFree(relative, file.content)
+    assertWorkloadFileSafe(relative, file.content)
     files[relative] = file.content
     modes[relative] = entry.mode === '100755' ? '0755' : '0644'
     validateFileMap(files)
