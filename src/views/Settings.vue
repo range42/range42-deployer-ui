@@ -11,6 +11,7 @@ import { getGitHubProvider } from '../services/git/github'
 import { useConfirmDialog } from '../composables/useConfirmDialog'
 import { useToast } from '../composables/useToast'
 import BackendReadinessDetails from '../components/BackendReadinessDetails.vue'
+import BackendAccessPanel from '../components/BackendAccessPanel.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -395,6 +396,8 @@ const clearAllData = async () => {
             Register as many as you need; a project picks one. Proxmox credentials and routing
             are configured <em>on the backend</em>, not here.
           </p>
+
+          <BackendAccessPanel />
 
           <!-- Registered hosts -->
           <ul v-if="backendHosts.length" class="divide-y divide-base-200 mb-4" data-testid="backend-host-list">
