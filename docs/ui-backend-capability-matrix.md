@@ -89,12 +89,12 @@ describes controlled-service coverage; shared installation is separate evidence.
   refused. The backend/credential context remains fixed through lookup, action
   and task polling; the returned UPID selects the task's node. Missing task IDs
   remain unconfirmed instead of reporting success.
-- **F4:** legacy imported-VM configuration writes and automatic tag writes are
-  blocked. The review preserves desired edits and can refresh actual values for
-  the selected guest. This is a remaining **backend API** capability gap:
-  a registered-host configuration-write endpoint with verified task completion
-  and readback is required. Pinned deployment Configure is a separate supported
-  workflow; its existence does not make the old imported-VM setters safe.
+- **F4:** legacy setters and automatic tag writes stay blocked. The new reviewed
+  v1 flow can apply five fields to an explicitly registered, unmanaged guest.
+  It checks fresh configuration and target digests, verifies task completion and
+  readback, and separates pending configuration from current observations.
+  See [configuration behavior and limits](proxmox-config-status.md). Shared
+  write acceptance is separate from controlled-service validation.
 - **F5:** readiness now reports Git connectivity as `not_checked`, with a separate
   registered-source count. It does not load source credentials or contact Git.
   Required database/workspace/Proxmox failures still prevent backend readiness.
@@ -106,7 +106,8 @@ describes controlled-service coverage; shared installation is separate evidence.
   reopening the project.
 - Deployment lists show loading explicitly, classify partial/unknown results as
   terminal history, and use keyboard-accessible links without nested controls.
-  Cached catalog entries retain visible authentication failures and retry.
+  Catalog authentication failures hide cached entries and retain visible retry;
+  offline fallback is limited to the unchanged backend/credential and five minutes.
   Home's create dialog has labelled fields, keyboard cancellation and restored
   focus, and the reviewed routes fit desktop and mobile widths.
 

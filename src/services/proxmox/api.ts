@@ -2,13 +2,14 @@
  * Proxmox API Client
  * 
  * Unified API client for all Proxmox backend interactions.
- * All requests go through the backend-api, which then uses Ansible
- * to communicate with Proxmox.
+ * Requests go through the backend-api. Registered-host v1 operations call
+ * Proxmox directly; legacy v0 adapters use the global Ansible inventory.
  */
 
 import { getActivePinia } from 'pinia'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { CONFIG_WRITE_UNAVAILABLE } from './observedConfig'
+import { validateConfigChanges, validateConfigReview, validateConfigResult, type VmConfigReview } from './configReview'
 
 import type {
   ApiResponse,
@@ -367,13 +368,14 @@ async function vmDelete(
 }
 
 /** Poll task status for an async Proxmox operation (identified by UPID). */
-export async function getTaskStatus(upid: string, target: ProxmoxTarget = {}): Promise<TaskStatus> {
+export async function getTaskStatus(upid: string, target: ProxmoxTarget = {}, expectedTargetDigest?: string): Promise<TaskStatus> {
   const node = /^UPID:([A-Za-z0-9][A-Za-z0-9.-]*):.+/.exec(upid)?.[1]
   if (!node || (target.node && target.node !== node)) {
     throw new ProxmoxApiError(0, 'Invalid task UPID or mismatched selected node.')
   }
+  if (expectedTargetDigest !== undefined && !/^[a-f0-9]{64}$/.test(expectedTargetDigest)) throw new ProxmoxApiError(0, 'Invalid task target fingerprint.')
   return hostRequest<TaskStatus>({ ...target, node },
-    `/tasks/${encodeURIComponent(upid)}/status`,
+    `/tasks/${encodeURIComponent(upid)}/status${expectedTargetDigest ? `?expected_target_digest=${expectedTargetDigest}` : ''}`,
     { method: 'GET' },
   )
 }
@@ -403,6 +405,28 @@ export const vm = {
     target: ProxmoxTarget = {},
   ): Promise<Record<string, unknown>> {
     return getHostVmConfig(vmId, vmtype, target)
+  },
+
+  /** Review only the editable fields, with current and pending values kept separate. */
+  async getConfigReview(vmId: number, vmtype: 'qemu' | 'lxc', target: ProxmoxTarget) {
+    if (!Number.isSafeInteger(vmId) || vmId < 1 || !['qemu', 'lxc'].includes(vmtype)) throw new Error('Invalid configuration target.')
+    const context = backendContext()
+    const host = await resolveHost(target, context)
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${vmId}/config/review?vmtype=${vmtype}`, { method: 'GET' }, context)
+    return validateConfigReview(raw, { host_id: host.id, node: host.node_name, vmid: vmId, vmtype })
+  },
+
+  /** One conditional write to the reviewed guest; no legacy inventory fallback. */
+  async updateConfig(review: VmConfigReview, changes: unknown, assertReviewCurrent: () => void = () => {}) {
+    const expected = validateConfigReview(review, review)
+    const patch = validateConfigChanges(changes)
+    assertReviewCurrent()
+    const context = backendContext()
+    const host = await resolveHost({ hostId: expected.host_id, node: expected.node }, context)
+    assertReviewCurrent()
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/config?vmtype=${expected.vmtype}`,
+      { method: 'PUT', body: JSON.stringify({ digest: expected.digest, changes: patch }) }, context)
+    return validateConfigResult(raw, expected)
   },
 
   /**

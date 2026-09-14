@@ -31,7 +31,11 @@ for (const width of [1280, 390]) {
       if (path.endsWith('/hosts')) await route.fulfill({ json: { offset: 0, total: 2, items: [
         { id: 'wrong', node_name: 'pve-a' }, { id: 'selected', node_name: 'pve-b' },
       ] } })
-      else if (path.endsWith('/config')) await route.fulfill({ json: { config: { name: 'From Proxmox', cores: 3, memory: 1536 } } })
+      else if (path.endsWith('/config/review')) await route.fulfill({ json: {
+        host_id: 'selected', node: 'pve-b', vmid: 42, vmtype: 'qemu', digest: 'a'.repeat(64), target_digest: 'c'.repeat(64),
+        current: { name: 'From Proxmox', cores: 3, memory: 1536, tags: '', description: '' },
+        configured: { name: 'From Proxmox', cores: 3, memory: 2048, tags: '', description: '' }, pending: ['memory'],
+      } })
       else await route.fulfill({ json: { items: [] } })
     })
     await page.goto('/project/config-review')
@@ -43,9 +47,10 @@ for (const width of [1280, 390]) {
     await expect(dialog).toContainText('selected host')
     await dialog.getByRole('button', { name: 'Refresh actual configuration' }).click()
     await expect(dialog.getByRole('status')).toContainText('Actual configuration refreshed')
+    await expect(dialog.getByRole('status')).toContainText('Pending in Proxmox: memory')
     await expect(dialog).toContainText('From Proxmox')
     await expect(dialog).toContainText('Wanted')
-    expect(reads).toContain('/v1/proxmox/hosts/selected/vms/42/config')
+    expect(reads).toContain('/v1/proxmox/hosts/selected/vms/42/config/review')
     expect(reads.some(path => path.includes('/wrong/'))).toBe(false)
     expect(writes).toEqual([])
     expect(await dialog.locator('.modal-box').evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)

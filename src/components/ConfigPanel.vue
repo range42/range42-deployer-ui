@@ -27,7 +27,6 @@ import { getBaseUrl } from '@/services/proxmox/api'
 import { proxmoxApi } from '@/services/proxmox'
 import { proxmoxCache } from '@/services/proxmox/cache'
 import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
-import { CONFIG_WRITE_UNAVAILABLE } from '@/services/proxmox/observedConfig'
 import { usePendingChanges } from '@/composables/usePendingChanges'
 import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
 import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
@@ -460,7 +459,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           />
         </FormSection>
 
-        <p v-if="node.data.deployed" class="text-sm text-base-content/70 mb-3">{{ CONFIG_WRITE_UNAVAILABLE }}</p>
+        <p v-if="node.data.deployed" class="text-sm text-base-content/70 mb-3">Desired edits stay local until you review fresh configuration and apply to the selected host.</p>
         <!-- Tag Editor (VM and LXC) -->
         <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2">
           <label class="text-xs font-medium uppercase tracking-wide opacity-60">

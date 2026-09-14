@@ -1,4 +1,4 @@
-export const CONFIG_WRITE_UNAVAILABLE = 'Apply is unavailable until the API supports configuration writes bound to the selected host. Your desired edits are preserved.'
+export const CONFIG_WRITE_UNAVAILABLE = 'This legacy configuration setter is unavailable. Use Review changes in the selected guest configuration dialog. Your desired edits are preserved.'
 
 /** Only complete observations can replace the five editable fields. */
 export function observedConfig(raw: Record<string, unknown>, vmtype: 'qemu' | 'lxc') {

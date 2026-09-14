@@ -1,40 +1,52 @@
 # Infrastructure configuration and target binding
 
-The UI preserves desired VM/LXC configuration edits and shows them as pending.
-**Apply is unavailable** until the API provides configuration writes bound to a
-registered Proxmox host. Tag edits are also local desired edits; they do not
-autosync. The five legacy configuration setters refuse before any HTTP request.
+Imported VM/LXC configuration has an explicit **Review changes → Apply Changes**
+flow for name, description, CPU cores, memory and tags. Editing these values or
+refreshing actual configuration preserves local desired edits. The five legacy
+v0 setters remain blocked; tag edits never autosync.
 
-The existing `/v0/admin/proxmox/vms/vm_id/config/*` handlers resolve the backend's
-global Ansible inventory. Their node argument does not bind the request to a
-registered host ID/API URL. The current authenticated v1 interface has a guest
-configuration read endpoint, but no equivalent host-bound configuration write.
-Enabling Apply requires that API contract plus permission checks, accepted-task
-tracking and actual readback. HTTP acceptance alone must not mark desired values
-as actual values. Other legacy network/firewall/create adapters are outside this
-bounded change; this is not a claim that every older operation is host-bound.
+Review reads fresh current and configured values from the selected registered
+host through `GET /v1/proxmox/hosts/{host}/vms/{vmid}/config/review`. The comparison
+shows only the displayed desired changes that differ from configured values;
+already pending values are not submitted twice. Apply sends one partial patch
+to `PUT .../config` with the opaque review digest. A changed backend, credential,
+selected guest, desired edit or closed dialog invalidates the review.
 
-“Refresh actual configuration” reads the selected VMID/type/node through v1 and
-updates only observed name, cores, memory, tags and description. It preserves
-desired edits. Missing target, incomplete response, backend/credential change or
-late response after closing/switching the dialog leaves observations unchanged.
+The backend checks the original host registration and Proxmox configuration
+revision, permissions, protection policy and ownership before dispatch. Templates,
+locked guests, protected VMIDs and deployment-managed guests are refused. See the
+[API contract](https://github.com/range42/range42-backend-api/blob/feat/shared-sdn-workflow-20260910/docs/imported-vm-configuration.md)
+for limits and errors. This workflow does not replace pinned deployment Configure.
 
-V1 lifecycle, config reads, snapshots and storage operations resolve fresh host
-registrations. They require a complete listing (currently at most the endpoint's
-100-row first page), an exact intended node and an unambiguous match. An explicit
-host ID can disambiguate registrations with the same node name; current callers
-without such a selector refuse that ambiguity. Without an explicit node, the
-matching saved backend's node is used, or a sole registration if no default
-exists. Missing/duplicate/partial registrations refuse rather than select row one.
+A synchronous result requires matching fresh readback. An asynchronous result
+requires the original host's task to stop successfully, then matching fresh
+configuration. Task polling and readback retain the review's target fingerprint;
+re-registering the host cannot attribute an old task to a replacement server.
+Lost responses, failures, changed targets or mismatched values remain unconfirmed
+and require a fresh review before retrying. No start, stop or restart is sent.
 
-Lookup and action retain the same backend URL and bearer context. Task polling
-uses the node in the UPID and the original backend/credential guard; switching
-context or omitting the task ID cannot confirm success. A request already accepted
-by Proxmox may continue after a context switch: the UI reports it as unconfirmed,
-and operators should inspect the original backend before retrying. These checks
-do not prevent external changes to Proxmox or grant deployment ownership.
+**Current** means Proxmox's current configuration, not measured guest state.
+**Configured** includes pending changes. CPU/memory may still require restart,
+hotplug or guest cooperation. Only a complete current observation replaces the
+local actual snapshot; configured resources never become optimistically actual.
 
-Validation covers selected/ambiguous/missing targets, registry changes, backend
-and token switches, task polling, refused legacy setters, real config readback,
-desired-tag preservation, failures and late responses. No live Proxmox writes
-were used to validate this change.
+“Refresh actual configuration” remains available independently. It reads the
+exact VMID/type/node and explicit host ID when supplied, updates only observed
+name, cores, memory, tags and description, and preserves desired edits. Missing
+targets, incomplete responses and late reads leave observations unchanged.
+
+V1 lifecycle, configuration, snapshots and storage resolve fresh host registrations.
+They require a complete listing (currently at most the endpoint's 100-row first
+page), an exact intended node and an unambiguous match. An explicit host ID can
+disambiguate duplicate node names; callers without one refuse ambiguity. Lookup
+and action retain the same backend URL and bearer context. These checks grant
+no additional permissions and do not prevent external Proxmox writers.
+
+Other legacy network/firewall/create adapters remain separate. This change does
+not establish target binding for every older operation or implement scenario
+snapshot/reset recovery, disk/NIC editing or template creation.
+
+Validation includes real client HTTP contracts, reactive Vue reviews, stale and
+late responses, queued resources and production-browser desktop/mobile flows
+with controlled services and accessibility checks. Live configuration writes
+require separate acceptance; local validation changes no shared guests.
