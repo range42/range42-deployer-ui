@@ -4,13 +4,15 @@ Run on the supported Node version after `npm ci`:
 
 ```sh
 npm run typecheck
+npm run typecheck:migrated
 npm run test:typecheck
 ```
 
 `typecheck` runs the pinned `vue-tsc` against `tsconfig.json` without emitting
 files. This follows the [Vue TypeScript tooling guidance](https://vuejs.org/guide/typescript/overview):
 Vite transpiles application code; the separate checker handles TypeScript and
-Vue single-file components. CI runs both commands before its production build.
+Vue single-file components. CI runs the migrated-source gate (which includes the application check) and
+compiler regressions before its production build.
 
 ## Coverage
 
@@ -22,7 +24,9 @@ Vue single-file components. CI runs both commands before its production build.
   exempt from unknown-attribute checks.
 - Existing JavaScript modules and JavaScript-script Vue components participate
   in module resolution and inferred public types through `allowJs: true`.
-  Their bodies/templates are **not checked** with `checkJs: false`. This is not
+  Their bodies/templates are **not checked by default** with `checkJs: false`.
+  The files listed in `typecheck-migrated.json` explicitly opt in through
+  `@ts-check`; their JavaScript bodies and Vue templates are checked. This is not
   a claim that all JavaScript or all Vue components have strict type safety.
   See the [TypeScript `checkJs` contract](https://www.typescriptlang.org/tsconfig/checkJs.html).
 - Unit/browser fixtures, tooling configuration and dependency declarations are
@@ -52,3 +56,34 @@ contract tests, 92 affected unit tests across 10 files, and scoped ESLint.
 The full unit suite and production build are separate integration gates; they
 were not repeated for this type-only checkpoint. Enabling strict JavaScript
 checking remains a follow-up and is not represented by this green result.
+
+## Incremental JavaScript coverage
+
+`npm run typecheck:migrated` first verifies that every entry in
+`typecheck-migrated.json` remains an implementation JavaScript module/SFC with
+a leading `@ts-check` and no unchecked override. It then runs the same strict
+application compiler. The regression includes real checked JavaScript and
+checked JavaScript-script Vue fixtures whose deliberate type errors must fail.
+
+The first migrated files are the Git-opening dialog and local project store.
+Their refs, reviewed Git connection and project inputs have explicit JSDoc
+types. Blank projects now carry an empty attachment collection. File import
+refuses a non-text FileReader result before changing the existing project list.
+
+A separate **read-only** `checkJs: true` inventory on 14 September 2026 found
+1,693 diagnostics across 95 files: 1,330 in Vue, 359 in JavaScript and four in a
+concurrently prepared TypeScript snapshot service. The largest areas were the
+project editor (203), scenario authoring modal (120), concrete scenario compiler
+(97), replication panel (94) and deployment detail (87). These are an initial
+inventory, not a current remaining-error count after later edits. Raw local
+evidence: `/tmp/r42-ui-checkjs-inventory.json` and its `.log` companion.
+
+The small migrated-file gate does not resolve that full inventory. Remaining
+JavaScript/Vue domains require additional typed boundaries and source-specific
+regressions before their annotations are enabled; no blanket suppressions are
+used to label them complete.
+
+This first JavaScript slice passed `typecheck:migrated`, four compiler/gate
+regressions, 51 affected tests across five files, and scoped ESLint. The normal
+strict gate stayed enabled; the remaining JavaScript inventory was not hidden
+or marked resolved.

@@ -147,6 +147,9 @@ npm run dev
 # Check application Vue/TypeScript before building
 npm run typecheck
 
+# Check explicitly migrated JavaScript modules and Vue scripts
+npm run typecheck:migrated
+
 # Verify checker coverage and its JavaScript boundary
 npm run test:typecheck
 
@@ -160,7 +163,8 @@ npm run preview
 The application checker includes every implementation `.ts`, `.tsx` and `.vue`
 file under `src`, with strict TypeScript and template checks for TypeScript SFCs.
 Existing JavaScript is included for module inference (`allowJs: true`) but is not
-checked (`checkJs: false`), including JavaScript-script Vue components. Tests and
+checked by default (`checkJs: false`), including JavaScript-script Vue components.
+The explicit `typecheck-migrated.json` list opts reviewed files into `@ts-check`. Tests and
 tooling are outside this application configuration. See [typecheck coverage](docs/typechecking.md)
 for the exact boundary; a successful Vite build is not a typecheck.
 

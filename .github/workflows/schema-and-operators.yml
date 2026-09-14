@@ -65,7 +65,7 @@ jobs:
 
       - name: Typecheck all application Vue and TypeScript sources
         working-directory: range42-deployer-ui
-        run: npm run typecheck && npm run test:typecheck
+        run: npm run typecheck:migrated && npm run test:typecheck
 
       - name: Build (Vite production build)
         working-directory: range42-deployer-ui

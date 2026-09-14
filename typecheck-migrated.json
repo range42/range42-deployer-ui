@@ -1,0 +1,4 @@
+[
+  "src/stores/projectStore.js",
+  "src/components/OpenProjectFromGitModal.vue"
+]

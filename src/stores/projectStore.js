@@ -1,3 +1,4 @@
+// @ts-check
 import { validateAuthoredFiles } from '@/services/projectFiles'
 
 import { ref, computed } from 'vue'
@@ -27,6 +28,7 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  /** @param {string} name */
   const createProject = (name) => {
     const project = {
       id: `project_${Date.now()}`,
@@ -34,7 +36,8 @@ export const useProjectStore = defineStore('projects', () => {
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
       nodes: [],
-      edges: []
+      edges: [],
+      attachments: []
     }
 
     projects.value.push(project)
@@ -42,15 +45,21 @@ export const useProjectStore = defineStore('projects', () => {
     return project
   }
 
+  /** @param {string | undefined} id */
   const getProject = (id) => {
     return projects.value.find(p => p.id === id)
   }
 
+  /** @param {import('@/types/project').ProjectDraft[]} nextProjects */
   function persistCandidate(nextProjects) {
     try { localStorage.setItem('range42_projects', JSON.stringify(nextProjects)) }
     catch { throw new Error('Browser storage is full or unavailable. Remove unused projects or use smaller files, then try again. No new files were saved.') }
   }
 
+  /**
+   * @param {string} id
+   * @param {Partial<import('@/types/project').ProjectDraft>} updates
+   */
   const updateProject = (id, updates) => {
     const index = projects.value.findIndex(p => p.id === id)
     if (index !== -1) {
@@ -61,6 +70,7 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  /** @param {string} id */
   const deleteProject = (id) => {
     const index = projects.value.findIndex(p => p.id === id)
     if (index !== -1) {
@@ -69,6 +79,7 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  /** @param {string} id */
   const exportProject = (id) => {
     const project = getProject(id)
     if (!project) return
@@ -132,9 +143,10 @@ export const useProjectStore = defineStore('projects', () => {
   const importProjectFromFile = async (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = () => {
         try {
-          const project = importProject(e.target.result)
+          if (typeof reader.result !== 'string') throw new Error('Project file did not contain text')
+          const project = importProject(reader.result)
           resolve(project)
         } catch (error) {
           reject(error)

@@ -1,4 +1,5 @@
 <script setup>
+// @ts-check
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
@@ -21,13 +22,16 @@ const { loadSources } = useCatalogSources()
 const repository = ref({ source_id: '', repo_owner: '', repo_name: '', base_branch: 'main', subdir: '' })
 const password = ref('')
 const forkOwner = ref('')
+/** @type {import('vue').Ref<import('@/services/gitProjectOpen').GitProjectPreview | null>} */
 const preview = ref(null)
 const filesOnly = ref(false)
 const busy = ref(false)
 const error = ref('')
+/** @type {import('vue').Ref<HTMLElement | null>} */
 const heading = ref(null)
 const focusReady = ref(false)
 let request = 0
+/** @type {{ identity: string; source_id: string; token: string | null } | null} */
 let reviewedConnection = null
 const source = computed(() => inventory.sources.find(item => item.id === repository.value.source_id))
 const sourceIdentity = computed(() => JSON.stringify([source.value?.id, source.value?.provider, source.value?.base_url,
@@ -55,7 +59,7 @@ watch(() => props.open, async open => {
   busy.value = false
   if (!open) return
   await ensureNamespaces(['publishing', 'reopening'])
-  if (!inventory.sources.length) void Promise.resolve(loadSources()).catch(cause => { error.value = cause.message })
+  if (!inventory.sources.length) void Promise.resolve(loadSources()).catch(cause => { error.value = cause instanceof Error ? cause.message : String(cause) })
   await nextTick()
   if (props.open) { focusReady.value = true; heading.value?.focus() }
 }, { immediate: true })
@@ -75,6 +79,7 @@ async function review() {
     const destination = forkOwner.value.trim()
     if (destination && (!destination.split('/').every(part => /^[\w][\w.-]*$/.test(part))
       || (selected.provider !== 'gitlab' && destination.includes('/')))) throw new Error(t('publishing.invalid_repo'))
+    /** @type {import('@/composables/useProjectGitSync').ProjectGitBinding} */
     const binding = { source_id: selected.id, provider: selected.provider, base_url: selected.base_url,
       repo_owner: repository.value.repo_owner.trim(), repo_name: repository.value.repo_name.trim(), branch,
       branch_strategy: subdir ? 'shared_repo_subdir' : 'dedicated_repo', subdir, fork_policy: 'auto',
@@ -92,7 +97,7 @@ async function review() {
     filesOnly.value = false
     await nextTick()
     heading.value?.focus()
-  } catch (cause) { if (current === request) error.value = cause.message || String(cause) }
+  } catch (cause) { if (current === request) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (current === request) busy.value = false }
 }
 
@@ -109,13 +114,15 @@ function importReviewed() {
     const project = prepareGitProjectImport(preview.value, filesOnly.value ? 'files' : 'structured')
     const imported = projects.importProject(project, { generateNewId: false })
     emit('opened', imported)
-  } catch (cause) { error.value = cause.message || String(cause) }
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) }
 }
+/** @param {Pick<import('@/composables/useProjectGitSync').ProjectPublishTarget, 'source_id' | 'repo_owner' | 'repo_name' | 'base_branch' | 'subdir'>} value */
+function updateRepository(value) { Object.assign(repository.value, value) }
 function back() { preview.value = null; reviewedConnection = null; error.value = ''; filesOnly.value = false }
 </script>
 
 <template>
-  <FocusTrap v-if="open" :active="focusReady" :fallback-focus="() => heading" :escape-deactivates="false">
+  <FocusTrap v-if="open" :active="focusReady" fallback-focus="#open-git-title" :escape-deactivates="false">
     <div class="modal modal-open z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="open-git-title" @keydown.esc.prevent="emit('close')">
       <section class="modal-box w-full max-w-3xl max-h-[92vh] min-w-0 overflow-y-auto space-y-4">
         <header class="flex justify-between gap-3 items-start">
@@ -125,7 +132,7 @@ function back() { preview.value = null; reviewedConnection = null; error.value =
         <template v-if="!preview">
           <p class="text-sm">{{ t('reopening.hint') }}</p>
           <p v-if="!inventory.sources.length" class="text-sm">{{ t('publishing.no_sources') }} <a href="/sources" class="link">{{ t('publishing.manage_sources') }}</a></p>
-          <PublishRepositoryFields v-model="repository" :sources="inventory.sources" :disabled="busy" />
+          <PublishRepositoryFields :model-value="repository" @update:model-value="updateRepository" :sources="inventory.sources" :disabled="busy" />
           <label v-if="source" class="block">
             <span class="label text-sm">{{ t('publishing.credentials_title') }}</span>
             <span v-if="inventory.getToken(source.id)" class="text-success block text-sm">{{ t('publishing.credential_connected') }}</span>

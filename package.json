@@ -16,7 +16,8 @@
     "test:e2e:ui": "playwright test --ui",
     "bundle-schema": "bash tools/bundle-refs.sh",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json",
-    "test:typecheck": "node --test tools/typecheck-contract.test.mjs"
+    "test:typecheck": "node --test tools/typecheck-contract.test.mjs",
+    "typecheck:migrated": "node tools/check-migrated-types.mjs && npm run typecheck"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.0",
