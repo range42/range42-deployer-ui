@@ -45,19 +45,29 @@ function normalizeSource(source: CatalogSourceResponse, scope: string): GitSourc
   }
 }
 
-function assertSameBackend(scope: string): void {
-  if (getBackendScope() !== scope) throw new Error('The selected backend changed. Reload sources and retry.')
+function sourceContext() {
+  const backend = useBackendApiStore()
+  const scope = getBackendScope(), token = backend.token, hostId = backend.activeHost?.id
+  const isCurrent = () => getBackendScope() === scope && backend.token === token && backend.activeHost?.id === hostId
+  return { scope, isCurrent, assertCurrent() {
+    if (!isCurrent()) throw new Error('The selected backend or credential changed. Reload sources before continuing.')
+  } }
 }
 
-async function mutateSource<T>(path: string, init: RequestInit): Promise<T> {
-  const backend = useBackendApiStore()
-  const scope = getBackendScope(), token = backend.token
+type SourceContext = ReturnType<typeof sourceContext>
+
+async function mutateSource<T>(context: SourceContext, path: string, init: RequestInit): Promise<T> {
+  context.assertCurrent()
   await clearCatalogCache()
-  if (scope !== getBackendScope() || token !== backend.token) {
-    throw new Error('The selected backend or credential changed. Reload sources and retry.')
+  context.assertCurrent()
+  try {
+    const result = await backendRequest<T>(path, init)
+    context.assertCurrent()
+    return result
+  } finally {
+    await clearCatalogCache()
+    context.assertCurrent()
   }
-  try { return await backendRequest<T>(path, init) }
-  finally { await clearCatalogCache() }
 }
 
 /** Backend-owned catalog registrations. Tokens are sent once and never cached. */
@@ -66,8 +76,9 @@ export function useCatalogSources() {
   const loading = ref(false)
   let loadVersion = 0
 
-  function remember(source: CatalogSourceResponse, scope: string): GitSource {
-    assertSameBackend(scope)
+  function remember(source: CatalogSourceResponse, context: SourceContext): GitSource {
+    context.assertCurrent()
+    const { scope } = context
     const normalized = normalizeSource(source, scope)
     const current = inventory.sources.filter((item) => item.backend_url === scope && item.id !== source.id)
     inventory.syncSources([...current, normalized], scope)
@@ -75,22 +86,26 @@ export function useCatalogSources() {
   }
 
   async function loadSources(): Promise<void> {
-    const scope = getBackendScope()
+    const context = sourceContext(), { scope } = context
     const version = ++loadVersion
     loading.value = true
     try {
       const sources: CatalogSourceResponse[] = []
       let offset = 0
       while (true) {
-        assertSameBackend(scope)
+        context.assertCurrent()
+        if (version !== loadVersion) return
         const suffix = offset ? `?offset=${offset}` : ''
         const page = await backendRequest<{ items: CatalogSourceResponse[]; total: number }>(`/v1/catalog/sources${suffix}`)
+        context.assertCurrent()
+        if (version !== loadVersion) return
         if (!Array.isArray(page?.items)) throw new Error('The backend returned an invalid source list.')
         sources.push(...page.items)
         offset += page.items.length
         if (!page.items.length || offset >= page.total) break
       }
-      if (version !== loadVersion || scope !== getBackendScope()) return
+      context.assertCurrent()
+      if (version !== loadVersion) return
       inventory.syncSources(sources.map((source) => {
         const normalized = normalizeSource(source, scope)
         const cached = inventory.getSource(source.id)
@@ -103,26 +118,26 @@ export function useCatalogSources() {
   }
 
   async function createSource(input: CatalogSourceInput): Promise<GitSource> {
-    const scope = getBackendScope()
-    const source = await mutateSource<CatalogSourceResponse>('/v1/catalog/sources', {
+    const context = sourceContext()
+    const source = await mutateSource<CatalogSourceResponse>(context, '/v1/catalog/sources', {
       method: 'POST', body: JSON.stringify(input),
     })
-    return remember(source, scope)
+    return remember(source, context)
   }
 
   async function connectDefault(kind: 'catalog' | 'bundles' = 'catalog'): Promise<GitSource> {
-    const scope = getBackendScope()
-    const source = await mutateSource<CatalogSourceResponse>(`/v1/catalog/sources/default${kind === 'bundles' ? '?kind=bundles' : ''}`, { method: 'POST' })
-    return remember(source, scope)
+    const context = sourceContext()
+    const source = await mutateSource<CatalogSourceResponse>(context, `/v1/catalog/sources/default${kind === 'bundles' ? '?kind=bundles' : ''}`, { method: 'POST' })
+    return remember(source, context)
   }
 
   async function refreshSource(id: string): Promise<RefreshResult> {
-    const scope = getBackendScope()
+    const context = sourceContext(), { scope } = context
     if (inventory.getSource(id)?.backend_url !== scope) throw new Error('Reload sources before refreshing this repository.')
     inventory.updateSourceHealth(id, { status: 'unknown' })
     try {
-      const result = await mutateSource<RefreshResult>(`/v1/catalog/sources/${encodeURIComponent(id)}/refresh`, { method: 'POST' })
-      assertSameBackend(scope)
+      const result = await mutateSource<RefreshResult>(context, `/v1/catalog/sources/${encodeURIComponent(id)}/refresh`, { method: 'POST' })
+      context.assertCurrent()
       const source = inventory.getSource(id)
       if (source) source.repos.forEach((repo) => { repo.last_refreshed_at = result.finished_at })
       inventory.updateSourceHealth(id, {
@@ -133,7 +148,7 @@ export function useCatalogSources() {
       })
       return result
     } catch (error) {
-      if (scope === getBackendScope()) {
+      if (context.isCurrent()) {
         inventory.updateSourceHealth(id, {
           status: 'down', checked_at: new Date().toISOString(),
           error: error instanceof Error ? error.message : String(error),
@@ -144,19 +159,19 @@ export function useCatalogSources() {
   }
 
   async function deleteSource(id: string): Promise<void> {
-    const scope = getBackendScope()
-    await mutateSource<void>(`/v1/catalog/sources/${encodeURIComponent(id)}`, { method: 'DELETE' })
-    assertSameBackend(scope)
+    const context = sourceContext()
+    await mutateSource<void>(context, `/v1/catalog/sources/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    context.assertCurrent()
     inventory.removeSource(id)
   }
 
   async function rotateToken(id: string, token: string): Promise<void> {
-    const scope = getBackendScope()
-    const source = await mutateSource<CatalogSourceResponse>(`/v1/catalog/sources/${encodeURIComponent(id)}`, {
+    const context = sourceContext()
+    const source = await mutateSource<CatalogSourceResponse>(context, `/v1/catalog/sources/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify({ auth_kind: token ? 'pat' : 'none', token_ref: token || null }),
     })
-    remember(source, scope)
+    remember(source, context)
   }
 
   return { loading, loadSources, createSource, connectDefault, refreshSource, deleteSource, rotateToken }
