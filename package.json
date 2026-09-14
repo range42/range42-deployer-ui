@@ -14,7 +14,9 @@
     "lint": "eslint . --fix",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "bundle-schema": "bash tools/bundle-refs.sh"
+    "bundle-schema": "bash tools/bundle-refs.sh",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json",
+    "test:typecheck": "node --test tools/typecheck-contract.test.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.0",
@@ -55,9 +57,11 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^16.3.0",
     "jsdom": "^26.1.0",
+    "typescript": "5.8.3",
     "typescript-eslint": "^8.57.1",
     "vite": "^7.1.12",
     "vite-plugin-vue-devtools": "^8.1.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "vue-tsc": "3.3.11"
   }
 }

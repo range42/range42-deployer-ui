@@ -280,6 +280,8 @@ export interface BaseNodeData {
   status: 'draft' | 'pending' | 'deploying' | 'running' | 'stopped' | 'error'
   description?: string
   tags?: string[]
+  deployed?: boolean
+  config?: { name?: string }
 }
 
 export interface VmDesiredConfig {
@@ -450,6 +452,7 @@ export type CanvasNodeData =
 // =============================================================================
 
 export type DeploymentStepType = 
+  | 'noop'
   | 'create_bridge'
   | 'create_vm'
   | 'create_lxc'

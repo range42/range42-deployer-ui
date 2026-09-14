@@ -84,7 +84,7 @@ function getStatusBadge(status: string | undefined) {
 
 // Load on mount: configure API client from props and fetch
 onMounted(() => {
-  if (isConfigured.value) {
+  if (props.apiUrl && props.proxmoxNode) {
     setBaseUrl(props.apiUrl)
     setNode(props.proxmoxNode)
     fetchResources()

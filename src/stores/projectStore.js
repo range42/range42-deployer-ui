@@ -4,6 +4,7 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 
 export const useProjectStore = defineStore('projects', () => {
+  /** @type {import('vue').Ref<import('@/types/project').ProjectDraft[]>} */
   const projects = ref([])
 
   const loadProjects = () => {
@@ -85,11 +86,12 @@ export const useProjectStore = defineStore('projects', () => {
 
   /**
    * Import a project from JSON data
-   * @param {Object|string} projectData - Project data (object or JSON string)
-   * @param {Object} options - Import options
-   * @param {boolean} options.generateNewId - Generate a new ID for the project (default: true)
-   * @param {string} options.namePrefix - Prefix to add to project name (optional)
-   * @returns {Object} The imported project
+   * @template {import('@/types/project').ProjectDraft} T
+   * @param {T|string} projectData - Project data (object or JSON string)
+   * @param {Object} [options] - Import options
+   * @param {boolean} [options.generateNewId] - Generate a new ID for the project (default: true)
+   * @param {string} [options.namePrefix] - Prefix to add to project name (optional)
+   * @returns {T & { created: string; modified: string }} The imported project
    */
   const importProject = (projectData, options = {}) => {
     const { generateNewId = true, namePrefix = '' } = options
@@ -125,7 +127,7 @@ export const useProjectStore = defineStore('projects', () => {
   /**
    * Import project from a File object (for file input handling)
    * @param {File} file - File object from file input
-   * @returns {Promise<Object>} The imported project
+   * @returns {Promise<import('@/types/project').ProjectDraft>} The imported project
    */
   const importProjectFromFile = async (file) => {
     return new Promise((resolve, reject) => {

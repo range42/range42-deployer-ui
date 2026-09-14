@@ -111,7 +111,7 @@ function back() { epoch += 1; preview.value = undefined; reviewed = null; error.
 
 <template>
   <ProjectRepositoryConnection v-if="phase === 'connection'" :open="true" :binding="chosen" @close="close" @connected="review" />
-  <FocusTrap v-else :active="focusReady" :fallback-focus="() => heading" :escape-deactivates="false">
+  <FocusTrap v-else :active="focusReady" fallback-focus="#catalog-handoff-title" :escape-deactivates="false">
     <div class="modal modal-open z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="catalog-handoff-title" @keydown.esc.prevent="close">
       <section class="modal-box w-full max-w-2xl max-h-[92vh] overflow-y-auto space-y-4">
         <header class="flex items-start justify-between gap-3">

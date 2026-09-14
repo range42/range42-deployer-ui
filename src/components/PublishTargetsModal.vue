@@ -251,8 +251,8 @@ function safeUrl(value?: string) {
 </script>
 
 <template>
-  <FocusTrap v-if="open" :active="focusReady" :initial-focus="() => closeButton"
-    :fallback-focus="() => titleElement" :escape-deactivates="false">
+  <FocusTrap v-if="open" :active="focusReady" :initial-focus="() => closeButton || false"
+    fallback-focus="#publish-title" :escape-deactivates="false">
     <div class="modal modal-open z-[1000]" role="dialog" aria-modal="true"
       aria-labelledby="publish-title" aria-describedby="publish-description" @keydown.esc.prevent="close">
       <div class="modal-box w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -285,7 +285,7 @@ function safeUrl(value?: string) {
               </label>
               <button type="button" class="btn btn-ghost btn-sm" @click="targets.splice(index, 1)">{{ t('publishing.remove') }}</button>
             </div>
-            <PublishRepositoryFields v-model="targets[index]" :sources="sources" />
+            <PublishRepositoryFields :model-value="target" :sources="sources" @update:model-value="value => Object.assign(target, value)" />
             <label class="block">
               <span class="label text-sm">{{ t('publishing.method') }}</span>
               <select v-model="target.mode" class="select select-bordered w-full" data-testid="publish-mode">

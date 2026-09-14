@@ -7,23 +7,13 @@ import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
 import { prepareCatalogWorkload } from '@/services/catalogWorkload'
 import { providerForBinding } from '@/composables/useProjectGitSync'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
-import { sanitizeNamingPrefix, type CanvasModel } from '@/overlay/serialize'
+import { sanitizeNamingPrefix } from '@/overlay/serialize'
 import type { CatalogEntry } from '@/composables/useCatalog'
 import type { GitSource } from '@/stores/inventoryStore'
 import type { GitProviderV1 } from '@/services/git/types'
-import type { ProjectFiles } from '@/services/projectFiles'
+import type { ProjectDraft } from '@/types/project'
 
-export interface CatalogAppendProject extends CanvasModel {
-  id: string
-  name: string
-  files?: ProjectFiles
-  baseDoc?: Record<string, unknown> & { env?: unknown }
-  scenario?: Record<string, unknown>
-  scenario_generated_paths?: string[]
-  overlay?: Record<string, unknown>
-  catalogImports?: unknown
-  [key: string]: unknown
-}
+export type CatalogAppendProject = ProjectDraft
 export interface CatalogAppendInput {
   entry: CatalogEntry
   source: GitSource

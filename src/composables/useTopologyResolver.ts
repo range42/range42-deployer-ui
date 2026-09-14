@@ -717,7 +717,7 @@ export function useTopologyResolver() {
         }
 
         case 'vm': {
-          const nodeData = node.data as CanvasNodeData
+          const nodeData = node.data as VmNodeData
 
           // Already deployed VMs: skip create/start, just track the existing VMID
           if (nodeData.deployed && nodeData.vmId) {
@@ -748,7 +748,7 @@ export function useTopologyResolver() {
         }
 
         case 'lxc': {
-          const lxcData = node.data as CanvasNodeData
+          const lxcData = node.data as LxcNodeData
           if (lxcData.deployed && lxcData.vmId) {
             nodeVmIds.set(node.id, Number(lxcData.vmId))
             steps.push({

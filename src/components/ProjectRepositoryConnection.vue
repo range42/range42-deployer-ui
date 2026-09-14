@@ -101,16 +101,16 @@ async function connect() {
 </script>
 
 <template>
-  <FocusTrap v-if="open" :active="focusReady" :initial-focus="() => closeButton" :fallback-focus="() => closeButton" :escape-deactivates="false">
+  <FocusTrap v-if="open" :active="focusReady" :initial-focus="() => closeButton || false" fallback-focus="#repository-connection-title" :escape-deactivates="false">
     <div class="modal modal-open z-[1000]" role="dialog" aria-modal="true" aria-labelledby="repository-connection-title" @keydown.esc.prevent="!busy && emit('close')">
       <div class="modal-box max-w-2xl max-h-[90vh] overflow-y-auto space-y-4">
         <div class="flex items-start justify-between gap-4">
-          <h2 id="repository-connection-title" class="text-xl font-bold">{{ t('publishing.connection_title') }}</h2>
+          <h2 id="repository-connection-title" tabindex="-1" class="text-xl font-bold">{{ t('publishing.connection_title') }}</h2>
           <button ref="closeButton" type="button" class="btn btn-ghost btn-sm" @click="!busy && emit('close')">{{ t('publishing.close') }}</button>
         </div>
         <p class="text-sm text-base-content/70">{{ t('publishing.connection_hint') }}</p>
         <p v-if="!inventory.sources.length" class="text-sm">{{ t('publishing.no_sources') }} <a href="/sources" class="link">{{ t('publishing.manage_sources') }}</a></p>
-        <PublishRepositoryFields v-model="repository" :sources="inventory.sources" :disabled="busy" />
+        <PublishRepositoryFields :model-value="repository" @update:model-value="value => Object.assign(repository, value)" :sources="inventory.sources" :disabled="busy" />
         <label class="block">
           <span class="label text-sm">{{ t('publishing.fork_policy') }}</span>
           <select v-model="policy" :disabled="busy" class="select select-bordered w-full" data-testid="connection-fork-policy">

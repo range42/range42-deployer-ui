@@ -144,12 +144,25 @@ npm install
 # Start development server
 npm run dev
 
+# Check application Vue/TypeScript before building
+npm run typecheck
+
+# Verify checker coverage and its JavaScript boundary
+npm run test:typecheck
+
 # Build for production
 npm run build
 
 # Preview production build
 npm run preview
 ```
+
+The application checker includes every implementation `.ts`, `.tsx` and `.vue`
+file under `src`, with strict TypeScript and template checks for TypeScript SFCs.
+Existing JavaScript is included for module inference (`allowJs: true`) but is not
+checked (`checkJs: false`), including JavaScript-script Vue components. Tests and
+tooling are outside this application configuration. See [typecheck coverage](docs/typechecking.md)
+for the exact boundary; a successful Vite build is not a typecheck.
 
 ## Internationalization (i18n)
 

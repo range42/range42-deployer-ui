@@ -63,6 +63,10 @@ jobs:
         # so CI fails on lint errors instead of auto-fixing them.
         run: npx eslint .
 
+      - name: Typecheck all application Vue and TypeScript sources
+        working-directory: range42-deployer-ui
+        run: npm run typecheck && npm run test:typecheck
+
       - name: Build (Vite production build)
         working-directory: range42-deployer-ui
         run: npm run build

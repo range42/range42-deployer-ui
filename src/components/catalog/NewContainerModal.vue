@@ -26,7 +26,7 @@ function preview() {
 </script>
 
 <template>
-  <FocusTrap v-if="open" :active="focusReady" :fallback-focus="() => heading" :escape-deactivates="false">
+  <FocusTrap v-if="open" :active="focusReady" fallback-focus="#new-container-title" :escape-deactivates="false">
     <div class="modal modal-open z-[110] p-3" role="dialog" aria-modal="true" aria-labelledby="new-container-title" @keydown.esc.prevent="emit('close')">
       <div class="modal-box max-w-4xl max-h-[90vh]">
         <h2 id="new-container-title" ref="heading" tabindex="-1" class="text-xl font-semibold">{{ t('title') }}</h2>

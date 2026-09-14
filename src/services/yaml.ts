@@ -16,7 +16,6 @@
 import {
   parseDocument,
   visit,
-  isAlias,
   isScalar,
   type Document,
 } from 'yaml'
@@ -33,8 +32,7 @@ export function hasAnchorsOrAliases(doc: Document): boolean {
   let found = false
   visit(doc, {
     Alias() {
-      if (isAlias) found = true
-      else found = true
+      found = true
     },
     Scalar(_key, node) {
       if (isScalar(node) && (node as unknown as { anchor?: string }).anchor) {

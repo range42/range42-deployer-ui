@@ -17,7 +17,7 @@ const syncReviewUrl = ref('')
 let provider: GitProviderV1 | undefined
 const eligible = computed(() => review.value?.state === 'open' && review.value.can_merge
   && review.value.mergeable && review.value.head_sha === props.result.commit_sha)
-const changed = computed(() => review.value && review.value.head_sha !== props.result.commit_sha)
+const changed = computed(() => !!review.value && review.value.head_sha !== props.result.commit_sha)
 watch(() => props.result, () => { review.value = null; merged.value = Boolean(props.result.merged) }, { immediate: true })
 
 async function check() {
