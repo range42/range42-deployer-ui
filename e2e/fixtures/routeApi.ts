@@ -12,9 +12,10 @@ const deployment = { id: 'route-deployment', codename: 'ROUTE_REVIEW', scenario_
   state: 'failed', project_id: 'backend-project', project_sha: 'b'.repeat(40), attempts_count: 0 }
 
 /** Local browser acceptance only. Every API/provider call is intercepted; writes are refused. */
-export async function routeApi(page: Page, projects = [routeProject]) {
+export async function routeApi(page: Page, projects: Array<{ id: string; name: string; nodes: unknown[]; edges: unknown[]; [key: string]: unknown }> = [routeProject]) {
   const state = { status: 200, catalog: [routeEntry], sources: [routeSource], deployments: [deployment],
-    preflightStatus: 200, providerStatus: 403, reads: [] as string[], writes: [] as string[], unexpected: [] as string[] }
+    preflightStatus: 200, providerStatus: 403, proxmoxReady: true,
+    reads: [] as string[], writes: [] as string[], unexpected: [] as string[] }
   const held = new Map<string, Promise<void>>()
   await page.addInitScript(({ projects, source }) => {
     if (localStorage.getItem('route-fixture-seeded')) return
@@ -42,14 +43,20 @@ export async function routeApi(page: Page, projects = [routeProject]) {
     state.reads.push(url.pathname)
     if (provider) return route.fulfill({ status: state.providerStatus, json: { message: 'Fixture destination access refused. Check repository permissions.' } })
     if (held.has(url.pathname)) await held.get(url.pathname)
-    if (url.pathname === '/v1/health/ready') return route.fulfill({ json: { ready: true, checks: { sources: true, hosts: true } } })
+    if (url.pathname === '/v1/health/ready') return route.fulfill({ json: { ready: state.proxmoxReady, checks: {
+      sqlite_wal: { ok: true }, workspace_writable: { ok: true }, proxmox: { ok: state.proxmoxReady },
+      git: { ok: null, required: false, connectivity: 'not_checked', sources_registered: 2 },
+    } } })
     if (url.pathname === '/health' || url.pathname === '/v1/health') return route.fulfill({ json: { status: 'ok' } })
     if (state.status !== 200) return route.fulfill({ status: state.status,
       json: { code: state.status === 401 ? 'AUTH_REQUIRED' : 'FIXTURE_UNAVAILABLE', message: 'Fixture unavailable. Retry the request.' } })
     const pageOf = (items: unknown[]) => ({ items, total: items.length, offset: 0, limit: 100 })
     if (url.pathname === '/v1/catalog/sources') return route.fulfill({ json: pageOf(state.sources) })
     if (url.pathname === '/v1/catalog/entries') return route.fulfill({ json: pageOf(state.catalog) })
-    if (url.pathname.startsWith('/v1/catalog/entries/catalog/')) return route.fulfill({ json: routeEntry })
+    if (url.pathname.startsWith('/v1/catalog/entries/catalog/')) {
+      const entry = state.catalog.find(item => item.path === decodeURIComponent(url.pathname.slice('/v1/catalog/entries/catalog/'.length)))
+      return route.fulfill({ status: entry ? 200 : 404, json: entry || { code: 'CATALOG_ENTRY_NOT_FOUND' } })
+    }
     if (url.pathname === '/v1/proxmox/hosts') return route.fulfill({ json: pageOf([]) })
     if (url.pathname === '/v1/deployments') return route.fulfill({ json: pageOf(state.deployments) })
     if (url.pathname.endsWith('/preflight')) return route.fulfill({ status: state.preflightStatus, json: state.preflightStatus === 200

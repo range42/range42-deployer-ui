@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { routeApi, routeEntryUrl, routeProject } from './fixtures/routeApi'
 
 for (const width of [1440, 390]) {
-  test(`nine routes render and reload without mutation at ${width}px`, async ({ page }) => {
+  test(`nine routes render and reload without mutation at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 950 })
     const api = await routeApi(page)
     const errors: string[] = []
@@ -28,6 +28,7 @@ for (const width of [1440, 390]) {
           const main = document.querySelector('main')!
           return document.documentElement.scrollWidth <= innerWidth && main.scrollWidth <= main.clientWidth + 1
         }), `${path} should fit ${width}px`).toBe(true)
+        if (path === '/') await page.screenshot({ path: testInfo.outputPath(`home-${width}.png`) })
       })
     }
     await page.goto('/project/route-project?tab=config')
@@ -148,4 +149,29 @@ test('home deployment shortcut reviews the project without bypassing saved regis
   await expect(page.getByTestId('project-deployment-review')).toContainText(/saved|Save/)
   await expect(page.getByTestId('deploy-form')).toHaveCount(0)
   expect(api.state.writes).toEqual([])
+})
+
+test('mobile Settings separates registered Git sources from failed Proxmox readiness', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 950 })
+  const api = await routeApi(page)
+  api.state.proxmoxReady = false
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/settings')
+  await page.getByTestId('backend-host-row').getByRole('button', { name: 'Test', exact: true }).click()
+  await expect(page.getByTestId('readiness-git')).toContainText('Not checked')
+  await expect(page.getByTestId('readiness-git')).toContainText('2 sources registered')
+  await expect(page.getByTestId('readiness-proxmox')).toContainText('Failed')
+  await expect(page.getByTestId('readiness-proxmox')).toContainText('credentials, certificate and connection')
+  await expect(page.getByTestId('readiness-sqlite_wal')).toContainText('Passed')
+  await expect(page.getByTestId('retention-inactive')).toHaveText('Not enforced')
+  expect(await page.evaluate(() => {
+    const main = document.querySelector('main')!
+    return document.documentElement.scrollWidth <= innerWidth && main.scrollWidth <= main.clientWidth + 1
+  })).toBe(true)
+  await page.getByTestId('backend-host-row').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: testInfo.outputPath('settings-readiness-390.png') })
+  expect(api.state.writes).toEqual([])
+  expect(api.state.unexpected).toEqual([])
+  expect(errors).toEqual([])
 })
