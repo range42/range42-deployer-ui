@@ -111,6 +111,20 @@ describe('ProjectEditor saved project integration', () => {
     expect(store.getProject('saved').head_sha).toBe('')
   })
 
+  it('preserves desired configuration and existing observations across plain graph persistence', async () => {
+    const nodes = [{ id: 'vm', type: 'vm', position: { x: 4, y: 8 }, data: {
+      config: { name: 'owned', template: '9901' }, desiredConfig: { cores: 6 },
+      actualConfig: { cores: 2 }, status: 'stopped', pendingAction: 'review',
+    } }]
+    const files = { 'binary.bin': { encoding: 'base64', content: 'AP+A', size: 3 } }
+    const { store } = await editor(project({ git: undefined, nodes, files }))
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(store.getProject('saved').nodes[0].data).toEqual(nodes[0].data)
+    expect(JSON.parse(localStorage.getItem('range42_projects'))[0].nodes[0].data).toEqual(nodes[0].data)
+    expect(store.getProject('saved').files).toEqual(files)
+    expect(pushToGit).not.toHaveBeenCalled()
+  })
+
   it('lists authored file-map paths in the command palette without a render error', async () => {
     const { errors } = await editor(project({ files: {
       'scenarios/demo/main.yml': '- hosts: localhost\n',

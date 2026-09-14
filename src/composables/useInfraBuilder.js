@@ -287,9 +287,13 @@ export function nextKeyboardSelection(allNodes, currentId, direction) {
 export function useInfraBuilder() {
   const { updateNodeData, getNodes } = useVueFlow()
 
+  /** @type {import('vue').Ref<import('@vue-flow/core').Node[]>} */
   const nodes = ref([])
+  /** @type {import('vue').Ref<import('@vue-flow/core').Edge[]>} */
   const edges = ref([])
+  /** @type {import('vue').Ref<import('@vue-flow/core').Node | null>} */
   const selectedNode = ref(null)
+  /** @type {import('vue').Ref<import('@vue-flow/core').Edge | null>} */
   const selectedEdge = ref(null)
 
   /**

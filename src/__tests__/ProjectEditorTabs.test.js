@@ -15,6 +15,7 @@ import Sidebar from '@/components/Sidebar.vue'
 import ProjectRepositoryConnection from '@/components/ProjectRepositoryConnection.vue'
 import ProxmoxSettingsModal from '@/components/ProxmoxSettingsModal.vue'
 import { useProjectStore } from '@/stores/projectStore'
+import * as gitProviders from '@/services/git'
 import projectMessages from '@/locales/en/project.json'
 import historyTab from '@/locales/en/historyTab.json'
 import deployment from '@/locales/en/deployment.json'
@@ -27,7 +28,7 @@ vi.mock('@/composables/useDeploymentIndex', async () => {
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn() }))
 let wrapper
 beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); pushToGit.mockReset().mockResolvedValue({ commit_sha: 'a'.repeat(40), branch: 'work' }) })
-afterEach(async () => { wrapper?.unmount(); wrapper = null; await flushPromises(); vi.useRealTimers() })
+afterEach(async () => { wrapper?.unmount(); wrapper = null; await flushPromises(); vi.useRealTimers(); vi.restoreAllMocks() })
 const node = (id, name) => ({ id, type: 'vm', position: { x: 0, y: 0 }, data: { config: { name, cores: 4, memory: 2048 } } })
 async function editor(query = '', overrides = {}) {
   const saved = { id: 'tabs', name: 'Saved project', nodes: [node('first', 'First guest'), node('second', 'Second guest')], edges: [], files: { 'first.yml': 'saved first', 'second.yml': 'saved second' }, ...overrides }
@@ -121,6 +122,13 @@ describe('Actual ProjectEditor tab and selection navigation', () => {
     expect(wrapper.findComponent(HistoryTab).props('locator')).toEqual({ owner: 'owner', repo: 'repo', path: 'projects/tabs/topology.json', ref: 'work' })
     expect(typeof wrapper.findComponent(HistoryTab).props('provider').listCommits).toBe('function')
     expect(wrapper.get('[data-testid="project-history-path"]').text()).toContain('projects/tabs/topology.json')
+  })
+
+  it('reports unavailable legacy history capability before exposing a broken provider', async () => {
+    vi.spyOn(gitProviders, 'getGitProvider').mockReturnValue({ getFile: vi.fn() })
+    await editor('?tab=history', { gitSource: { provider: 'github', owner: 'owner', repo: 'legacy' } })
+    expect(wrapper.text()).toContain('This legacy Git provider cannot list history')
+    expect(wrapper.findComponent(HistoryTab).exists()).toBe(false)
   })
 
   it('prefills editable project Settings and reuses existing repository/target configuration', async () => {

@@ -87,3 +87,29 @@ This first JavaScript slice passed `typecheck:migrated`, four compiler/gate
 regressions, 51 affected tests across five files, and scoped ESLint. The normal
 strict gate stayed enabled; the remaining JavaScript inventory was not hidden
 or marked resolved.
+
+## Checked project editor
+
+The next migrated file is `src/views/ProjectEditor.vue`. Its JavaScript script
+and Vue template now use `@ts-check`, with explicit project/Git state, nullable
+refs, timer handles and event payloads. Adding that annotation first produced
+210 diagnostics; the completed slice passes the maintained application checker.
+
+VueFlow rows cross the local-project boundary as plain copied objects that keep
+all existing fields, including desired configuration and observations. The
+Problems API accepts readonly object rows instead of requiring arbitrary index
+signatures. Four public ref annotations in `useInfraBuilder.js` describe its
+existing VueFlow values; that helper's remaining JavaScript is **not** claimed
+as migrated or fully checked.
+
+The checks exposed two narrow runtime cases: missing/non-object node data now
+returns a topology validation error before the existing validator dereferences
+it, and a legacy Git provider without commit-list support reports that missing
+capability before exposing a broken History provider. Focused regressions cover
+both plus preservation of local graph fields and binary files.
+
+Validation for this isolated slice: `typecheck:migrated`, four compiler/gate
+regressions, 51 affected tests across five files, and scoped ESLint pass. It was
+not deployed and does not include a new production build or full-suite run.
+The 1,693-error inventory above remains a historical baseline; no arithmetic
+remaining-count claim is inferred from removing this editor's diagnostics.

@@ -1,4 +1,5 @@
 <script setup>
+// @ts-check
 import { ref, onMounted, onBeforeUnmount, onUnmounted, watch, computed, provide, nextTick, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -51,7 +52,7 @@ import { useHotkeys } from '../composables/useHotkeys'
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
 import { useCanvasLiveStatus } from '../composables/useCanvasLiveStatus'
-import { useDeploymentStore } from '../stores/deploymentStore.ts'
+import { useDeploymentStore } from '../stores/deploymentStore'
 import NetworkZoneOverlay from '../components/NetworkZoneOverlay.vue'
 import { useInfraBuilder, computeDockerTetherEdges, nextKeyboardSelection, normalizeAttachment } from '../composables/useInfraBuilder'
 import { useTopologyResolver } from '../composables/useTopologyResolver'
@@ -116,6 +117,7 @@ const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
+/** @type {import('vue').Ref<{ openApplyDialog: () => void } | null>} */
 const configPanelRef = ref(null)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
@@ -127,16 +129,28 @@ const showTemplateBrowser = ref(false)
 const showImportModal = ref(false)
 const showDeleteProjectModal = ref(false)
 const deleteConfirmName = ref('')
+/** @type {import('vue').Ref<import('@/types/project').ProjectDraft | null>} */
 const currentProject = ref(null)
 
 // Project ID as computed ref for composables
-const projectId = computed(() => currentProject.value?.id || route.params.id)
+const projectId = computed(() => currentProject.value?.id || queryText(route.params.id))
 
 // Deployment composable - now auto-uses project settings
 const topologyResolver = useTopologyResolver()
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
+
+/**
+ * Copy VueFlow rows to the project's plain object boundary without dropping
+ * local desired configuration or observed metadata.
+ * @param {import('@vue-flow/core').Node[]} [graphNodes]
+ * @param {import('@vue-flow/core').Edge[]} [graphEdges]
+ */
+function projectGraph(graphNodes = liveNodes.value, graphEdges = liveEdges.value) {
+  return { nodes: graphNodes.map(node => ({ ...node })), edges: graphEdges.map(edge => ({ ...edge })) }
+}
+
 
 // Docker containment tethers are derived from docker.data.host_ref — they are
 // rendered alongside user-authored edges but never persisted.
@@ -202,6 +216,7 @@ useHotkeys([
   },
 ])
 
+/** @param {import('@/composables/useProblems').Problem['jumpTo']} descriptor */
 function handleJumpTo(descriptor) {
   if (!descriptor) return
   if (descriptor.kind === 'node') {
@@ -225,6 +240,7 @@ const autoLayout = useAutoLayout()
 // Finds the active (non-terminal) deployment for this project, subscribes
 // to its SSE stream, and mirrors per-node status into VueFlow node data.
 const deploymentStore = useDeploymentStore()
+/** @type {import('vue').Ref<string | null>} */
 const activeDeploymentId = ref(null)
 const TERMINAL_STATES_CANVAS = new Set(['succeeded', 'deployed', 'failed', 'cancelled', 'torn_down'])
 
@@ -249,6 +265,7 @@ const liveRecord = computed(() => {
 
 // Resolve an event ident to a canvas node id.
 // Order: explicit node_id match > host match > vmId numeric match.
+/** @param {import('@/composables/useCanvasLiveStatus').NodeIdent} ident */
 function resolveCanvasNodeId(ident) {
   const all = flowGetNodes?.value || nodes.value || []
   if (ident?.node_id) {
@@ -299,7 +316,7 @@ watch(canvasLiveStatuses, (map) => {
 
 onMounted(() => {
   if (!projectStore.projects.length) projectStore.loadProjects()
-  const project = projectStore.getProject(route.params.id)
+  const project = projectStore.getProject(queryText(route.params.id))
   if (!project) {
     router.push('/')
     return
@@ -332,6 +349,7 @@ function cloneSnapshot() {
 // Debounced autosave (C3.11). 500ms debounce avoids flooding localStorage
 // on every canvas nudge. When the project is wired to a git-backed
 // ProjectRepoAdapter, the autosave body will also call adapter.autosave.
+/** @type {ReturnType<typeof setTimeout> | null} */
 let autosaveTimer = null
 let editorActive = true
 function scheduleAutosave() {
@@ -341,8 +359,7 @@ function scheduleAutosave() {
     autosaveTimer = null
     if (!currentProject.value) return
     projectStore.updateProject(currentProject.value.id, {
-      nodes: nodes.value,
-      edges: edges.value,
+      ...projectGraph(nodes.value, edges.value),
     })
     if (currentProject.value.git && !showRepositoryConnection.value) void manualSave({ quiet: true })
   }, 1500)
@@ -373,6 +390,7 @@ useHotkeys([
   },
 ])
 
+/** @param {{ nodes: import('@vue-flow/core').Node[]; edges: import('@vue-flow/core').Edge[] }} snapshot */
 function applyCanvasSnapshot(snapshot) {
   // Applying a snapshot writes back via loadProjectData so selection +
   // VueFlow state stay in sync with the restored graph.
@@ -396,8 +414,9 @@ onUnmounted(() => {
 
 function currentPushArgs() {
   const project = currentProject.value
+  if (!project) return null
   const generated = project?.scenario ? emitConcreteScenario({
-    scenario: project.scenario, nodes: liveNodes.value, edges: liveEdges.value,
+    scenario: project.scenario, ...projectGraph(),
     files: project.files, attachments: project.attachments,
     baseDoc: project.baseDoc, overlay: project.overlay,
     generatedPaths: project.scenario_generated_paths || [],
@@ -406,6 +425,7 @@ function currentPushArgs() {
     `Save ${currentProject.value?.name || 'project'}`)
 }
 
+/** @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result */
 function recordCheckpoint(result, project = currentProject.value) {
   if (!project?.git || !result.commit_sha) return
   const git = { ...project.git, ...(result.binding || {}), working_branch: result.branch,
@@ -417,6 +437,7 @@ function recordCheckpoint(result, project = currentProject.value) {
   }
 }
 
+/** @param {Awaited<ReturnType<typeof gitSync.publishFilesToTargets>>} result */
 function recordPublicationCheckpoint(result) {
   if (gitBindingIdentity(currentProject.value?.git) !== publicationBinding.value) {
     gitSaveError.value = 'The repository connection changed during publication. Results belong to the previous reviewed destination; this project was not rebound.'
@@ -426,6 +447,7 @@ function recordPublicationCheckpoint(result) {
   publicationBinding.value = gitBindingIdentity(currentProject.value?.git)
 }
 
+/** @param {import('@/composables/useProjectGitSync').ProjectPublishResult} result */
 function recordPublicationReview(result) {
   const project = currentProject.value
   if (!project?.git) return
@@ -442,7 +464,7 @@ const manualSave = async ({ quiet = false } = {}) => {
     clearTimeout(autosaveTimer)
     autosaveTimer = null
   }
-  projectStore.updateProject(project.id, { nodes: liveNodes.value, edges: liveEdges.value })
+  projectStore.updateProject(project.id, projectGraph())
   gitSaving.value += 1
   gitSaveError.value = ''
   try {
@@ -456,7 +478,7 @@ const manualSave = async ({ quiet = false } = {}) => {
     if (!quiet) showToast(translate('project.git.saved', { branch: result.branch, sha: result.commit_sha.slice(0, 7) }), 'success')
     return result
   } catch (error) {
-    gitSaveError.value = error?.message || String(error)
+    gitSaveError.value = error instanceof Error ? error.message : String(error)
     if (!quiet) showToast(translate('project.git.failed', { error: gitSaveError.value }), 'error', 6000)
     return null
   } finally {
@@ -464,6 +486,7 @@ const manualSave = async ({ quiet = false } = {}) => {
   }
 }
 
+/** @param {import('@/composables/useProjectGitSync').ProjectGitBinding | undefined} git */
 function gitBindingIdentity(git) {
   if (!git) return ''
   return JSON.stringify([git?.source_id, git?.provider, git?.base_url, git?.repo_owner, git?.repo_name,
@@ -475,7 +498,7 @@ watch(() => gitBindingIdentity(currentProject.value?.git), (next, previous) => {
 
 async function recoverExpiredGitLock() {
   try { await gitSync.recoverExpired(); gitSaveError.value = '' }
-  catch (error) { gitSaveError.value = error.message || String(error) }
+  catch (error) { gitSaveError.value = error instanceof Error ? error.message : String(error) }
 }
 
 async function recoverGitBranch() {
@@ -483,12 +506,12 @@ async function recoverGitBranch() {
   if (!project || gitSaving.value) return
   try {
     const git = prepareEditorBranchRecovery(project)
-    projectStore.updateProject(project.id, { nodes: liveNodes.value, edges: liveEdges.value })
+    projectStore.updateProject(project.id, projectGraph())
     await gitSync.releaseEditor()
     projectStore.updateProject(project.id, { git })
     await nextTick()
     await manualSave()
-  } catch (error) { gitSaveError.value = error.message || String(error) }
+  } catch (error) { gitSaveError.value = error instanceof Error ? error.message : String(error) }
 }
 
 function openPublishTargets() {
@@ -497,18 +520,19 @@ function openPublishTargets() {
     if (!args) return
     publicationFiles.value = buildProjectFiles(args)
     publicationRevision.value = args.expectedRevision || ''
-    publicationBinding.value = gitBindingIdentity(currentProject.value.git)
+    publicationBinding.value = gitBindingIdentity(currentProject.value?.git)
     showPublishTargets.value = true
-  } catch (error) { showToast(error.message || String(error), 'error', 6000) }
+  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
 }
 
+/** @param {Parameters<typeof reviewedScenarioUpdates>[1]} result */
 function applyScenario(result) {
   if (!currentProject.value) return
   try {
     projectStore.updateProject(currentProject.value.id, reviewedScenarioUpdates(currentProject.value, result, liveNodes.value, liveEdges.value))
     showScenarioAuthoring.value = false
     void manualSave()
-  } catch (error) { showToast(error.message || String(error), 'error', 8000) }
+  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 8000) }
 }
 
 function openScenarioContent(target = '') {
@@ -522,8 +546,10 @@ function openRepositoryConnection() {
   showRepositoryConnection.value = true
 }
 
+/** @param {import('@/composables/useProjectGitSync').ProjectGitBinding} binding */
 function connectProjectRepository(binding) {
   if (!currentProject.value || gitSaving.value > 0) return
+  /** @param {import('@/composables/useProjectGitSync').ProjectGitBinding | undefined} git */
   const identity = git => JSON.stringify([git?.source_id, git?.provider, git?.base_url,
     git?.repo_owner, git?.repo_name, git?.branch || 'main', git?.subdir || ''])
   const changed = identity(binding) !== identity(currentProject.value.git)
@@ -534,12 +560,14 @@ function connectProjectRepository(binding) {
   showRepositoryConnection.value = false
 }
 
+/** @param {import('@/composables/useProjectGitSync').ProjectPublishTarget[]} targets */
 function updatePublicationTargets(targets) {
   if (!currentProject.value?.git) return
   currentProject.value.git = { ...currentProject.value.git, publish_targets: targets }
   projectStore.updateProject(currentProject.value.id, { git: currentProject.value.git })
 }
 
+/** @type {number | null} */
 let layoutAnimationId = null
 
 function handleAutoLayout() {
@@ -560,6 +588,7 @@ function handleAutoLayout() {
   const startTime = performance.now()
   const startPositions = new Map(currentNodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))
 
+  /** @param {number} now */
   function animate(now) {
     const elapsed = now - startTime
     const t = Math.min(elapsed / duration, 1)
@@ -593,6 +622,7 @@ onUnmounted(() => {
   }
 })
 
+/** @param {import('@vue-flow/core').NodeMouseEvent} event */
 const handleNodeClick = (event) => {
   onNodeClick(event)
   showConfigPanel.value = !!selectedNode.value
@@ -608,6 +638,7 @@ const closeConfigPanel = () => {
 }
 
 // Node-card "Apply" strip → open that node's ConfigPanel and surface the apply dialog.
+/** @param {{ id: string }} slotProps */
 const onNodeApply = (slotProps) => {
   const n = findNode(slotProps.id)
   if (!n) return
@@ -630,6 +661,7 @@ const onNodeApply = (slotProps) => {
 // Focus management: when the drawer opens we move focus inside it; Escape
 // closes. aria-expanded on the toggle reflects open state.
 const mobileSidebarOpen = ref(false)
+/** @type {import('vue').Ref<HTMLElement | null>} */
 const mobileSidebarRef = ref(null)
 function toggleMobileSidebar() {
   mobileSidebarOpen.value = !mobileSidebarOpen.value
@@ -641,6 +673,7 @@ function toggleMobileSidebar() {
 function closeMobileSidebar() {
   mobileSidebarOpen.value = false
 }
+/** @param {KeyboardEvent} event */
 function handleMobileSidebarKeydown(event) {
   if (event.key === 'Escape') {
     event.preventDefault()
@@ -648,6 +681,7 @@ function handleMobileSidebarKeydown(event) {
   }
 }
 
+/** @type {Partial<Record<string, 'left' | 'right' | 'up' | 'down'>>} */
 const ARROW_DIRS = {
   ArrowRight: 'right',
   ArrowLeft: 'left',
@@ -655,9 +689,10 @@ const ARROW_DIRS = {
   ArrowUp: 'up',
 }
 
+/** @param {KeyboardEvent} event */
 const handleCanvasKeydown = (event) => {
   const target = event.target
-  if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable)) {
+  if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable))) {
     return
   }
 
@@ -681,6 +716,7 @@ const handleCanvasKeydown = (event) => {
 }
 
 // Edge handlers for network connection configuration
+/** @param {import('@vue-flow/core').EdgeMouseEvent} event */
 const handleEdgeClick = (event) => {
   onEdgeClick(event)
   showConfigPanel.value = false // Close node config when edge is selected
@@ -691,16 +727,19 @@ const showEdgeConfig = computed(() => !!selectedEdge.value?.data)
 // Get source and target nodes for the selected edge
 const edgeSourceNode = computed(() => {
   if (!selectedEdge.value) return null
+  const edge = selectedEdge.value
   const allNodes = flowGetNodes.value || nodes.value
-  return allNodes.find(n => n.id === selectedEdge.value.source)
+  return allNodes.find(n => n.id === edge.source)
 })
 
 const edgeTargetNode = computed(() => {
   if (!selectedEdge.value) return null
+  const edge = selectedEdge.value
   const allNodes = flowGetNodes.value || nodes.value
-  return allNodes.find(n => n.id === selectedEdge.value.target)
+  return allNodes.find(n => n.id === edge.target)
 })
 
+/** @param {string} edgeId @param {Record<string, unknown>} updates */
 const handleEdgeUpdate = (edgeId, updates) => {
   updateEdgeData(edgeId, updates)
 }
@@ -709,6 +748,7 @@ const handleCloseEdgeConfig = () => {
   closeEdgeConfig()
 }
 
+/** @param {string} nodeId */
 const handleDeleteNode = (nodeId) => {
   // Remove from controlled nodes ref (VueFlow controlled mode)
   nodes.value = nodes.value.filter(n => n.id !== nodeId)
@@ -721,15 +761,18 @@ const goBack = () => {
   router.push('/')
 }
 
+/** @param {DragEvent} event */
 const handleDrop = (event) => {
   onDrop(event)
 }
 
+/** @param {DragEvent} event */
 const handleDragOver = (event) => {
   event.preventDefault()
   onDragOver(event)
 }
 
+/** @param {DragEvent} event */
 const handleDragLeave = (event) => {
   onDragLeave(event)
 }
@@ -764,7 +807,7 @@ const handleOpenDeploy = async () => {
       return
     }
     showDeployForm.value = true
-  } catch (error) { showToast(error.message || String(error), 'error', 6000) }
+  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
 }
 
 const handleOpenValidate = () => {
@@ -800,12 +843,14 @@ const tab = computed(() => {
   return TABS.includes(String(v)) ? String(v) : 'canvas'
 })
 
+/** @param {string} next */
 function setTab(next) {
   if (!TABS.includes(next)) return
   if (route.query.tab === next) return
   return router.push({ query: { ...route.query, tab: next } })
 }
 
+/** @param {KeyboardEvent} event @param {string} current */
 async function handleTabKeydown(event, current) {
   const index = TABS.indexOf(current)
   const next = event.key === 'ArrowRight' ? TABS[(index + 1) % TABS.length]
@@ -813,16 +858,19 @@ async function handleTabKeydown(event, current) {
       : event.key === 'Home' ? TABS[0] : event.key === 'End' ? TABS.at(-1) : null
   if (!next) return
   event.preventDefault()
-  const tablist = event.currentTarget.closest('[role=tablist]')
+  const tablist = event.currentTarget instanceof Element ? event.currentTarget.closest('[role=tablist]') : null
   await setTab(next)
   await nextTick()
-  tablist?.querySelector(`[data-testid="project-tab-${next}"]`)?.focus()
+  const button = tablist?.querySelector(`[data-testid="project-tab-${next}"]`)
+  if (button instanceof HTMLElement) button.focus()
 }
 
+/** @param {unknown} value */
 function queryText(value) {
   return typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : ''
 }
 const selectedFilePath = computed(() => queryText(route.query.file))
+/** @param {string} path */
 function selectConfigFile(path) {
   if (selectedFilePath.value !== path) router.replace({ query: { ...route.query, file: path } })
 }
@@ -835,20 +883,21 @@ watch(() => [currentProject.value?.id, route.query.node], () => {
 function openCatalog() {
   if (!currentProject.value) return
   try {
-    projectStore.updateProject(currentProject.value.id, { nodes: liveNodes.value, edges: liveEdges.value })
+    projectStore.updateProject(currentProject.value.id, projectGraph())
     // This action preserves the local draft. Leaving the editor must not turn
     // the pending debounce into an unrelated Git write.
     if (autosaveTimer !== null) clearTimeout(autosaveTimer)
     autosaveTimer = null
     router.push({ path: '/catalog', query: { project: currentProject.value.id,
       ...(selectedNode.value ? { node: selectedNode.value.id } : {}) } })
-  } catch (error) { showToast(error.message || String(error), 'error', 6000) }
+  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
 }
 
 const settingsName = ref('')
 const settingsError = ref('')
 watch(() => currentProject.value?.name, name => { settingsName.value = name || '' }, { immediate: true })
 function saveProjectSettings() {
+  if (!currentProject.value) return
   const name = settingsName.value.trim()
   if (!name) { settingsError.value = translate('project.settings.nameRequired'); return }
   try {
@@ -856,7 +905,7 @@ function saveProjectSettings() {
     settingsError.value = ''
     scheduleAutosave()
     showToast(translate('project.settings.saved'), 'success')
-  } catch (error) { settingsError.value = error.message || String(error) }
+  } catch (error) { settingsError.value = error instanceof Error ? error.message : String(error) }
 }
 
 // Provide project state + a thin adapter to descendant tab panels (variables,
@@ -884,7 +933,7 @@ const configOverlayFs = computed(() => {
   return createMemoryFs({
     files: overlayFiles.value || {},
     onChange: (files) => {
-      if (!editorActive || currentProject.value?.id !== ownerId) {
+      if (!ownerId || !editorActive || currentProject.value?.id !== ownerId) {
         throw new Error(translate('project.config.closed'))
       }
       projectStore.updateProject(ownerId, { files: { ...files } })
@@ -898,6 +947,7 @@ function handleConfigSave() {
   void manualSave()
 }
 
+/** @param {import('@/overlay/serialize').CanvasAttachment[]} next */
 function handleAttachmentsUpdate(next) {
   if (!currentProject.value) return
   currentProject.value.attachments = next
@@ -925,12 +975,16 @@ const historyState = computed(() => {
     if (!src?.provider || !src.owner || !src.repo) return {}
     const provider = src.provider === 'github' ? (() => {
       const gh = getGitProvider('github')
-      return { listCommits: opts => gh.listCommits(opts), getFile: async opts => ({
+      const listCommits = gh.listCommits
+      if (!listCommits) throw new Error('This legacy Git provider cannot list history. Reconnect the project repository.')
+      /** @type {Pick<import('@/services/git/types').GitProviderV1, 'listCommits' | 'getFile'>} */
+      const history = { listCommits: opts => listCommits.call(gh, opts), getFile: async opts => ({
         content: await gh.getFile(opts.owner, opts.repo, opts.path, opts.ref), sha: '',
       }) }
+      return history
     })() : getV1Provider(src.provider, { baseUrl: src.baseUrl, token: src.token ?? null })
     return { provider, locator: { owner: src.owner, repo: src.repo, path: src.path || 'range42.yaml', ref: src.ref || 'main' } }
-  } catch (error) { return { error: error.message || String(error) } }
+  } catch (error) { return { error: error instanceof Error ? error.message : String(error) } }
 })
 const historyProvider = computed(() => historyState.value.provider)
 const historyLocator = computed(() => historyState.value.locator)
@@ -942,6 +996,7 @@ const historyLocator = computed(() => historyState.value.locator)
 const variablesBase = computed(() => currentProject.value?.baseDoc || { env: [] })
 const variablesOverlay = computed(() => currentProject.value?.overlay || {})
 
+/** @param {Record<string, unknown>} nextOverlay */
 function handleOverlayUpdate(nextOverlay) {
   if (!currentProject.value) return
   currentProject.value.overlay = nextOverlay
@@ -972,6 +1027,7 @@ const handleOpenImport = () => {
   showImportModal.value = true
 }
 
+/** @param {{ nodes?: unknown[]; edges?: unknown[] }} result */
 const handleInfrastructureImport = (result) => {
   if (result.nodes && result.nodes.length > 0) {
     vfAddNodes(JSON.parse(JSON.stringify(result.nodes)))
@@ -1019,7 +1075,7 @@ const handleInfrastructureImport = (result) => {
           :project="currentProject"
           class="w-full"
           @openExport="showExportModal = true; closeMobileSidebar()"
-          @openDeploy="(p) => { handleOpenDeploy(p); closeMobileSidebar() }"
+          @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
           @openValidate="handleOpenValidate(); closeMobileSidebar()"
           @openInventory="openCatalog(); closeMobileSidebar()"
           @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
@@ -1221,9 +1277,9 @@ const handleInfrastructureImport = (result) => {
           <template #node-group="props">
             <GroupNode
               v-bind="props"
-              @update:kind="(kind) => updateNodeStatus(props.id, { kind })"
-              @update:scope="(kind) => updateNodeStatus(props.id, { kind })"
-              @update:expanded="(open) => updateNodeStatus(props.id, { _expanded_preview: open })"
+              @update:kind="updateNodeStatus(props.id, { kind: $event })"
+              @update:scope="updateNodeStatus(props.id, { kind: $event })"
+              @update:expanded="updateNodeStatus(props.id, { _expanded_preview: $event })"
             />
           </template>
 
@@ -1386,11 +1442,11 @@ const handleInfrastructureImport = (result) => {
     />
     
     <!-- Edge Config Panel -->
-    <div v-if="showEdgeConfig" class="fixed right-4 top-20 z-50">
+    <div v-if="showEdgeConfig && selectedEdge" class="fixed right-4 top-20 z-50">
       <EdgeConfigPanel 
         :edge="selectedEdge" 
-        :source-node="edgeSourceNode"
-        :target-node="edgeTargetNode"
+        :source-node="edgeSourceNode || undefined"
+        :target-node="edgeTargetNode || undefined"
         @close="handleCloseEdgeConfig"
         @update="handleEdgeUpdate"
       />
@@ -1439,7 +1495,7 @@ const handleInfrastructureImport = (result) => {
       :local-project-id="currentProject.id"
       :project-name="currentProject.name"
       :initial-scenario-label="currentProject.scenario?.label || ''"
-      :allocation="currentProject.scenario?.allocation || null"
+      :allocation="currentProject.scenario?.allocation"
       :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
       :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
       :existing-codenames="existingCodenames"

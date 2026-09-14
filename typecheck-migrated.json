@@ -1,4 +1,5 @@
 [
   "src/stores/projectStore.js",
-  "src/components/OpenProjectFromGitModal.vue"
+  "src/components/OpenProjectFromGitModal.vue",
+  "src/views/ProjectEditor.vue"
 ]

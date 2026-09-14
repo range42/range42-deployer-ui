@@ -27,9 +27,9 @@ export interface Problem {
  * the composable testable without mocking VueFlow or a Pinia store.
  */
 export function collectProblems(
-  nodes: Array<Record<string, unknown>>,
-  edges: Array<Record<string, unknown>>,
-  attachments: Array<Record<string, unknown>> = [],
+  nodes: ReadonlyArray<object>,
+  edges: ReadonlyArray<object>,
+  attachments: ReadonlyArray<object> = [],
 ): Problem[] {
   const out: Problem[] = [];
 
@@ -150,9 +150,9 @@ export function collectProblems(
  * Problems panel updates whenever nodes/edges/attachments change.
  */
 export function useProblems(
-  nodes: Ref<Array<Record<string, unknown>>>,
-  edges: Ref<Array<Record<string, unknown>>>,
-  attachments?: Ref<Array<Record<string, unknown>>>,
+  nodes: Readonly<Ref<ReadonlyArray<object>>>,
+  edges: Readonly<Ref<ReadonlyArray<object>>>,
+  attachments?: Readonly<Ref<ReadonlyArray<object>>>,
 ) {
   const extraProblems = ref<Problem[]>([]);
 

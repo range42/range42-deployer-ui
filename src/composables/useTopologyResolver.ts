@@ -224,7 +224,15 @@ export function useTopologyResolver() {
   /**
    * Validate the entire topology
    */
-  function validateTopology(nodes: CanvasNode[], edges: Edge[]): ValidationResult {
+  function validateTopology(inputNodes: Node[], edges: Edge[]): ValidationResult {
+    const invalid = inputNodes.filter(node => !node.data || typeof node.data !== 'object' || Array.isArray(node.data))
+    if (invalid.length) {
+      errors.value = invalid.map(node => ({ nodeId: node.id, field: 'data', message: 'Node configuration is missing or invalid' }))
+      warnings.value = []
+      return { valid: false, errors: errors.value, warnings: [] }
+    }
+    // VueFlow allows absent data. It has been checked before this required-data view.
+    const nodes: CanvasNode[] = inputNodes.map(node => ({ ...node, data: node.data }))
     const allErrors: ValidationError[] = []
     const allWarnings: ValidationError[] = []
 

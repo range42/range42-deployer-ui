@@ -218,6 +218,9 @@ export interface GitProvider {
   getFileInfo(owner: string, repo: string, path: string, ref?: string): Promise<GitFile>
   listFiles(owner: string, repo: string, path: string, ref?: string): Promise<GitFile[]>
   
+  // Optional historical commit listing, implemented by the GitHub adapter.
+  listCommits?(opts: { owner: string; repo: string; path?: string; ref?: string; perPage?: number }): Promise<CommitRef[]>
+
   // Write operations
   createOrUpdateFile(
     owner: string, 
