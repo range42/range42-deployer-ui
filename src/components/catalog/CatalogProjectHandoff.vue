@@ -12,7 +12,7 @@ import { getBackendScope } from '@/services/backendApi'
 import { randomId } from '@/services/randomId'
 import { ensureNamespaces } from '@/i18n'
 
-const props = defineProps<{ entry: CatalogEntry; mode: 'use' | 'customize' }>()
+const props = defineProps<{ entry: CatalogEntry; mode: 'use' | 'customize'; publishAfterImport?: boolean }>()
 const emit = defineEmits<{ close: []; opened: [project: CatalogProjectPreview['project']] }>()
 const { t } = useI18n()
 const inventory = useInventoryStore()
@@ -120,6 +120,7 @@ function back() { epoch += 1; preview.value = undefined; reviewed = null; error.
         </header>
         <p class="text-sm break-all">{{ t('catalog.handoff.origin') }}: {{ entry.source_id }} · {{ entry.path }} · {{ detail?.sha || entry.sha }}</p>
         <p class="text-sm">{{ t(entry.kind === 'ansible_role' ? 'catalog.handoff.role_scope' : 'catalog.handoff.scope') }}</p>
+        <p v-if="publishAfterImport" role="status" class="text-sm">{{ t('catalog.handoff.publication_next') }}</p>
         <div v-if="preview" class="space-y-3" data-testid="catalog-handoff-preview">
           <dl class="grid gap-2 text-sm">
             <dt>{{ t('catalog.handoff.destination') }}</dt><dd class="font-mono break-all">{{ preview.project.git.repo_owner }}/{{ preview.project.git.repo_name }} · {{ preview.project.git.subdir || '/' }}</dd>

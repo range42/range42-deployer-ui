@@ -388,7 +388,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog'])
+  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog', 'deployment'])
 })
 
 onUnmounted(() => {
@@ -1134,6 +1134,9 @@ const handleInfrastructureImport = (result) => {
       </header>
 
 
+      <p v-if="route.query.action === 'deploy'" role="status" class="px-3 py-2 text-sm bg-info/10" data-testid="project-deployment-review">
+        {{ translate('deployment.deploy.reviewFromHome') }}
+      </p>
       <div v-if="currentProject?.git" class="px-3 py-1 text-xs text-base-content/70" data-testid="project-git-status">
         <span v-if="gitSaving">{{ translate('project.git.saving') }}</span>
         <span v-else-if="gitSaveError" role="alert" class="text-error">{{ gitSaveError }}</span>

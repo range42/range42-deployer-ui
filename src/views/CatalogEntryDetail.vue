@@ -21,16 +21,13 @@ import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 
 import { useCatalog } from '@/composables/useCatalog'
-import { useInventoryStore } from '@/stores/inventoryStore'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
-import { getProvider } from '@/services/git'
 import { ensureNamespaces } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const catalog = useCatalog()
-const inv = useInventoryStore()
 
 const entry = ref(null)
 const loading = ref(false)
@@ -96,77 +93,6 @@ const shortSha = computed(() => {
   return sha ? String(sha).slice(0, 7) : ''
 })
 
-// ---------- Fork modal ----------
-const forkOpen = ref(false)
-const forkTargetRepo = ref('')
-const forkTargetName = ref('')
-const forkBusy = ref(false)
-const forkError = ref('')
-
-function openFork() {
-  forkOpen.value = true
-  forkTargetRepo.value = ''
-  forkTargetName.value = entry.value?.name || ''
-  forkError.value = ''
-}
-
-function closeFork() {
-  forkOpen.value = false
-  forkBusy.value = false
-}
-
-async function submitFork() {
-  forkError.value = ''
-  const current = entry.value
-  if (!current || !forkTargetRepo.value || !forkTargetName.value) {
-    forkError.value = 'Missing target repo or name'
-    return
-  }
-  forkBusy.value = true
-  try {
-    const m = forkTargetRepo.value.trim().match(/^([^/]+)\/([^/]+)$/)
-    if (!m) throw new Error('Target must be owner/repo')
-    const [, owner, repo] = m
-    const source = inv.getSource(current.source_id)
-    const kind = source?.provider || 'gitlab'
-    const branch = `catalog/${forkTargetName.value
-      .replace(/\s+/g, '-')
-      .toLowerCase()}`
-    try {
-      const prov = getProvider(kind, {
-        baseUrl: source?.base_url,
-        token: inv.getToken(current.source_id),
-      })
-      await prov.createBranch({ owner, repo, from: 'main', name: branch })
-      const seed =
-        `name: ${forkTargetName.value}\n` +
-        `kind: ${current.kind}\n` +
-        `from:\n` +
-        `  source_id: ${current.source_id}\n` +
-        `  path: ${current.path}\n`
-      await prov.putFile({
-        owner,
-        repo,
-        path: 'range42.yaml',
-        content: seed,
-        message: `seed ${forkTargetName.value} from ${current.source_id}/${current.path}`,
-        branch,
-      })
-    } catch (e) {
-      console.warn('[catalog] fork provider call failed:', e)
-    }
-    const newSourceId = `${kind}:${owner}/${repo}`
-    router.push(
-      `/catalog/${encodeURIComponent(newSourceId)}/${encodeURIComponent('range42.yaml')}`,
-    )
-    closeFork()
-  } catch (err) {
-    forkError.value = err?.message || String(err)
-  } finally {
-    forkBusy.value = false
-  }
-}
-
 // ---------- Verbs ----------
 const handoff = ref(null)
 function useEntry() {
@@ -178,6 +104,10 @@ function customizeEntry() {
 function openCreatedProject(project) {
   handoff.value = null
   router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
+}
+
+function openFork() {
+  handoff.value = { entry: entry.value, mode: 'customize', publish: true }
 }
 
 // ---------- Lifecycle ----------
@@ -203,7 +133,7 @@ onMounted(async () => {
 
 <template>
   <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
-    :entry="handoff.entry" :mode="handoff.mode" @close="handoff = null" @opened="openCreatedProject" />
+    :entry="handoff.entry" :mode="handoff.mode" :publish-after-import="handoff.publish" @close="handoff = null" @opened="openCreatedProject" />
   <section class="max-w-5xl mx-auto p-6">
     <!-- Back link -->
     <div class="mb-4">
@@ -342,46 +272,5 @@ onMounted(async () => {
       </section>
     </template>
 
-    <!-- Fork modal -->
-    <div v-if="forkOpen" class="modal modal-open" role="dialog" aria-modal="true">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-3">
-          {{ t('catalog.detail.fork_modal_title') }}
-        </h3>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_repo') }}</span>
-          <input
-            v-model="forkTargetRepo"
-            type="text"
-            class="input input-bordered"
-            placeholder="owner/repo"
-          />
-        </label>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_name') }}</span>
-          <input v-model="forkTargetName" type="text" class="input input-bordered" />
-        </label>
-        <p v-if="forkError" class="text-error text-sm">{{ forkError }}</p>
-        <div class="modal-action">
-          <button
-            type="button"
-            class="btn btn-ghost"
-            :disabled="forkBusy"
-            @click="closeFork"
-          >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="forkBusy || !forkTargetRepo || !forkTargetName"
-            @click="submitFork"
-          >
-            {{ t('catalog.detail.fork_submit') }}
-          </button>
-        </div>
-      </div>
-      <div class="modal-backdrop" @click="closeFork" />
-    </div>
   </section>
 </template>

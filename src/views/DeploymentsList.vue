@@ -8,17 +8,16 @@
  * Filter chips: failed only, in-progress only.
  */
 import { computed, onMounted, ref } from 'vue'
-import { useRouter, RouterLink } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useDeploymentIndex } from '@/composables/useDeploymentIndex'
 import EmptyState from '@/components/ui/EmptyState.vue'
 
 const { t } = useI18n({ useScope: 'global' })
-const router = useRouter()
 
 // Terminal state labels (spec §12 canonicalisation): deployed | failed | cancelled | torn_down.
-const TERMINAL_STATES = new Set(['succeeded', 'deployed', 'failed', 'cancelled', 'torn_down'])
+const TERMINAL_STATES = new Set(['succeeded', 'completed', 'deployed', 'partial', 'unknown', 'failed', 'cancelled', 'torn_down'])
 
 const { items: deployments, error: loadError, loading } = useDeploymentIndex()
 
@@ -32,6 +31,7 @@ function isTerminal(state) {
 
 function stateBadgeClass(state) {
   switch (state) {
+    case 'completed':
     case 'succeeded':
     case 'deployed':  return 'badge-success'
     case 'failed':    return 'badge-error'
@@ -39,6 +39,7 @@ function stateBadgeClass(state) {
     case 'torn_down': return 'badge-ghost'
     case 'deploying':
     case 'preflight': return 'badge-info'
+    case 'unknown':
     case 'partial':   return 'badge-warning'
     default:          return 'badge-neutral'
   }
@@ -66,9 +67,6 @@ const pastByProject = computed(() => {
   return Array.from(groups.values())
 })
 
-function openDeployment(id) {
-  router.push({ name: 'deployment-detail', params: { id } })
-}
 </script>
 
 <template>
@@ -106,7 +104,9 @@ function openDeployment(id) {
       </div>
     </header>
 
-    <div v-if="loadError && deployments.length === 0" class="alert alert-warning text-sm mb-4">
+    <p v-if="loading" role="status" class="text-sm text-base-content/70 mb-4">{{ t('deployment.list.loading') }}</p>
+
+    <div v-if="loadError && deployments.length === 0" role="alert" class="alert alert-warning text-sm mb-4">
       {{ loadError }}
     </div>
 
@@ -127,31 +127,26 @@ function openDeployment(id) {
             :key="d.id"
             class="card card-compact bg-base-100 border border-base-300 hover:shadow-md transition"
           >
-            <button
-              type="button"
-              class="card-body p-3 grid grid-cols-12 items-center gap-2 text-left w-full"
+            <RouterLink
+              :to="{ name: 'deployment-detail', params: { id: d.id } }"
+              class="card-body p-3 grid grid-cols-2 sm:grid-cols-12 items-center gap-2 text-left w-full"
               data-testid="deployment-row"
-              @click="openDeployment(d.id)"
             >
-              <div class="col-span-4 min-w-0">
+              <div class="col-span-2 sm:col-span-4 min-w-0">
                 <div class="font-semibold truncate">{{ d.codename || d.id }}</div>
                 <div class="text-xs text-base-content/60 truncate">{{ d.scenario_label || d.scenario || '—' }}</div>
               </div>
-              <div class="col-span-2">
+              <div class="sm:col-span-2">
                 <span class="badge badge-sm" :class="stateBadgeClass(d.state)">{{ d.state }}</span>
               </div>
-              <div class="col-span-3 text-xs text-base-content/70 truncate">{{ d.started_at || '—' }}</div>
-              <div class="col-span-2 text-xs">
+              <div class="sm:col-span-3 text-xs text-base-content/70 truncate">{{ d.started_at || '—' }}</div>
+              <div class="sm:col-span-2 text-xs">
                 {{ t('deployment.list.row.attemptCount', { n: d.attempts_count ?? 0 }, d.attempts_count ?? 0) }}
               </div>
-              <div class="col-span-1 text-right">
-                <RouterLink
-                  :to="{ name: 'deployment-detail', params: { id: d.id } }"
-                  class="btn btn-xs btn-ghost"
-                  @click.stop
-                >{{ t('deployment.list.row.open') }}</RouterLink>
+              <div class="sm:col-span-1 text-right">
+                <span class="text-xs underline">{{ t('deployment.list.row.open') }}</span>
               </div>
-            </button>
+            </RouterLink>
           </li>
         </ul>
       </section>
@@ -178,31 +173,26 @@ function openDeployment(id) {
                 :key="d.id"
                 class="card card-compact bg-base-100 border border-base-300 hover:shadow-md transition"
               >
-                <button
-                  type="button"
-                  class="card-body p-3 grid grid-cols-12 items-center gap-2 text-left w-full"
+                <RouterLink
+                  :to="{ name: 'deployment-detail', params: { id: d.id } }"
+                  class="card-body p-3 grid grid-cols-2 sm:grid-cols-12 items-center gap-2 text-left w-full"
                   data-testid="deployment-row"
-                  @click="openDeployment(d.id)"
                 >
-                  <div class="col-span-4 min-w-0">
+                  <div class="col-span-2 sm:col-span-4 min-w-0">
                     <div class="font-semibold truncate">{{ d.codename || d.id }}</div>
                     <div class="text-xs text-base-content/60 truncate">{{ d.scenario_label || d.scenario || '—' }}</div>
                   </div>
-                  <div class="col-span-2">
+                  <div class="sm:col-span-2">
                     <span class="badge badge-sm" :class="stateBadgeClass(d.state)">{{ d.state }}</span>
                   </div>
-                  <div class="col-span-3 text-xs text-base-content/70 truncate">{{ d.started_at || '—' }}</div>
-                  <div class="col-span-2 text-xs">
+                  <div class="sm:col-span-3 text-xs text-base-content/70 truncate">{{ d.started_at || '—' }}</div>
+                  <div class="sm:col-span-2 text-xs">
                     {{ t('deployment.list.row.attemptCount', { n: d.attempts_count ?? 0 }, d.attempts_count ?? 0) }}
                   </div>
-                  <div class="col-span-1 text-right">
-                    <RouterLink
-                      :to="{ name: 'deployment-detail', params: { id: d.id } }"
-                      class="btn btn-xs btn-ghost"
-                      @click.stop
-                    >{{ t('deployment.list.row.open') }}</RouterLink>
+                  <div class="sm:col-span-1 text-right">
+                    <span class="text-xs underline">{{ t('deployment.list.row.open') }}</span>
                   </div>
-                </button>
+                </RouterLink>
               </li>
             </ul>
           </div>

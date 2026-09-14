@@ -7,7 +7,6 @@ import { useCatalog, applyClientFilters } from '@/composables/useCatalog'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProjectStore } from '@/stores/projectStore'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
-import { getProvider } from '@/services/git'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import NewRoleModal from '@/components/catalog/NewRoleModal.vue'
@@ -51,13 +50,6 @@ function closeRolePublisher() {
   rolePublisherOpen.value = false
   newRoleOpen.value = true
 }
-
-// Fork modal state
-const forkEntry = ref(null)
-const forkTargetRepo = ref('')
-const forkTargetName = ref('')
-const forkBusy = ref(false)
-const forkError = ref('')
 
 // Kinds the backend can emit (catalog/entries.py). `unknown` is a fallback
 // bucket, not a useful filter facet, so it is intentionally omitted here.
@@ -142,73 +134,13 @@ function openCreatedProject(project) {
 }
 
 function openFork(entry) {
-  forkEntry.value = entry
-  forkTargetRepo.value = ''
-  forkTargetName.value = entry.name
-  forkError.value = ''
-}
-
-function closeFork() {
-  forkEntry.value = null
-  forkTargetRepo.value = ''
-  forkTargetName.value = ''
-  forkError.value = ''
-  forkBusy.value = false
-}
-
-async function submitFork() {
-  forkError.value = ''
-  const entry = forkEntry.value
-  if (!entry || !forkTargetRepo.value || !forkTargetName.value) {
-    forkError.value = 'Missing target repo or name'
-    return
-  }
-  forkBusy.value = true
-  try {
-    const m = forkTargetRepo.value.trim().match(/^([^/]+)\/([^/]+)$/)
-    if (!m) throw new Error('Target must be owner/repo')
-    const [, owner, repo] = m
-    const source = inv.getSource(entry.source_id)
-    const kind = source?.provider || 'gitlab'
-    const branch = `catalog/${forkTargetName.value.replace(/\s+/g, '-').toLowerCase()}`
-    try {
-      const prov = getProvider(kind, {
-        baseUrl: source?.base_url,
-        token: inv.getToken(entry.source_id),
-      })
-      await prov.createBranch({
-        owner,
-        repo,
-        from: 'main',
-        name: branch,
-      })
-      const seed = `name: ${forkTargetName.value}\nkind: ${entry.kind}\nfrom:\n  source_id: ${entry.source_id}\n  path: ${entry.path}\n`
-      await prov.putFile({
-        owner,
-        repo,
-        path: 'range42.yaml',
-        content: seed,
-        message: `seed ${forkTargetName.value} from ${entry.source_id}/${entry.path}`,
-        branch,
-      })
-    } catch (e) {
-      // provider may not be implemented (e.g. github v1) — proceed to navigate
-      console.warn('[catalog] fork provider call failed:', e)
-    }
-    const newSourceId = `${kind}:${owner}/${repo}`
-    router.push(`/catalog/${encodeURIComponent(newSourceId)}/${encodeURIComponent('range42.yaml')}`)
-    closeFork()
-  } catch (err) {
-    forkError.value = err?.message || String(err)
-  } finally {
-    forkBusy.value = false
-  }
+  handoff.value = { entry, mode: 'customize', publish: true }
 }
 </script>
 
 <template>
   <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
-    :entry="handoff.entry" :mode="handoff.mode" @close="handoff = null" @opened="openCreatedProject" />
+    :entry="handoff.entry" :mode="handoff.mode" :publish-after-import="handoff.publish" @close="handoff = null" @opened="openCreatedProject" />
   <section class="max-w-6xl mx-auto p-6">
     <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
@@ -348,7 +280,7 @@ async function submitFork() {
 
       <!-- Error banner (stale cache still shown below if entries exist) -->
       <div
-        v-if="loadError && entriesView.length === 0"
+        v-if="loadError"
         class="alert alert-warning mb-4"
         role="alert"
         data-testid="catalog-error"
@@ -394,34 +326,5 @@ async function submitFork() {
       </div>
     </template>
 
-    <!-- Fork modal -->
-    <div v-if="forkEntry" class="modal modal-open" role="dialog" aria-modal="true">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-3">{{ t('catalog.detail.fork_modal_title') }}</h3>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_repo') }}</span>
-          <input v-model="forkTargetRepo" type="text" class="input input-bordered" placeholder="owner/repo" />
-        </label>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_name') }}</span>
-          <input v-model="forkTargetName" type="text" class="input input-bordered" />
-        </label>
-        <p v-if="forkError" class="text-error text-sm">{{ forkError }}</p>
-        <div class="modal-action">
-          <button type="button" class="btn btn-ghost" :disabled="forkBusy" @click="closeFork">
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="forkBusy || !forkTargetRepo || !forkTargetName"
-            @click="submitFork"
-          >
-            {{ t('catalog.detail.fork_submit') }}
-          </button>
-        </div>
-      </div>
-      <div class="modal-backdrop" @click="closeFork" />
-    </div>
   </section>
 </template>

@@ -23,7 +23,8 @@
       "open": "Open",
       "attemptCount": "{n} attempt | {n} attempts",
       "noProject": "(no project)"
-    }
+    },
+    "loading": "Loading deployments…"
   },
   "maintenance": {
     "title": "Update content or remove deployment VMs",
@@ -166,7 +167,8 @@
       "description": "Validates the stored project documents. Network, VM and resource checks run in deployment preflight."
     },
     "allocationPinRequired": "Save this scenario to Git at an exact commit before handing off its reservation.",
-    "allocationTargetChanged": "These values were reserved for another target or backend. Return to scenario configuration and reserve again before using them here."
+    "allocationTargetChanged": "These values were reserved for another target or backend. Return to scenario configuration and reserve again before using them here.",
+    "reviewFromHome": "Review this project, then choose Deploy. Its normal Save and backend registration checks run before a deployment is created."
   },
   "teardown": {
     "title": "Teardown deployment",

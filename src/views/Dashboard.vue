@@ -1,13 +1,13 @@
 <script setup>
 defineOptions({ name: 'DashboardView' })
 
-import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, defineAsyncComponent, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import AppIcon from '@/components/icons/AppIcon.vue'
-import DeployForm from '@/components/project/DeployForm.vue'
+import { FocusTrap } from 'focus-trap-vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -16,6 +16,7 @@ const OpenProjectFromGitModal = defineAsyncComponent(() => import('@/components/
 const showOpenGit = ref(false)
 
 const showCreateModal = ref(false)
+let createOpener = null
 const newProjectName = ref('')
 const newProjectDescription = ref('')
 const searchQuery = ref('')
@@ -23,29 +24,23 @@ const viewMode = ref('grid') // 'grid' | 'list'
 const importFileInput = ref(null)
 const importError = ref('')
 
-// Plan C §C4.6 — quick-deploy from dashboard.
-const quickDeployTarget = ref(null)
-const quickDeployCodenames = ref([])
-
-async function openQuickDeploy(project, event) {
-  if (event) { event.stopPropagation(); event.preventDefault() }
-  try {
-    const res = await fetch('/v1/deployments', { credentials: 'same-origin' })
-    if (res.ok) {
-      const body = await res.json()
-      const items = Array.isArray(body) ? body : (body?.deployments || [])
-      quickDeployCodenames.value = items.map(d => d.codename).filter(Boolean)
-    } else {
-      quickDeployCodenames.value = []
-    }
-  } catch {
-    quickDeployCodenames.value = []
-  }
-  quickDeployTarget.value = project
+function openQuickDeploy(project, event) {
+  event?.stopPropagation()
+  event?.preventDefault()
+  router.push({ name: 'project-editor', params: { id: project.id }, query: { action: 'deploy' } })
 }
 
-function closeQuickDeploy() {
-  quickDeployTarget.value = null
+function openCreate(event) {
+  createOpener = event.currentTarget
+  showCreateModal.value = true
+}
+
+async function closeCreate() {
+  showCreateModal.value = false
+  newProjectName.value = ''
+  newProjectDescription.value = ''
+  await nextTick()
+  createOpener?.focus()
 }
 
 onMounted(() => {
@@ -56,7 +51,7 @@ onMounted(() => {
 const filteredProjects = computed(() => {
   if (!searchQuery.value) return projectStore.projects
   const query = searchQuery.value.toLowerCase()
-  return projectStore.projects.filter(p => 
+  return projectStore.projects.filter(p =>
     p.name.toLowerCase().includes(query)
   )
 })
@@ -108,7 +103,7 @@ const triggerImport = () => {
 const handleImportFile = async (event) => {
   const file = event.target.files?.[0]
   if (!file) return
-  
+
   try {
     importError.value = ''
     const project = await projectStore.importProjectFromFile(file)
@@ -136,7 +131,7 @@ const formatDate = (date) => {
   const d = new Date(date)
   const now = new Date()
   const diff = now - d
-  
+
   if (diff < 60000) return 'Just now'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
@@ -150,7 +145,7 @@ const formatDate = (date) => {
     <!-- Header -->
     <header class="sticky top-0 z-40 glass border-b border-base-300">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
+        <div class="flex flex-wrap items-center justify-between gap-3 py-3 min-h-16">
           <!-- Logo -->
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -176,14 +171,14 @@ const formatDate = (date) => {
               </svg>
               Import
             </button>
-            <input 
-              ref="importFileInput" 
-              type="file" 
-              accept=".json" 
-              class="hidden" 
+            <input
+              ref="importFileInput"
+              type="file"
+              accept=".json"
+              class="hidden"
               @change="handleImportFile"
             />
-            <button class="btn btn-primary btn-sm gap-2" @click="showCreateModal = true">
+            <button class="btn btn-primary btn-sm gap-2" @click="openCreate">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
               </svg>
@@ -209,7 +204,7 @@ const formatDate = (date) => {
             </p>
             <div class="flex flex-wrap gap-3">
               <button class="btn btn-outline gap-2" data-testid="open-project-from-git" @click="showOpenGit = true">{{ t('reopening.title') }}</button>
-              <button class="btn btn-primary gap-2" @click="showCreateModal = true">
+              <button class="btn btn-primary gap-2" @click="openCreate">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
@@ -223,7 +218,7 @@ const formatDate = (date) => {
               </button>
             </div>
           </div>
-          
+
           <!-- Decorative elements -->
           <div class="absolute right-8 top-1/2 -translate-y-1/2 hidden lg:block opacity-20">
             <div class="grid grid-cols-3 gap-3">
@@ -246,7 +241,7 @@ const formatDate = (date) => {
             <h3 class="text-xl font-semibold">Your Projects</h3>
             <p class="text-sm text-base-content/60">{{ projectStore.projects.length }} project{{ projectStore.projects.length !== 1 ? 's' : '' }}</p>
           </div>
-          
+
           <div class="flex items-center gap-3">
             <!-- Search -->
             <div class="relative">
@@ -260,11 +255,11 @@ const formatDate = (date) => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
               </svg>
             </div>
-            
+
             <!-- View Toggle -->
             <div class="join">
-              <button 
-                class="btn btn-sm join-item" 
+              <button
+                class="btn btn-sm join-item"
                 :class="{ 'btn-active': viewMode === 'grid' }"
                 @click="viewMode = 'grid'"
               >
@@ -272,8 +267,8 @@ const formatDate = (date) => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
                 </svg>
               </button>
-              <button 
-                class="btn btn-sm join-item" 
+              <button
+                class="btn btn-sm join-item"
                 :class="{ 'btn-active': viewMode === 'list' }"
                 @click="viewMode = 'list'"
               >
@@ -292,7 +287,7 @@ const formatDate = (date) => {
             type="button"
             class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px] bg-transparent w-full"
             aria-label="New project"
-            @click="showCreateModal = true"
+            @click="openCreate"
           >
             <div class="w-14 h-14 rounded-2xl bg-base-200 group-hover:bg-primary/20 flex items-center justify-center mb-4 transition-colors">
               <svg class="w-7 h-7 text-base-content/40 group-hover:text-primary transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,7 +322,7 @@ const formatDate = (date) => {
                     <p class="text-xs text-base-content/50">{{ formatDate(project.modified) }}</p>
                   </div>
                 </div>
-                
+
                 <!-- Actions Dropdown -->
                 <div class="dropdown dropdown-end" @click.stop @mousedown.stop>
                   <label tabindex="0" class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
@@ -418,7 +413,7 @@ const formatDate = (date) => {
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <AppIcon name="ruler" class="w-5 h-5" />
             </div>
-            
+
             <div class="flex-1 min-w-0">
               <h4 class="font-semibold truncate">{{ project.name }}</h4>
               <p class="text-sm text-base-content/50">{{ getProjectStats(project).total }} nodes · Modified {{ formatDate(project.modified) }}</p>
@@ -429,8 +424,8 @@ const formatDate = (date) => {
               <div v-if="getProjectStats(project).ready > 0" class="badge badge-warning badge-sm">{{ getProjectStats(project).ready }}</div>
               <div v-if="getProjectStats(project).error > 0" class="badge badge-error badge-sm">{{ getProjectStats(project).error }}</div>
             </div>
-            
-            <button 
+
+            <button
               class="btn btn-ghost btn-sm opacity-0 group-hover:opacity-100 transition-opacity"
               @click.stop="deleteProject(project.id, $event)"
             >
@@ -460,7 +455,7 @@ const formatDate = (date) => {
           <p class="text-base-content/60 mb-6 max-w-md mx-auto">
             Create your first infrastructure project to start designing and deploying.
           </p>
-          <button class="btn btn-primary gap-2" @click="showCreateModal = true">
+          <button class="btn btn-primary gap-2" @click="openCreate">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -471,58 +466,63 @@ const formatDate = (date) => {
     </main>
 
     <!-- Create Project Modal -->
-    <div v-if="showCreateModal" class="modal modal-open">
-      <div class="modal-box max-w-md">
-        <button 
-          class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-          @click="showCreateModal = false; newProjectName = ''"
-        >✕</button>
-        
-        <h3 class="text-xl font-bold mb-6">Create New Project</h3>
-
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Project Name</span>
-            </label>
-            <input
-              v-model="newProjectName"
-              type="text"
-              class="input input-bordered"
-              placeholder="My Infrastructure Project"
-              @keyup.enter="createProject"
-              autofocus
-            />
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Description</span>
-              <span class="label-text-alt text-base-content/50">Optional</span>
-            </label>
-            <textarea
-              v-model="newProjectDescription"
-              class="textarea textarea-bordered h-20"
-              placeholder="What will you build?"
-            ></textarea>
-          </div>
-        </div>
-
-        <div class="modal-action">
-          <button class="btn btn-ghost" @click="showCreateModal = false; newProjectName = ''">
-            Cancel
-          </button>
+    <FocusTrap v-if="showCreateModal" :active="true" :escape-deactivates="false" :return-focus-on-deactivate="false" :initial-focus="'#new-project-name'">
+      <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="create-project-heading" @keydown.esc.prevent="closeCreate">
+        <div class="modal-box max-w-md">
           <button
-            class="btn btn-primary"
-            :disabled="!newProjectName.trim()"
-            @click="createProject"
-          >
-            Create Project
-          </button>
+            class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
+            aria-label="Close create project"
+            @click="closeCreate"
+          >✕</button>
+
+          <h3 id="create-project-heading" class="text-xl font-bold mb-6">Create New Project</h3>
+
+          <div class="space-y-4">
+            <div class="form-control">
+              <label class="label" for="new-project-name">
+                <span class="label-text font-medium">Project Name</span>
+              </label>
+              <input
+                id="new-project-name"
+                v-model="newProjectName"
+                type="text"
+                autocomplete="off"
+                class="input input-bordered"
+                placeholder="My Infrastructure Project"
+                @keyup.enter="createProject"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label" for="new-project-description">
+                <span class="label-text font-medium">Description</span>
+                <span class="label-text-alt text-base-content/50">Optional</span>
+              </label>
+              <textarea
+                id="new-project-description"
+                v-model="newProjectDescription"
+                class="textarea textarea-bordered h-20"
+                placeholder="What will you build?"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <button class="btn btn-ghost" @click="closeCreate">
+              Cancel
+            </button>
+            <button
+              class="btn btn-primary"
+              :disabled="!newProjectName.trim()"
+              @click="createProject"
+            >
+              Create Project
+            </button>
+          </div>
         </div>
+        <div class="modal-backdrop" @click="closeCreate"></div>
       </div>
-      <div class="modal-backdrop" @click="showCreateModal = false"></div>
-    </div>
+    </FocusTrap>
   </div>
 
   <!-- Delete Confirmation Modal -->
@@ -538,24 +538,14 @@ const formatDate = (date) => {
     <div class="modal-backdrop" @click="cancelDelete"></div>
   </div>
 
-  <!-- Plan C §C4.6 — Quick-deploy DeployForm -->
+  <!-- Open an immutable saved Git project before editing. -->
   <OpenProjectFromGitModal v-if="showOpenGit" :open="showOpenGit" @close="showOpenGit = false" @opened="project => { showOpenGit = false; openProject(project.id) }" />
-  <DeployForm
-    v-if="quickDeployTarget"
-    :visible="!!quickDeployTarget"
-    :project-id="quickDeployTarget.id"
-    :project-name="quickDeployTarget.name"
-    :catalog-sha="quickDeployTarget?.catalog_sha || quickDeployTarget?.pinned_catalog_sha || ''"
-    :project-sha="quickDeployTarget?.head_sha || quickDeployTarget?.project_sha || ''"
-    :existing-codenames="quickDeployCodenames"
-    :gamenet="!!quickDeployTarget?.gamenet"
-    @close="closeQuickDeploy"
-  />
+
 </template>
 
 <style scoped>
 .bg-grid-pattern {
-  background-image: 
+  background-image:
     linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
   background-size: 20px 20px;

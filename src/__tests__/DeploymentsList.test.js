@@ -165,6 +165,22 @@ describe('<DeploymentsList>', () => {
     expect(rows[0].text()).toContain('alpha')
   })
 
+  it('keeps completed, partial and unknown outcomes in history with real navigation links', async () => {
+    globalThis.fetch = fetchMock(['completed', 'partial', 'unknown'].map((state, index) => ({
+      id: `terminal-${index}`, codename: state, state,
+    })))
+    const router = makeRouter()
+    await router.push('/deployments')
+    const wrapper = mount(DeploymentsList, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.find('[data-testid="deployments-active"]').findAll('[data-testid="deployment-row"]')).toHaveLength(0)
+    const rows = wrapper.find('[data-testid="deployments-past"]').findAll('[data-testid="deployment-row"]')
+    expect(rows).toHaveLength(3)
+    expect(rows[0].element.tagName).toBe('A')
+    expect(rows[0].attributes('href')).toBe('/deployments/terminal-0')
+    expect(rows[0].find('button, a').exists()).toBe(false)
+  })
+
   it('shows empty state when backend returns zero deployments', async () => {
     globalThis.fetch = fetchMock([])
     const router = makeRouter()
