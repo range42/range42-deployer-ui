@@ -62,7 +62,7 @@ describe.skipIf(!backend)('actual backend + local Ansible workload consumer', ()
   }, 60000)
   it.skipIf(!process.env.R42_WORKLOAD_DOCKER)('validates the copied source and identity override with the actual Compose CLI without a daemon', async () => {
     const f = await setup('ok', [18888]), prefix = join(f.root, 'scenarios/saved/content/workloads/catalog-1')
-    const result = execFileSync(process.env.R42_WORKLOAD_DOCKER!, ['--host', 'unix:///nonexistent-r42-test.sock', 'compose', '--project-name', f.marker, '--project-directory', join(prefix, 'payload'), '--env-file', '/dev/null', '-f', join(prefix, 'runtime.compose.yml'), 'config', '--format', 'json'], { encoding: 'utf8', timeout: 10000, env: { PATH: process.env.PATH, HOME: f.root, DOCKER_CONFIG: join(f.root, 'empty-docker-config') } })
+    const result = execFileSync(process.env.R42_WORKLOAD_DOCKER!, ['--host', 'unix:///nonexistent-r42-test.sock', 'compose', '--project-name', f.marker, '--project-directory', join(prefix, 'payload'), '--env-file', '/dev/null', '-f', join(prefix, 'runtime.compose.yml'), 'config', '--format', 'json'], { encoding: 'utf8', timeout: 10000, env: { PATH: process.env.PATH, DOCKER_CONFIG: join(f.root, 'empty-docker-config') } })
     const document = JSON.parse(result)
     expect(document.services['apache-cve-2021-42013'].container_name).toBe(`${f.marker}-service`)
     expect(document.services['apache-cve-2021-42013'].build.context).toBe(join(prefix, 'payload'))
