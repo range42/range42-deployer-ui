@@ -12,6 +12,7 @@ import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import NewRoleModal from '@/components/catalog/NewRoleModal.vue'
+import NewMachineModal from '@/components/catalog/NewMachineModal.vue'
 import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { ensureNamespaces } from '@/i18n'
 
@@ -34,6 +35,8 @@ const selectedDifficulty = ref('')
 const tagInput = ref('')
 const searchQuery = ref('')
 const newRoleOpen = ref(false)
+const newMachineOpen = ref(false)
+const draftKind = ref('role')
 const rolePublisherOpen = ref(false)
 const roleDraft = ref(null)
 const roleDraftId = ref('')
@@ -56,20 +59,30 @@ function onAdded(result) {
 }
 
 function openNewRole() {
+  draftKind.value = 'role'
   roleDraftId.value = `catalog-role-${randomId()}`
   roleDraft.value = null
   newRoleOpen.value = true
 }
 
+function openNewMachine() {
+  draftKind.value = 'machine'
+  roleDraftId.value = `catalog-machine-${randomId()}`
+  roleDraft.value = null
+  newMachineOpen.value = true
+}
+
 function publishRole(draft) {
   roleDraft.value = draft
   newRoleOpen.value = false
+  newMachineOpen.value = false
   rolePublisherOpen.value = true
 }
 
 function closeRolePublisher() {
   rolePublisherOpen.value = false
-  newRoleOpen.value = true
+  if (draftKind.value === 'machine') newMachineOpen.value = true
+  else newRoleOpen.value = true
 }
 
 // Kinds the backend can emit (catalog/entries.py). `unknown` is a fallback
@@ -177,7 +190,10 @@ function openFork(entry) {
         <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
         <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
       </div>
-      <button type="button" class="btn btn-primary btn-sm shrink-0" data-testid="new-catalog-role" @click="openNewRole">{{ t('catalog.new_role') }}</button>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline btn-sm" data-testid="new-catalog-role" @click="openNewRole">{{ t('catalog.new_role') }}</button>
+        <button type="button" class="btn btn-primary btn-sm" data-testid="new-catalog-machine" @click="openNewMachine">{{ t('catalog.new_machine') }}</button>
+      </div>
     </header>
     <div v-if="targetProject" class="rounded-xl border border-primary/25 bg-primary/5 p-4 mb-5 flex flex-wrap items-center justify-between gap-3" data-testid="catalog-project-context">
       <div class="min-w-0"><p class="font-medium break-words">{{ t('catalog.append.context', { project: targetProject.name }) }}</p><p class="text-sm text-base-content/70 mt-1">{{ t('catalog.append.context_hint') }}</p></div>
@@ -187,12 +203,13 @@ function openFork(entry) {
     <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
 
     <NewRoleModal :key="roleDraftId" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
+    <NewMachineModal :key="roleDraftId" :open="newMachineOpen" @close="newMachineOpen = false" @prepared="publishRole" />
     <PublishTargetsModal
       v-if="roleDraft"
       :open="rolePublisherOpen"
       :project-id="roleDraftId"
       :files="roleDraft.files"
-      :message="`Add Ansible role ${roleDraft.name}`"
+      :message="`Add ${draftKind === 'machine' ? 'VM blueprint' : 'Ansible role'} ${roleDraft.name}`"
       :create-only="true"
       :component-path="roleDraft.path"
       @close="closeRolePublisher"

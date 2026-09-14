@@ -3,6 +3,7 @@
   "visible_results": "Showing {count} of {total} matching items",
   "load_more": "Show more items",
   "new_role": "New Ansible role",
+  "new_machine": "New VM blueprint",
   "subtitle": "Browse labs, gamenets, and components across your Git sources.",
   "filters": {
     "kind": "Kind",

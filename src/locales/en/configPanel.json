@@ -1,4 +1,5 @@
 {
+  "templateRequirement": "Required operating system: {os}. Choose a matching template on the selected host.",
   "header": "Configure {type}",
   "status": {
     "valid": "✓ Configuration valid",

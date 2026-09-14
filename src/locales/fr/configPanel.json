@@ -1,4 +1,5 @@
 {
+  "templateRequirement": "Système d’exploitation requis : {os}. Choisissez un template compatible sur l’hôte sélectionné.",
   "header": "Configurer {type}",
   "status": {
     "valid": "✓ Configuration valide",

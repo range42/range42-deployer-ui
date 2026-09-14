@@ -22,6 +22,7 @@ const diskSize = computed({
   <FormDivider label="Virtual Machine" icon="" />
 
   <FormSection title="Template" icon="" variant="bordered" :columns="1">
+    <p v-if="config.os" class="text-sm text-base-content/70">{{ t('configPanel.templateRequirement', { os: config.os }) }}</p>
     <div class="flex items-end gap-2">
       <div class="flex-1">
         <FormField
@@ -87,7 +88,7 @@ const diskSize = computed({
       type="select"
       :options="availableStorages"
       placeholder="Use project default"
-      hint="Where to store VM disk (overrides project default)"
+      hint="Saved preference. Concrete scenario clones currently inherit their template’s storage; this field does not move disks."
       icon=""
     />
   </FormSection>

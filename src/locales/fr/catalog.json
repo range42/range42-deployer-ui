@@ -3,6 +3,7 @@
   "visible_results": "{count} sur {total} éléments correspondants affichés",
   "load_more": "Afficher plus d’éléments",
   "new_role": "Nouveau rôle Ansible",
+  "new_machine": "Nouveau modèle de VM",
   "subtitle": "Parcourez labs, gamenets et composants sur l'ensemble de vos sources Git.",
   "filters": {
     "kind": "Type",
