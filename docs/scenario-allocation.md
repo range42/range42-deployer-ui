@@ -10,7 +10,7 @@ The backend accepts up to 64 VMs, 32 declared networks, 32 NICs per VM and 256 N
 
 Reservations conservatively share VM IDs and `(bridge, IP)` pairs across all host registrations on one backend installation, preventing aliases from bypassing the ledger. Truly separate clusters therefore cannot reuse those values on that installation until cluster identity is modeled explicitly. Static addresses outside the backend's visible guest configuration can remain undetectable; the response's limitation messages are shown with the mapping.
 
-The deployment form prefers the saved target only when its backend URL matches the current backend and that target still exists. Changing backend or target displays a reminder to reserve again. The initial scope is one target node with explicitly declared subnets; team replication and automatic subnet allocation are separate features.
+The deployment form prefers the saved target only when its backend URL matches the current backend and that target still exists. Changing backend or target displays a reminder to reserve again. Allocation targets one node with explicitly declared subnets. The [replication panel](concrete-replication.md) expands reviewed team/user instances into this same keyed VM/NIC reservation flow; automatic subnet allocation and multi-node placement remain unsupported.
 
 API: `POST /v1/proxmox/hosts/{host_id}/reservations` reserves or renews; `GET` and `DELETE /v1/proxmox/hosts/{host_id}/reservations/{reservation_id}` restore and release using the same ownership header. Project keys are local authoring IDs and do not require a registered Git project.
 
