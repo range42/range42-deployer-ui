@@ -214,9 +214,9 @@ function openFork(entry) {
     <p v-else-if="targetProjectId" role="alert" class="alert alert-warning mb-4">{{ t('catalog.append.missing_project') }}</p>
     <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
 
-    <NewRoleModal :key="roleDraftId" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
-    <NewContainerModal :key="roleDraftId" :open="newContainerOpen" @close="newContainerOpen = false" @prepared="publishRole" />
-    <NewMachineModal :key="roleDraftId" :open="newMachineOpen" @close="newMachineOpen = false" @prepared="publishRole" />
+    <NewRoleModal :key="`role:${roleDraftId}`" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
+    <NewContainerModal :key="`container:${roleDraftId}`" :open="newContainerOpen" @close="newContainerOpen = false" @prepared="publishRole" />
+    <NewMachineModal :key="`machine:${roleDraftId}`" :open="newMachineOpen" @close="newMachineOpen = false" @prepared="publishRole" />
     <PublishTargetsModal
       v-if="roleDraft"
       :open="rolePublisherOpen"

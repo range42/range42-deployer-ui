@@ -54,6 +54,7 @@ async function mountList(seedSource = true, backendHost, visibleCount = PAGE.ite
   if (seedSource) inv.addSource({ id: 'src-a', provider: 'gitlab', base_url: 'https://gl.example', auth: { kind: 'none' }, repos: [] })
 
   const wrapper = mount(CatalogList, {
+    attachTo: document.body,
     global: {
       plugins: [pinia, makeI18n(), makeRouter()],
       stubs: {
