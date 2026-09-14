@@ -62,7 +62,9 @@ describe('CatalogPickerForm', () => {
     await flushPromises()
 
     expect(capturedUrl).toContain('kind=ansible_role')
-    expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    })
   })
 
   it('emits update:source with correct ref and sha when a row is clicked', async () => {
@@ -72,6 +74,9 @@ describe('CatalogPickerForm', () => {
     })
     await flushPromises()
 
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    })
     await wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').trigger('click')
 
     const emitted = wrapper.emitted('update:source')
@@ -120,7 +125,9 @@ describe('CatalogPickerForm', () => {
     resolve(ANSIBLE_ROLE_RESPONSE)
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="catalog-pick-loading"]').exists()).toBe(false)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-loading"]').exists()).toBe(false)
+    })
   })
 
   it('shows empty state when entries list is empty', async () => {
@@ -150,6 +157,9 @@ describe('CatalogPickerForm', () => {
     })
     await flushPromises()
 
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    })
     const row = wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]')
     expect(row.classes()).toContain('ring')
   })

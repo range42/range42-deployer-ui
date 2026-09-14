@@ -92,7 +92,7 @@ describe('legacy config mutation boundary', () => {
     ['setMemory', ['pve-b', 42, 2048]],
   ])('refuses %s before a global-inventory write', async (method, args) => {
     backend()
-    await expect(vm[method](...args)).rejects.toThrow(/selected host|host.bound/i)
+    await expect(vm[method](...args)).rejects.toThrow(/legacy configuration setter is unavailable.*Review changes.*desired edits are preserved/i)
     expect(fetch).not.toHaveBeenCalled()
   })
 })
