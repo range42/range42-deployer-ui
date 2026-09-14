@@ -35,7 +35,7 @@ export interface BackendApiHealth {
   rtt_ms?: number
   backend_version?: string
   ready?: boolean
-  checks?: Record<string, { ok: boolean; [k: string]: unknown }>
+  checks?: Record<string, { ok: boolean | null; required?: boolean; [k: string]: unknown }>
   ts: string
 }
 
@@ -294,9 +294,9 @@ export const useBackendApiStore = defineStore('backendApi', () => {
       }
       const body = await res.json().catch(() => ({}))
       const next: BackendApiHealth = {
-        status: body?.ready ? 'ok' : 'degraded',
+        status: body?.ready === true ? 'ok' : 'degraded',
         rtt_ms,
-        ready: Boolean(body?.ready),
+        ready: body?.ready === true,
         checks: body?.checks,
         ts,
       }

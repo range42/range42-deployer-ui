@@ -44,6 +44,12 @@ describe('backend authentication', () => {
     expect((await backend.testConnection()).status).toBe('forbidden')
   })
 
+  it('does not report a malformed truthy readiness value as healthy', async () => {
+    fetchMock.mockResolvedValue(response(200, { ready: 'false' }))
+    expect((await backend.testConnection()).status).toBe('degraded')
+    expect(backend.isHealthy).toBe(false)
+  })
+
   it('turns a protected endpoint rejection into an actionable connection state', async () => {
     fetchMock.mockResolvedValue(response(401))
     await expect(backendRequest('/v1/catalog/sources/default', { method: 'POST' })).rejects.toThrow('backend API token')

@@ -4,6 +4,7 @@ import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useP
 import { useBackendApiStore } from '@/stores/backendApiStore.ts'
 import FormSection from '@/components/ui/FormSection.vue'
 import ProxmoxCapacityPanel from '@/components/proxmox/ProxmoxCapacityPanel.vue'
+import BackendReadinessDetails from '@/components/BackendReadinessDetails.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 
 const DEFAULT_API_URL = DEFAULT_BACKEND_API_URL
@@ -86,14 +87,15 @@ const closeDialog = () => {
 }
 
 const handleDialogClose = () => {
+  invalidateConnection()
   if (props.visible) {
     emit('close')
   }
 }
 
 watch(
-  () => props.visible,
-  (visible) => {
+  () => [props.visible, props.projectId],
+  ([visible]) => {
     if (visible) {
       populateForm()
       openDialog()
@@ -118,6 +120,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  invalidateConnection()
   const dialog = modalRef.value
   if (dialog) {
     dialog.removeEventListener('close', handleDialogClose)
@@ -132,13 +135,33 @@ const isFormValid = computed(() => {
 // Connection test
 const connectionStatus = ref(null) // null | 'testing' | 'success' | 'error'
 const connectionInfo = ref('')
+const connectionChecks = ref(null)
+let connectionGeneration = 0
+
+function invalidateConnection() {
+  connectionGeneration += 1
+  connectionStatus.value = null
+  connectionInfo.value = ''
+  connectionChecks.value = null
+  saveError.value = null
+}
+
+watch(
+  () => [props.visible, props.projectId, formBaseUrl.value, formDefaultNode.value,
+    selectedHostId.value, capacityBackendId.value, backendApi.getHost(capacityBackendId.value)?.token],
+  invalidateConnection,
+  { flush: 'sync' },
+)
 
 const testConnection = async () => {
   const url = formBaseUrl.value.trim().replace(/\/+$/, '')
-  if (!url) return
+  if (!url || !props.visible) return false
+  const generation = ++connectionGeneration
+  const isCurrent = () => generation === connectionGeneration && props.visible
 
   connectionStatus.value = 'testing'
   connectionInfo.value = 'Testing connection...'
+  connectionChecks.value = null
 
   try {
     const matchedHost = backendApi.getHost(capacityBackendId.value)
@@ -147,10 +170,14 @@ const testConnection = async () => {
       method: 'GET', signal: AbortSignal.timeout(8000),
       headers: { Accept: 'application/json', ...(matchedHost ? backendApi.authHeaders(matchedHost.id) : {}) },
     })
+    if (!isCurrent()) return false
     if (resp.ok) {
       const data = await resp.json()
-      connectionStatus.value = data.ready ? 'success' : 'error'
-      connectionInfo.value = data.ready ? 'Backend ready' : 'Backend reachable but not ready. Check its health in Settings.'
+      if (!isCurrent()) return false
+      connectionChecks.value = data?.checks ?? null
+      connectionStatus.value = data?.ready === true ? 'success' : 'error'
+      connectionInfo.value = data?.ready === true ? 'Backend ready' : 'Backend reachable but not ready. Check its health in Settings.'
+      return data?.ready === true
     } else {
       connectionStatus.value = 'error'
       if (resp.status === 401) {
@@ -161,34 +188,40 @@ const testConnection = async () => {
       }
     }
   } catch (e) {
+    if (!isCurrent()) return false
     connectionStatus.value = 'error'
     connectionInfo.value = e.name === 'TimeoutError' ? 'Connection timed out (8s)' : 'Cannot reach server: ' + e.message
   }
+  return false
 }
 
 const handleSave = async () => {
+  if (isSaving.value || connectionStatus.value === 'testing') return
   if (!isFormValid.value) {
     saveError.value = 'Both Base URL and Default Node are required'
     return
   }
 
-  // Test connection before saving
-  await testConnection()
-  if (connectionStatus.value === 'error') {
-    saveError.value = connectionInfo.value
-    return
-  }
-
   isSaving.value = true
   saveError.value = null
+  const baseUrl = formBaseUrl.value.trim()
+  const defaultNode = formDefaultNode.value.trim()
 
   try {
-    const success = updateSettings(formBaseUrl.value.trim(), formDefaultNode.value.trim())
+    // Only a check of these unchanged project/host credentials may authorize saving.
+    const verification = testConnection()
+    const generation = connectionGeneration
+    const verified = await verification
+    if (!verified || generation !== connectionGeneration || !props.visible) {
+      if (connectionStatus.value === 'error') saveError.value = connectionInfo.value
+      return
+    }
+    const success = updateSettings(baseUrl, defaultNode)
     if (success) {
       // Sync to global localStorage for components that read defaultStorage/defaultNode
       localStorage.setItem('range42_proxmox_settings', JSON.stringify({
-        baseUrl: formBaseUrl.value.trim(),
-        defaultNode: formDefaultNode.value.trim(),
+        baseUrl,
+        defaultNode,
         defaultStorage: 'local-zfs',
       }))
 
@@ -220,6 +253,7 @@ const handleReset = async () => {
 }
 
 const handleClose = () => {
+  invalidateConnection()
   emit('close')
   closeDialog()
 }
@@ -301,10 +335,10 @@ const formatDate = (isoString) => {
       <ProxmoxCapacityPanel v-if="visible" :backend-id="capacityBackendId" :node-name="formDefaultNode" />
 
       <!-- Connection Test -->
-      <div class="flex items-center gap-2 mb-4">
+      <div class="flex flex-wrap items-center gap-2 mb-4" role="status">
         <button
           class="btn btn-sm btn-outline gap-1"
-          :disabled="!formBaseUrl.trim() || connectionStatus === 'testing'"
+          :disabled="!formBaseUrl.trim() || connectionStatus === 'testing' || isSaving"
           @click="testConnection"
         >
           <span v-if="connectionStatus === 'testing'" class="loading loading-spinner loading-xs"></span>
@@ -317,6 +351,7 @@ const formatDate = (isoString) => {
         <span v-if="connectionStatus === 'error'" class="text-sm text-error">{{ connectionInfo }}</span>
         <span v-if="connectionStatus === 'testing'" class="text-sm text-info">{{ connectionInfo }}</span>
       </div>
+      <BackendReadinessDetails class="mb-4" :checks="connectionChecks" />
 
       <!-- Error Message -->
       <div v-if="saveError" class="alert alert-error mb-4">
@@ -342,11 +377,11 @@ const formatDate = (isoString) => {
           </button>
           <div v-else></div>
           <div class="flex gap-2">
-            <button class="btn btn-ghost" type="button" @click="handleClose" :disabled="isSaving">Cancel</button>
+            <button class="btn btn-ghost" type="button" @click="handleClose">Cancel</button>
             <button 
               class="btn btn-primary gap-1" 
               @click="handleSave"
-              :disabled="!isFormValid || isSaving"
+              :disabled="!isFormValid || isSaving || connectionStatus === 'testing'"
             >
               <span v-if="isSaving" class="loading loading-spinner loading-sm"></span>
               <template v-else>

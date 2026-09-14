@@ -10,6 +10,7 @@ import { useUserStore, validateDisplayName, validateColor } from '../stores/user
 import { getGitHubProvider } from '../services/git/github'
 import { useConfirmDialog } from '../composables/useConfirmDialog'
 import { useToast } from '../composables/useToast'
+import BackendReadinessDetails from '../components/BackendReadinessDetails.vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
@@ -400,11 +401,11 @@ const clearAllData = async () => {
             <li
               v-for="h in backendHosts"
               :key="h.id"
-              class="flex items-center gap-3 py-3"
+              class="flex flex-wrap items-center gap-3 py-3"
               data-testid="backend-host-row"
             >
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                   <span class="font-medium truncate">{{ h.label || h.url }}</span>
                   <span
                     v-if="h.health?.status"
@@ -425,6 +426,7 @@ const clearAllData = async () => {
               </button>
               <button class="btn btn-ghost btn-xs" type="button" @click="editHost(h)">Edit</button>
               <button class="btn btn-ghost btn-xs text-error" type="button" @click="removeHostConfirm(h)">Remove</button>
+              <BackendReadinessDetails class="w-full" :checks="h.health?.checks" />
             </li>
           </ul>
           <p v-else class="text-sm text-base-content/50 italic mb-4" data-testid="backend-host-empty">
