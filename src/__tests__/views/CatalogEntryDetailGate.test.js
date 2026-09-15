@@ -53,7 +53,7 @@ async function mountDetail({ writable }) {
     repos: [],
     writable,
   })
-  globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ENTRY })
+  globalThis.fetch = vi.fn(async url => ({ ok: true, json: async () => String(url).includes('/catalog/sources') ? { items: [{ id: 'src-ro', provider: 'gitlab', base_url: 'https://gl.example', auth_kind: writable === false ? 'none' : 'pat', has_token: writable === true, repos: [] }], total: 1 } : ENTRY }))
 
   const router = makeRouter()
   router.push('/catalog/src-ro/labs%2Fweb')
@@ -88,9 +88,9 @@ describe('CatalogEntryDetail — customize gating by write access', () => {
   it('reloads and clears private catalog detail when backend authentication changes', async () => {
     const wrapper = await mountDetail({ writable: false })
     expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(true)
-    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
     useBackendApiStore().addHost({ url: 'https://other.example', token: 'different-identity' })
-    await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(globalThis.fetch.mock.calls.filter(([url]) => String(url).includes('/catalog/entries'))).toHaveLength(2))
     await vi.waitFor(() => expect(wrapper.text()).toContain('backend API token'))
     expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(false)
   })

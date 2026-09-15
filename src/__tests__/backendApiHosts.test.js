@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useBackendApiStore } from '@/stores/backendApiStore.ts'
 
 const KEY = 'range42_backend_api'
+afterEach(() => vi.restoreAllMocks())
 
 describe('backendApiStore — host list', () => {
   beforeEach(() => {
@@ -70,5 +71,69 @@ describe('backendApiStore — host list', () => {
     const s2 = useBackendApiStore()
     expect(s2.hosts).toHaveLength(1)
     expect(s2.hosts[0].url).toBe('http://h1:8000')
+  })
+
+  it('reports session-only connection changes synchronously and recovers after a successful write', () => {
+    const store = useBackendApiStore()
+    const id = store.addHost({ label: 'Saved', url: 'https://backend.test', token: 'original-token' })
+    const persisted = localStorage.getItem(KEY)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('private-storage-diagnostic') })
+
+    store.updateHost(id, { label: 'Session change', token: 'replacement-token' })
+    expect(write).toHaveBeenCalled()
+    expect(store.getHost(id).token).toBe('replacement-token')
+    expect(store.storageError).toMatch(/this session/i)
+    expect(store.storageError).not.toContain('private-storage-diagnostic')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private-storage-diagnostic')
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('replacement-token')
+    expect(localStorage.getItem(KEY)).toBe(persisted)
+    setActivePinia(createPinia())
+    expect(useBackendApiStore().getHost(id).token).toBe('original-token')
+
+    write.mockRestore()
+    store.updateHost(id, { label: 'Saved after recovery' })
+    expect(store.storageError).toBe('')
+    setActivePinia(createPinia())
+    const restored = useBackendApiStore().getHost(id)
+    expect(restored.label).toBe('Saved after recovery')
+    expect(restored.token).toBe('replacement-token')
+  })
+
+  it('retries persisting the exact unchanged session connections only when requested', () => {
+    const store = useBackendApiStore()
+    const id = store.addHost({ label: 'Saved', url: 'https://backend.test' })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('unavailable') })
+    store.updateHost(id, { label: 'Session change', token: 'retry-token' })
+    const snapshot = JSON.stringify(store.hosts)
+    expect(store.retryPersistence()).toBe(false)
+    write.mockRestore()
+    expect(store.retryPersistence()).toBe(true)
+    expect(store.storageError).toBe('')
+    expect(JSON.stringify(store.hosts)).toBe(snapshot)
+    setActivePinia(createPinia())
+    expect(JSON.stringify(useBackendApiStore().hosts)).toBe(snapshot)
+    expect(useBackendApiStore().activeHost.id).toBe(id)
+  })
+
+  it('never persists a partial URL/token pair when the completed connection exceeds storage limits', () => {
+    const store = useBackendApiStore()
+    const id = store.addHost({ url: 'https://original.test', token: 'original-token' })
+    const persisted = localStorage.getItem(KEY)
+    const write = Storage.prototype.setItem
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (value.includes('replacement-token')) throw new Error('quota exceeded')
+      return write.call(this, key, value)
+    })
+
+    store.updateHost(id, { url: 'https://replacement.test', token: 'replacement-token' })
+
+    expect(store.getHost(id)).toMatchObject({ url: 'https://replacement.test', token: 'replacement-token' })
+    expect(store.storageError).toMatch(/this session/)
+    expect(localStorage.getItem(KEY)).toBe(persisted)
+    setActivePinia(createPinia())
+    expect(useBackendApiStore().getHost(id)).toMatchObject({ url: 'https://original.test', token: 'original-token' })
   })
 })

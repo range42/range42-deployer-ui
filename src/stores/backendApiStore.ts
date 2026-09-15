@@ -118,6 +118,7 @@ function loadState(): BackendApiState {
 
 export const useBackendApiStore = defineStore('backendApi', () => {
   const state = ref<BackendApiState>(loadState())
+  const storageError = ref('')
 
   const hosts = computed(() => state.value.hosts)
   const activeHost = computed<BackendApiHost | null>(
@@ -132,17 +133,18 @@ export const useBackendApiStore = defineStore('backendApi', () => {
   const isHealthy = computed(() => activeHost.value?.health?.status === 'ok')
   const requiresAuthentication = computed(() => health.value?.status === 'unauthorized')
 
-  watch(
-    state,
-    (next) => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-      } catch (e) {
-        console.warn('[backendApiStore] Failed to save state:', e)
-      }
-    },
-    { deep: true, flush: 'sync' },
-  )
+  function retryPersistence(): boolean {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+      storageError.value = ''
+      return true
+    } catch {
+      storageError.value = 'Backend connections could not be stored. Changes apply only in this session.'
+      console.warn('[backendApiStore] Browser storage is unavailable; changes apply only in this session.')
+      return false
+    }
+  }
+  watch(state, retryPersistence, { deep: true, flush: 'sync' })
 
   function getHost(id: string): BackendApiHost | null {
     return state.value.hosts.find((h) => h.id === id) ?? null
@@ -171,15 +173,22 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     id: string,
     patch: Partial<Omit<BackendApiHost, 'id'>>,
   ): void {
-    const host = state.value.hosts.find((h) => h.id === id)
-    if (!host) return
-    if ((patch.url !== undefined && normalizeUrl(patch.url) !== host.url) ||
-        (patch.token !== undefined && (patch.token || undefined) !== host.token)) host.health = undefined
+    const index = state.value.hosts.findIndex((h) => h.id === id)
+    if (index === -1) return
+    const previous = state.value.hosts[index]
+    const host = { ...previous }
+    const connectionChanged = (patch.url !== undefined && normalizeUrl(patch.url) !== host.url) ||
+      (patch.token !== undefined && (patch.token || undefined) !== host.token)
+    if (connectionChanged) host.health = undefined
     if (patch.url !== undefined) host.url = normalizeUrl(patch.url)
     if (patch.label !== undefined) host.label = patch.label.trim() || host.url
     if (patch.token !== undefined) host.token = patch.token || undefined
     if (patch.nodeName !== undefined) host.nodeName = patch.nodeName.trim() || DEFAULT_NODE
     if (patch.health !== undefined) host.health = patch.health
+    // Persist and notify watchers only after URL and credentials form one
+    // complete connection; a partial write could leak the previous token.
+    if (connectionChanged) state.value.hosts[index] = host
+    else Object.assign(previous, host)
   }
 
   function removeHost(id: string): void {
@@ -256,7 +265,8 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     if (!res.ok) throw new Error(`Could not verify the backend connection (HTTP ${res.status}).`)
     const body = await res.json()
     if (typeof body?.ready !== 'boolean') throw new Error('The server did not return a backend readiness result.')
-    if (activeHost.value?.id !== snapshot.id || host.url !== snapshot.url || host.token !== snapshot.token) {
+    const currentHost = getHost(snapshot.id)
+    if (activeHost.value?.id !== snapshot.id || currentHost?.url !== snapshot.url || currentHost?.token !== snapshot.token) {
       throw new Error('The backend connection changed. Try again for the selected backend.')
     }
     updateHost(host.id, { token, health: {
@@ -312,6 +322,8 @@ export const useBackendApiStore = defineStore('backendApi', () => {
     // list state
     hosts,
     activeHost,
+    storageError,
+    retryPersistence,
     // back-compat getters
     url,
     token,

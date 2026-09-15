@@ -66,6 +66,7 @@ import { useDragAndDrop } from '../composables/useDragAndDrop'
 import { useToast } from '../composables/useToast'
 import { useProjectGitSync, buildPushArgs, providerForBinding } from '../composables/useProjectGitSync'
 import { useProjectStore } from '../stores/projectStore'
+import { useEditorPreferencesStore } from '@/stores/editorPreferencesStore'
 
 
 ////
@@ -73,6 +74,8 @@ import { useProjectStore } from '../stores/projectStore'
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+const editorPreferences = useEditorPreferencesStore()
+const editorSnapGrid = computed(() => /** @type {[number, number]} */ ([editorPreferences.gridSize, editorPreferences.gridSize]))
 
 const {
   nodes,
@@ -346,26 +349,29 @@ function cloneSnapshot() {
   }))
 }
 
-// Debounced autosave (C3.11). 500ms debounce avoids flooding localStorage
-// on every canvas nudge. When the project is wired to a git-backed
-// ProjectRepoAdapter, the autosave body will also call adapter.autosave.
+// Local drafts always persist. The preference controls only the existing
+// debounced Git working-branch checkpoint, through the same lock/CAS path as Save.
 /** @type {ReturnType<typeof setTimeout> | null} */
 let autosaveTimer = null
 let editorActive = true
+function persistLocalGraph() {
+  if (currentProject.value) projectStore.updateProject(currentProject.value.id, projectGraph(nodes.value, edges.value))
+}
 function scheduleAutosave() {
   if (!currentProject.value) return
   if (autosaveTimer !== null) clearTimeout(autosaveTimer)
   autosaveTimer = setTimeout(() => {
     autosaveTimer = null
     if (!currentProject.value) return
-    projectStore.updateProject(currentProject.value.id, {
-      ...projectGraph(nodes.value, edges.value),
-    })
-    if (currentProject.value.git && !showRepositoryConnection.value) void manualSave({ quiet: true })
+    persistLocalGraph()
+    if (editorPreferences.autoSaveToGit && currentProject.value.git && !showRepositoryConnection.value) void manualSave({ quiet: true })
   }, 1500)
 }
 
 watch(() => editorAuthoredSignature(nodes.value || [], edges.value || []), scheduleAutosave)
+watch(() => editorPreferences.autoSaveToGit, enabled => {
+  if (enabled) scheduleAutosave()
+})
 // Selection, dimensions and dragging are view state, not separate undo steps.
 watch(() => {
   const snapshot = cloneSnapshot()
@@ -405,7 +411,15 @@ function applyCanvasSnapshot(snapshot) {
 
 onBeforeUnmount(() => {
   // Capture this project's graph and Git write before another editor mounts.
-  const finalSave = autosaveTimer !== null ? manualSave({ quiet: true }) : Promise.resolve()
+  const pending = autosaveTimer !== null
+  const checkpoint = pending && editorPreferences.autoSaveToGit && currentProject.value?.git && !showRepositoryConnection.value
+  const finalSave = checkpoint ? manualSave({ quiet: true }) : Promise.resolve()
+  if (pending && !checkpoint) {
+    if (autosaveTimer !== null) clearTimeout(autosaveTimer)
+    autosaveTimer = null
+    try { persistLocalGraph() }
+    catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
+  }
   editorActive = false
   void finalSave.finally(() => gitSync.releaseEditor?.())
 })
@@ -1240,6 +1254,8 @@ const handleInfrastructureImport = (result) => {
         <VueFlow
           :nodes="nodes"
           :edges="renderedEdges"
+          :snap-to-grid="editorPreferences.snapToGrid"
+          :snap-grid="editorSnapGrid"
           @connect="onConnect" 
           @node-click="handleNodeClick"
           @edge-click="handleEdgeClick" 
@@ -1250,8 +1266,30 @@ const handleInfrastructureImport = (result) => {
           class="h-full w-full"
         >
           <NetworkZoneOverlay :zones="zones" />
-          <Background />
-          <Controls position="bottom-left" />
+          <Background :gap="editorPreferences.gridSize" />
+          <Controls position="bottom-left">
+            <!-- Public icon slots name the original buttons, retaining VueFlow's handlers and disabled states. -->
+            <template #icon-zoom-in>
+              <span class="sr-only">Zoom in</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 3h2v8h8v2h-8v8h-2v-8H3v-2h8z" /></svg>
+            </template>
+            <template #icon-zoom-out>
+              <span class="sr-only">Zoom out</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 11h18v2H3z" /></svg>
+            </template>
+            <template #icon-fit-view>
+              <span class="sr-only">Fit view</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3h6v2H5v4H3zm12 0h6v6h-2V5h-4zM3 15h2v4h4v2H3zm16 0h2v6h-6v-2h4z" /></svg>
+            </template>
+            <template #icon-unlock>
+              <span class="sr-only">Lock node interaction</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 10V7a5 5 0 0 1 9.58-2H14.9A3 3 0 0 0 9 7v3h9v11H6V10zm5 4a1 1 0 0 0-1 1v3h2v-3a1 1 0 0 0-1-1z" /></svg>
+            </template>
+            <template #icon-lock>
+              <span class="sr-only">Unlock node interaction</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 10V7a5 5 0 0 1 10 0v3h1v11H6V10zm2 0h6V7a3 3 0 0 0-6 0zm3 4a1 1 0 0 0-1 1v3h2v-3a1 1 0 0 0-1-1z" /></svg>
+            </template>
+          </Controls>
           <MiniMap position="bottom-right" />
 
           <!-- Organization -->

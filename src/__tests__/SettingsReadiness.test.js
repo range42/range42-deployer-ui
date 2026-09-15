@@ -22,7 +22,7 @@ async function show(checks, ready = true) {
   })
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: Settings }] })
   await router.push('/')
-  wrapper = mount(Settings, { global: { plugins: [router] } })
+  wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router] } })
   await flushPromises()
   return wrapper.get('[data-testid="settings-backend-api"]')
 }

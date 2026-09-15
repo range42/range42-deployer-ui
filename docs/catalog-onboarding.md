@@ -1,6 +1,7 @@
 # Connect a catalog repository
 
-1. In **Settings → Backend API hosts**, add and select your backend URL. Its
+1. In **Settings → Connections**, add and select your backend URL (see
+   [Settings workflows](settings-workflows.md)). Its
    optional bearer token authenticates to the API gateway, not to GitHub.
 2. Open **Git Sources** and connect the recommended **Range42 public catalog**.
    This uses `https://github.com/range42/range42-catalog`, branch `main`, without

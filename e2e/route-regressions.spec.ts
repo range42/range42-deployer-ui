@@ -17,7 +17,7 @@ for (const width of [1440, 390]) {
       ['/deployments', '[data-testid="deployments-root"]'],
       ['/deployments/route-deployment', '[data-testid="detail-state"]'],
       ['/deployments/route-deployment/preflight', '[data-testid="preflight-report"]'],
-      ['/settings', '[data-testid="settings-snapshot-retention"]'],
+      ['/settings', '[data-testid="settings-backend-api"]'],
     ]
     for (const [path, selector] of routes) {
       await test.step(path, async () => {
@@ -87,6 +87,8 @@ for (const path of ['/catalog', routeEntryUrl]) {
   test(`catalog publication uses reviewed handoff and retains source on refusal: ${path}`, async ({ page }) => {
     const api = await routeApi(page)
     await page.goto(path)
+    const actions = path === '/catalog' ? page.locator('article') : page.getByTestId('entry-verbs')
+    await actions.locator('details summary').click()
     await page.getByRole('button', { name: 'Fork & publish', exact: true }).click()
     await expect(page.getByTestId('repository-owner')).toBeVisible()
     await page.getByTestId('repository-owner').fill('fixture')
@@ -170,13 +172,14 @@ test('mobile Settings separates registered Git sources from failed Proxmox readi
   await expect(page.getByTestId('readiness-proxmox')).toContainText('Failed')
   await expect(page.getByTestId('readiness-proxmox')).toContainText('credentials, certificate and connection')
   await expect(page.getByTestId('readiness-sqlite_wal')).toContainText('Passed')
-  await expect(page.getByTestId('retention-inactive')).toHaveText('Not enforced')
   expect(await page.evaluate(() => {
     const main = document.querySelector('main')!
     return document.documentElement.scrollWidth <= innerWidth && main.scrollWidth <= main.clientWidth + 1
   })).toBe(true)
   await page.getByTestId('backend-host-row').scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('settings-readiness-390.png') })
+  await page.getByTestId('settings-link-snapshots').click()
+  await expect(page.getByTestId('retention-inactive')).toHaveText('Not enforced')
   expect(api.state.writes).toEqual([])
   expect(api.state.unexpected).toEqual([])
   expect(errors).toEqual([])

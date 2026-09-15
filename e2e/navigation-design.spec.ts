@@ -71,7 +71,7 @@ test('project components can be added without dragging, then undone and redone',
 for (const theme of ['light', 'dark']) {
   test(`appearance persists and navigation passes accessibility checks in ${theme}`, async ({ page }, testInfo) => {
     await routeApi(page)
-    await page.goto('/settings')
+    await page.goto('/settings?tab=preferences')
     await page.getByLabel('Theme', { exact: true }).selectOption(theme)
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
     await page.reload()

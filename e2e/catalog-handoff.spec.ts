@@ -7,16 +7,15 @@ for (const width of [1440, 390]) {
   test(`default catalog role uses a reviewed repository and preserves files at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 950 })
     const entry = { name: 'service.reload.ntp', kind: 'ansible_role', source_id: 'catalog', path: fixture.path, sha: fixture.sha, document: {} }
-    const source = { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' },
+    const source = { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' }, auth_kind: 'none', has_token: false,
       repos: [{ owner: 'range42', repo: 'catalog', branch: 'main' }], writable: false }
-    await page.addInitScript(source => {
+    await page.addInitScript(() => {
       if (localStorage.getItem('catalog-handoff-seeded')) return
       localStorage.setItem('range42_projects', JSON.stringify([{ id: 'existing', name: 'Keep this project', nodes: [], edges: [] }]))
-      localStorage.setItem('range42_git_sources', JSON.stringify([source]))
       localStorage.setItem('range42_migration_v1_done', '1')
       localStorage.setItem('range42_backend_api', JSON.stringify({ hosts: [{ id: 'backend', url: location.origin, label: 'Fixture' }], activeHostId: 'backend', seeded: true }))
       localStorage.setItem('catalog-handoff-seeded', '1')
-    }, source)
+    })
     await setupMockApi(page)
     await page.route(/\/v1\/catalog\/sources(?:\?.*)?$/, route => route.fulfill({ json: { items: [source], total: 1 } }))
     await page.route(/\/v1\/catalog\/entries(?:\?.*)?$/, route => route.fulfill({ json: { items: [entry], total: 1 } }))
@@ -39,6 +38,7 @@ for (const width of [1440, 390]) {
       throw new Error(`Unexpected provider read ${url.pathname}`)
     })
     await page.goto('/catalog')
+    await page.locator('article details summary').click()
     await page.getByRole('button', { name: 'Customize', exact: true }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByTestId('repository-owner').fill('me')

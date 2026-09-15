@@ -67,7 +67,7 @@ function tileFor(wrapper, sourceId) {
 describe('CatalogList — customize gating by write access', () => {
   beforeEach(() => {
     localStorage.clear()
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => PAGE })
+    globalThis.fetch = vi.fn(async url => ({ ok: true, json: async () => String(url).includes('/catalog/sources') ? { items: ['src-ro', 'src-rw'].map(id => ({ id, provider: 'gitlab', base_url: 'https://gl.example', auth_kind: id === 'src-ro' ? 'none' : 'pat', has_token: id === 'src-rw', repos: [] })), total: 2 } : PAGE }))
   })
   afterEach(() => {
     vi.restoreAllMocks()
