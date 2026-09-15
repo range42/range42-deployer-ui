@@ -6,6 +6,18 @@ describe('checked local project import boundary', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
   afterEach(() => vi.unstubAllGlobals())
 
+  it('keeps the local project list when clearing storage is refused', () => {
+    const store = useProjectStore()
+    store.createProject('Keep this draft')
+    const stored = localStorage.getItem('range42_projects')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage unavailable') })
+    try {
+      expect(() => store.clearAllData()).toThrow('Browser storage')
+      expect(store.projects).toHaveLength(1)
+      expect(localStorage.getItem('range42_projects')).toBe(stored)
+    } finally { setItem.mockRestore() }
+  })
+
   it('creates a complete empty canvas including its attachment collection', () => {
     const project = useProjectStore().createProject('Draft')
     expect(project.attachments).toEqual([])

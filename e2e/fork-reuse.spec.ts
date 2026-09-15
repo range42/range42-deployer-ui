@@ -23,6 +23,7 @@ test('fork publication reviews a writable destination and imports the complete p
     throw new Error(`Unexpected provider read ${url.pathname}`)
   })
   await page.goto('/catalog')
+  await page.getByLabel(`More actions for ${routeEntry.name}`, { exact: true }).click()
   await page.getByRole('button', { name: 'Fork & publish', exact: true }).click()
   await page.getByTestId('repository-owner').fill('fixture')
   await page.getByTestId('repository-name').fill('work')

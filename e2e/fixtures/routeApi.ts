@@ -51,6 +51,8 @@ export async function routeApi(page: Page, projects: Array<{ id: string; name: s
     if (state.status !== 200) return route.fulfill({ status: state.status,
       json: { code: state.status === 401 ? 'AUTH_REQUIRED' : 'FIXTURE_UNAVAILABLE', message: 'Fixture unavailable. Retry the request.' } })
     const pageOf = (items: unknown[]) => ({ items, total: items.length, offset: 0, limit: 100 })
+    if (url.pathname === '/v1/auth/me') return route.fulfill({ json: { actor_id: 'fixture-operator', role: 'operator', scope: 'installation', audit_enabled: false } })
+    if (url.pathname === '/v1/admin/retention') return route.fulfill({ json: { keep_count: 5, keep_days: 7, automatic_enforcement: false, execution: 'reviewed_snapshot_sets_only' } })
     if (url.pathname === '/v1/catalog/sources') return route.fulfill({ json: pageOf(state.sources) })
     if (url.pathname === '/v1/catalog/entries') return route.fulfill({ json: pageOf(state.catalog) })
     if (url.pathname.startsWith('/v1/catalog/entries/catalog/')) {

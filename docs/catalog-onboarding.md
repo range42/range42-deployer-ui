@@ -1,6 +1,7 @@
 # Connect a catalog repository
 
-1. In **Settings → Backend API hosts**, add and select your backend URL. Its
+1. In **Settings → Connections**, add and select your backend URL (see
+   [Settings workflows](settings-workflows.md)). Its
    optional bearer token authenticates to the API gateway, not to GitHub.
 2. Open **Git Sources** and connect the recommended **Range42 public catalog**.
    This uses `https://github.com/range42/range42-catalog`, branch `main`, without
@@ -13,7 +14,22 @@ URL and its branch, and select the provider. Register one repository per source
 so catalog entry paths identify a single repository. Private repositories can use an optional
 personal access token. Git credentials entered here are sent to the selected
 backend for catalog access; the source API returns only whether a token exists.
-Project editing and publishing use the separate browser Git-provider connection.
+Reading private role/workload files in the browser, project editing and
+publishing use a separate browser Git-provider credential. The backend returns
+only whether its indexing credential exists; it never sends that credential
+back to the browser.
+
+In **Catalog → Add to project**, open **Private repository access (optional)**
+for a role or Compose workload. Enter a **Browser Git token** with repository
+read access and select **Save browser Git token**, then **Review addition**.
+The credential is stored locally for that catalog source and backend. Saving
+does not contact Git or verify access; Review reads the files at the pinned
+commit. A private repository may return HTTP 404 until browser access is supplied.
+This does not change the project's Git destination or its chosen VM. The input
+never displays a saved token, clears after saving or changing source/backend,
+and storage failures stay visible. Changing a credential invalidates the old
+review. Publishing still uses the destination's own browser credential and
+permissions; the backend API bearer token is never used as a Git token.
 
 Sources belong to the selected backend. Reloading the page reads registrations
 from that backend; changing backends loads that backend's sources. Removing a
@@ -26,8 +42,8 @@ flow before they can be indexed by the backend.
 The default catalog uses the existing layered repository layout. The backend
 recognizes `range42.yaml`, container `meta.json`, and Ansible role `meta/main.yml`
 entries. You do not need to convert it into the older inventory system's
-`components/vms/*.json` layout. The legacy inventory panel and project publishing
-remain separate features.
+`components/vms/*.json` layout. Sources is the current catalog registration
+workflow; project Git publication remains a separate explicit action.
 
 ## Create an Ansible role
 

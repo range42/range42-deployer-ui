@@ -18,6 +18,10 @@ import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { emitConcreteScenario } from '@/services/concreteScenario'
 import { scenarioReviewSource } from '@/services/attachmentMigration'
 import { useProjectStore } from '@/stores/projectStore'
+import { VueFlow } from '@vue-flow/core'
+import { Background } from '@vue-flow/background'
+import { Controls } from '@vue-flow/controls'
+import { useEditorPreferencesStore } from '@/stores/editorPreferencesStore'
 import projectMessages from '@/locales/en/project.json'
 import historyTab from '@/locales/en/historyTab.json'
 
@@ -58,7 +62,7 @@ function project(overrides = {}) {
   }
 }
 
-async function editor(saved, { hydrate = true, shell = false } = {}) {
+async function editor(saved, { hydrate = true, shell = false, renderSlots = false, realControls = false } = {}) {
   localStorage.setItem('range42_projects', JSON.stringify([saved]))
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -71,7 +75,7 @@ async function editor(saved, { hydrate = true, shell = false } = {}) {
   await router.push(`/project/${saved.id}`)
   await router.isReady()
   const errors = []
-  wrapper = shallowMount(shell ? AppShell : ProjectEditor, { global: { stubs: { teleport: true, KeepAlive: false, ConfigTab: false, ...(shell ? { RouterView: false, ProjectEditor: false } : {}) }, config: { errorHandler: (error) => errors.push(error.message) }, plugins: [pinia, router,
+  wrapper = shallowMount(shell ? AppShell : ProjectEditor, { global: { renderStubDefaultSlot: renderSlots, stubs: { teleport: true, KeepAlive: false, ConfigTab: false, ...(realControls ? { Controls: false, ControlButton: false, Panel: false } : {}), ...(shell ? { RouterView: false, ProjectEditor: false } : {}) }, config: { errorHandler: (error) => errors.push(error.message) }, plugins: [pinia, router,
     createI18n({ legacy: false, locale: 'en', messages: { en: { project: projectMessages, historyTab } } }),
   ] } })
   await flushPromises()
@@ -79,6 +83,112 @@ async function editor(saved, { hydrate = true, shell = false } = {}) {
 }
 
 describe('ProjectEditor saved project integration', () => {
+  it('names the real canvas controls and retains their interaction and zoom actions', async () => {
+    const { errors } = await editor(project({ git: undefined }), { renderSlots: true, realControls: true })
+    const controls = wrapper.getComponent(Controls)
+    expect(controls.findAll('button').map(button => button.text())).toEqual([
+      'Zoom in', 'Zoom out', 'Fit view', 'Lock node interaction',
+    ])
+    await controls.get('.vue-flow__controls-zoomin').trigger('click')
+    await controls.get('.vue-flow__controls-zoomout').trigger('click')
+    await controls.get('.vue-flow__controls-fitview').trigger('click')
+    expect(controls.emitted('zoomIn')).toHaveLength(1)
+    expect(controls.emitted('zoomOut')).toHaveLength(1)
+    expect(controls.emitted('fitView')).toHaveLength(1)
+    await controls.get('.vue-flow__controls-interactive').trigger('click')
+    expect(controls.get('.vue-flow__controls-interactive').text()).toBe('Unlock node interaction')
+    await controls.get('.vue-flow__controls-interactive').trigger('click')
+    expect(controls.get('.vue-flow__controls-interactive').text()).toBe('Lock node interaction')
+    expect(controls.emitted('interactionChange')).toHaveLength(2)
+    expect(controls.findAll('svg').every(icon => icon.attributes('aria-hidden') === 'true')).toBe(true)
+    expect(errors).toEqual([])
+  })
+
+  it('keeps local drafts while disabling automatic Git checkpoints', async () => {
+    localStorage.setItem('range42_editor_preferences', JSON.stringify({ autoSaveToGit: false, snapToGrid: true, gridSize: 30 }))
+    const { store } = await editor(project())
+    await vi.advanceTimersByTimeAsync(1500)
+    pushToGit.mockClear()
+    const overlay = { param_overrides: { env: { GREETING: 'local draft' } } }
+    wrapper.findComponent(VariablesTab).vm.$emit('update:overlay', overlay)
+    await flushPromises(); await vi.advanceTimersByTimeAsync(1500)
+    expect(store.getProject('saved').overlay).toEqual(overlay)
+    expect(JSON.parse(localStorage.getItem('range42_projects'))[0].overlay).toEqual(overlay)
+    expect(pushToGit).not.toHaveBeenCalled()
+  })
+
+  it('flushes pending local graph edits on exit without Git when automatic Git saving is off', async () => {
+    const nodes = [{ id: 'vm', type: 'vm', position: { x: 0, y: 0 }, computedPosition: { x: 0, y: 0, z: 0 }, data: { config: { name: 'guest' } } }]
+    await editor(project({ nodes }))
+    await vi.advanceTimersByTimeAsync(1500); pushToGit.mockClear()
+    wrapper.findComponent(VueFlow).vm.$emit('nodesChange', [{ id: 'vm', type: 'position', position: { x: 80, y: 60 } }])
+    await flushPromises()
+    useEditorPreferencesStore().autoSaveToGit = false
+    wrapper.unmount(); wrapper = undefined; await flushPromises()
+    expect(JSON.parse(localStorage.getItem('range42_projects'))[0].nodes[0].position).toEqual({ x: 80, y: 60 })
+    expect(pushToGit).not.toHaveBeenCalled()
+    expect(lockSession.releaseEditor).toHaveBeenCalledOnce()
+  })
+
+  it('keeps explicit Save and Save-and-Deploy available with automatic Git saving off', async () => {
+    localStorage.setItem('range42_editor_preferences', JSON.stringify({ autoSaveToGit: false }))
+    await editor(project())
+    await vi.advanceTimersByTimeAsync(1500); pushToGit.mockClear()
+    await wrapper.get('[aria-label="Save project"]').trigger('click'); await flushPromises()
+    expect(pushToGit).toHaveBeenCalledOnce()
+    pushToGit.mockClear()
+    wrapper.findComponent(Sidebar).vm.$emit('openDeploy'); await flushPromises()
+    expect(pushToGit).toHaveBeenCalledOnce()
+    expect(registerProject).toHaveBeenCalledOnce()
+    expect(wrapper.findComponent(DeployForm).exists()).toBe(true)
+  })
+
+  it('uses persisted snap spacing in the actual editor VueFlow binding', async () => {
+    localStorage.setItem('range42_editor_preferences', JSON.stringify({ snapToGrid: true, gridSize: 35 }))
+    await editor(project({ git: undefined }), { renderSlots: true })
+    expect(wrapper.findComponent(VueFlow).props('snapToGrid')).toBe(true)
+    expect(wrapper.findComponent(VueFlow).props('snapGrid')).toEqual([35, 35])
+    expect(wrapper.findComponent(Background).props('gap')).toBe(35)
+    const preferences = useEditorPreferencesStore()
+    preferences.gridSize = 45; preferences.snapToGrid = false
+    await flushPromises()
+    expect(wrapper.findComponent(VueFlow).props('snapGrid')).toEqual([45, 45])
+    expect(wrapper.findComponent(VueFlow).props('snapToGrid')).toBe(false)
+    expect(wrapper.findComponent(Background).props('gap')).toBe(45)
+  })
+
+  it('suppresses a queued Git checkpoint when disabled and saves retained edits after re-enabling', async () => {
+    const { store } = await editor(project())
+    await vi.advanceTimersByTimeAsync(1500); pushToGit.mockClear()
+    const overlay = { param_overrides: { env: { MESSAGE: 'keep this edit' } } }
+    wrapper.findComponent(VariablesTab).vm.$emit('update:overlay', overlay)
+    await flushPromises()
+    const preferences = useEditorPreferencesStore()
+    preferences.autoSaveToGit = false
+    await flushPromises(); await vi.advanceTimersByTimeAsync(1500)
+    expect(pushToGit).not.toHaveBeenCalled()
+    expect(store.getProject('saved').overlay).toEqual(overlay)
+    preferences.autoSaveToGit = true
+    await flushPromises(); await vi.advanceTimersByTimeAsync(1499)
+    expect(pushToGit).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(pushToGit).toHaveBeenCalledOnce()
+    expect(pushToGit.mock.calls[0][0].overlay).toEqual(overlay)
+  })
+
+  it('keeps lock-loss refusal in force when automatic Git saving is re-enabled', async () => {
+    localStorage.setItem('range42_editor_preferences', JSON.stringify({ autoSaveToGit: false }))
+    const { store } = await editor(project())
+    await vi.advanceTimersByTimeAsync(1500); pushToGit.mockClear()
+    lockSession.lockStatus.value = 'blocked'
+    const overlay = { param_overrides: { message: 'retained behind lock' } }
+    wrapper.findComponent(VariablesTab).vm.$emit('update:overlay', overlay)
+    useEditorPreferencesStore().autoSaveToGit = true
+    await flushPromises(); await vi.advanceTimersByTimeAsync(1500)
+    expect(pushToGit).not.toHaveBeenCalled()
+    expect(store.getProject('saved').overlay).toEqual(overlay)
+  })
+
   it('shows heartbeat lock loss with explicit recovery while retaining local files', async () => {
     const { store } = await editor(project({ files: { 'draft.yml': 'local only' }, head_sha: 'b'.repeat(40) }))
     lockSession.lockStatus.value = 'blocked'; lockSession.lockError.value = 'Another editor owns this branch'

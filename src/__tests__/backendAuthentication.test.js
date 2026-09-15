@@ -95,4 +95,16 @@ describe('backend authentication', () => {
     expect(backend.token).toBeUndefined()
     expect(localStorage.getItem('range42_backend_api')).not.toContain('candidate-secret')
   })
+
+  it.each(['url', 'token'])('does not save a candidate token after the same profile %s changes during verification', async field => {
+    let finish
+    fetchMock.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const result = backend.connectToken('candidate-secret').catch(error => error)
+    const patch = field === 'url' ? { url: 'https://replacement.test' } : { token: 'replacement-secret' }
+    backend.updateHost(backend.activeHost.id, patch)
+    finish(response(200, { ready: true }))
+    expect((await result).message).toMatch(/changed/)
+    expect(backend.activeHost).toMatchObject(patch)
+    expect(localStorage.getItem('range42_backend_api')).not.toContain('candidate-secret')
+  })
 })

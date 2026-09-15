@@ -4,7 +4,7 @@
   "load_more": "Afficher plus d’éléments",
   "new_role": "Nouveau rôle Ansible",
   "new_machine": "Nouveau modèle de VM",
-  "subtitle": "Parcourez labs, gamenets et composants sur l'ensemble de vos sources Git.",
+  "subtitle": "Composez un projet à partir de machines, réseaux et contenus pour VM réutilisables.",
   "filters": {
     "kind": "Type",
     "source": "Source",
@@ -33,7 +33,7 @@
   "detail": {
     "readme": "README",
     "topology": "Topologie",
-    "metadata": "Métadonnées",
+    "metadata": "Source et métadonnées",
     "inventory": "Pièces jointes",
     "source": "Source",
     "updated": "Mis à jour",
@@ -41,7 +41,11 @@
     "fork_modal_title": "Forker et publier",
     "fork_target_repo": "Dépôt cible (propriétaire/dépôt)",
     "fork_target_name": "Nom de la nouvelle entrée",
-    "fork_submit": "Forker"
+    "fork_submit": "Forker",
+    "before_use": "Avant d’ajouter cet élément",
+    "select_locally": "À sélectionner localement",
+    "revision": "Commit",
+    "readme_source": "Afficher le Markdown source"
   },
   "handoff": {
     "title": "Vérifier le projet du catalogue",
@@ -65,9 +69,9 @@
     "publication_next": "Vérifiez et importez d’abord les fichiers. Utilisez ensuite Enregistrer et Publier depuis le projet pour choisir la branche et le mode de publication. Rien n’a encore été publié."
   },
   "append": {
-    "secret_bindings": "Références des secrets à l’exécution (JSON facultatif)",
+    "secret_bindings": "Références des secrets",
     "secret_bindings_hint": "Associez les paramètres Compose aux noms des variables du coffre du backend. Seuls les noms sont enregistrés ; les déclarations manquantes sont ajoutées au projet. L’opérateur doit fournir les valeurs dans le coffre avant l’exécution.",
-    "invalid_secret_bindings": "Utilisez un objet JSON associant les noms des paramètres aux variables du coffre ; ne saisissez pas les valeurs secrètes.",
+    "invalid_secret_bindings": "Utilisez des noms de variables composés de lettres, chiffres et tirets bas, sans chiffre initial. Ne saisissez pas les valeurs des secrets.",
     "eyebrow": "Composer votre projet",
     "title": "Ajouter un élément du catalogue",
     "action": "Ajouter au projet",
@@ -107,12 +111,62 @@
     "added_short": "Élément ajouté. Continuez à parcourir le catalogue ou revenez au projet.",
     "results": "{count} éléments sur {total}",
     "host_ports": "Ports de l’hôte (facultatif)",
-    "host_ports_example": "Par exemple, 8081, 8444…",
-    "host_ports_hint": "Laissez vide pour conserver les ports du catalogue. Sinon, indiquez un port hôte par correspondance, dans l’ordre de la source. L’aperçu affiche les correspondances effectives.",
-    "invalid_ports": "Indiquez des ports entre 1 et 65535, séparés par des virgules.",
+    "host_ports_example": "Par exemple, 8081…",
+    "host_ports_hint": "Sans remplacement, les ports du catalogue sont conservés. Sinon, ajoutez un port hôte par correspondance, dans l’ordre de la source. La revue affiche chaque correspondance hôte → conteneur.",
+    "invalid_ports": "Saisissez un port entier compris entre 1 et 65535 par ligne.",
     "service": "Service",
     "effective_ports": "Hôte → conteneur",
-    "directory": "Répertoire dans la VM"
+    "directory": "Répertoire dans la VM",
+    "duplicate_secret_binding": "Chaque référence doit être unique. Retirez le doublon.",
+    "port_mapping": "Port hôte de la correspondance {number}",
+    "remove_port": "Retirer le remplacement du port {number}",
+    "add_port": "Ajouter un remplacement de port",
+    "secret_placeholder": "Référence Compose",
+    "secret_variable": "Variable du vault backend",
+    "remove_secret": "Retirer la référence du secret {number}",
+    "add_secret": "Ajouter une référence de secret",
+    "read_access": {
+      "title": "Accès au dépôt privé (facultatif)",
+      "help": "La lecture des fichiers privés des rôles et applications nécessite un jeton Git dans ce navigateur. Le jeton d’indexation conservé par le backend est distinct. Enregistrez un jeton ici, puis choisissez Vérifier l’ajout pour tester l’accès aux fichiers. Le dépôt du projet reste inchangé.",
+      "source": "Dépôt du catalogue",
+      "backend": "Backend associé",
+      "same_origin": "Ce site",
+      "label": "Jeton Git du navigateur",
+      "save": "Enregistrer le jeton Git du navigateur",
+      "saved": "Jeton Git enregistré dans ce navigateur pour cette source et ce backend. Vérifiez à nouveau l’ajout pour tester l’accès.",
+      "exists": "Un jeton Git est enregistré dans ce navigateur pour cette source. Il n’est jamais affiché ici.",
+      "missing": "Aucun jeton Git n’est enregistré dans ce navigateur pour cette source. Les dépôts publics n’en nécessitent généralement pas.",
+      "required": "Saisissez un jeton Git disposant d’un accès en lecture à ce dépôt.",
+      "unavailable": "La source du catalogue a changé ou est indisponible. Rouvrez l’élément avant d’enregistrer un jeton.",
+      "storage_failed": "L’enregistrement du jeton Git n’a pas pu être confirmé. Vérifiez le stockage du navigateur, saisissez à nouveau le jeton et réessayez.",
+      "provider_failed": "Impossible de lire les fichiers du dépôt (HTTP {status}). Vérifiez la source et la révision fixée. Pour un dépôt privé, renseignez un jeton Git dans Accès au dépôt privé."
+    }
   },
-  "new_container": "Nouvelle application Compose"
+  "new_container": "Nouvelle application Compose",
+  "sources_loading": "Chargement des sources du catalogue…",
+  "remove": "Retirer",
+  "new_item": "Nouvel élément",
+  "more_actions": "Autres actions",
+  "more_for": "Autres actions pour {name}",
+  "kinds": {
+    "lab": "Labs",
+    "gamenet": "Gamenets",
+    "component": "Machines et composants",
+    "container": "Applications Compose",
+    "ansible_role": "Rôles Ansible",
+    "unknown": "Autre format"
+  },
+  "card_hints": {
+    "container": "Nécessite une VM existante avec Docker et Compose.",
+    "role": "Ajoutez-le à une VM ou créez un projet pour modifier ses fichiers.",
+    "topology": "Vérifiez les modèles, ressources et réseaux avant le déploiement.",
+    "unsupported": "Consultez ce format ici. Utilisez son dépôt Git complet pour le modifier."
+  },
+  "requirements": {
+    "container": "Ajoutez cette application à une VM existante équipée de Docker et Compose. Vérifiez ports, dépendances et références du vault avant la sauvegarde ou Configure. Cette action ne crée pas de VM et n’installe pas Docker.",
+    "ansible_role": "Choisissez une VM existante pour exécuter le rôle ou créez un projet lié pour modifier ses fichiers à la révision choisie. Vérifiez variables, paquets et collections avant exécution.",
+    "topology": "Créez un projet ou ajoutez ces nœuds à un projet existant. Choisissez les modèles locaux, puis vérifiez ressources, réseau SDN et nouvelles allocations avant le déploiement.",
+    "unsupported": "L’éditeur ne prend pas en charge l’import de ce format. Consultez sa documentation et sa provenance, puis utilisez son dépôt Git complet pour conserver son comportement."
+  },
+  "more_filters": "Plus de filtres"
 }

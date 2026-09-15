@@ -25,6 +25,10 @@ const PAGE = {
   limit: 500,
 }
 
+const sourcePage = { items: [{ id: 'src-a', provider: 'gitlab', base_url: 'https://gl.example', auth_kind: 'none', has_token: false, repos: [{ owner: 'range42', repo: 'catalog', branch: 'main' }] }], total: 1 }
+const entryRequests = () => globalThis.fetch.mock.calls.filter(([url]) => String(url).includes('/catalog/entries'))
+const catalogFetch = (page = PAGE) => vi.fn(async url => ({ ok: true, json: async () => String(url).includes('/catalog/sources') ? sourcePage : page }))
+
 function makeI18n() {
   return createI18n({
     legacy: false,
@@ -77,7 +81,7 @@ function gridKinds(wrapper) {
 }
 
 function kindButton(wrapper, label) {
-  return wrapper.findAll('button').find((b) => b.text() === label)
+  return wrapper.find(`[data-kind-filter="${label}"]`)
 }
 
 describe('CatalogList — filter wiring (regression guard for server-narrowing bug)', () => {
@@ -85,7 +89,7 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     // The jsdom localStorage mock persists across tests; clear it so each test
     // starts with a fresh inventory store (addSource throws on a duplicate id).
     localStorage.clear()
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => PAGE })
+    globalThis.fetch = catalogFetch()
   })
   afterEach(() => {
     vi.restoreAllMocks()
@@ -94,9 +98,9 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
   it('reloads and clears private catalog list when backend authentication changes', async () => {
     const wrapper = await mountList()
     expect(wrapper.find('[data-testid="catalog-grid"]').exists()).toBe(true)
-    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
     useBackendApiStore().addHost({ url: 'https://other.example', token: 'different-identity' })
-    await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(entryRequests()).toHaveLength(2))
     await vi.waitFor(() => expect(wrapper.text()).toContain('backend API token'))
     expect(wrapper.find('[data-testid="catalog-grid"]').exists()).toBe(false)
   })
@@ -107,7 +111,7 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     const backend = useBackendApiStore()
     backend.updateHost(backend.activeHost.id, { url: 'https://second.example', token: 'new-credential' })
     await flushPromises()
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(entryRequests()).toHaveLength(1)
     expect(globalThis.fetch.mock.calls[0][0]).toContain('https://second.example/')
     expect(globalThis.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer new-credential')
   })
@@ -117,8 +121,8 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     expect(gridKinds(wrapper)).toEqual(['lab', 'container'])
     // The grid fetches once on mount; the request carries no narrowing filter
     // params (only a limit), since all filtering is client-side.
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
-    const url = globalThis.fetch.mock.calls[0][0]
+    expect(entryRequests()).toHaveLength(1)
+    const url = entryRequests()[0][0]
     expect(url).toContain('/v1/catalog/entries')
     expect(url).not.toMatch(/[?&]kind=/)
     expect(url).not.toMatch(/[?&]source_id=/)
@@ -152,7 +156,7 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     expect(gridKinds(wrapper)).toEqual(['lab', 'container'])
 
     // Still only the initial fetch — filtering never hit the network again.
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(entryRequests()).toHaveLength(1)
   })
 
   it('applies the free-text search client-side over the fetched set', async () => {
@@ -160,27 +164,27 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     await wrapper.find('input[type="search"]').setValue('sqli')
     await flushPromises()
     expect(gridKinds(wrapper)).toEqual(['container'])
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(entryRequests()).toHaveLength(1)
   })
 
   it('renders bounded batches while searching the complete catalog and resets the batch after filtering', async () => {
     const items = Array.from({ length: 73 }, (_, index) => ({
       kind: 'component', name: `Machine ${index}`, source_id: 'src-a', path: `machines/${index}`, tags: [],
     }))
-    globalThis.fetch.mockResolvedValue({ ok: true, json: async () => ({ items, total: 73, offset: 0, limit: 500 }) })
+    globalThis.fetch = catalogFetch({ items, total: 73, offset: 0, limit: 500 })
     const wrapper = await mountList(true, undefined, 24)
     expect(wrapper.get('[data-testid="catalog-visible-count"]').text()).toContain('24 of 73')
-    await wrapper.get('[data-testid="catalog-load-more"]').trigger('click')
+    await wrapper.get('[data-testid="catalog-load-more"]').trigger('click'); await flushPromises()
     expect(gridKinds(wrapper)).toHaveLength(48)
-    await wrapper.get('#catalog-search').setValue('Machine 72')
+    await wrapper.get('#catalog-search').setValue('Machine 72'); await flushPromises()
     expect(gridKinds(wrapper)).toHaveLength(1)
     expect(wrapper.find('[data-testid="catalog-load-more"]').exists()).toBe(false)
-    await wrapper.get('#catalog-search').setValue('')
+    await wrapper.get('#catalog-search').setValue(''); await flushPromises()
     expect(gridKinds(wrapper)).toHaveLength(24)
-    for (let i = 0; i < 3; i++) await wrapper.get('[data-testid="catalog-load-more"]').trigger('click')
+    for (let i = 0; i < 3; i++) { await wrapper.get('[data-testid="catalog-load-more"]').trigger('click'); await flushPromises() }
     expect(gridKinds(wrapper)).toHaveLength(73)
     expect(wrapper.find('[data-testid="catalog-load-more"]').exists()).toBe(false)
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(entryRequests()).toHaveLength(1)
   })
 
   it('passes reviewed new role files to the shared publisher with create-only protection', async () => {
@@ -198,7 +202,7 @@ describe('CatalogList — filter wiring (regression guard for server-narrowing b
     expect(publisher.props('componentPath')).toBe('02_ansible_layer/admin/roles/software.install.example')
     expect(Object.keys(publisher.props('files'))).toHaveLength(4)
     expect(publisher.props('projectId')).toMatch(/^catalog-role-/)
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(entryRequests()).toHaveLength(1)
     await publisher.vm.$emit('close')
     await flushPromises()
     expect(role.get('[name="target"]').element.value).toBe('example')

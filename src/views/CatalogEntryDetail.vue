@@ -5,11 +5,11 @@
  * Fetches a single catalog entry via `useCatalog().getEntry(source, path)`
  * and renders:
  *   - Header (name, kind badge, source + sha pill, updated_at)
- *   - README preview (plain-text; rich markdown can be layered later)
+ *   - README preview (Markdown with source HTML disabled)
  *   - Topology preview (read-only VueFlow when `entry.topology.nodes/edges` exist)
  *   - Metadata table
  *   - Attachment inventory list
- *   - Three verb buttons: Use, Customize, Fork & publish
+ *   - Actions supported by the item kind and source availability
  *
  * Plan C §4 (Task C2.7).
  */
@@ -21,16 +21,27 @@ import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 
 import { useCatalog } from '@/composables/useCatalog'
+import { useProjectStore } from '@/stores/projectStore'
+import { useInventoryStore } from '@/stores/inventoryStore'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
+import CatalogReadme from '@/components/catalog/CatalogReadme.vue'
 import { ensureNamespaces } from '@/i18n'
+import { useCatalogSourceAccess } from '@/composables/useCatalogSourceAccess'
+import { catalogBrowseQuery, catalogCapabilities } from '@/services/catalogPresentation'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const catalog = useCatalog()
 const backend = useBackendApiStore()
+const sourceAccess = useCatalogSourceAccess()
+const projects = useProjectStore()
+const inventory = useInventoryStore()
+const sourceName = computed(() => inventory.getSource(entry.value?.source_id)?.name || entry.value?.source_id)
+const sourceError = sourceAccess.error
+const capabilities = computed(() => catalogCapabilities(entry.value?.kind || ''))
 
 const entry = ref(null)
 const loading = ref(false)
@@ -39,7 +50,7 @@ const addition = ref(false)
 const addedMessage = ref('')
 const targetProjectId = computed(() => typeof route.query.project === 'string' ? route.query.project : '')
 const targetNodeId = computed(() => typeof route.query.node === 'string' ? route.query.node : '')
-const contextQuery = computed(() => targetProjectId.value ? { project: targetProjectId.value, ...(targetNodeId.value ? { node: targetNodeId.value } : {}) } : {})
+const contextQuery = computed(() => ({ ...catalogBrowseQuery(route.query), ...(targetProjectId.value ? { project: targetProjectId.value, ...(targetNodeId.value ? { node: targetNodeId.value } : {}) } : {}) }))
 function onAdded(result) {
   addition.value = false
   if (result.open) router.push({ path: `/project/${result.projectId}`, query: { tab: result.tab,
@@ -66,7 +77,7 @@ const kindBadgeClass = computed(() => {
 // Topology preview (VueFlow read-only) — only if the entry carries nodes/edges.
 const topologyNodes = computed(() => {
   const nodes = entry.value?.topology?.nodes
-  return Array.isArray(nodes) ? nodes.map((n) => markRaw({ ...n })) : []
+  return Array.isArray(nodes) ? nodes.map((n) => markRaw({ ...n, type: 'default', label: n.data?.label || n.id, data: { ...n.data, catalogType: n.type } })) : []
 })
 const topologyEdges = computed(() => {
   const edges = entry.value?.topology?.edges
@@ -102,6 +113,10 @@ const inventoryItems = computed(() => {
   return Array.isArray(inv) ? inv : []
 })
 
+const nodeSummary = computed(() => topologyNodes.value.map(node => ({
+  id: node.id, name: node.data?.label || node.id, kind: node.data?.catalogType || 'vm', config: node.data?.config || {},
+})))
+const requirementKey = computed(() => ['container', 'ansible_role'].includes(entry.value?.kind) ? entry.value.kind : capabilities.value.create ? 'topology' : 'unsupported')
 const shortSha = computed(() => {
   const sha = entry.value?.sha
   return sha ? String(sha).slice(0, 7) : ''
@@ -147,6 +162,7 @@ watch([sourceParam, entryParam, () => backend.url, () => backend.token], () => l
 onBeforeUnmount(() => { loadGeneration += 1 })
 
 onMounted(async () => {
+  projects.loadProjects()
   await ensureNamespaces(['catalog', 'common'])
   await load()
 })
@@ -156,7 +172,7 @@ onMounted(async () => {
   <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
     :entry="handoff.entry" :mode="handoff.mode" :publish-after-import="handoff.publish" @close="handoff = null" @opened="openCreatedProject" />
   <CatalogAppendDialog v-if="addition && entry" :entry="entry" :initial-project-id="targetProjectId" :initial-node-id="targetNodeId" @close="addition = false" @added="onAdded" />
-  <section class="max-w-5xl mx-auto p-4 sm:p-6">
+  <section class="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
     <!-- Back link -->
     <div class="mb-4">
       <RouterLink class="btn btn-ghost btn-sm gap-2" :to="{ path: '/catalog', query: contextQuery }">
@@ -172,6 +188,10 @@ onMounted(async () => {
       </RouterLink>
     </div>
     <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
+    <div v-if="sourceError" class="alert alert-warning mb-4" role="alert" data-testid="catalog-source-error">
+      <span class="text-sm break-words">{{ sourceError }}</span>
+      <button type="button" class="btn btn-sm btn-ghost" data-testid="catalog-source-retry" @click="sourceAccess.reload">{{ t('common.retry') }}</button>
+    </div>
 
     <!-- Loading / error -->
     <div v-if="loading" class="space-y-3" data-testid="entry-loading">
@@ -182,19 +202,20 @@ onMounted(async () => {
 
     <div v-else-if="!entry" class="alert alert-warning" role="alert">
       <span class="text-sm">{{ loadError || t('catalog.empty.no_entries_title') }}</span>
+      <button type="button" class="btn btn-sm btn-ghost" @click="load">{{ t('common.retry') }}</button>
     </div>
 
     <template v-else>
       <!-- Header -->
-      <header class="mb-6">
+      <header class="mb-6 rounded-2xl border border-base-300 bg-base-100 p-5 sm:p-6">
         <div class="flex items-start justify-between gap-4 flex-wrap">
           <div class="min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <h1 class="text-2xl font-semibold truncate">{{ entry.name }}</h1>
-              <span class="badge" :class="kindBadgeClass">{{ entry.kind }}</span>
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <h1 class="text-2xl font-semibold break-words">{{ entry.name }}</h1>
+              <span class="badge" :class="kindBadgeClass">{{ t(`catalog.kinds.${capabilities.append ? entry.kind : 'unknown'}`) }}</span>
             </div>
             <p class="text-sm text-base-content/60 truncate">
-              {{ entry.source_id }} · {{ entry.path }}
+              {{ sourceName }}
               <span v-if="shortSha" class="ml-1 badge badge-ghost badge-sm font-mono">
                 {{ shortSha }}
               </span>
@@ -203,26 +224,23 @@ onMounted(async () => {
               v-if="entry.updated_at"
               class="text-xs text-base-content/50 mt-1"
             >
-              {{ t('catalog.detail.updated') }}: {{ entry.updated_at }}
+              {{ t('catalog.detail.updated') }}: {{ Number.isNaN(Date.parse(entry.updated_at)) ? entry.updated_at : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(entry.updated_at)) }}
             </p>
           </div>
 
           <!-- Verbs -->
           <div class="flex items-center gap-2 flex-wrap" data-testid="entry-verbs">
-            <button type="button" class="btn btn-primary btn-sm" data-testid="catalog-add-to-project" @click="addition = true">{{ t('catalog.append.action') }}</button>
-            <button type="button" class="btn btn-outline btn-sm" @click="useEntry">
+            <button v-if="capabilities.append" type="button" class="btn btn-primary btn-sm" data-testid="catalog-add-to-project" :disabled="!sourceAccess.available(entry.source_id)" @click="addition = true">{{ t('catalog.append.action') }}</button>
+            <button v-if="capabilities.create" type="button" class="btn btn-outline btn-sm" :disabled="!sourceAccess.available(entry.source_id)" @click="useEntry">
               {{ t('catalog.verbs.use') }}
             </button>
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm"
-              @click="customizeEntry"
-            >
-              {{ t('catalog.verbs.customize') }}
-            </button>
-            <button type="button" class="btn btn-ghost btn-sm" @click="openFork">
-              {{ t('catalog.verbs.fork') }}
-            </button>
+            <details v-if="capabilities.create" class="dropdown dropdown-end">
+              <summary class="btn btn-ghost btn-sm">{{ t('catalog.more_actions') }}</summary>
+              <ul class="dropdown-content menu z-10 mt-2 w-52 rounded-xl border border-base-300 bg-base-100 p-2 shadow-lg">
+                <li><button type="button" :disabled="!sourceAccess.available(entry.source_id)" @click="customizeEntry">{{ t('catalog.verbs.customize') }}</button></li>
+                <li><button type="button" :disabled="!sourceAccess.available(entry.source_id)" @click="openFork">{{ t('catalog.verbs.fork') }}</button></li>
+              </ul>
+            </details>
           </div>
         </div>
 
@@ -234,15 +252,26 @@ onMounted(async () => {
         </p>
       </header>
 
-      <!-- README preview -->
+      <section class="mb-6 rounded-2xl bg-base-200/50 p-5 sm:p-6" data-testid="entry-requirements">
+        <h2 class="text-base font-semibold">{{ t('catalog.detail.before_use') }}</h2>
+        <p class="mt-2 text-sm text-base-content/75 leading-relaxed">{{ t(`catalog.requirements.${requirementKey}`) }}</p>
+        <ul v-if="nodeSummary.length" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <li v-for="node in nodeSummary" :key="node.id" class="min-w-0 rounded-xl border border-base-300 bg-base-100 p-4">
+            <p class="font-medium break-words">{{ node.name }} <span class="badge badge-ghost badge-sm">{{ node.kind }}</span></p>
+            <dl v-if="node.kind === 'vm'" class="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <dt class="text-base-content/65">{{ t('catalog.append.fields.cores') }}</dt><dd>{{ node.config.cores ?? '—' }}</dd>
+              <dt class="text-base-content/65">{{ t('catalog.append.fields.memory') }}</dt><dd>{{ node.config.memory ?? node.config.memory_mb ?? '—' }}</dd>
+              <dt class="text-base-content/65">{{ t('catalog.append.fields.diskSize') }}</dt><dd>{{ node.config.diskSize ?? node.config.disk_gb ?? '—' }}</dd>
+              <dt class="text-base-content/65">{{ t('catalog.append.fields.template') }}</dt><dd>{{ node.config.template ?? t('catalog.detail.select_locally') }}</dd>
+            </dl>
+          </li>
+        </ul>
+      </section>
+
+      <!-- README uses the shared HTML-disabled Markdown renderer. -->
       <section class="mb-8" data-testid="entry-readme">
         <h2 class="text-lg font-semibold mb-2">{{ t('catalog.detail.readme') }}</h2>
-        <div
-          v-if="entry.readme"
-          class="card card-bordered bg-base-100 p-4 overflow-auto max-h-[40vh]"
-        >
-          <pre class="text-sm whitespace-pre-wrap font-mono leading-relaxed">{{ entry.readme }}</pre>
-        </div>
+        <CatalogReadme v-if="entry.readme" :source="entry.readme" />
         <p v-else class="text-sm text-base-content/60 italic">—</p>
       </section>
 
@@ -268,8 +297,12 @@ onMounted(async () => {
       </section>
 
       <!-- Metadata table -->
-      <section v-if="metadataRows.length" class="mb-8" data-testid="entry-metadata">
-        <h2 class="text-lg font-semibold mb-2">{{ t('catalog.detail.metadata') }}</h2>
+      <details class="mb-8 rounded-xl border border-base-300 p-4" data-testid="entry-metadata">
+        <summary class="cursor-pointer font-semibold">{{ t('catalog.detail.metadata') }}</summary>
+        <dl class="mt-4 mb-4 grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">
+          <dt class="text-base-content/65">{{ t('catalog.detail.source') }}</dt><dd class="break-all">{{ sourceName }} · {{ entry.path }}</dd>
+          <dt class="text-base-content/65">{{ t('catalog.detail.revision') }}</dt><dd class="font-mono break-all">{{ entry.sha || '—' }}</dd>
+        </dl>
         <div class="overflow-x-auto">
           <table class="table table-sm">
             <tbody>
@@ -280,7 +313,7 @@ onMounted(async () => {
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
       <!-- Attachment inventory -->
       <section v-if="inventoryItems.length" class="mb-8" data-testid="entry-inventory">

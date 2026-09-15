@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import {
   useUserStore,
@@ -11,6 +12,7 @@ beforeEach(() => {
   localStorage.clear()
   setActivePinia(createPinia())
 })
+afterEach(() => vi.restoreAllMocks())
 
 describe('validateDisplayName', () => {
   it('requires non-empty', () => {
@@ -61,16 +63,10 @@ describe('useUserStore', () => {
     expect(store.setDisplayName('Alice')).toBe(null)
     expect(store.setColor('#ff00aa')).toBe(null)
     expect(store.isConfigured).toBe(true)
-    // Watcher persists on next microtask — force via direct inspection
     const raw = localStorage.getItem(USER_STORAGE_KEY)
-    // The deep watcher runs on the next tick; settings themselves are set
     expect(store.settings.display_name).toBe('Alice')
     expect(store.settings.color).toBe('#ff00aa')
-    // And a persisted copy should exist after the watcher fires
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      expect(parsed.display_name).toBeDefined()
-    }
+    expect(JSON.parse(raw)).toMatchObject({ display_name: 'Alice', color: '#ff00aa' })
   })
 
   it('trims whitespace on display_name', () => {
@@ -103,5 +99,45 @@ describe('useUserStore', () => {
     expect(store.settings.display_name).toBe('Bob')
     expect(store.settings.color).toBe('#112233')
     expect(store.isConfigured).toBe(true)
+  })
+
+  it('reports session-only identity changes immediately and clears the error after saving succeeds', async () => {
+    const store = useUserStore()
+    store.setDisplayName('Saved identity')
+    await nextTick()
+    const persisted = localStorage.getItem(USER_STORAGE_KEY)
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('private-storage-diagnostic') })
+
+    expect(store.setDisplayName('Session identity')).toBeNull()
+    expect(write).toHaveBeenCalled()
+    expect(store.display_name).toBe('Session identity')
+    expect(store.storageError).toMatch(/this session/i)
+    expect(store.storageError).not.toContain('private-storage-diagnostic')
+    expect(localStorage.getItem(USER_STORAGE_KEY)).toBe(persisted)
+    setActivePinia(createPinia())
+    expect(useUserStore().display_name).toBe('Saved identity')
+
+    write.mockRestore()
+    expect(store.setColor('#112233')).toBeNull()
+    expect(store.storageError).toBe('')
+    setActivePinia(createPinia())
+    expect(useUserStore().display_name).toBe('Session identity')
+    expect(useUserStore().color).toBe('#112233')
+  })
+
+  it('retries saving the exact unchanged session identity only when requested', () => {
+    const store = useUserStore()
+    store.setDisplayName('Saved identity')
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('unavailable') })
+    store.setDisplayName('Session identity')
+    store.setColor('#112233')
+    const snapshot = JSON.stringify(store.settings)
+    expect(store.retryPersistence()).toBe(false)
+    write.mockRestore()
+    expect(store.retryPersistence()).toBe(true)
+    expect(store.storageError).toBe('')
+    expect(JSON.stringify(store.settings)).toBe(snapshot)
+    setActivePinia(createPinia())
+    expect(JSON.stringify(useUserStore().settings)).toBe(snapshot)
   })
 })

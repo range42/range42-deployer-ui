@@ -4,7 +4,7 @@
   "load_more": "さらに表示",
   "new_role": "Ansible ロールを作成",
   "new_machine": "VM 定義を作成",
-  "subtitle": "複数のGitソースをまたいで、ラボ、ゲームネット、コンポーネントを閲覧できます。",
+  "subtitle": "再利用可能なマシン、ネットワーク、VM コンテンツからプロジェクトを構成します。",
   "filters": {
     "kind": "種別",
     "source": "ソース",
@@ -33,7 +33,7 @@
   "detail": {
     "readme": "README",
     "topology": "トポロジー",
-    "metadata": "メタデータ",
+    "metadata": "ソースとメタデータ",
     "inventory": "添付",
     "source": "ソース",
     "updated": "更新日時",
@@ -41,7 +41,11 @@
     "fork_modal_title": "フォークして公開",
     "fork_target_repo": "ターゲットリポジトリ (owner/repo)",
     "fork_target_name": "新しいエントリ名",
-    "fork_submit": "フォーク"
+    "fork_submit": "フォーク",
+    "before_use": "追加する前に",
+    "select_locally": "ローカルで選択",
+    "revision": "コミット",
+    "readme_source": "Markdown ソースを表示"
   },
   "handoff": {
     "title": "カタログプロジェクトの確認",
@@ -65,9 +69,9 @@
     "publication_next": "まずファイルを確認してインポートしてください。その後、プロジェクトの Save と Publish で書き込み先ブランチと公開方法を選択します。まだ何も公開されていません。"
   },
   "append": {
-    "secret_bindings": "実行時シークレットの参照（任意の JSON）",
+    "secret_bindings": "実行時シークレットの参照",
     "secret_bindings_hint": "Compose のプレースホルダー名をバックエンドの vault 変数名に関連付けます。名前のみを保存し、必要な宣言をプロジェクトに追加します。実行前に管理者が vault に値を設定してください。",
-    "invalid_secret_bindings": "プレースホルダー名と vault 変数名を JSON で指定してください。秘密の値は入力しないでください。",
+    "invalid_secret_bindings": "英字、数字、アンダースコアで変数名を入力してください。先頭に数字は使えません。シークレット値は入力しないでください。",
     "eyebrow": "プロジェクトを構成",
     "title": "カタログ項目を追加",
     "action": "プロジェクトに追加",
@@ -107,12 +111,62 @@
     "added_short": "項目を追加しました。閲覧を続けるか、プロジェクトに戻ってください。",
     "results": "全 {total} 件中 {count} 件",
     "host_ports": "ホストポート（任意）",
-    "host_ports_example": "例: 8081, 8444…",
-    "host_ports_hint": "空欄ならカタログのポートを使用します。変更する場合は元の順序で各マッピングのホストポートを入力してください。確認画面に実際のマッピングを表示します。",
-    "invalid_ports": "1～65535のポートをカンマ区切りで入力してください。",
+    "host_ports_example": "例: 8081…",
+    "host_ports_hint": "変更しない場合はカタログのポートを使用します。変更する場合はソースの順序で各マッピングのホストポートを指定してください。レビューに対応関係が表示されます。",
+    "invalid_ports": "各行に 1 から 65535 の整数ポートを入力してください。",
     "service": "サービス",
     "effective_ports": "ホスト → コンテナ",
-    "directory": "VM内のディレクトリ"
+    "directory": "VM内のディレクトリ",
+    "duplicate_secret_binding": "参照名は一度だけ指定できます。重複を削除してください。",
+    "port_mapping": "マッピング {number} のホストポート",
+    "remove_port": "ポート変更 {number} を削除",
+    "add_port": "ポート変更を追加",
+    "secret_placeholder": "Compose の参照名",
+    "secret_variable": "バックエンド vault の変数名",
+    "remove_secret": "シークレット参照 {number} を削除",
+    "add_secret": "シークレット参照を追加",
+    "read_access": {
+      "title": "プライベートリポジトリへのアクセス（任意）",
+      "help": "非公開のロールやワークロードのファイルを読むには、このブラウザーに読み取り権限のある Git トークンが必要です。バックエンドの索引作成用トークンとは別です。ここで保存し、「追加内容を確認」でアクセスを確認してください。プロジェクトのリポジトリは変更されません。",
+      "source": "カタログのリポジトリ",
+      "backend": "関連するバックエンド",
+      "same_origin": "このサイト",
+      "label": "ブラウザーの Git トークン",
+      "save": "ブラウザーの Git トークンを保存",
+      "saved": "このソースとバックエンド用の Git トークンをブラウザーに保存しました。追加内容を再確認してアクセスを確認してください。",
+      "exists": "このソース用の Git トークンはブラウザーに保存されています。ここには表示されません。",
+      "missing": "このソース用の Git トークンは保存されていません。公開リポジトリには通常不要です。",
+      "required": "このリポジトリの読み取り権限を持つ Git トークンを入力してください。",
+      "unavailable": "カタログのソースが変更されたか、利用できません。項目を開き直してからトークンを保存してください。",
+      "storage_failed": "Git トークンの保存を確認できませんでした。ブラウザーのストレージを確認し、トークンを再入力して再試行してください。",
+      "provider_failed": "リポジトリのファイルを読み取れませんでした（HTTP {status}）。ソースと固定リビジョンを確認してください。非公開の場合は「プライベートリポジトリへのアクセス」で Git トークンを設定してください。"
+    }
   },
-  "new_container": "Compose ワークロードを作成"
+  "new_container": "Compose ワークロードを作成",
+  "sources_loading": "カタログのソースを読み込み中…",
+  "remove": "削除",
+  "new_item": "カタログ項目を作成",
+  "more_actions": "その他",
+  "more_for": "{name} のその他の操作",
+  "kinds": {
+    "lab": "ラボ",
+    "gamenet": "ゲームネット",
+    "component": "マシンとコンポーネント",
+    "container": "Compose ワークロード",
+    "ansible_role": "Ansible ロール",
+    "unknown": "その他の形式"
+  },
+  "card_hints": {
+    "container": "Docker と Compose を備えた既存の VM が必要です。",
+    "role": "VM に追加するか、ロールを編集するプロジェクトを作成します。",
+    "topology": "デプロイ前にテンプレート、リソース、ネットワークを確認してください。",
+    "unsupported": "ここで内容を確認できます。編集には完全な Git リポジトリを使用してください。"
+  },
+  "requirements": {
+    "container": "Docker と Compose を備えた既存の VM に追加します。保存や Configure の前にポート、依存関係、vault の参照を確認してください。VM の作成や Docker のインストールは行いません。",
+    "ansible_role": "既存の VM に追加して実行するか、固定リビジョンのファイルを編集するプロジェクトを作成します。実行前に変数、パッケージ、コレクションを確認してください。",
+    "topology": "新しいプロジェクトで使用するか、既存のプロジェクトに追加します。デプロイ前にローカルの VM テンプレート、リソース、SDN ネットワーク、新しい割り当てを確認してください。",
+    "unsupported": "この形式のインポートはサポートされていません。ドキュメントと出典を確認し、完全な Git リポジトリを使用してください。"
+  },
+  "more_filters": "その他のフィルター"
 }

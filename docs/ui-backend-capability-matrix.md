@@ -9,6 +9,11 @@ catalog `7f40f5c`, playbooks `a150867`, controller `99fd63c`; runtime fingerprin
 Newer source fixes require their own checkpoint and acceptance; this document
 does not silently treat an uninstalled candidate as the current application.
 
+The historical Settings row below is superseded for current source behavior by
+[Settings workflows](settings-workflows.md), including its section URLs and
+browser/backend persistence boundaries. That source documentation does not
+retroactively extend this matrix's dated live evidence.
+
 The scope is UI/backend integration. Hyde owns SDN/playbook/controller changes.
 Draft playbooks #169 and controller #146 remain separate, unmerged and inactive.
 Their existence is not an installed capability. This documentation review made

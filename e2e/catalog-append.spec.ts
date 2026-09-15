@@ -7,7 +7,7 @@ import composeFiles from '../src/__tests__/fixtures/catalogComposeApache.json' w
 for (const width of [1440, 390]) {
   test(`compose machines, a role and isolated workload ports in one project at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 950 })
-    const source = { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' },
+    const source = { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' }, auth_kind: 'none', has_token: false,
       repos: [{ owner: 'range42', repo: 'catalog', branch: 'main' }] }
     const machine = { name: 'Vulnerable web VM', kind: 'component', source_id: source.id, path: 'machines/web', sha: 'a'.repeat(40), document: {
       schema_version: '1.0', kind: 'component', name: 'Vulnerable web VM', nodes: [
@@ -22,14 +22,13 @@ for (const width of [1440, 390]) {
     const project = { id: 'composition', name: 'Security training', nodes: [
       { id: 'original', type: 'vm', position: { x: 100, y: 100 }, data: { label: 'Original machine', config: { template: 9901, cores: 1, memory: 1024 } } },
     ], edges: [], files: { 'notes.txt': 'Preserve these notes' } }
-    await page.addInitScript(({ source, project }) => {
+    await page.addInitScript(project => {
       if (localStorage.getItem('catalog-append-seeded')) return
       localStorage.setItem('range42_projects', JSON.stringify([project]))
-      localStorage.setItem('range42_git_sources', JSON.stringify([source]))
       localStorage.setItem('range42_migration_v1_done', '1')
       localStorage.setItem('range42_backend_api', JSON.stringify({ hosts: [{ id: 'backend', url: location.origin, label: 'Fixture' }], activeHostId: 'backend', seeded: true }))
       localStorage.setItem('catalog-append-seeded', '1')
-    }, { source, project })
+    }, project)
     await setupMockApi(page)
     await page.route(/\/v1\/catalog\/sources(?:\?.*)?$/, route => route.fulfill({ json: { items: [source], total: 1 } }))
     await page.route(/\/v1\/catalog\/entries(?:\?.*)?$/, route => route.fulfill({ json: { items: entries, total: entries.length } }))
@@ -100,16 +99,18 @@ for (const width of [1440, 390]) {
     await workloadCard.getByTestId('catalog-add-to-project').click()
     dialog = page.getByTestId('catalog-append-dialog')
     await expect(dialog.locator('[name="target-node"]')).toHaveValue(target)
-    await dialog.locator('[name="host-ports"]').fill('18080')
+    await dialog.getByTestId('catalog-add-port').click()
+    await dialog.locator('[name="host-port-0"]').fill('18080')
     await dialog.getByTestId('catalog-append-review').click()
     await expect(dialog.getByTestId('catalog-workload-preview')).toContainText('18080 → 80/tcp')
     await dialog.getByTestId('catalog-append-keep').click()
     await workloadCard.getByTestId('catalog-add-to-project').click()
     dialog = page.getByTestId('catalog-append-dialog')
-    await dialog.locator('[name="host-ports"]').fill('18080')
+    await dialog.getByTestId('catalog-add-port').click()
+    await dialog.locator('[name="host-port-0"]').fill('18080')
     await dialog.getByTestId('catalog-append-review').click()
     await expect(dialog.getByRole('alert')).toContainText('already assigned')
-    await dialog.locator('[name="host-ports"]').fill('18081')
+    await dialog.locator('[name="host-port-0"]').fill('18081')
     await dialog.getByTestId('catalog-append-review').click()
     await expect(dialog.getByTestId('catalog-workload-preview')).toContainText('18081 → 80/tcp')
     await dialog.getByTestId('catalog-append-open').click()

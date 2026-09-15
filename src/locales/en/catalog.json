@@ -4,7 +4,7 @@
   "load_more": "Show more items",
   "new_role": "New Ansible role",
   "new_machine": "New VM blueprint",
-  "subtitle": "Browse labs, gamenets, and components across your Git sources.",
+  "subtitle": "Build a project from reusable machines, networks and VM content.",
   "filters": {
     "kind": "Kind",
     "source": "Source",
@@ -33,7 +33,7 @@
   "detail": {
     "readme": "README",
     "topology": "Topology",
-    "metadata": "Metadata",
+    "metadata": "Source and metadata",
     "inventory": "Attachments",
     "source": "Source",
     "updated": "Updated",
@@ -41,7 +41,11 @@
     "fork_modal_title": "Fork & publish",
     "fork_target_repo": "Target repository (owner/repo)",
     "fork_target_name": "New entry name",
-    "fork_submit": "Fork"
+    "fork_submit": "Fork",
+    "before_use": "Before you add this item",
+    "select_locally": "Select locally",
+    "revision": "Commit",
+    "readme_source": "View Markdown source"
   },
   "handoff": {
     "title": "Review catalog project",
@@ -65,9 +69,9 @@
     "publication_next": "Review and import the files first. Then use Save and Publish from the project to choose the writable branch and review or direct publication. Nothing has been published yet."
   },
   "append": {
-    "secret_bindings": "Runtime secret bindings (optional JSON)",
+    "secret_bindings": "Runtime secret bindings",
     "secret_bindings_hint": "Map Compose placeholder names to backend vault variable names. Only names are saved; missing secret declarations are added to the project. The backend operator must supply values in the workspace vault before execution.",
-    "invalid_secret_bindings": "Use a JSON mapping of placeholder names to vault variable names; do not enter secret values.",
+    "invalid_secret_bindings": "Use placeholder and vault variable names containing letters, digits and underscores; names cannot begin with a digit. Do not enter secret values.",
     "eyebrow": "Build your project",
     "title": "Add a catalog item",
     "action": "Add to project",
@@ -107,12 +111,62 @@
     "added_short": "Item added. Continue browsing or return to your project.",
     "results": "{count} of {total} items",
     "host_ports": "Host ports (optional)",
-    "host_ports_example": "For example, 8081, 8444…",
-    "host_ports_hint": "Leave blank to keep catalog ports. Otherwise provide one host port per mapping, in source order. Review shows the effective mappings.",
-    "invalid_ports": "Use comma-separated host ports between 1 and 65535.",
+    "host_ports_example": "For example, 8081…",
+    "host_ports_hint": "Keep no overrides to use the catalog ports. Otherwise add one host port per source mapping, in source order. Review shows each host → container mapping.",
+    "invalid_ports": "Enter one whole-number port between 1 and 65535 in each row.",
     "service": "Service",
     "effective_ports": "Host → container",
-    "directory": "Guest directory"
+    "directory": "Guest directory",
+    "duplicate_secret_binding": "Each placeholder must appear only once. Remove the duplicate binding.",
+    "port_mapping": "Host port for mapping {number}",
+    "remove_port": "Remove port override {number}",
+    "add_port": "Add port override",
+    "secret_placeholder": "Compose placeholder",
+    "secret_variable": "Backend vault variable",
+    "remove_secret": "Remove secret binding {number}",
+    "add_secret": "Add secret binding",
+    "read_access": {
+      "title": "Private repository access (optional)",
+      "help": "Private role and workload files need a Git token with repository read access in this browser. The indexing token stored on the backend is separate. Save a browser token here, then choose Review addition to test file access. The project repository stays unchanged.",
+      "source": "Catalog repository",
+      "backend": "Backend scope",
+      "same_origin": "This site",
+      "label": "Browser Git token",
+      "save": "Save browser Git token",
+      "saved": "Git token saved in this browser for this source and backend. Review the addition again to check access.",
+      "exists": "A browser Git token is stored for this source. It is never displayed here.",
+      "missing": "No browser Git token is stored for this source. Public repositories usually need none.",
+      "required": "Enter a Git token with read access to this repository.",
+      "unavailable": "The catalog source changed or is unavailable. Reopen the item before saving a credential.",
+      "storage_failed": "Could not confirm that the Git token was stored. Check browser storage, enter the token again and retry.",
+      "provider_failed": "Repository files could not be read (HTTP {status}). Check the source and pinned revision. Private repositories may need browser Git credentials in Private repository access."
+    }
   },
-  "new_container": "New Compose workload"
+  "new_container": "New Compose workload",
+  "sources_loading": "Loading catalog sources…",
+  "remove": "Remove",
+  "new_item": "New catalog item",
+  "more_actions": "More",
+  "more_for": "More actions for {name}",
+  "kinds": {
+    "lab": "Labs",
+    "gamenet": "Gamenets",
+    "component": "Machines & components",
+    "container": "Compose workloads",
+    "ansible_role": "Ansible roles",
+    "unknown": "Other format"
+  },
+  "card_hints": {
+    "container": "Requires an existing VM with Docker and Compose.",
+    "role": "Add to a VM, or create a project to edit the role files.",
+    "topology": "Review machine templates, resources and networking before deployment.",
+    "unsupported": "This format can be inspected here. Use its complete Git repository to work with it."
+  },
+  "requirements": {
+    "container": "Add this workload to an existing VM with Docker and Compose. Review ports, dependencies and vault references before saving or running Configure. This action does not create a VM or install Docker.",
+    "ansible_role": "Choose an existing VM to run the role, or create a linked project to edit its pinned source files. Check required variables, packages and collections before execution.",
+    "topology": "Use a new project or append these nodes to an existing one. Select local VM templates and review resources, SDN networking and fresh allocations before deployment.",
+    "unsupported": "The editor does not support importing this format. You can inspect its documentation and provenance; use its complete Git repository to preserve its behavior."
+  },
+  "more_filters": "More filters"
 }

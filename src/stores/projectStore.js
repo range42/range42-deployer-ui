@@ -158,8 +158,8 @@ export const useProjectStore = defineStore('projects', () => {
   }
 
   const clearAllData = () => {
+    persistCandidate([])
     projects.value = []
-    saveProjects()
   }
 
   /**
