@@ -124,7 +124,23 @@
     "secret_placeholder": "Référence Compose",
     "secret_variable": "Variable du vault backend",
     "remove_secret": "Retirer la référence du secret {number}",
-    "add_secret": "Ajouter une référence de secret"
+    "add_secret": "Ajouter une référence de secret",
+    "read_access": {
+      "title": "Accès au dépôt privé (facultatif)",
+      "help": "La lecture des fichiers privés des rôles et applications nécessite un jeton Git dans ce navigateur. Le jeton d’indexation conservé par le backend est distinct. Enregistrez un jeton ici, puis choisissez Vérifier l’ajout pour tester l’accès aux fichiers. Le dépôt du projet reste inchangé.",
+      "source": "Dépôt du catalogue",
+      "backend": "Backend associé",
+      "same_origin": "Ce site",
+      "label": "Jeton Git du navigateur",
+      "save": "Enregistrer le jeton Git du navigateur",
+      "saved": "Jeton Git enregistré dans ce navigateur pour cette source et ce backend. Vérifiez à nouveau l’ajout pour tester l’accès.",
+      "exists": "Un jeton Git est enregistré dans ce navigateur pour cette source. Il n’est jamais affiché ici.",
+      "missing": "Aucun jeton Git n’est enregistré dans ce navigateur pour cette source. Les dépôts publics n’en nécessitent généralement pas.",
+      "required": "Saisissez un jeton Git disposant d’un accès en lecture à ce dépôt.",
+      "unavailable": "La source du catalogue a changé ou est indisponible. Rouvrez l’élément avant d’enregistrer un jeton.",
+      "storage_failed": "L’enregistrement du jeton Git n’a pas pu être confirmé. Vérifiez le stockage du navigateur, saisissez à nouveau le jeton et réessayez.",
+      "provider_failed": "Impossible de lire les fichiers du dépôt (HTTP {status}). Vérifiez la source et la révision fixée. Pour un dépôt privé, renseignez un jeton Git dans Accès au dépôt privé."
+    }
   },
   "new_container": "Nouvelle application Compose",
   "sources_loading": "Chargement des sources du catalogue…",

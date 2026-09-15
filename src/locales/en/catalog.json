@@ -124,7 +124,23 @@
     "secret_placeholder": "Compose placeholder",
     "secret_variable": "Backend vault variable",
     "remove_secret": "Remove secret binding {number}",
-    "add_secret": "Add secret binding"
+    "add_secret": "Add secret binding",
+    "read_access": {
+      "title": "Private repository access (optional)",
+      "help": "Private role and workload files need a Git token with repository read access in this browser. The indexing token stored on the backend is separate. Save a browser token here, then choose Review addition to test file access. The project repository stays unchanged.",
+      "source": "Catalog repository",
+      "backend": "Backend scope",
+      "same_origin": "This site",
+      "label": "Browser Git token",
+      "save": "Save browser Git token",
+      "saved": "Git token saved in this browser for this source and backend. Review the addition again to check access.",
+      "exists": "A browser Git token is stored for this source. It is never displayed here.",
+      "missing": "No browser Git token is stored for this source. Public repositories usually need none.",
+      "required": "Enter a Git token with read access to this repository.",
+      "unavailable": "The catalog source changed or is unavailable. Reopen the item before saving a credential.",
+      "storage_failed": "Could not confirm that the Git token was stored. Check browser storage, enter the token again and retry.",
+      "provider_failed": "Repository files could not be read (HTTP {status}). Check the source and pinned revision. Private repositories may need browser Git credentials in Private repository access."
+    }
   },
   "new_container": "New Compose workload",
   "sources_loading": "Loading catalog sources…",

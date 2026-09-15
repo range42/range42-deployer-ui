@@ -29,9 +29,14 @@ const preview = ref<Awaited<ReturnType<typeof prepareCatalogAppend>>>()
 const project = computed(() => projects.getProject(projectId.value))
 const source = computed(() => inventory.getSource(props.entry.source_id))
 const needsTarget = computed(() => ['ansible_role', 'container'].includes(props.entry.kind))
+const readToken = ref(''), credentialError = ref(''), credentialStatus = ref(''), hasReadToken = ref(false)
+const credentialRevision = ref(0)
+const credentialScope = computed(() => JSON.stringify([props.entry.source_id, backend.activeHost?.id, backend.url, backend.token,
+  source.value?.backend_url, source.value?.provider, source.value?.base_url, source.value?.repos]))
+let knownReadToken: string | null = null
 const vms = computed(() => (project.value?.nodes || []).filter(node => node.type === 'vm'))
 const identity = computed(() => JSON.stringify([props.entry, source.value, project.value, projectId.value, targetNode.value,
-  instanceName.value, hostPorts.value, secretBindings.value, backend.url, backend.activeHost?.id, backend.activeHost?.token]))
+  instanceName.value, hostPorts.value, secretBindings.value, backend.url, backend.activeHost?.id, backend.activeHost?.token, credentialRevision.value]))
 let epoch = 0
 let reviewed: { identity: string; token: string | null } | undefined
 let closed = false, applied = false
@@ -40,10 +45,44 @@ watch(identity, () => {
   epoch += 1; busy.value = false; preview.value = undefined; reviewed = undefined
   if (hadReview) error.value = t('catalog.append.changed')
 }, { flush: 'sync' })
+watch(credentialScope, () => {
+  readToken.value = ''; credentialError.value = ''; credentialStatus.value = ''
+  knownReadToken = inventory.getToken(props.entry.source_id); hasReadToken.value = !!knownReadToken
+  credentialRevision.value++
+}, { immediate: true, flush: 'sync' })
 watch(projectId, () => { targetNode.value = '' })
-onMounted(async () => { await ensureNamespaces(['catalog']); await nextTick(); focusReady.value = !closed })
-onBeforeUnmount(() => { closed = true; epoch += 1 })
-function close() { closed = true; epoch += 1; emit('close') }
+onMounted(async () => {
+  window.addEventListener('storage', credentialStorageChanged)
+  await ensureNamespaces(['catalog']); await nextTick(); focusReady.value = !closed
+})
+onBeforeUnmount(() => { closed = true; epoch += 1; readToken.value = ''; window.removeEventListener('storage', credentialStorageChanged) })
+function close() { closed = true; epoch += 1; readToken.value = ''; emit('close') }
+
+function credentialStorageChanged(event: StorageEvent) {
+  if (event.key !== null && !event.key.startsWith('range42_token_')) return
+  const token = inventory.getToken(props.entry.source_id)
+  if (token === knownReadToken) return
+  knownReadToken = token; hasReadToken.value = !!token; readToken.value = ''; credentialStatus.value = ''; credentialError.value = ''
+  credentialRevision.value++
+}
+function saveReadToken() {
+  if (closed || applied) return
+  credentialError.value = ''; credentialStatus.value = ''
+  const token = readToken.value.trim()
+  if (!token) { credentialError.value = t('catalog.append.read_access.required'); return }
+  const origin = source.value
+  if (!origin || origin.repos.length !== 1 || (origin.backend_url !== undefined && origin.backend_url.replace(/\/+$/, '') !== backend.url.replace(/\/+$/, ''))) {
+    readToken.value = ''; credentialError.value = t('catalog.append.read_access.unavailable'); return
+  }
+  // The store swallows failed writes: verify persisted bytes before claiming success.
+  try {
+    inventory.setToken(origin.id, token)
+    if (inventory.getToken(origin.id) !== token) throw new Error('Credential persistence failed')
+    knownReadToken = token; hasReadToken.value = true; credentialRevision.value++
+    credentialStatus.value = t('catalog.append.read_access.saved')
+  } catch { credentialError.value = t('catalog.append.read_access.storage_failed') }
+  finally { readToken.value = '' }
+}
 
 async function invalid(field: string, message: string) {
   validationField.value = field
@@ -97,7 +136,13 @@ async function review() {
     if (captured.identity !== identity.value || captured.token !== inventory.getToken(props.entry.source_id)) throw new Error(t('catalog.append.changed'))
     preview.value = result; reviewed = captured
   } catch (cause) {
-    if (!closed && current === epoch) error.value = cause instanceof Error ? cause.message : String(cause)
+    if (!closed && current === epoch) {
+      const status = cause && typeof cause === 'object' && 'status' in cause ? cause.status : undefined
+      let message = typeof status === 'number' && status >= 400 && status <= 599
+        ? t('catalog.append.read_access.provider_failed', { status }) : cause instanceof Error ? cause.message : String(cause)
+      for (const token of [captured.token, backend.token].filter((value): value is string => !!value)) message = message.split(token).join('[redacted]')
+      error.value = message
+    }
   } finally { if (current === epoch) busy.value = false }
 }
 
@@ -192,6 +237,22 @@ const workload = computed(() => preview.value?.review as undefined | {
         <p v-if="!projects.projects.length" class="text-sm" role="status">{{ t('catalog.append.no_projects') }}</p>
         <p v-if="entry.kind === 'ansible_role'" class="rounded-lg bg-base-200 p-3 text-sm">{{ t('catalog.append.role_hint') }}</p>
         <p v-if="entry.kind === 'container'" class="rounded-lg bg-base-200 p-3 text-sm">{{ t('catalog.append.container_hint') }}</p>
+        <details v-if="needsTarget && source" class="rounded-xl border border-base-300 p-4" data-testid="catalog-read-access">
+          <summary class="cursor-pointer text-sm font-medium">{{ t('catalog.append.read_access.title') }}</summary>
+          <div class="mt-3 space-y-3">
+            <p class="text-sm text-base-content/75">{{ t('catalog.append.read_access.help') }}</p>
+            <p class="text-xs break-all">{{ t('catalog.append.read_access.source') }}: {{ source.provider }} · {{ source.base_url }} · {{ source.repos.map(repo => `${repo.owner}/${repo.repo}`).join(', ') }}</p>
+            <p class="text-xs break-all">{{ t('catalog.append.read_access.backend') }}: {{ backend.activeHost?.label || backend.url || t('catalog.append.read_access.same_origin') }}</p>
+            <p class="text-xs text-base-content/75">{{ t(hasReadToken ? 'catalog.append.read_access.exists' : 'catalog.append.read_access.missing') }}</p>
+            <form class="space-y-3" @submit.prevent="saveReadToken">
+              <label for="catalog-read-token" class="block text-sm font-medium">{{ t('catalog.append.read_access.label') }}</label>
+              <input id="catalog-read-token" v-model="readToken" name="catalog-read-token" type="password" autocomplete="new-password" spellcheck="false" class="input input-bordered w-full" :aria-invalid="!!credentialError" :aria-describedby="credentialError ? 'catalog-read-credential-error' : undefined" data-testid="catalog-read-token" />
+              <button type="submit" class="btn btn-outline btn-sm" data-testid="catalog-save-read-token">{{ t('catalog.append.read_access.save') }}</button>
+            </form>
+            <p v-if="credentialError" id="catalog-read-credential-error" role="alert" class="rounded-lg border border-error/40 bg-error/10 p-3 text-base-content text-sm" data-testid="catalog-read-credential-error">{{ credentialError }}</p>
+            <p v-if="credentialStatus" role="status" class="text-sm" data-testid="catalog-read-credential-status">{{ credentialStatus }}</p>
+          </div>
+        </details>
         <div v-if="preview" class="rounded-xl border border-base-300 p-4 space-y-3" data-testid="catalog-append-preview">
           <h3 class="font-semibold">{{ t('catalog.append.preview') }}</h3>
           <p class="text-sm">{{ t('catalog.append.counts', preview.counts) }}</p>
@@ -219,7 +280,7 @@ const workload = computed(() => preview.value?.review as undefined | {
           <p class="text-xs text-base-content/60 break-all">{{ t('catalog.handoff.origin') }}: {{ entry.source_id }} · {{ entry.path }} · {{ entry.sha }}</p>
           <p class="text-sm">{{ t('catalog.append.save_hint') }}</p>
         </div>
-        <p v-if="error" id="catalog-append-error" role="alert" class="text-error text-sm break-words">{{ error }}</p>
+        <p v-if="error" id="catalog-append-error" role="alert" class="rounded-lg border border-error/40 bg-error/10 p-3 text-base-content text-sm break-words">{{ error }}</p>
         <p v-if="busy" role="status" class="text-sm">{{ t('catalog.append.loading') }}</p>
         <footer class="flex flex-wrap justify-end gap-2">
           <button v-if="!preview" type="button" class="btn btn-primary" data-testid="catalog-append-review" :disabled="busy" @click="review">{{ t('catalog.append.review') }}</button>
