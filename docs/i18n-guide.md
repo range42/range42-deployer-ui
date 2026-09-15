@@ -129,14 +129,17 @@ onMounted(() => {
 4) Avoid duplicating counts/numbers
 - Prefer a single translated string with placeholders, e.g.:
 ```vue
-<span>{{ t('sidebar.componentsCount', { count }) }}</span>
+<span>{{ t('sidebar.nodeCount', count) }}</span>
 ```
 …instead of concatenating the number twice.
 
 
 ## Translating Existing Components
 
-- `Sidebar.vue` already uses `sidebar` and `common` namespaces.
+- `AppNavigation.vue` and `Sidebar.vue` share the `sidebar` namespace. Its
+  `navigation`, `categories`, `items`, `resourcesItems` and `statuses` groups
+  cover the current navigation and project palette. Keep the same keys in
+  English, French and Japanese; node/connection counts use plural messages.
 - `ConfigPanel.vue` and `ExportModal.vue` currently contain hard-coded English strings. To translate:
   1. Create namespaces (e.g., `configPanel.json`, `export.json`) for each locale.
   2. Load them with `ensureNamespaces(['configPanel', 'common'])` or similar in `onMounted()`.

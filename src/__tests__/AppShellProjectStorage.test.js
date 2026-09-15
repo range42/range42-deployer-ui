@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import AppShell from '@/components/AppShell.vue'
+import { i18n } from '@/i18n'
 
 enableAutoUnmount(afterEach)
 beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()) })
@@ -13,7 +14,7 @@ it.each([undefined, { source_id: 'source', repo_owner: 'team', repo_name: 'lab' 
   localStorage.setItem('range42_projects', saved)
   const router = createRouter({ history: createMemoryHistory(), routes: ['/', '/catalog', '/deployments', '/sources', '/settings'].map(path => ({ path, component: { template: '<p>Projects</p>' } })) })
   await router.push('/')
-  const wrapper = mount(AppShell, { global: { plugins: [router], stubs: { BackendAccessPanel: true,
+  const wrapper = mount(AppShell, { global: { plugins: [router, i18n], stubs: { BackendAccessPanel: true,
     MigrationWizard: { template: '<div role="dialog">Bulk migration</div>' }, LegacyStorageBanner: true } } })
   await flushPromises()
   expect(wrapper.find('[role="dialog"]').exists()).toBe(false)

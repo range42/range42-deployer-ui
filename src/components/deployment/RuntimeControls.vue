@@ -43,7 +43,8 @@ async function reload() {
   try {
     const result = await backendRequest(`/v1/deployments/${encodeURIComponent(props.deploymentId)}/runtime`)
     if (current !== version) return
-    if (!result?.firewall || !result?.sdn || !Array.isArray(result.vms) || !Array.isArray(result.networks)) throw new Error(t('runtime.invalidState'))
+    if (!Array.isArray(result?.firewall?.errors) || !Array.isArray(result?.sdn?.errors)
+      || !Array.isArray(result.vms) || !Array.isArray(result.networks)) throw new Error(t('runtime.invalidState'))
     state.value = result
   } catch (cause) {
     if (current === version) { state.value = null; error.value = cause.message }

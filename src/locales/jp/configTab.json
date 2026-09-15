@@ -8,5 +8,6 @@
   "forkToOverride": "フォークして上書き",
   "drift": "上流ドリフト",
   "driftBanner": "上流が {sha} で変更されました",
-  "yamlAnchorsWarning": "この YAML はアンカー/エイリアスを使用しています。ラウンドトリップで書き換えられる可能性があります。"
+  "yamlAnchorsWarning": "この YAML はアンカー/エイリアスを使用しています。ラウンドトリップで書き換えられる可能性があります。",
+  "saveFile": "ファイルを保存"
 }

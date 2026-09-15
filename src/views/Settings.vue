@@ -2,6 +2,7 @@
 defineOptions({ name: 'SettingsView' })
 
 import { ref, computed, onMounted } from 'vue'
+import { useUiPreferencesStore } from '@/stores/uiPreferencesStore'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
 import { useInventoryStore } from '../stores/inventoryStore'
@@ -21,8 +22,8 @@ const userStore = useUserStore()
 const { confirm } = useConfirmDialog()
 const { showToast } = useToast()
 
+const uiPreferences = useUiPreferencesStore()
 const settings = ref({
-  theme: 'light',
   autoSave: true,
   gridSize: 20,
   snapToGrid: true
@@ -326,11 +327,11 @@ const clearAllData = async () => {
           <h2 class="card-title">Appearance</h2>
 
           <fieldset class="fieldset">
-            <legend class="fieldset-legend">Theme</legend>
-            <select v-model="settings.theme" class="select w-full max-w-xs">
+            <label for="appearance-theme" class="fieldset-legend">Theme</label>
+            <select id="appearance-theme" v-model="uiPreferences.theme" class="select w-full max-w-xs">
+              <option value="system">System</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
-              <option value="cupcake">Cupcake</option>
             </select>
           </fieldset>
         </div>

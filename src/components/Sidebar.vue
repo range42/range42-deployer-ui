@@ -1,272 +1,113 @@
-<script setup>
-defineOptions({ name: 'AppSidebar' })
-
-// Global hotkey bindings (V/C/N/R/F/G) live in AppShell.vue via useHotkeys —
-// intentionally NOT duplicated here to avoid double-firing when both
-// components are mounted. (Task C1.13 a11y sweep.)
-import { computed, onMounted, ref } from 'vue'
+<script setup lang="ts">
+import { computed, onMounted, ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ensureNamespaces, setLocale, getLocale } from '@/i18n/index.js'
-import { SUPPORTED_LOCALES } from '@/i18n/supported.js'
-import { useDragAndDrop } from '../composables/useDragAndDrop'
+import { ensureNamespaces, setLocale } from '@/i18n'
+import { SUPPORTED_LOCALES } from '@/i18n/supported'
+import { useDragAndDrop } from '@/composables/useDragAndDrop'
 import AppIcon from '@/components/icons/AppIcon.vue'
 
-const props = defineProps(['project'])
-const emit = defineEmits(['openExport', 'openDeploy', 'openValidate', 'openInventory', 'openTemplates', 'openImport'])
+defineOptions({ name: 'ProjectSidebar' })
+const props = defineProps<{ project?: { name?: string; nodes?: unknown[]; edges?: unknown[] } }>()
+const emit = defineEmits<{
+  addComponent: [type: string]; openExport: []; openDeploy: []; openValidate: [];
+  openInventory: []; openTemplates: []; openImport: [];
+}>()
+const { t, locale } = useI18n()
 const { onDragStart } = useDragAndDrop()
-
-const currentProject = computed(() => props.project)
-const { t: _t } = useI18n({ useScope: 'global' })
-const selectedLocale = ref(getLocale())
-
-// Collapsible sections
-const expandedSections = ref({
-  components: true,
-  actions: true,
-  status: false,
-})
-
-const toggleSection = (section) => {
-  expandedSections.value[section] = !expandedSections.value[section]
+const id = useId()
+const expanded = ref({ components: true, resources: true, status: false })
+const counts = computed(() => ({ nodes: props.project?.nodes?.length || 0, edges: props.project?.edges?.length || 0 }))
+onMounted(() => ensureNamespaces(['sidebar', 'common']))
+function changeLocale(event: Event) {
+  void setLocale((event.target as HTMLSelectElement).value, ['sidebar', 'common', 'project'])
 }
-
-onMounted(async () => {
-  await ensureNamespaces(['sidebar', 'common'])
-})
-
-const changeLocale = async () => {
-  await setLocale(selectedLocale.value, ['sidebar', 'common'])
-}
-
-const infrastructureComponents = [
-  {
-    category: 'Compute',
-    icon: 'cpu',
-    items: [
-      { type: 'vm', label: 'Virtual Machine', icon: 'monitor', shortcut: 'V' },
-      { type: 'lxc', label: 'Container', icon: 'cube', shortcut: 'C' },
-      { type: 'docker', label: 'Docker', icon: 'container', shortcut: 'D' },
-    ]
-  },
-  {
-    category: 'Network',
-    icon: 'globe',
-    items: [
-      { type: 'network-segment', label: 'Network', icon: 'link', shortcut: 'N' },
-      { type: 'router', label: 'Router', icon: 'router', shortcut: 'R' },
-      { type: 'edge-firewall', label: 'Firewall', icon: 'shield', shortcut: 'F' },
-    ]
-  },
-  {
-    category: 'Organization',
-    icon: 'folder',
-    items: [
-      { type: 'group', label: 'Group', icon: 'folder-open', shortcut: 'G' },
-    ]
-  }
+const categories = [
+  { key: 'compute', items: [{ type: 'vm', icon: 'monitor' }, { type: 'lxc', icon: 'cube' }, { type: 'docker', icon: 'container' }] },
+  { key: 'network', items: [{ type: 'network-segment', icon: 'link' }, { type: 'router', icon: 'router' }, { type: 'edge-firewall', icon: 'shield' }] },
+  { key: 'organization', items: [{ type: 'group', icon: 'folder-open' }] },
 ]
-
-const openExport = () => emit('openExport')
-const openDeploy = () => emit('openDeploy')
-const openValidate = () => emit('openValidate')
-const openInventory = () => emit('openInventory')
-const openTemplates = () => emit('openTemplates')
-const openImport = () => emit('openImport')
-
-const nodeCount = computed(() => currentProject.value?.nodes?.length || 0)
-const edgeCount = computed(() => currentProject.value?.edges?.length || 0)
+const resources = [
+  { key: 'templates', icon: 'disc', action: () => emit('openTemplates') },
+  { key: 'import', icon: 'inbox', action: () => emit('openImport') },
+  { key: 'export', icon: 'outbox', action: () => emit('openExport') },
+]
+const statuses = ['gray', 'orange', 'green', 'red', 'blue']
 </script>
 
 <template>
-  <aside class="w-72 h-full flex flex-col bg-base-200 border-r border-base-300">
-    <!-- Header -->
-    <div class="p-4 border-b border-base-300">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-          <AppIcon name="rocket" class="w-5 h-5" />
-        </div>
-        <div class="flex-1 min-w-0">
-          <h2 class="font-semibold text-sm truncate">{{ currentProject?.name || 'Untitled' }}</h2>
-          <p class="text-xs text-base-content/50">{{ nodeCount }} nodes · {{ edgeCount }} connections</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Scrollable Content -->
-    <div class="flex-1 overflow-y-auto no-scrollbar">
-      <!-- Quick Actions -->
-      <div class="p-3 border-b border-base-300/50">
-        <div class="grid grid-cols-2 gap-2">
-          <button class="btn btn-primary btn-sm gap-1.5" @click="openDeploy">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            Deploy
-          </button>
-          <button class="btn btn-ghost btn-sm gap-1.5" @click="openValidate">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            Validate
-          </button>
-        </div>
-      </div>
-
-      <!-- Components Section -->
-      <div class="border-b border-base-300/50">
-        <button 
-          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors"
-          @click="toggleSection('components')"
-        >
-          <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Components</span>
-          <svg 
-            class="w-4 h-4 text-base-content/40 transition-transform" 
-            :class="{ 'rotate-180': expandedSections.components }"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-          </svg>
+  <aside class="project-sidebar" data-testid="project-sidebar" :aria-label="t('sidebar.projectTools')">
+    <header class="border-b border-base-300 px-4 py-4">
+      <p class="section-eyebrow mb-2">{{ t('sidebar.currentProject') }}</p>
+      <h2 class="truncate text-sm font-semibold" :title="project?.name">{{ project?.name || t('sidebar.untitledProject') }}</h2>
+      <p class="mt-1 text-xs text-base-content/70 tabular-nums">{{ t('sidebar.nodeCount', counts.nodes) }} · {{ t('sidebar.edgeCount', counts.edges) }}</p>
+    </header>
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div class="p-3">
+        <button type="button" class="catalog-action" @click="emit('openInventory')">
+          <span aria-hidden="true"><AppIcon name="books" class="size-5 shrink-0" /></span>
+          <span class="min-w-0"><span class="block text-sm font-semibold">{{ t('sidebar.catalog.title') }}</span><span class="mt-0.5 block text-xs text-base-content/70">{{ t('sidebar.catalog.description') }}</span></span>
+          <span class="ml-auto text-lg" aria-hidden="true">+</span>
         </button>
-        
-        <div v-show="expandedSections.components" class="px-3 pb-3 space-y-3">
-          <div v-for="category in infrastructureComponents" :key="category.category">
-            <div class="flex items-center gap-2 mb-2 px-1">
-              <AppIcon :name="category.icon" class="w-4 h-4" />
-              <span class="text-xs font-medium text-base-content/50">{{ category.category }}</span>
-            </div>
-            
+      </div>
+      <section class="border-b border-base-300">
+        <h3><button type="button" class="section-toggle" :aria-expanded="expanded.components" :aria-controls="`${id}-components`" @click="expanded.components = !expanded.components">
+          <span>{{ t('sidebar.components') }}</span><span aria-hidden="true">{{ expanded.components ? '−' : '+' }}</span>
+        </button></h3>
+        <div v-show="expanded.components" :id="`${id}-components`" class="px-3 pb-4">
+          <p class="px-1 pb-3 text-xs text-base-content/70">{{ t('sidebar.addHint') }}</p>
+          <div v-for="category in categories" :key="category.key" class="mb-4 last:mb-0">
+            <h4 class="mb-1.5 px-1 text-xs font-medium text-base-content/70">{{ t(`sidebar.categories.${category.key}`) }}</h4>
             <div class="space-y-1">
-              <div
-                v-for="component in category.items"
-                :key="component.type"
-                class="component-card flex items-center gap-3 group"
-                :draggable="true"
-                @dragstart="onDragStart($event, component.type)"
-              >
-                <div class="w-8 h-8 rounded-lg bg-base-200 flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
-                  <AppIcon :name="component.icon" class="w-5 h-5" />
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium text-sm">{{ component.label }}</div>
-                </div>
-                <kbd class="kbd kbd-xs opacity-0 group-hover:opacity-50 transition-opacity">{{ component.shortcut }}</kbd>
-              </div>
+              <button v-for="component in category.items" :key="component.type" type="button" class="palette-item" draggable="true"
+                :aria-label="t(`sidebar.items.${component.type}.add`)" @dragstart="onDragStart($event, component.type)" @click="emit('addComponent', component.type)">
+                <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-base-200"><span aria-hidden="true"><AppIcon :name="component.icon" class="size-5" /></span></span>
+                <span class="min-w-0 flex-1"><span class="block text-sm font-medium">{{ t(`sidebar.items.${component.type}.label`) }}</span><span class="block text-xs text-base-content/70">{{ t(`sidebar.items.${component.type}.description`) }}</span></span>
+                <span class="text-base-content/70" aria-hidden="true">+</span>
+              </button>
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- Resources Section -->
-      <div class="border-b border-base-300/50">
-        <button 
-          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors"
-          @click="toggleSection('actions')"
-        >
-          <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Resources</span>
-          <svg 
-            class="w-4 h-4 text-base-content/40 transition-transform" 
-            :class="{ 'rotate-180': expandedSections.actions }"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-          </svg>
-        </button>
-        
-        <div v-show="expandedSections.actions" class="px-3 pb-3 space-y-1">
-          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openInventory">
-            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <AppIcon name="books" class="w-5 h-5" />
-            </div>
-            <div>
-              <div class="font-medium text-sm">Inventory Browser</div>
-              <div class="text-xs text-base-content/50">GitHub inventories</div>
-            </div>
-          </button>
-          
-          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openTemplates">
-            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <AppIcon name="disc" class="w-5 h-5" />
-            </div>
-            <div>
-              <div class="font-medium text-sm">Templates & ISOs</div>
-              <div class="text-xs text-base-content/50">Proxmox storage</div>
-            </div>
-          </button>
-          
-          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openImport">
-            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <AppIcon name="inbox" class="w-5 h-5" />
-            </div>
-            <div>
-              <div class="font-medium text-sm">Import Infrastructure</div>
-              <div class="text-xs text-base-content/50">From Proxmox</div>
-            </div>
-          </button>
-          
-          <button class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-base-300/50 transition-colors text-left" @click="openExport">
-            <div class="w-8 h-8 rounded-lg bg-base-100 flex items-center justify-center">
-              <AppIcon name="outbox" class="w-5 h-5" />
-            </div>
-            <div>
-              <div class="font-medium text-sm">Export Topology</div>
-              <div class="text-xs text-base-content/50">JSON, YAML, Terraform</div>
-            </div>
+      </section>
+      <section class="border-b border-base-300">
+        <h3><button type="button" class="section-toggle" :aria-expanded="expanded.resources" :aria-controls="`${id}-resources`" @click="expanded.resources = !expanded.resources">
+          <span>{{ t('sidebar.resources') }}</span><span aria-hidden="true">{{ expanded.resources ? '−' : '+' }}</span>
+        </button></h3>
+        <div v-show="expanded.resources" :id="`${id}-resources`" class="space-y-1 px-3 pb-3">
+          <button v-for="resource in resources" :key="resource.key" type="button" class="palette-item" @click="resource.action">
+            <span aria-hidden="true"><AppIcon :name="resource.icon" class="size-5 shrink-0" /></span>
+            <span class="min-w-0"><span class="block text-sm font-medium">{{ t(`sidebar.resourcesItems.${resource.key}.title`) }}</span><span class="block text-xs text-base-content/70">{{ t(`sidebar.resourcesItems.${resource.key}.description`) }}</span></span>
           </button>
         </div>
-      </div>
-
-      <!-- Status Legend -->
-      <div>
-        <button 
-          class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors"
-          @click="toggleSection('status')"
-        >
-          <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">Status Legend</span>
-          <svg 
-            class="w-4 h-4 text-base-content/40 transition-transform" 
-            :class="{ 'rotate-180': expandedSections.status }"
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
-          >
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-          </svg>
-        </button>
-        
-        <div v-show="expandedSections.status" class="px-4 pb-4">
-          <div class="grid grid-cols-2 gap-2 text-xs">
-            <div class="flex items-center gap-2">
-              <span class="status-dot gray"></span>
-              <span class="text-base-content/70">Incomplete</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="status-dot orange"></span>
-              <span class="text-base-content/70">Ready</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="status-dot green"></span>
-              <span class="text-base-content/70">Running</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="status-dot red"></span>
-              <span class="text-base-content/70">Error</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="status-dot blue pulse"></span>
-              <span class="text-base-content/70">Deploying</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      </section>
+      <section>
+        <h3><button type="button" class="section-toggle" :aria-expanded="expanded.status" :aria-controls="`${id}-status`" @click="expanded.status = !expanded.status">
+          <span>{{ t('sidebar.statusTitle') }}</span><span aria-hidden="true">{{ expanded.status ? '−' : '+' }}</span>
+        </button></h3>
+        <ul v-show="expanded.status" :id="`${id}-status`" class="space-y-2 px-4 pb-4 text-xs">
+          <li v-for="status in statuses" :key="status" class="flex items-center gap-2"><span class="status-dot" :class="status" aria-hidden="true" />{{ t(`sidebar.statuses.${status}`) }}</li>
+        </ul>
+      </section>
     </div>
-
-    <!-- Footer -->
-    <div class="p-3 border-t border-base-300 bg-base-200">
-      <div class="flex items-center justify-between">
-        <select class="select select-ghost select-xs" v-model="selectedLocale" @change="changeLocale">
-          <option v-for="l in SUPPORTED_LOCALES" :key="l.code" :value="l.code">{{ l.label }}</option>
-        </select>
-        <div class="text-xs text-base-content/40">v0.1.0</div>
+    <footer class="shrink-0 space-y-3 border-t border-base-300 bg-base-100 p-3">
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" class="btn btn-outline min-h-11 h-auto py-2" @click="emit('openValidate')">{{ t('sidebar.validate') }}</button>
+        <button type="button" class="btn btn-primary min-h-11 h-auto py-2" @click="emit('openDeploy')">{{ t('sidebar.deploy') }}</button>
       </div>
-    </div>
+      <select class="select select-sm w-full bg-base-100 text-base-content" :value="locale" :aria-label="t('sidebar.language.label')" @change="changeLocale">
+        <option v-for="language in SUPPORTED_LOCALES" :key="language.code" :value="language.code">{{ language.label }}</option>
+      </select>
+    </footer>
   </aside>
 </template>
+
+<style scoped>
+.project-sidebar { display: flex; flex-direction: column; width: 17rem; max-width: 100%; height: 100%; background: var(--color-base-100); border-right: 1px solid var(--color-base-300); }
+.section-eyebrow { font-size: .6875rem; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: color-mix(in oklab, var(--color-base-content) 70%, transparent); }
+.section-toggle { display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; min-height: 2.75rem; padding: .75rem 1rem; font-size: .8125rem; font-weight: 650; text-align: left; cursor: pointer; }
+.section-toggle:hover { background: var(--color-base-200); }
+.palette-item { display: flex; align-items: center; gap: .65rem; width: 100%; min-height: 3rem; border: 1px solid transparent; border-radius: .5rem; padding: .5rem; text-align: left; cursor: pointer; transition: background-color 150ms, border-color 150ms; }
+.palette-item:hover { background: var(--color-base-200); border-color: var(--color-base-300); }
+.palette-item:active { background: var(--color-base-300); }
+.catalog-action { display: flex; align-items: center; gap: .65rem; width: 100%; border: 1px solid var(--color-base-300); border-radius: .65rem; padding: .75rem; background: var(--color-base-200); text-align: left; cursor: pointer; }
+.catalog-action:hover { border-color: var(--color-primary); }
+</style>

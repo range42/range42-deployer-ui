@@ -35,6 +35,13 @@ async function show(props = {}) {
 }
 
 describe('live network and firewall controls', () => {
+  it('shows a useful error and no actions for an incomplete runtime response', async () => {
+    state.firewall = {}
+    const wrapper = await show()
+    expect(wrapper.get('[role="alert"]').text()).toBe(runtime.invalidState)
+    expect(wrapper.find('[data-testid="runtime-scenario-enable"]').exists()).toBe(false)
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true)
+  })
   it('shows datacenter, node, VM and NIC states independently', async () => {
     const wrapper = await show()
     expect(wrapper.text()).toContain('Datacenter: Enabled')

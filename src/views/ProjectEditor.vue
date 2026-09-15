@@ -47,7 +47,7 @@ import { useCanvasHistory } from '../composables/useCanvasHistory'
 import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
 import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
-import { useHotkeys } from '../composables/useHotkeys'
+import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -114,13 +114,21 @@ const scenarioContentTarget = ref('')
 const showRepositoryConnection = ref(false)
 const registeredProjectId = ref('')
 const dragAndDropComposable = useDragAndDrop()
-const { onDragOver, onDrop, onDragLeave, isDragOver } = dragAndDropComposable || {}
+const { onDragOver, onDrop, onDragLeave, isDragOver, addComponent } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
 /** @type {import('vue').Ref<{ openApplyDialog: () => void } | null>} */
 const configPanelRef = ref(null)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
+const projectActionsOpen = ref(false)
+/** @type {import('vue').Ref<HTMLDetailsElement | null>} */
+const projectActionsMenu = ref(null)
+function syncProjectActions() { projectActionsOpen.value = projectActionsMenu.value?.open || false }
+function closeProjectActions() {
+  projectActionsOpen.value = false
+  projectActionsMenu.value?.querySelector('summary')?.focus()
+}
 // Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
 const showDeployForm = ref(false)
 const deploymentIndex = useDeploymentIndex()
@@ -169,7 +177,7 @@ const showProblemsPanel = ref(true)
 const showActivityTerminal = ref(true)
 useDeploymentActivityBridge()
 
-// Command palette (Ctrl/Cmd-P).
+// Project search is opened by its visible toolbar button.
 const showCommandPalette = ref(false)
 const paletteItems = computed(() => {
   const items = []
@@ -205,16 +213,6 @@ const paletteItems = computed(() => {
   return items
 })
 
-useHotkeys([
-  {
-    key: 'p',
-    when: () => true,
-    handler: (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      showCommandPalette.value = !showCommandPalette.value
-    },
-  },
-])
 
 /** @param {import('@/composables/useProblems').Problem['jumpTo']} descriptor */
 function handleJumpTo(descriptor) {
@@ -335,10 +333,12 @@ onUnmounted(() => {
 })
 
 // Canvas undo ring-buffer (C3.11). We snapshot on every node/edge mutation
-// so Ctrl-Z / Ctrl-Shift-Z can walk back through the history. Snapshots
+// so the Undo and Redo controls can restore prior states. Snapshots
 // are deep-cloned so future mutations don't retroactively alter old
 // entries.
 const canvasHistory = useCanvasHistory()
+let restoringHistory = false
+let placingComponent = false
 function cloneSnapshot() {
   return JSON.parse(JSON.stringify({
     nodes: nodes.value || [],
@@ -365,40 +365,42 @@ function scheduleAutosave() {
   }, 1500)
 }
 
-watch(() => editorAuthoredSignature(nodes.value || [], edges.value || []), () => {
-  if (!currentProject.value) return
-  canvasHistory.push(cloneSnapshot())
-  scheduleAutosave()
-}, { deep: true })
+watch(() => editorAuthoredSignature(nodes.value || [], edges.value || []), scheduleAutosave)
+// Selection, dimensions and dragging are view state, not separate undo steps.
+watch(() => {
+  const snapshot = cloneSnapshot()
+  for (const node of snapshot.nodes) {
+    for (const field of ['selected', 'dragging', 'resizing', 'dimensions', 'computedPosition', 'positionAbsolute', 'handleBounds', 'initialized', 'events']) delete node[field]
+  }
+  for (const edge of snapshot.edges) delete edge.selected
+  return editorAuthoredSignature(snapshot.nodes, snapshot.edges)
+}, () => {
+  if (currentProject.value && !restoringHistory && !placingComponent) canvasHistory.push(cloneSnapshot())
+})
 
-// Undo / redo hotkeys — only fired while the canvas tab is active so we
-// don't hijack CodeMirror's built-in undo on the Config tab.
-useHotkeys([
-  {
-    key: 'z',
-    when: () => tab.value === 'canvas',
-    handler: (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      if (e.shiftKey) {
-        const next = canvasHistory.redo()
-        if (next) applyCanvasSnapshot(next)
-      } else {
-        const next = canvasHistory.undo()
-        if (next) applyCanvasSnapshot(next)
-      }
-    },
-  },
-])
+function finishComponentPlacement() {
+  nextTick(() => {
+    if (editorActive) canvasHistory.push(cloneSnapshot())
+    placingComponent = false
+  })
+}
+
+function undoCanvas() {
+  const snapshot = canvasHistory.undo()
+  if (snapshot) applyCanvasSnapshot(snapshot)
+}
+function redoCanvas() {
+  const snapshot = canvasHistory.redo()
+  if (snapshot) applyCanvasSnapshot(snapshot)
+}
 
 /** @param {{ nodes: import('@vue-flow/core').Node[]; edges: import('@vue-flow/core').Edge[] }} snapshot */
 function applyCanvasSnapshot(snapshot) {
+  restoringHistory = true
   // Applying a snapshot writes back via loadProjectData so selection +
   // VueFlow state stay in sync with the restored graph.
-  loadProjectData({
-    ...currentProject.value,
-    nodes: snapshot.nodes,
-    edges: snapshot.edges,
-  })
+  loadProjectData({ ...currentProject.value, ...JSON.parse(JSON.stringify(snapshot)) })
+  nextTick(() => { restoringHistory = false })
 }
 
 onBeforeUnmount(() => {
@@ -657,28 +659,20 @@ const onNodeApply = (slotProps) => {
  * that isn't an editable control) is the active element — preventing
  * interference with mouse interactions and form inputs.
  */
-// Mobile sidebar drawer state (Plan C §C5.3 — a11y wiring for <lg screens).
-// Focus management: when the drawer opens we move focus inside it; Escape
-// closes. aria-expanded on the toggle reflects open state.
 const mobileSidebarOpen = ref(false)
-/** @type {import('vue').Ref<HTMLElement | null>} */
-const mobileSidebarRef = ref(null)
-function toggleMobileSidebar() {
-  mobileSidebarOpen.value = !mobileSidebarOpen.value
-  if (mobileSidebarOpen.value) {
-    // Focus the drawer container so Tab cycles inside and Escape is captured
-    setTimeout(() => mobileSidebarRef.value?.focus?.(), 0)
-  }
-}
-function closeMobileSidebar() {
-  mobileSidebarOpen.value = false
-}
-/** @param {KeyboardEvent} event */
-function handleMobileSidebarKeydown(event) {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closeMobileSidebar()
-  }
+function toggleMobileSidebar() { mobileSidebarOpen.value = !mobileSidebarOpen.value }
+function closeMobileSidebar() { mobileSidebarOpen.value = false }
+
+/** @param {string} type */
+async function handleAddComponent(type) {
+  closeMobileSidebar()
+  await router.push({ query: { ...route.query, tab: 'canvas' } })
+  await nextTick()
+  if (canvasHistory.size() === 0) canvasHistory.push(cloneSnapshot())
+  placingComponent = true
+  const nodeId = addComponent(type, finishComponentPlacement)
+  if (!nodeId) placingComponent = false
+  if (nodeId) await router.push({ query: { ...route.query, tab: 'canvas', node: nodeId } })
 }
 
 /** @type {Partial<Record<string, 'left' | 'right' | 'up' | 'down'>>} */
@@ -757,13 +751,11 @@ const handleDeleteNode = (nodeId) => {
   closeConfigPanel()
 }
 
-const goBack = () => {
-  router.push('/')
-}
-
 /** @param {DragEvent} event */
 const handleDrop = (event) => {
-  onDrop(event)
+  if (canvasHistory.size() === 0) canvasHistory.push(cloneSnapshot())
+  placingComponent = true
+  if (!onDrop(event, finishComponentPlacement)) placingComponent = false
 }
 
 /** @param {DragEvent} event */
@@ -777,12 +769,20 @@ const handleDragLeave = (event) => {
   onDragLeave(event)
 }
 
-const openProxmoxSettings = () => {
+/** @type {HTMLElement | null} */
+let proxmoxSettingsOpener = null
+/** @param {MouseEvent} [event] */
+const openProxmoxSettings = (event) => {
+  const opener = event?.currentTarget
+  proxmoxSettingsOpener = opener instanceof HTMLElement
+    ? opener.closest('details')?.querySelector('summary') || opener : null
   showProxmoxSettings.value = true
 }
 
 const closeProxmoxSettings = () => {
+  if (!showProxmoxSettings.value) return
   showProxmoxSettings.value = false
+  nextTick(() => { if (proxmoxSettingsOpener?.isConnected) proxmoxSettingsOpener.focus() })
 }
 
 // Deployment handlers
@@ -1040,99 +1040,62 @@ const handleInfrastructureImport = (result) => {
 </script>
 
 <template>
-  <div>
-  <div class="h-screen bg-base-100 flex" v-if="currentProject">
+  <div class="h-full min-h-0">
+  <div class="h-full min-h-0 bg-base-100 flex" v-if="currentProject">
     <!-- Sidebar (desktop ≥lg) -->
+    <div class="hidden lg:block shrink-0">
     <Sidebar
       :project="currentProject"
+      @addComponent="handleAddComponent"
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
       @openInventory="openCatalog"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
-      class="hidden lg:flex shrink-0"
     />
-
-    <!-- Mobile drawer (<lg). Focus moves into the drawer on open; Escape closes. -->
-    <div
-      v-if="mobileSidebarOpen"
-      id="mobile-drawer"
-      class="fixed inset-0 z-50 lg:hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Navigation drawer"
-      data-testid="mobile-drawer"
-      @keydown="handleMobileSidebarKeydown"
-    >
-      <div class="absolute inset-0 bg-black/50" @click="closeMobileSidebar" />
-      <div
-        ref="mobileSidebarRef"
-        tabindex="-1"
-        class="absolute left-0 top-0 h-full w-72 bg-base-100 shadow-xl flex focus:outline-none"
-      >
-        <Sidebar
-          :project="currentProject"
-          class="w-full"
-          @openExport="showExportModal = true; closeMobileSidebar()"
-          @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
-          @openValidate="handleOpenValidate(); closeMobileSidebar()"
-          @openInventory="openCatalog(); closeMobileSidebar()"
-          @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
-          @openImport="handleOpenImport(); closeMobileSidebar()"
-        />
-      </div>
     </div>
+
+    <SidebarDrawer :open="mobileSidebarOpen" :title="translate('sidebar.projectTools')" :close-label="translate('sidebar.closeTools')"
+      id="mobile-drawer" data-testid="mobile-drawer" @close="closeMobileSidebar">
+      <Sidebar :project="currentProject" @addComponent="handleAddComponent"
+        @openExport="showExportModal = true; closeMobileSidebar()"
+        @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
+        @openValidate="handleOpenValidate(); closeMobileSidebar()"
+        @openInventory="openCatalog(); closeMobileSidebar()"
+        @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
+        @openImport="handleOpenImport(); closeMobileSidebar()" />
+    </SidebarDrawer>
 
     <!-- Main Content -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Top Bar -->
       <header class="min-h-14 px-3 py-2 sm:px-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-base-300 bg-base-100 shrink-0">
-        <div class="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+        <div class="flex min-w-0 items-center gap-3">
           <!-- Mobile menu toggle -->
           <button
             type="button"
-            class="btn btn-ghost btn-sm btn-square lg:hidden"
+            class="btn btn-ghost btn-sm gap-2 lg:hidden"
             :aria-expanded="mobileSidebarOpen ? 'true' : 'false'"
             aria-controls="mobile-drawer"
-            aria-label="Toggle navigation"
+            :aria-label="translate('sidebar.projectTools')"
             data-testid="mobile-drawer-toggle"
             @click="toggleMobileSidebar"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
             </svg>
+            <span>{{ translate('sidebar.components') }}</span>
           </button>
-          
-          <!-- Back button -->
-          <button class="btn btn-ghost btn-sm gap-2" @click="goBack">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-            </svg>
-            <span class="hidden sm:inline">Dashboard</span>
-          </button>
-          
-          <div class="hidden sm:block h-6 w-px bg-base-300"></div>
           
           <!-- Project name -->
           <h1 class="font-semibold truncate max-w-[200px]">{{ currentProject.name }}</h1>
         </div>
 
-        <!-- Right actions -->
-        <div class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
-          <!-- Organize layout button -->
-          <button class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
-            </svg>
-            <span class="hidden sm:inline">Organize</span>
-          </button>
-
+        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
           <!-- Save button -->
           <button type="button" class="btn btn-ghost btn-sm" data-testid="project-repository" :disabled="gitSaving > 0" @click="openRepositoryConnection">Repository</button>
-          <button type="button" class="btn btn-outline btn-sm" data-testid="project-add-catalog" @click="openCatalog">{{ translate('project.addCatalog') }}</button>
-          <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="openScenarioContent()">Scenario</button>
-          <button class="btn btn-ghost btn-sm gap-2" :disabled="gitSaving > 0" @click="manualSave()" title="Save (Ctrl+S)">
+          <button class="btn btn-ghost btn-sm gap-2" :disabled="gitSaving > 0" @click="manualSave()" title="Save project" aria-label="Save project">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
             </svg>
@@ -1145,14 +1108,14 @@ const handleInfrastructureImport = (result) => {
           </button>
 
           <!-- Settings dropdown -->
-          <div class="dropdown dropdown-end">
-            <label tabindex="0" class="btn btn-ghost btn-sm btn-square">
+          <details ref="projectActionsMenu" class="dropdown dropdown-end" :open="projectActionsOpen" @toggle="syncProjectActions" @keydown.esc.stop.prevent="closeProjectActions">
+            <summary role="button" class="btn btn-ghost btn-sm btn-square" :aria-label="translate('sidebar.projectActions')" :aria-expanded="projectActionsOpen">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
               </svg>
-            </label>
-            <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-xl w-56 border border-base-300">
+            </summary>
+            <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-xl w-56 border border-base-300" @click="closeProjectActions">
               <li>
                 <button class="gap-3" @click="openProxmoxSettings">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1169,7 +1132,7 @@ const handleInfrastructureImport = (result) => {
                   Validate Topology
                 </button>
               </li>
-              <div class="divider my-1"></div>
+              <li class="divider my-1" role="separator"></li>
               <li>
                 <button class="gap-3" @click="showExportModal = true">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1178,7 +1141,7 @@ const handleInfrastructureImport = (result) => {
                   Export
                 </button>
               </li>
-              <div class="divider my-1"></div>
+              <li class="divider my-1" role="separator"></li>
               <li>
                 <button class="gap-3 text-error" @click="showDeleteProjectModal = true">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1188,7 +1151,25 @@ const handleInfrastructureImport = (result) => {
                 </button>
               </li>
             </ul>
-          </div>
+          </details>
+        </div>
+
+        <!-- Canvas and catalog actions -->
+        <div class="project-toolbar flex w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-base-300 pt-2">
+          <button type="button" class="btn btn-ghost btn-sm" @click="showCommandPalette = true">{{ translate('sidebar.searchProject') }}</button>
+          <button v-if="tab === 'canvas'" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canUndo.value" @click="undoCanvas">{{ translate('sidebar.undo') }}</button>
+          <button v-if="tab === 'canvas'" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canRedo.value" @click="redoCanvas">{{ translate('sidebar.redo') }}</button>
+          <!-- Organize layout button -->
+          <button class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout" aria-label="Organize topology layout">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+            </svg>
+            <span class="hidden sm:inline">Organize</span>
+          </button>
+
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-add-catalog" @click="openCatalog">{{ translate('project.addCatalog') }}</button>
+          <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="openScenarioContent()">Scenario</button>
+
         </div>
       </header>
 
@@ -1564,7 +1545,7 @@ const handleInfrastructureImport = (result) => {
     />
 
 
-    <!-- Command palette (Ctrl/Cmd-P) — body-teleported by the component itself -->
+    <!-- Project search — body-teleported by the component itself -->
     <CommandPalette
       :open="showCommandPalette"
       :items="paletteItems"

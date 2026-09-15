@@ -63,8 +63,10 @@ export async function routeApi(page: Page, projects: Array<{ id: string; name: s
       ? { result: 'block', blocking: true, checks: [{ check: 'git_revision', result: 'block', detail: 'Review this saved revision before starting.' }], ts: '2026-09-14T08:00:00Z' }
       : { code: 'PREFLIGHT_NOT_FOUND', message: 'No saved preflight report.' } })
     if (url.pathname.endsWith('/allocations')) return route.fulfill({ status: 404, json: { code: 'ALLOCATION_NOT_FOUND', message: 'No deployment allocation claim.' } })
-    if (url.pathname.endsWith('/runtime')) return route.fulfill({ json: { firewall: {}, sdn: {}, vms: [], networks: [], runtime: { available: false, reason: 'No owned guests in this fixture.' } } })
+    if (url.pathname.endsWith('/runtime')) return route.fulfill({ json: { firewall: { datacenter_enabled: null, node_enabled: null, errors: [] },
+      sdn: { pending_changes: null, errors: [] }, vms: [], networks: [], runtime: { available: false, reason: 'No owned guests in this fixture.' } } })
     if (url.pathname.endsWith('/events')) return route.fulfill({ contentType: 'text/event-stream', body: '' })
+    if (url.pathname.endsWith('/snapshot-sets')) return route.fulfill({ json: pageOf([]) })
     if (url.pathname.endsWith('/attempts') || url.pathname.endsWith('/snapshots')) return route.fulfill({ json: [] })
     if (url.pathname === '/v1/deployments/route-deployment') return route.fulfill({ json: deployment })
     state.unexpected.push(url.pathname)

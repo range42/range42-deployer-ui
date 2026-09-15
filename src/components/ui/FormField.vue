@@ -221,8 +221,7 @@ const labelClasses = computed(() => [
 .form-control input:focus,
 .form-control textarea:focus,
 .form-control select:focus {
-  outline: none;
-  border-color: oklch(var(--p));
+  border-color: var(--color-primary);
 }
 
 /* Smooth transitions */
@@ -235,6 +234,6 @@ const labelClasses = computed(() => [
 /* Better placeholder styling */
 .form-control input::placeholder,
 .form-control textarea::placeholder {
-  color: oklch(var(--bc) / 0.4);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 </style>

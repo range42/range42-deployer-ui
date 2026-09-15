@@ -34,3 +34,7 @@ CLAUDE.md
 
 # Rendered by the deploy bundle (contains the deployment's backend URL)
 public/config.json
+
+# Local Playwright output
+/test-results/
+/playwright-report/

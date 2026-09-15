@@ -23,7 +23,7 @@ describe('App', () => {
       },
     })
 
-    expect(wrapper.find('.h-screen').exists()).toBe(true)
-    expect(wrapper.html()).toContain('Dashboard')
+    expect(wrapper.get('main#main-content').text()).toContain('Dashboard')
+    wrapper.unmount()
   })
 })

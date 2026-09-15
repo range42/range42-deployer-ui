@@ -168,11 +168,29 @@ The explicit `typecheck-migrated.json` list opts reviewed files into `@ts-check`
 tooling are outside this application configuration. See [typecheck coverage](docs/typechecking.md)
 for the exact boundary; a successful Vite build is not a typecheck.
 
+## Navigation and appearance
+
+The sidebar groups Projects, Catalog and Deployments under Workspace, with
+Sources and Settings under Manage. Collapse it explicitly to keep more canvas
+space; the preference survives navigation and reload. Smaller screens use
+separate navigation and project-tools drawers.
+
+Project components can be clicked or dragged onto the canvas. Search project,
+Undo, Redo and Save are visible controls; app-specific keyboard shortcuts and
+their badges have been removed. Standard keyboard navigation and editor text
+editing remain available. Settings → Appearance selects System, Light or Dark
+and remembers the choice.
+
+See [navigation design and acceptance](docs/navigation-design.md) for interaction
+details, screenshots and the limits of the browser checks.
+
 ## Internationalization (i18n)
 
 - The app uses `vue-i18n` with per-page/component JSON files under `src/locales/<lang>/...`.
 - Default and fallback locale is English (`en`). French (`fr`) is provided as a proof of concept.
-- Language can be switched at runtime from the sidebar language selector.
+- Language can be switched at runtime from the project sidebar language selector
+  (inside Project tools on smaller screens). The redesigned navigation and
+  component palette have English, French and Japanese strings.
 
 Development notes:
 - i18n runtime is initialized in `src/i18n/index.js` with secure lazy-loading via `import.meta.glob`.

@@ -467,7 +467,7 @@ const formatDate = (date) => {
 
     <!-- Create Project Modal -->
     <FocusTrap v-if="showCreateModal" :active="true" :escape-deactivates="false" :return-focus-on-deactivate="false" :initial-focus="'#new-project-name'">
-      <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="create-project-heading" @keydown.esc.prevent="closeCreate">
+      <div class="modal modal-open create-project-dialog" role="dialog" aria-modal="true" aria-labelledby="create-project-heading" @keydown.esc.prevent="closeCreate">
         <div class="modal-box max-w-md">
           <button
             class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
@@ -544,6 +544,11 @@ const formatDate = (date) => {
 </template>
 
 <style scoped>
+/* FocusTrap activates on mount; visibility must be immediate for its inputs. */
+.create-project-dialog {
+  transition-property: opacity, background-color;
+}
+
 .bg-grid-pattern {
   background-image:
     linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),

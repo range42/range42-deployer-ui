@@ -1,28 +1,19 @@
 import { test, expect } from '@playwright/test'
+import { routeApi } from './fixtures/routeApi'
 
-test('default English and runtime switch to French', async ({ page }) => {
-  await page.goto('/')
-
-  // Open create project modal
-  await page.getByRole('button', { name: /new project/i }).click()
-  // Fill name and create
-  await page.getByPlaceholder(/enter project name/i).fill('E2E Project')
-  await page.getByRole('button', { name: /^create$/i }).click()
-
-  // We should be on project editor with sidebar
-  await expect(page).toHaveURL(/\/project\//)
-
-  // Assert English strings present in Sidebar
-  await expect(page.getByText('Quick Actions').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: /export topology/i })).toBeVisible()
-
-  // Switch to French via language select
-  const select = page.locator('select.select')
-  await expect(select).toBeVisible()
-  await select.selectOption({ label: 'Français' })
-
-  // Assert French strings visible
-  await expect(page.getByText('Actions rapides').first()).toBeVisible()
-  await expect(page.getByRole('button', { name: /Exporter la topologie/i })).toBeVisible()
+test('sidebar language updates navigation and survives reload', async ({ page }) => {
+  await routeApi(page)
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.goto('/project/route-project')
+  const sidebar = page.locator('[data-testid="project-sidebar"]').first()
+  await expect(sidebar.getByRole('button', { name: 'Add virtual machine', exact: true })).toBeVisible()
+  await sidebar.getByLabel('Language', { exact: true }).selectOption('fr')
+  await expect(page.getByRole('navigation', { name: 'Principale', exact: true }).getByRole('link', { name: 'Projets', exact: true })).toBeVisible()
+  await expect(sidebar.getByRole('button', { name: 'Ajouter une machine virtuelle', exact: true })).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'fr')
+  await page.reload()
+  await expect(sidebar.getByLabel('Langue', { exact: true })).toHaveValue('fr')
+  await sidebar.getByLabel('Langue', { exact: true }).selectOption('jp')
+  await expect(sidebar.getByRole('button', { name: '仮想マシンを追加', exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'メイン', exact: true }).getByRole('link', { name: 'プロジェクト', exact: true })).toBeVisible()
 })
-

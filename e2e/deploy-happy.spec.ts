@@ -26,6 +26,7 @@ test('saved replicas hand their private reservation to a registered deployment b
 
   // An isolated in-memory GitHub repository. Every mutation remains inside this browser fixture.
   let head = base, revision = 1
+  let lockReleased = false
   let files: Record<string, string> = {}, pending: Record<string, string> = {}
   const blob = (content: string) => createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0${content}`).digest('hex')
   const gitWrites: string[] = [], unexpected: string[] = []
@@ -41,6 +42,16 @@ test('saved replicas hand their private reservation to a registered deployment b
       const file = path.split('/contents/')[1]
       return route.fulfill({ status: files[file] === undefined ? 404 : 200, json: files[file] === undefined ? { message: 'Not Found' }
         : { content: Buffer.from(files[file]).toString('base64'), encoding: 'base64', sha: blob(files[file]) } })
+    }
+    if (path === '/repos/fixture/work/contents/.lock' && method === 'PUT') {
+      expect(body.branch).toBe(branch)
+      expect(body.sha).toBe(blob(files['.lock']))
+      const content = Buffer.from(body.content, 'base64').toString('utf8')
+      expect(JSON.parse(content).released).toBe(true)
+      files['.lock'] = content
+      head = (++revision).toString(16).padStart(40, '0')
+      lockReleased = true
+      return route.fulfill({ json: { content: { sha: blob(content) }, commit: { sha: head } } })
     }
     if (path.endsWith('/git/refs') && method === 'POST') {
       expect(body.ref).toBe(`refs/heads/${branch}`)
@@ -106,7 +117,7 @@ test('saved replicas hand their private reservation to a registered deployment b
     if (path === `/v1/deployments/${deploymentId}` && method === 'GET') return route.fulfill({ json: metadata })
     if (path.endsWith('/allocations') && method === 'GET') {
       const manifest = JSON.parse(files['scenarios/replicated/manifest/scenario_vms.json'])
-      return route.fulfill({ json: { deployment_id: deploymentId, project_sha: head, host_id: 'pve-happy', node_name: 'pve01', created_at: new Date().toISOString(), assignments: manifest.vms } })
+      return route.fulfill({ json: { deployment_id: deploymentId, project_sha: metadata.project_sha, host_id: 'pve-happy', node_name: 'pve01', created_at: new Date().toISOString(), assignments: manifest.vms } })
     }
     if (path.endsWith('/preflight') && method === 'POST') return route.fulfill({ json: { result: 'pass', blocking: false, checks: [{ check: 'saved_manifest', result: 'pass' }] } })
     if (path.endsWith('/attempts') && method === 'GET') return route.fulfill({ json: { items: attempts, total: attempts.length } })
@@ -133,6 +144,7 @@ test('saved replicas hand their private reservation to a registered deployment b
   await page.getByTestId('deploy-sha-ack').getByRole('checkbox').check()
   await page.getByTestId('deploy-submit').click()
   await expect(page).toHaveURL(`/deployments/${deploymentId}`)
+  await expect.poll(() => lockReleased).toBe(true)
   await expect(page.getByTestId('deployment-allocations').locator('li')).toHaveCount(3)
   await expect(page.getByTestId('deployment-start')).toBeDisabled()
   await page.getByTestId('deployment-run-preflight').click()

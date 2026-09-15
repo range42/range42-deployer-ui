@@ -23,7 +23,8 @@ for (const width of [1440, 390]) {
       await test.step(path, async () => {
         await page.goto(path)
         await expect(page.locator(selector)).toBeVisible()
-        await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+        if (width < 768) await expect(page.getByRole('button', { name: 'Open navigation', exact: true })).toBeVisible()
+        else await expect(page.getByRole('navigation', { name: 'Primary', exact: true })).toBeVisible()
         expect(await page.evaluate(() => {
           const main = document.querySelector('main')!
           return document.documentElement.scrollWidth <= innerWidth && main.scrollWidth <= main.clientWidth + 1
@@ -125,6 +126,8 @@ test('source errors and missing or unauthorized preflight never look like succes
 })
 
 test('empty home opens and cancels a keyboard-accessible project form', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
   const api = await routeApi(page, [])
   await page.goto('/')
   const create = page.getByRole('button', { name: 'Create Your First Project', exact: true })
@@ -134,11 +137,13 @@ test('empty home opens and cancels a keyboard-accessible project form', async ({
   await expect(dialog).toBeVisible()
   await dialog.getByLabel('Project Name', { exact: true }).fill('Unsaved draft')
   await dialog.getByLabel(/Description/).fill('Do not save on cancel.')
+  expect(errors).toEqual([])
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   await expect(create).toBeFocused()
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('range42_projects') || '[]'))).toEqual([])
   expect(api.state.writes).toEqual([])
+  expect(errors).toEqual([])
 })
 
 test('home deployment shortcut reviews the project without bypassing saved registration and allocation', async ({ page }) => {
