@@ -8,5 +8,14 @@
   "close": "Fermer",
   "add": "Ajouter",
   "remove": "Supprimer",
-  "retry": "Réessayer"
+  "retry": "Réessayer",
+  "backend_access": {
+    "title": "Connectez-vous à votre backend",
+    "description": "Saisissez le jeton API fourni par votre administrateur pour utiliser les catalogues et Proxmox. Les dépôts publics ne nécessitent pas de jeton Git.",
+    "token": "Jeton API du backend",
+    "connect": "Connecter le backend",
+    "connecting": "Vérification…",
+    "failed": "Impossible de se connecter au backend.",
+    "storage": "Le jeton vérifié est mémorisé dans ce navigateur pour ce backend."
+  }
 }

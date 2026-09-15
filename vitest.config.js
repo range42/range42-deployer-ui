@@ -14,7 +14,8 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
-      exclude: [...configDefaults.exclude, 'e2e/**'],
+      // The compiler contract uses node:test and runs through test:typecheck.
+      exclude: [...configDefaults.exclude, 'e2e/**', 'tools/typecheck-contract.test.mjs'],
       root: fileURLToPath(new URL('./', import.meta.url)),
       setupFiles: ['./src/__tests__/setup.js'],
       coverage: {

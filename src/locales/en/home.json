@@ -16,8 +16,8 @@
     "pending": "Pending",
     "go": "Go",
     "add_source": {
-      "title": "Add a Git source",
-      "desc": "Register a GitHub, GitLab, or Gitea instance so Range42 can load catalog entries."
+      "title": "Connect the public catalog",
+      "desc": "Connect and index the default Range42 catalog without a Git token, or add your own repository."
     },
     "add_backend": {
       "title": "Add a backend-api host",

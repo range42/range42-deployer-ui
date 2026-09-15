@@ -1,5 +1,9 @@
 {
   "title": "Catalogue",
+  "visible_results": "{count} sur {total} éléments correspondants affichés",
+  "load_more": "Afficher plus d’éléments",
+  "new_role": "Nouveau rôle Ansible",
+  "new_machine": "Nouveau modèle de VM",
   "subtitle": "Parcourez labs, gamenets et composants sur l'ensemble de vos sources Git.",
   "filters": {
     "kind": "Type",
@@ -15,10 +19,10 @@
     "difficulty_any": "Tous niveaux"
   },
   "verbs": {
-    "use": "Utiliser",
+    "use": "Créer un projet",
     "customize": "Personnaliser",
     "fork": "Forker et publier",
-    "customize_readonly_hint": "Vous disposez d'un accès en lecture seule à cette source. Forkez et publiez vers un dépôt accessible en écriture pour la personnaliser."
+    "customize_readonly_hint": "Source originale en lecture seule. Choisissez un dépôt accessible en écriture ou un fork."
   },
   "empty": {
     "no_sources_title": "Aucune source Git configurée",
@@ -38,5 +42,77 @@
     "fork_target_repo": "Dépôt cible (propriétaire/dépôt)",
     "fork_target_name": "Nom de la nouvelle entrée",
     "fork_submit": "Forker"
-  }
+  },
+  "handoff": {
+    "title": "Vérifier le projet du catalogue",
+    "origin": "Élément du catalogue original",
+    "scope": "Importe la topologie range42.yaml, les pièces jointes intégrées et les déclarations de variables prises en charge. Résolvez les fichiers externes et dépendances avant import. Le catalogue original reste inchangé.",
+    "destination": "Dépôt de travail et dossier du projet",
+    "branch": "Branche de travail dédiée",
+    "seed": "Branche de base et commit exact vérifiés",
+    "counts": "{nodes} nœuds · {edges} liens réseau · {attachments} pièces jointes intégrées",
+    "fork_pending": "Le premier enregistrement demandera un fork accessible en écriture selon votre choix. Aucun fork ni branche créé à ce stade. Espace de destination :",
+    "save_hint": "Créez le projet local. Les enregistrements utiliseront cette branche de travail. Publier ou fusionner dans une branche de base reste une action distincte.",
+    "loading": "Chargement et vérification de la destination…",
+    "back": "Changer de destination",
+    "import": "Créer le projet lié",
+    "changed": "La source, la destination ou les identifiants ont changé. Vérifiez à nouveau la destination.",
+    "missing": "Élément ou source indisponible. Actualisez le catalogue puis réessayez.",
+    "role_scope": "Importe les fichiers du rôle Ansible au commit fixé, en conservant le nom catégorie.action.cible. Modifiez les fichiers dans Config, puis enregistrez ou publiez via Git. Aucun VM déployable ni validation des dépendances d’exécution. Limites : 512 entrées, 1 Mio par fichier, 2 Mio par projet. Les exécutables, liens symboliques et références externes non résolues nécessitent le dépôt complet.",
+    "role_files": "{count} fichiers du rôle à importer",
+    "role_editor": "Projet de sources du rôle : modifiez les fichiers dans Config et publiez explicitement. Pour exécuter un rôle pris en charge, ouvrez un scénario de VM, choisissez Add role, sélectionnez cette source locale puis vérifiez et enregistrez les fichiers copiés.",
+    "origin_changed": "La source du catalogue ou la révision choisie a changé. Fermez cette fenêtre puis rouvrez l’élément pour recharger son contenu.",
+    "publication_next": "Vérifiez et importez d’abord les fichiers. Utilisez ensuite Enregistrer et Publier depuis le projet pour choisir la branche et le mode de publication. Rien n’a encore été publié."
+  },
+  "append": {
+    "secret_bindings": "Références des secrets à l’exécution (JSON facultatif)",
+    "secret_bindings_hint": "Associez les paramètres Compose aux noms des variables du coffre du backend. Seuls les noms sont enregistrés ; les déclarations manquantes sont ajoutées au projet. L’opérateur doit fournir les valeurs dans le coffre avant l’exécution.",
+    "invalid_secret_bindings": "Utilisez un objet JSON associant les noms des paramètres aux variables du coffre ; ne saisissez pas les valeurs secrètes.",
+    "eyebrow": "Composer votre projet",
+    "title": "Ajouter un élément du catalogue",
+    "action": "Ajouter au projet",
+    "scope": "Vérifiez les nœuds ou le contenu à ajouter aux VM. Vos machines, paramètres et dépôt existants restent dans ce projet.",
+    "project": "Projet",
+    "choose_project": "Choisir un projet existant",
+    "target": "VM cible",
+    "choose_vm": "Choisir une VM existante",
+    "instance": "Nom de l’instance (facultatif)",
+    "instance_hint": "Par exemple, web-lab…",
+    "cancel": "Annuler",
+    "preview": "Aperçu de l’ajout",
+    "counts": "{nodes} nœuds · {edges} liens · {attachments} pièces jointes · {roles} rôles · {files} fichiers",
+    "fields": {
+      "template": "VMID du modèle",
+      "cores": "Cœurs CPU",
+      "memory": "Mémoire (Mio)",
+      "diskSize": "Disque (Gio)",
+      "image": "Image"
+    },
+    "role_hint": "Les rôles Ansible sont associés à la VM choisie. Les fichiers de leur révision exacte sont copiés dans ce projet pour vérification et configuration.",
+    "container_hint": "Les charges Compose s’exécutent dans une VM choisie, où Docker et Compose doivent déjà être installés. Les dépendances non prises en charge sont signalées lors de la vérification. Cet ajout ne crée pas de VM Proxmox et n’installe pas Docker.",
+    "vm_required": "S’exécute dans une VM existante",
+    "no_projects": "Créez d’abord un projet depuis l’accueil, puis revenez ajouter des éléments du catalogue.",
+    "save_hint": "Cet ajout crée un brouillon local. Vérifiez ses paramètres, puis enregistrez sur votre branche de travail. Le déploiement et la publication restent des actions distinctes.",
+    "loading": "Chargement du contenu de la révision et préparation de l’ajout…",
+    "review": "Vérifier l’ajout",
+    "keep_browsing": "Ajouter et continuer",
+    "open_project": "Ajouter et ouvrir le projet",
+    "changed": "Le projet, la source ou les identifiants ont changé. Vérifiez à nouveau l’ajout.",
+    "revision_changed": "La révision de cet élément a changé. Actualisez le catalogue et vérifiez son contenu actuel.",
+    "context": "Ajout au projet {project}",
+    "context_hint": "Choisissez les éléments pour compléter ce projet. Chaque ajout est vérifié avant son enregistrement local.",
+    "return_project": "Retour au projet",
+    "missing_project": "Le projet demandé n’est plus disponible. Choisissez un autre projet lors de la vérification.",
+    "added": "Ajouté à {project}. Choisissez un autre élément ou revenez au projet.",
+    "added_short": "Élément ajouté. Continuez à parcourir le catalogue ou revenez au projet.",
+    "results": "{count} éléments sur {total}",
+    "host_ports": "Ports de l’hôte (facultatif)",
+    "host_ports_example": "Par exemple, 8081, 8444…",
+    "host_ports_hint": "Laissez vide pour conserver les ports du catalogue. Sinon, indiquez un port hôte par correspondance, dans l’ordre de la source. L’aperçu affiche les correspondances effectives.",
+    "invalid_ports": "Indiquez des ports entre 1 et 65535, séparés par des virgules.",
+    "service": "Service",
+    "effective_ports": "Hôte → conteneur",
+    "directory": "Répertoire dans la VM"
+  },
+  "new_container": "Nouvelle application Compose"
 }

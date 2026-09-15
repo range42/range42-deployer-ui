@@ -5,11 +5,13 @@
  * Allows reverse-engineering deployed infrastructure back to design.
  */
 
-import { ref, computed } from 'vue'
+import { ref, computed, watch, getCurrentScope, onScopeDispose } from 'vue'
 import { proxmoxApi } from '@/services/proxmox'
-import { proxmoxCache } from '@/services/proxmox/cache'
+import { captureBackendGuard, listRegisteredGuests } from '@/services/proxmox/api'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import type { CanvasEdge } from '@/overlay/serialize'
 import { useProxmoxSettingsStore } from '@/stores/proxmoxSettingsStore'
-import type { VmListItem, ProxmoxNode } from '@/services/proxmox'
+import type { ProxmoxNode } from '@/services/proxmox'
 
 // =============================================================================
 // Types
@@ -22,6 +24,7 @@ export interface ImportableResource {
   vmid?: number
   status?: string
   node?: string
+  hostId?: string
   config?: Record<string, unknown>
   selected: boolean
 }
@@ -54,9 +57,12 @@ function cidrNetwork(ip: string, prefix: number): string | undefined {
  */
 export function parseNetworkInterfaces(config: Record<string, unknown>): NetworkInterface[] {
   const interfaces: NetworkInterface[] = []
-  for (let i = 0; i < 10; i++) {
-    const netValue = config[`net${i}`] as string | undefined
-    if (!netValue) continue
+  const names = Object.keys(config).filter(key => /^net(?:0|[1-9][0-9]*)$/.test(key))
+    .sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)))
+  if (names.length > 32) throw new Error('This import supports at most 32 NICs per guest.')
+  for (const name of names) {
+    const i = Number(name.slice(3)), netValue = config[name]
+    if (typeof netValue !== 'string' || !netValue) throw new Error(`Invalid NIC configuration: ${name}`)
     const iface: NetworkInterface = { name: `net${i}`, bridge: '' }
     // LXC NICs carry ip/gw inline in netN; QEMU NICs carry them in ipconfigN.
     for (const part of netValue.split(',')) {
@@ -101,11 +107,7 @@ export interface ImportResult {
     position: { x: number; y: number }
     data: Record<string, unknown>
   }>
-  edges: Array<{
-    id: string
-    source: string
-    target: string
-  }>
+  edges: CanvasEdge[]
   errors: string[]
 }
 
@@ -115,6 +117,8 @@ export interface ImportResult {
 
 export function useInfrastructureImport() {
   const settingsStore = useProxmoxSettingsStore()
+  const backendStore = useBackendApiStore()
+  let generation = 0, disposed = false
 
   // State
   const vms = ref<ImportableResource[]>([])
@@ -136,6 +140,21 @@ export function useInfrastructureImport() {
     try { return (settingsStore.defaultNode || '') as ProxmoxNode } catch { return '' as ProxmoxNode }
   })
 
+  watch(() => [proxmoxNode.value, backendStore.url, backendStore.token, backendStore.activeHost?.id], () => {
+    generation += 1
+    vms.value = []; lxcs.value = []; bridges.value.clear()
+    isLoading.value = false; error.value = null
+  }, { flush: 'sync' })
+  if (getCurrentScope()) onScopeDispose(() => { disposed = true; generation += 1 })
+
+  function context() {
+    const version = generation, node = proxmoxNode.value, backend = captureBackendGuard()
+    return { node, assertCurrent() {
+      backend()
+      if (disposed || version !== generation || node !== proxmoxNode.value) throw new Error('Import target changed. Reload before importing.')
+    } }
+  }
+
   const selectedResources = computed(() => {
     return [...vms.value, ...lxcs.value].filter(r => r.selected)
   })
@@ -150,109 +169,35 @@ export function useInfrastructureImport() {
    * Fetch all VMs and LXCs from Proxmox
    */
   async function fetchResources(): Promise<void> {
-    if (!isConfigured.value) {
-      error.value = 'Proxmox not configured'
-      return
-    }
-
+    if (!isConfigured.value) { error.value = 'Proxmox not configured'; return }
+    generation += 1
+    const scope = context()
+    isLoading.value = true; error.value = null
+    vms.value = []; lxcs.value = []; bridges.value.clear()
     try {
-      isLoading.value = true
-      error.value = null
-      bridges.value.clear()
-
-      // Fetch VMs via cache — filter out templates
-      const vmList = await proxmoxCache.fetchVms(proxmoxNode.value) as VmListItem[]
-      vms.value = vmList
-        .filter((vm) => !vm.isTemplate && vm.status !== 'stopped')
-        .map((vm) => ({
-          id: `vm-${vm.vmid}`,
-          type: 'vm' as const,
-          name: vm.name || `VM ${vm.vmid}`,
-          vmid: vm.vmid,
-          status: vm.status,
-          node: proxmoxNode.value,
-          selected: false,
-        }))
-
-      // Fetch LXCs — skip if backend doesn't support it yet
-      try {
-        const lxcList = await proxmoxApi.lxc.list(proxmoxNode.value) as Array<{ vmid: number; name?: string; hostname?: string; status: string }>
-        lxcs.value = lxcList.map((lxc) => ({
-          id: `lxc-${lxc.vmid}`,
-          type: 'lxc' as const,
-          name: lxc.name || lxc.hostname || `LXC ${lxc.vmid}`,
-          vmid: lxc.vmid,
-          status: lxc.status,
-          node: proxmoxNode.value,
-          selected: false,
-        }))
-      } catch {
-        // LXC endpoint not available — leave empty
-        lxcs.value = []
-      }
-
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
-      console.error('[useInfrastructureImport] Failed to fetch resources:', err)
+      const { host, guests } = await listRegisteredGuests({ node: scope.node })
+      scope.assertCurrent()
+      const resources = guests.filter(guest => !guest.isTemplate).map(guest => ({
+        id: `${guest.type === 'lxc' ? 'lxc' : 'vm'}-${guest.vmid}`,
+        type: guest.type === 'lxc' ? 'lxc' as const : 'vm' as const,
+        name: guest.name, vmid: guest.vmid, status: guest.status, node: host.node_name, hostId: host.id,
+        config: { cores: guest.maxcpu, memory: Math.floor(guest.maxmem / 1024 / 1024), tags: guest.tags, uptime: guest.uptime }, selected: false,
+      }))
+      vms.value = resources.filter(resource => resource.type === 'vm')
+      lxcs.value = resources.filter(resource => resource.type === 'lxc')
+    } catch (cause) {
+      try { scope.assertCurrent(); error.value = cause instanceof Error ? cause.message : String(cause) } catch { /* Old contexts cannot overwrite the new list. */ }
     } finally {
-      isLoading.value = false
+      try { scope.assertCurrent(); isLoading.value = false } catch { /* New fetch owns loading. */ }
     }
   }
 
-  /**
-   * Fetch detailed config for a VM using shared cache
-   */
-  async function fetchVmConfig(vmid: number): Promise<Record<string, unknown> | null> {
-    try {
-      const allVms = proxmoxCache.vmCache.value.length > 0
-        ? proxmoxCache.vmCache.value
-        : await proxmoxCache.fetchVms(proxmoxNode.value)
-      const vm = allVms.find(v => v.vmid === vmid)
-      if (!vm) return null
-      const summary: Record<string, unknown> = {
-        vmid: vm.vmid,
-        name: vm.name,
-        cores: vm.maxcpu || 1,
-        memory: vm.maxmem ? Math.floor(vm.maxmem / 1024 / 1024) : 0,
-        memUsed: vm.mem ? Math.floor(vm.mem / 1024 / 1024) : 0,
-        diskMax: (vm as unknown as Record<string, unknown>).maxdisk || 0,
-        cpuUsage: vm.cpu || 0,
-        uptime: vm.uptime || 0,
-        status: vm.status,
-        node: vm.node || '',
-      }
-      // #79: the v1 VM list has no per-NIC detail. Pull the real guest config
-      // so extractNetworkInterfaces() can rebuild bridge/network edges.
-      try {
-        const vmtype = vm.type === 'lxc' ? 'lxc' : 'qemu'
-        const cfg = await proxmoxApi.vm.getConfig(vmid, vmtype)
-        return { ...summary, ...cfg }
-      } catch (cfgErr) {
-        console.warn(`[useInfrastructureImport] no per-NIC config for VM ${vmid}:`, cfgErr)
-        return summary
-      }
-    } catch (err) {
-      console.error(`[useInfrastructureImport] Failed to fetch VM ${vmid} config:`, err)
-      return null
-    }
-  }
-
-  /**
-   * Fetch detailed config for an LXC (no-op if LXC endpoint unavailable)
-   */
-  async function fetchLxcConfig(vmid: number): Promise<Record<string, unknown> | null> {
-    try {
-      const lxc = lxcs.value.find(l => l.vmid === vmid)
-      const summary: Record<string, unknown> = lxc
-        ? { vmid, name: lxc.name, status: lxc.status, node: proxmoxNode.value }
-        : { vmid }
-      // LXC config carries cores/memory + net0 with inline ip/gw/bridge.
-      const cfg = await proxmoxApi.vm.getConfig(vmid, 'lxc')
-      return { ...summary, ...cfg }
-    } catch (err) {
-      console.warn(`[useInfrastructureImport] no config for LXC ${vmid}:`, err)
-      return null
-    }
+  async function fetchConfig(resource: ImportableResource, scope: ReturnType<typeof context>): Promise<Record<string, unknown>> {
+    scope.assertCurrent()
+    if (resource.node !== scope.node || !resource.hostId) throw new Error('Reload the selected guest before importing.')
+    const config = await proxmoxApi.vm.getConfig(resource.vmid!, resource.type === 'lxc' ? 'lxc' : 'qemu', { node: scope.node, hostId: resource.hostId })
+    scope.assertCurrent()
+    return { ...resource.config, ...config, node: scope.node }
   }
 
   /**
@@ -298,7 +243,8 @@ export function useInfrastructureImport() {
       errors: [],
     }
 
-    const selected = selectedResources.value
+    const scope = context()
+    const selected = selectedResources.value.map(resource => ({ ...resource }))
     if (selected.length === 0) {
       result.errors.push('No resources selected')
       return result
@@ -317,9 +263,7 @@ export function useInfrastructureImport() {
     const bridgeMeta = new Map<string, { cidr: string; gateway: string }>()
     for (const resource of selected) {
       try {
-        const config = resource.type === 'vm'
-          ? await fetchVmConfig(resource.vmid!)
-          : await fetchLxcConfig(resource.vmid!)
+        const config = await fetchConfig(resource, scope)
         if (!config) {
           result.errors.push(`Failed to fetch config for ${resource.name}`)
           continue
@@ -337,6 +281,9 @@ export function useInfrastructureImport() {
         result.errors.push(`Error reading ${resource.name}: ${err}`)
       }
     }
+
+    try { scope.assertCurrent() } catch (cause) { result.errors.push(cause instanceof Error ? cause.message : String(cause)) }
+    if (result.errors.length) return result
 
     // Pass 2: one network-segment node per discovered bridge, with the subnet
     // and gateway derived from the imported VMs' ipconfig.
@@ -366,15 +313,14 @@ export function useInfrastructureImport() {
     nodeY = 300
     for (const { resource, config, interfaces } of prepared) {
       const nodeId = `imported-${resource.type}-${resource.vmid}`
-      const cachedVm = proxmoxCache.vmCache.value.find(v => v.vmid === resource.vmid)
-      const vmTags = cachedVm?.tags ? cachedVm.tags.split(';').filter(Boolean) : []
+      const vmTags = typeof config.tags === 'string' ? config.tags.split(';').filter(Boolean) : []
 
       const initialConfig = {
         name: resource.name,
         cores: config.cores || 1,
         memory: typeof config.memory === 'string' ? parseInt(config.memory) : (config.memory || 0),
         tags: vmTags,
-        description: '',
+        description: typeof config.description === 'string' ? config.description : '',
       }
       result.nodes.push({
         id: nodeId,
@@ -386,7 +332,7 @@ export function useInfrastructureImport() {
           label: resource.name,
           vmId: resource.vmid,
           deployed: true,
-          status: resource.status === 'running' ? 'running' : 'stopped',
+          status: resource.status || 'unknown',
           config: {
             name: resource.name,
             vmid: resource.vmid,
@@ -396,7 +342,8 @@ export function useInfrastructureImport() {
             diskMax: config.diskMax || 0,
             cpuUsage: config.cpuUsage || 0,
             uptime: config.uptime || 0,
-            proxmoxNode: config.node || '',
+            proxmoxNode: resource.node,
+            proxmoxHostId: resource.hostId,
           },
           desiredConfig: { ...initialConfig },
           actualConfig: { ...initialConfig },
@@ -407,10 +354,10 @@ export function useInfrastructureImport() {
         const networkNodeId = bridgeNodes.get(iface.bridge)
         if (!networkNodeId) continue
         result.edges.push({
-          id: `edge-${nodeId}-${networkNodeId}`,
+          id: `edge-${nodeId}-${iface.name}-${networkNodeId}`,
           source: nodeId,
           target: networkNodeId,
-          data: iface.ip ? { connection: { ipAddress: iface.ip } } : { useDhcp: true },
+          data: { connection: { interfaceName: iface.name, ...(iface.ip ? { ipAddress: iface.ip } : {}) }, useDhcp: !iface.ip },
         })
       }
 
@@ -429,7 +376,6 @@ export function useInfrastructureImport() {
    * Refresh resources from Proxmox
    */
   async function refresh(): Promise<void> {
-    proxmoxCache.invalidate()
     await fetchResources()
   }
 

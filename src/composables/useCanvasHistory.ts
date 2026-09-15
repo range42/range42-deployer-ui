@@ -12,7 +12,7 @@
  * directly.
  */
 
-import { computed, ref } from 'vue'
+import { computed, ref, type ComputedRef } from 'vue'
 
 export const CANVAS_HISTORY_SIZE = 50
 
@@ -21,8 +21,8 @@ export interface CanvasHistoryApi<T> {
   undo: () => T | null
   redo: () => T | null
   clear: () => void
-  canUndo: ReturnType<typeof computed<boolean>>
-  canRedo: ReturnType<typeof computed<boolean>>
+  canUndo: ComputedRef<boolean>
+  canRedo: ComputedRef<boolean>
   readonly size: () => number
 }
 

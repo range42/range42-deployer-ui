@@ -1,0 +1,57 @@
+{
+  "sha": "0b170a768b9603cf8f5b080e4eac780cbad07c75",
+  "path": "02_ansible_layer/admin/roles/service.reload.ntp",
+  "tree": [
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/defaults/main.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "73b314ff7c704c18889cf90fdc024716c634adb6"
+    },
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/handlers/main.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "ed97d539c095cf1413af30cc23dea272095b97dd"
+    },
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/meta/main.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "ed97d539c095cf1413af30cc23dea272095b97dd"
+    },
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/tasks/fedora/systemd_timesyncd.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "a81f1bd260fede1265307f3a60122885ccb0e5f5"
+    },
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/tasks/main.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "6d21a5073a26bd33b1dd4597630a315de5c777f7"
+    },
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/tasks/ubuntu/systemd_timesyncd.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "31b6016362a6abe5ed65fc80cc5fa6da8c2c5daa"
+    },
+    {
+      "path": "02_ansible_layer/admin/roles/service.reload.ntp/vars/main.yml",
+      "type": "blob",
+      "mode": "100644",
+      "sha": "d683461d0c62bc2ebb27428ee9791aedf609ad75"
+    }
+  ],
+  "files": {
+    "02_ansible_layer/admin/roles/service.reload.ntp/defaults/main.yml": "---",
+    "02_ansible_layer/admin/roles/service.reload.ntp/handlers/main.yml": "---\n",
+    "02_ansible_layer/admin/roles/service.reload.ntp/meta/main.yml": "---\n",
+    "02_ansible_layer/admin/roles/service.reload.ntp/tasks/fedora/systemd_timesyncd.yml": "---\n#\n#### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### ####\n# #\n# - name: install ntp package - fedora\n#   block:\n#     - name: install ntp package - fedora\n#       dnf:\n#         name:\n#           - chrony\n#         state: present\n#         update_cache: yes\n#       when: ansible_facts.distribution == 'Fedora'\n\n#     - name: reload chronyd service\n#       systemd:\n#         name: chronyd\n#         state: restarted\n#       when: ansible_facts.distribution == 'Fedora'\n\n#     - name: force update ntp - chronyc\n#       command: chronyc -a makestep\n#       when: ansible_facts.distribution == 'Fedora'\n\n#     # - name: enable chronyd\n#     #   systemd:\n#     #     name: chronyd.servic\n#     #     enabled: yes\n#     #     state: started\n#     #     when: ansible_facts.distribution == 'Fedora'\n\n#   when: ansible_facts.distribution == 'Fedora'\n\n- name: install ntp package - remove chrony or ntp to avoid conflicts - fedora\n  block:\n    - name: remove chrony if present\n      dnf:\n        name: chrony\n        state: absent\n\n    - name: ensure systemd-timesyncd is installed - fedora\n      dnf:\n        name: systemd-timesyncd\n        state: present\n\n    - name: enable and start systemd-timesyncd - fedora\n      systemd:\n        name: systemd-timesyncd\n        enabled: true\n        state: started\n\n    - name: force resync\n      command: timedatectl set-ntp false && timedatectl set-ntp true\n      changed_when: true\n\n    - name: wait time drift - fedora\n      command: timedatectl show -p NTPSynchronized --value\n      register: ntp_sync_check\n      until: ntp_sync_check.stdout == \"yes\"\n      retries: 10\n      delay: 5\n      changed_when: false\n\n    - name: assert - time is sync - fedora\n      assert:\n        that:\n          - ntp_sync_check.stdout == \"yes\"\n        fail_msg: \" clock is not sync!\"\n        success_msg: \" clock is synch ! \"\n\n  when: ansible_facts.distribution == 'Fedora'\n",
+    "02_ansible_layer/admin/roles/service.reload.ntp/tasks/main.yml": "---\n##\n## ISSUE 5\n##\n\n#\n- name: INCLUDE - install ntp client and force update time - ubuntu\n  ansible.builtin.include_tasks: ./ubuntu/systemd_timesyncd.yml\n\n  when: ansible_facts.distribution == 'Ubuntu'\n\n#\n- name: INCLUDE - install ntp client and force update time  - fedora\n  ansible.builtin.include_tasks: ./fedora/systemd_timesyncd.yml\n\n  when: ansible_facts.distribution == 'Fedora'\n",
+    "02_ansible_layer/admin/roles/service.reload.ntp/tasks/ubuntu/systemd_timesyncd.yml": "---\n#\n\n- name: install ntp package - remove chrony or ntp to avoid conflicts then enable systemd-timesyncd\n  block:\n    #\n    - name: remove ntp and ntpdate if present\n      apt:\n        name:\n          - ntp\n          - ntpdate\n        state: absent\n\n    #\n    - name: check systemd-timesyncd is installed - ubuntu\n      apt:\n        name: systemd-timesyncd\n        state: present\n\n    #\n    - name: enable and start systemd-timesyncd - ubuntu\n      systemd:\n        name: systemd-timesyncd\n        enabled: true\n        state: started\n\n  when: ansible_facts.distribution == 'Ubuntu'\n\n#\n#### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### #### ####\n#\n\n- name: install ntp package - time sync - time is now !\n\n  block:\n    #\n    - name: wait time drift - ubuntu\n      command: timedatectl show -p NTPSynchronized --value\n      register: ntp_sync_check\n      until: ntp_sync_check.stdout == \"yes\"\n      retries: 10\n      delay: 5\n      changed_when: false\n\n    #\n    - name: assert - time is sync - ubuntu\n      assert:\n        that:\n          - ntp_sync_check.stdout == \"yes\"\n        fail_msg: \" clock is not sync!\"\n        success_msg: \" clock is sync !\"\n\n  when: ansible_facts.distribution == 'Ubuntu'\n",
+    "02_ansible_layer/admin/roles/service.reload.ntp/vars/main.yml": "---\n# vars file\n"
+  }
+}

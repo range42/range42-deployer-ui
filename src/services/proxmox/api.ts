@@ -2,9 +2,15 @@
  * Proxmox API Client
  * 
  * Unified API client for all Proxmox backend interactions.
- * All requests go through the backend-api, which then uses Ansible
- * to communicate with Proxmox.
+ * Requests go through the backend-api. Registered-host v1 operations call
+ * Proxmox directly; legacy v0 adapters use the global Ansible inventory.
  */
+
+import { getActivePinia } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import { CONFIG_WRITE_UNAVAILABLE } from './observedConfig'
+import { validateConfigChanges, validateConfigReview, validateConfigResult, type VmConfigReview } from './configReview'
+import { validateHardwareReview, validateHardwareResult, validateNicChanges, validateNicId, validateDiskGrowth, type HardwareReview } from './hardwareReview'
 
 import type {
   ApiResponse,
@@ -40,6 +46,7 @@ import type {
 // =============================================================================
 
 let baseUrl = ''
+let contextVersion = 0
 
 /**
  * Default Ansible params injected into every backend request.
@@ -53,10 +60,9 @@ const ANSIBLE_DEFAULTS = { hosts: 'px-testing', inventory: 'hosts.yml' }
  */
 export function setBaseUrl(url: string): void {
   // Remove trailing slash if present
-  baseUrl = url.replace(/\/$/, '')
-  // The registered-host lookup is per-backend; a base-URL change may point at a
-  // different backend, so the memoized host id must not leak across.
-  _hostCache = null
+  const next = url.replace(/\/+$/, '')
+  if (baseUrl !== next) contextVersion++
+  baseUrl = next
 }
 
 /**
@@ -82,17 +88,49 @@ class ProxmoxApiError extends Error implements ApiError {
   }
 }
 
+export interface ProxmoxTarget {
+  node?: ProxmoxNode
+  hostId?: string
+}
+
+function backendContext() {
+  const matching = getActivePinia()
+    ? useBackendApiStore().hosts.filter(host => host.url.replace(/\/+$/, '') === baseUrl)
+    : []
+  if (matching.length > 1) throw new ProxmoxApiError(0, 'Backend configuration is ambiguous.')
+  const host = matching[0]
+  return { url: baseUrl, version: contextVersion, id: host?.id, token: host?.token, node: host?.nodeName }
+}
+
+type BackendContext = ReturnType<typeof backendContext>
+
+function assertBackendContext(expected: BackendContext): void {
+  const current = backendContext()
+  if (current.url !== expected.url || current.version !== expected.version || current.id !== expected.id
+    || current.token !== expected.token || current.node !== expected.node) {
+    throw new ProxmoxApiError(0, 'Backend context changed. Refresh before continuing.')
+  }
+}
+
+/** Capture a context check without exposing credentials to callers. */
+export function captureBackendGuard(): () => void {
+  const context = backendContext()
+  return () => assertBackendContext(context)
+}
+
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  context: BackendContext = backendContext(),
 ): Promise<T> {
-  if (!baseUrl) {
+  assertBackendContext(context)
+  if (!context.url) {
     throw new ProxmoxApiError(0, 'API base URL not configured. Call setBaseUrl() first.')
   }
 
-  const url = `${baseUrl}${endpoint}`
-  
+  const url = `${context.url}${endpoint}`
   const defaultHeaders: HeadersInit = {
+    ...(context.token ? { Authorization: `Bearer ${context.token}` } : {}),
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   }
@@ -107,6 +145,7 @@ async function request<T>(
 
   try {
     const response = await fetch(url, config)
+    assertBackendContext(context)
     
     // Try to parse JSON response
     let data: unknown
@@ -117,6 +156,7 @@ async function request<T>(
       // Some endpoints return plain text
       data = await response.text()
     }
+    assertBackendContext(context)
 
     if (!response.ok) {
       let errorMessage = `HTTP ${response.status}: ${response.statusText}`
@@ -211,30 +251,63 @@ interface V1Vm {
   tags?: string
 }
 
-let _hostCache: { id: string; node_name: string } | null = null
-
-/** Test seam: clear the memoized registered-host lookup. */
+/** Retained for existing tests; registrations are now read for each operation. */
 export function _resetHostCacheForTests(): void {
-  _hostCache = null
+  contextVersion++
 }
 
-/**
- * Resolve the single registered Proxmox host (id + node_name) from the v1 API.
- * Memoized for the session. This is the single source of truth — callers no
- * longer pass a (often stale) node name; v1 uses the registered host's node.
- */
-export async function getRegisteredHost(): Promise<{ id: string; node_name: string }> {
-  if (_hostCache) return _hostCache
-  const raw = await request<{ items?: Array<{ id: string; node_name: string }> }>(
-    '/v1/proxmox/hosts',
-    { method: 'GET' },
-  )
-  const host = raw.items?.[0]
-  if (!host?.id) {
-    throw new ProxmoxApiError(0, 'No Proxmox host registered. Add one in Settings → Proxmox.')
+interface RegisteredHost { id: string; node_name: string }
+
+/** Refuse partial registries and ambiguous node names, including cross-cluster duplicates. */
+async function resolveHost(target: ProxmoxTarget, context: BackendContext): Promise<RegisteredHost> {
+  if ((target.node !== undefined && (typeof target.node !== 'string' || !target.node.trim()))
+    || (target.hostId !== undefined && (typeof target.hostId !== 'string' || !target.hostId.trim()))) {
+    throw new ProxmoxApiError(0, 'A valid selected Proxmox target is required.')
   }
-  _hostCache = { id: host.id, node_name: host.node_name }
-  return _hostCache
+  const hosts: RegisteredHost[] = []
+  let offset = 0, total: number | undefined
+  do {
+    const raw = await request<{ items?: RegisteredHost[]; total?: number; offset?: number }>(
+      `/v1/proxmox/hosts${offset ? `?offset=${offset}` : ''}`, { method: 'GET' }, context,
+    )
+    if (!Array.isArray(raw?.items) || raw.offset !== offset || !Number.isSafeInteger(raw.total)
+      || raw.total! < 0 || raw.total! > 10000 || (total !== undefined && raw.total !== total)
+      || offset + raw.items.length > raw.total! || (!raw.items.length && offset < raw.total!)
+      || raw.items.some(host => !host || typeof host.id !== 'string' || !host.id
+        || typeof host.node_name !== 'string' || !host.node_name)) {
+      throw new ProxmoxApiError(0, 'Proxmox host registry is incomplete or invalid. Check backend host registrations.')
+    }
+    total = raw.total!
+    hosts.push(...raw.items)
+    if (new Set(hosts.map(host => host.id)).size !== hosts.length) {
+      throw new ProxmoxApiError(0, 'Proxmox host registry is incomplete or invalid. Reload registrations.')
+    }
+    offset = hosts.length
+  } while (offset < total)
+  if (hosts.length === 0) {
+    throw new ProxmoxApiError(0, 'No Proxmox host registered. Configure a backend host registration.')
+  }
+  const node = target.node ?? context.node
+  const matches = hosts.filter(host => (!node || host.node_name === node)
+    && (!target.hostId || host.id === target.hostId))
+  if (matches.length !== 1) {
+    throw new ProxmoxApiError(0, 'No unambiguous registered Proxmox host matches the selected target.')
+  }
+  return { id: matches[0].id, node_name: matches[0].node_name }
+}
+
+export async function getRegisteredHost(target: ProxmoxTarget = {}): Promise<RegisteredHost> {
+  return resolveHost(target, backendContext())
+}
+
+async function hostRequest<T>(target: ProxmoxTarget, path: string, options: RequestInit): Promise<T> {
+  const context = backendContext()
+  const host = await resolveHost(target, context)
+  return request<T>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}${path}`, options, context)
+}
+
+function actionTarget(input: { proxmox_node?: ProxmoxNode; proxmox_host_id?: string }): ProxmoxTarget {
+  return { node: input.proxmox_node, hostId: input.proxmox_host_id }
 }
 
 function normalizeVmV1(v: V1Vm): VmListItem {
@@ -254,13 +327,50 @@ function normalizeVmV1(v: V1Vm): VmListItem {
   }
 }
 
-async function listHostVms(): Promise<V1Vm[]> {
-  const { id } = await getRegisteredHost()
-  const raw = await request<{ items?: V1Vm[] }>(
-    `/v1/proxmox/hosts/${id}/vms`,
+async function listHostVms(target: ProxmoxTarget): Promise<V1Vm[]> {
+  const raw = await hostRequest<{ items?: V1Vm[] }>(target,
+    '/vms',
     { method: 'GET' },
   )
   return raw.items ?? []
+}
+
+/** Fresh observed inventory bound to one complete registered host; never uses the UI cache. */
+export async function listRegisteredGuests(target: ProxmoxTarget): Promise<{ host: RegisteredHost; guests: VmListItem[] }> {
+  const context = backendContext()
+  const host = await resolveHost(target, context)
+  const raw = await request<{ items?: V1Vm[]; total?: number; offset?: number }>(
+    `/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms`, { method: 'GET' }, context,
+  )
+  if (!Array.isArray(raw?.items) || raw.offset !== 0 || raw.total !== raw.items.length
+    || raw.items.some(guest => !guest || !Number.isSafeInteger(guest.vmid) || guest.vmid < 1
+      || guest.node !== host.node_name || !['qemu', 'lxc'].includes(guest.type)
+      || !['running', 'stopped', 'paused', 'unknown'].includes(guest.status))
+    || new Set(raw.items.map(guest => `${guest.type}:${guest.vmid}`)).size !== raw.items.length) {
+    throw new ProxmoxApiError(0, 'Guest inventory is incomplete or invalid. Refresh before continuing.')
+  }
+  return { host, guests: raw.items.map(normalizeVmV1) }
+}
+
+export interface GuestObservedStatus {
+  vmid: number
+  node: string
+  type: 'qemu' | 'lxc'
+  status: 'running' | 'stopped' | 'paused' | 'unknown'
+}
+
+/** The guest's run state, including QEMU pause, rather than process-list status. */
+export async function getGuestStatus(vmid: number, vmtype: 'qemu' | 'lxc', target: ProxmoxTarget): Promise<GuestObservedStatus> {
+  if (!Number.isSafeInteger(vmid) || vmid < 1) throw new ProxmoxApiError(0, 'A valid guest VMID is required.')
+  const context = backendContext(), host = await resolveHost(target, context)
+  const value = await request<GuestObservedStatus>(
+    `/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${vmid}/status?vmtype=${vmtype}`, { method: 'GET' }, context,
+  )
+  if (!value || value.vmid !== vmid || value.node !== host.node_name || value.type !== vmtype
+    || !['running', 'stopped', 'paused', 'unknown'].includes(value.status)) {
+    throw new ProxmoxApiError(0, 'Guest status response does not match the selected target.')
+  }
+  return value
 }
 
 /** Fetch the raw PVE guest config (net0/net1/ipconfig*, ...) through v1. The
@@ -268,10 +378,10 @@ async function listHostVms(): Promise<V1Vm[]> {
 async function getHostVmConfig(
   vmId: number | string,
   vmtype: 'qemu' | 'lxc' = 'qemu',
+  target: ProxmoxTarget = {},
 ): Promise<Record<string, unknown>> {
-  const { id } = await getRegisteredHost()
-  const raw = await request<{ config?: Record<string, unknown> }>(
-    `/v1/proxmox/hosts/${id}/vms/${vmId}/config?vmtype=${vmtype}`,
+  const raw = await hostRequest<{ config?: Record<string, unknown> }>(target,
+    `/vms/${vmId}/config?vmtype=${vmtype}`,
     { method: 'GET' },
   )
   return raw.config ?? {}
@@ -282,10 +392,10 @@ async function vmStatusAction(
   vmId: number | string,
   action: string,
   vmtype: 'qemu' | 'lxc' = 'qemu',
+  target: ProxmoxTarget = {},
 ): Promise<ApiResponse> {
-  const { id } = await getRegisteredHost()
-  return request<ApiResponse>(
-    `/v1/proxmox/hosts/${id}/vms/${vmId}/status/${action}?vmtype=${vmtype}`,
+  return hostRequest<ApiResponse>(target,
+    `/vms/${vmId}/status/${action}?vmtype=${vmtype}`,
     { method: 'POST' },
   )
 }
@@ -293,35 +403,37 @@ async function vmStatusAction(
 /** DELETE a VM or LXC container through v1. */
 async function vmDelete(
   vmId: number | string,
-  options: { vmtype?: 'qemu' | 'lxc'; purge?: boolean } = {},
+  options: ProxmoxTarget & { vmtype?: 'qemu' | 'lxc'; purge?: boolean } = {},
 ): Promise<VmActionResult> {
   if (typeof vmId === 'object' && vmId !== null) {
     throw new Error('vmDelete: vmId must be a number or string. Pass the numeric vmId directly.')
   }
   const { vmtype = 'qemu', purge = true } = options
-  const { id } = await getRegisteredHost()
-  return request<VmActionResult>(
-    `/v1/proxmox/hosts/${id}/vms/${vmId}?vmtype=${vmtype}&purge=${purge}`,
+  return hostRequest<VmActionResult>(options,
+    `/vms/${vmId}?vmtype=${vmtype}&purge=${purge}`,
     { method: 'DELETE' },
   )
 }
 
 /** Poll task status for an async Proxmox operation (identified by UPID). */
-export async function getTaskStatus(upid: string): Promise<TaskStatus> {
-  const { id } = await getRegisteredHost()
-  return request<TaskStatus>(
-    `/v1/proxmox/hosts/${id}/tasks/${encodeURIComponent(upid)}/status`,
+export async function getTaskStatus(upid: string, target: ProxmoxTarget = {}, expectedTargetDigest?: string): Promise<TaskStatus> {
+  const node = /^UPID:([A-Za-z0-9][A-Za-z0-9.-]*):.+/.exec(upid)?.[1]
+  if (!node || (target.node && target.node !== node)) {
+    throw new ProxmoxApiError(0, 'Invalid task UPID or mismatched selected node.')
+  }
+  if (expectedTargetDigest !== undefined && !/^[a-f0-9]{64}$/.test(expectedTargetDigest)) throw new ProxmoxApiError(0, 'Invalid task target fingerprint.')
+  return hostRequest<TaskStatus>({ ...target, node },
+    `/tasks/${encodeURIComponent(upid)}/status${expectedTargetDigest ? `?expected_target_digest=${expectedTargetDigest}` : ''}`,
     { method: 'GET' },
   )
 }
 
 export const vm = {
   /**
-   * List qemu VMs on the registered host (v1, direct API). The `node` arg is
-   * retained for signature compatibility but ignored — v1 uses the host's node.
+   * List qemu VMs on the unambiguously selected registered node.
    */
-  async list(_node: ProxmoxNode): Promise<VmListItem[]> {
-    return (await listHostVms()).filter((v) => v.type === 'qemu').map(normalizeVmV1)
+  async list(node: ProxmoxNode): Promise<VmListItem[]> {
+    return (await listHostVms({ node })).filter((v) => v.type === 'qemu').map(normalizeVmV1)
   },
 
   /**
@@ -338,8 +450,62 @@ export const vm = {
   async getConfig(
     vmId: number | string,
     vmtype: 'qemu' | 'lxc' = 'qemu',
+    target: ProxmoxTarget = {},
   ): Promise<Record<string, unknown>> {
-    return getHostVmConfig(vmId, vmtype)
+    return getHostVmConfig(vmId, vmtype, target)
+  },
+
+  /** Review only the editable fields, with current and pending values kept separate. */
+  async getConfigReview(vmId: number, vmtype: 'qemu' | 'lxc', target: ProxmoxTarget) {
+    if (!Number.isSafeInteger(vmId) || vmId < 1 || !['qemu', 'lxc'].includes(vmtype)) throw new Error('Invalid configuration target.')
+    const context = backendContext()
+    const host = await resolveHost(target, context)
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${vmId}/config/review?vmtype=${vmtype}`, { method: 'GET' }, context)
+    return validateConfigReview(raw, { host_id: host.id, node: host.node_name, vmid: vmId, vmtype })
+  },
+
+  /** One conditional write to the reviewed guest; no legacy inventory fallback. */
+  async updateConfig(review: VmConfigReview, changes: unknown, assertReviewCurrent: () => void = () => {}) {
+    const expected = validateConfigReview(review, review)
+    const patch = validateConfigChanges(changes)
+    assertReviewCurrent()
+    const context = backendContext()
+    const host = await resolveHost({ hostId: expected.host_id, node: expected.node }, context)
+    assertReviewCurrent()
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/config?vmtype=${expected.vmtype}`,
+      { method: 'PUT', body: JSON.stringify({ digest: expected.digest, changes: patch }) }, context)
+    return validateConfigResult(raw, expected)
+  },
+
+  async getHardwareReview(vmId: number, target: ProxmoxTarget) {
+    if (!Number.isSafeInteger(vmId) || vmId < 100) throw new Error('Invalid hardware target.')
+    const context = backendContext()
+    const host = await resolveHost(target, context)
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${vmId}/hardware/review`, { method: 'GET' }, context)
+    return validateHardwareReview(raw, { host_id: host.id, node: host.node_name, vmid: vmId })
+  },
+
+  async updateHardwareNic(review: HardwareReview, nic: string, changes: unknown, assertReviewCurrent: () => void) {
+    const expected = validateHardwareReview(review, review)
+    validateNicId(nic)
+    const patch = validateNicChanges(changes)
+    assertReviewCurrent()
+    const context = backendContext(), host = await resolveHost({ hostId: expected.host_id, node: expected.node }, context)
+    assertReviewCurrent()
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/hardware/nics/${nic}`,
+      { method: 'PUT', body: JSON.stringify({ digest: expected.digest, changes: patch }) }, context)
+    return validateHardwareResult(raw, expected)
+  },
+
+  async growHardwareDisk(review: HardwareReview, disk: string, size: number, assertReviewCurrent: () => void) {
+    const expected = validateHardwareReview(review, review)
+    validateDiskGrowth(disk, size)
+    assertReviewCurrent()
+    const context = backendContext(), host = await resolveHost({ hostId: expected.host_id, node: expected.node }, context)
+    assertReviewCurrent()
+    const raw = await request<unknown>(`/v1/proxmox/hosts/${encodeURIComponent(host.id)}/vms/${expected.vmid}/hardware/disks/${disk}/grow`,
+      { method: 'PUT', body: JSON.stringify({ digest: expected.digest, size_gb: size }) }, context)
+    return validateHardwareResult(raw, expected)
   },
 
   /**
@@ -361,7 +527,7 @@ export const vm = {
    */
   async delete(
     vmId: number | string,
-    options: { purge?: boolean } = {},
+    options: ProxmoxTarget & { purge?: boolean } = {},
   ): Promise<VmActionResult> {
     return vmDelete(vmId, { vmtype: 'qemu', ...options })
   },
@@ -370,90 +536,52 @@ export const vm = {
    * Start a VM (v1).
    */
   async start(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'start')
+    return vmStatusAction(request.vm_id, 'start', request.vmtype, actionTarget(request))
   },
 
   /**
    * Stop a VM gracefully — ACPI shutdown (v1).
    */
   async stop(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'shutdown')
+    return vmStatusAction(request.vm_id, 'shutdown', request.vmtype, actionTarget(request))
   },
 
   /**
    * Force stop a VM — hard power-off (v1).
    */
   async stopForce(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'stop')
+    return vmStatusAction(request.vm_id, 'stop', request.vmtype, actionTarget(request))
   },
 
   /**
    * Pause (suspend) a VM (v1).
    */
   async pause(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'suspend')
+    return vmStatusAction(request.vm_id, 'suspend', request.vmtype, actionTarget(request))
   },
 
   /**
    * Resume a paused VM (v1).
    */
   async resume(request: VmActionRequest): Promise<ApiResponse> {
-    return vmStatusAction(request.vm_id, 'resume')
+    return vmStatusAction(request.vm_id, 'resume', request.vmtype, actionTarget(request))
   },
 
-  /**
-   * Set VM tags
-   */
-  async setTags(node: ProxmoxNode, vmId: number, tags: string[]): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_tag', {
-      proxmox_node: node,
-      vm_id: String(vmId),
-      vm_tag_name: tags.join(','),
-    })
+  /** Legacy setters cannot bind writes to the selected registered host. */
+  async setTags(_node: ProxmoxNode, _vmId: number, _tags: string[]): Promise<ApiResponse> {
+    throw new ProxmoxApiError(501, CONFIG_WRITE_UNAVAILABLE)
   },
-
-  /**
-   * Set VM name
-   */
-  async setName(node: ProxmoxNode, vmId: number, name: string): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_name', {
-      proxmox_node: node,
-      vm_id: String(vmId),
-      vm_name: name,
-    })
+  async setName(_node: ProxmoxNode, _vmId: number, _name: string): Promise<ApiResponse> {
+    throw new ProxmoxApiError(501, CONFIG_WRITE_UNAVAILABLE)
   },
-
-  /**
-   * Set VM description
-   */
-  async setDescription(node: ProxmoxNode, vmId: number, description: string): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_description', {
-      proxmox_node: node,
-      vm_id: String(vmId),
-      vm_description: description,
-    })
+  async setDescription(_node: ProxmoxNode, _vmId: number, _description: string): Promise<ApiResponse> {
+    throw new ProxmoxApiError(501, CONFIG_WRITE_UNAVAILABLE)
   },
-
-  /**
-   * Set VM CPU cores
-   */
-  async setCpu(node: ProxmoxNode, vmId: number, cores: number): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_cpu', {
-      proxmox_node: node,
-      vm_id: String(vmId),
-      vm_cores: cores,
-    })
+  async setCpu(_node: ProxmoxNode, _vmId: number, _cores: number): Promise<ApiResponse> {
+    throw new ProxmoxApiError(501, CONFIG_WRITE_UNAVAILABLE)
   },
-
-  /**
-   * Set VM memory (MB)
-   */
-  async setMemory(node: ProxmoxNode, vmId: number, memory: number): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/config/vm_set_memory', {
-      proxmox_node: node,
-      vm_id: String(vmId),
-      vm_memory: memory,
-    })
+  async setMemory(_node: ProxmoxNode, _vmId: number, _memory: number): Promise<ApiResponse> {
+    throw new ProxmoxApiError(501, CONFIG_WRITE_UNAVAILABLE)
   },
 }
 
@@ -461,33 +589,28 @@ export const vm = {
 // Snapshot API
 // =============================================================================
 
+function snapshotPath(vmId: number | string, vmtype: 'qemu' | 'lxc', suffix = ''): string {
+  return `/vms/${vmId}/snapshots${suffix}?vmtype=${vmtype}`
+}
+
 export const snapshot = {
-  /**
-   * Create a VM snapshot
-   */
-  async create(request: VmSnapshotRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/snapshot/create', request)
+  async create(input: VmSnapshotRequest): Promise<VmActionResult> {
+    return hostRequest(actionTarget(input), snapshotPath(input.vm_id, input.vmtype ?? 'qemu'), {
+      method: 'POST',
+      body: JSON.stringify({ snapname: input.vm_snapshot_name, description: input.vm_snapshot_description, vmstate: input.vmstate }),
+    })
   },
-
-  /**
-   * List VM snapshots
-   */
-  async list(node: ProxmoxNode, vmId: number): Promise<unknown[]> {
-    return query('/v0/admin/proxmox/vms/vm_id/snapshot/list', { proxmox_node: node, vm_id: String(vmId) })
+  async list(node: ProxmoxNode, vmId: number, vmtype: 'qemu' | 'lxc' = 'qemu'): Promise<unknown[]> {
+    const data = await hostRequest<{ items: unknown[] }>({ node }, snapshotPath(vmId, vmtype), { method: 'GET' })
+    return data.items ?? []
   },
-
-  /**
-   * Revert to a snapshot
-   */
-  async revert(request: VmSnapshotRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/vms/vm_id/snapshot/revert', request)
+  async revert(input: VmSnapshotRequest): Promise<VmActionResult> {
+    const suffix = `/${encodeURIComponent(input.vm_snapshot_name)}/rollback`
+    return hostRequest(actionTarget(input), snapshotPath(input.vm_id, input.vmtype ?? 'qemu', suffix), { method: 'POST' })
   },
-
-  /**
-   * Delete a snapshot
-   */
-  async delete(request: VmSnapshotRequest): Promise<ApiResponse> {
-    return del('/v0/admin/proxmox/vms/vm_id/snapshot/delete', request)
+  async delete(input: VmSnapshotRequest): Promise<VmActionResult> {
+    const suffix = `/${encodeURIComponent(input.vm_snapshot_name)}`
+    return hostRequest(actionTarget(input), snapshotPath(input.vm_id, input.vmtype ?? 'qemu', suffix), { method: 'DELETE' })
   },
 }
 
@@ -497,10 +620,10 @@ export const snapshot = {
 
 export const lxc = {
   /**
-   * List LXC containers on the registered host (v1). `node` ignored.
+   * List LXC containers on the selected registered node (v1).
    */
-  async list(_node: ProxmoxNode): Promise<unknown[]> {
-    return (await listHostVms()).filter((v) => v.type === 'lxc').map(normalizeVmV1)
+  async list(node: ProxmoxNode): Promise<unknown[]> {
+    return (await listHostVms({ node })).filter((v) => v.type === 'lxc').map(normalizeVmV1)
   },
 
   /**
@@ -513,15 +636,15 @@ export const lxc = {
   /**
    * Start an LXC container (v1).
    */
-  async start(_node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
-    return vmStatusAction(vmId, 'start', 'lxc')
+  async start(node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
+    return vmStatusAction(vmId, 'start', 'lxc', { node })
   },
 
   /**
    * Stop an LXC container — graceful shutdown (v1).
    */
-  async stop(_node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
-    return vmStatusAction(vmId, 'shutdown', 'lxc')
+  async stop(node: ProxmoxNode, vmId: number): Promise<ApiResponse> {
+    return vmStatusAction(vmId, 'shutdown', 'lxc', { node })
   },
 
   /**
@@ -529,7 +652,7 @@ export const lxc = {
    */
   async delete(
     vmId: number | string,
-    options: { purge?: boolean } = {},
+    options: ProxmoxTarget & { purge?: boolean } = {},
   ): Promise<VmActionResult> {
     return vmDelete(vmId, { vmtype: 'lxc', ...options })
   },
@@ -696,33 +819,34 @@ export const firewall = {
 // Storage API
 // =============================================================================
 
+function storagePath(storageName?: string): string {
+  return `/storage${storageName ? `/${encodeURIComponent(storageName)}` : ''}`
+}
+
+async function storageContent<T>(node: ProxmoxNode, storageName: string, content: 'iso' | 'vztmpl'): Promise<T[]> {
+  const data = await hostRequest<{ items: T[] }>({ node },
+    `${storagePath(storageName)}/content?content=${content}`, { method: 'GET' },
+  )
+  return data.items ?? []
+}
+
 export const storage = {
-  /**
-   * List storage pools
-   */
-  async list(node: ProxmoxNode, storageName = 'local-zfs'): Promise<unknown[]> {
-    return query('/v0/admin/proxmox/storage/list', { proxmox_node: node, storage_name: storageName })
+  async list(node: ProxmoxNode): Promise<unknown[]> {
+    const data = await hostRequest<{ items: unknown[] }>({ node }, storagePath(), { method: 'GET' })
+    return data.items ?? []
   },
-
-  /**
-   * List ISOs in a storage
-   */
   async listIsos(node: ProxmoxNode, storageName: string): Promise<IsoInfo[]> {
-    return query('/v0/admin/proxmox/storage/storage_name/list_iso', { proxmox_node: node, storage_name: storageName })
+    return storageContent<IsoInfo>(node, storageName, 'iso')
   },
-
-  /**
-   * List templates in a storage
-   */
   async listTemplates(node: ProxmoxNode, storageName: string): Promise<TemplateInfo[]> {
-    return query('/v0/admin/proxmox/storage/storage_name/list_template', { proxmox_node: node, storage_name: storageName })
+    return storageContent<TemplateInfo>(node, storageName, 'vztmpl')
   },
-
-  /**
-   * Download an ISO from URL
-   */
-  async downloadIso(request: StorageDownloadIsoRequest): Promise<ApiResponse> {
-    return post('/v0/admin/proxmox/storage/download_iso', request)
+  async downloadIso(input: StorageDownloadIsoRequest): Promise<VmActionResult> {
+    return hostRequest(actionTarget(input), `${storagePath(input.storage)}/download-url`, {
+      method: 'POST',
+      body: JSON.stringify({ content: 'iso', filename: input.filename, url: input.url,
+        checksum: input.checksum, checksum_algorithm: input.checksum_algorithm }),
+    })
   },
 }
 

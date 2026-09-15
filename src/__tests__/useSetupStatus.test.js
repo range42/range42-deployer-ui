@@ -4,6 +4,14 @@ import { useSetupStatus } from '@/composables/useSetupStatus'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useBackendApiStore } from '@/stores/backendApiStore.ts'
 
+function indexedSource() {
+  const inv = useInventoryStore()
+  inv.sourcesBackendScope = 'http://h1:8000'
+  inv.addSource({ id: 's1', provider: 'github', repos: [
+    { owner: 'range42', repo: 'range42-catalog', branch: 'main', last_refreshed_at: '2026-09-10T09:00:00Z' },
+  ] })
+}
+
 describe('useSetupStatus', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -24,24 +32,38 @@ describe('useSetupStatus', () => {
     expect(setupComplete.value).toBe(false)
   })
 
-  it('stays incomplete with only a source', () => {
+  it('does not count a browser-only source as an indexed catalog', () => {
     useInventoryStore().addSource({ id: 's1', type: 'github' })
     const { setupComplete, hasSource } = useSetupStatus()
-    expect(hasSource.value).toBe(true)
+    expect(hasSource.value).toBe(false)
     expect(setupComplete.value).toBe(false)
   })
 
-  it('completes once a source AND a backend host exist', () => {
-    useInventoryStore().addSource({ id: 's1', type: 'github' })
+  it('completes once a repository is indexed on the selected backend', () => {
     useBackendApiStore().addHost({ url: 'http://h1:8000', nodeName: 'pve' })
+    indexedSource()
     const { setupComplete } = useSetupStatus()
     expect(setupComplete.value).toBe(true)
   })
 
   it('does not depend on having projects', () => {
     // No projectStore interaction at all — proves projects are not required.
-    useInventoryStore().addSource({ id: 's1', type: 'github' })
     useBackendApiStore().addHost({ url: 'http://h1:8000', nodeName: 'pve' })
+    indexedSource()
     expect(useSetupStatus().setupComplete.value).toBe(true)
+  })
+
+  it('stays incomplete when a repository has not been indexed', () => {
+    useBackendApiStore().addHost({ url: 'http://h1:8000' })
+    const inv = useInventoryStore()
+    inv.sourcesBackendScope = 'http://h1:8000'
+    inv.addSource({ id: 's1', repos: [{ owner: 'range42', repo: 'range42-catalog', branch: 'main' }] })
+    expect(useSetupStatus().setupComplete.value).toBe(false)
+  })
+
+  it('does not reuse another backend’s indexed source to complete setup', () => {
+    indexedSource()
+    useBackendApiStore().addHost({ url: 'http://different:8000' })
+    expect(useSetupStatus().setupComplete.value).toBe(false)
   })
 })

@@ -14,28 +14,38 @@
  * Plan C §4 (Task C2.7).
  */
 
-import { ref, computed, onMounted, markRaw } from 'vue'
+import { ref, computed, onMounted, markRaw, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 
 import { useCatalog } from '@/composables/useCatalog'
-import { useInventoryStore } from '@/stores/inventoryStore'
-import { useProjectStore } from '@/stores/projectStore'
-import { getProvider } from '@/services/git'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
+import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import { ensureNamespaces } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const catalog = useCatalog()
-const inv = useInventoryStore()
-const projects = useProjectStore()
+const backend = useBackendApiStore()
 
 const entry = ref(null)
 const loading = ref(false)
 const loadError = ref('')
+const addition = ref(false)
+const addedMessage = ref('')
+const targetProjectId = computed(() => typeof route.query.project === 'string' ? route.query.project : '')
+const targetNodeId = computed(() => typeof route.query.node === 'string' ? route.query.node : '')
+const contextQuery = computed(() => targetProjectId.value ? { project: targetProjectId.value, ...(targetNodeId.value ? { node: targetNodeId.value } : {}) } : {})
+function onAdded(result) {
+  addition.value = false
+  if (result.open) router.push({ path: `/project/${result.projectId}`, query: { tab: result.tab,
+    ...(result.nodeId ? { node: result.nodeId } : {}), ...(result.file ? { file: result.file } : {}) } })
+  else { addedMessage.value = t('catalog.append.added_short'); router.replace({ query: { ...route.query, project: result.projectId } }) }
+}
 
 const sourceParam = computed(() => String(route.params.source || ''))
 const entryParam = computed(() => String(route.params.entry || ''))
@@ -97,128 +107,44 @@ const shortSha = computed(() => {
   return sha ? String(sha).slice(0, 7) : ''
 })
 
-// Customize (fork-and-edit) requires write access to the backing source.
-// Only gate when write access is *known to be false*; unknown stays enabled so
-// we never block on a source that simply hasn't been probed yet.
-const customizeReadonly = computed(() => {
-  const src = inv.getSource(entry.value?.source_id)
-  return src?.writable === false
-})
-
-// ---------- Fork modal ----------
-const forkOpen = ref(false)
-const forkTargetRepo = ref('')
-const forkTargetName = ref('')
-const forkBusy = ref(false)
-const forkError = ref('')
+// ---------- Verbs ----------
+const handoff = ref(null)
+function useEntry() {
+  handoff.value = { entry: entry.value, mode: 'use' }
+}
+function customizeEntry() {
+  handoff.value = { entry: entry.value, mode: 'customize' }
+}
+function openCreatedProject(project) {
+  handoff.value = null
+  router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
+}
 
 function openFork() {
-  forkOpen.value = true
-  forkTargetRepo.value = ''
-  forkTargetName.value = entry.value?.name || ''
-  forkError.value = ''
-}
-
-function closeFork() {
-  forkOpen.value = false
-  forkBusy.value = false
-}
-
-async function submitFork() {
-  forkError.value = ''
-  const current = entry.value
-  if (!current || !forkTargetRepo.value || !forkTargetName.value) {
-    forkError.value = 'Missing target repo or name'
-    return
-  }
-  forkBusy.value = true
-  try {
-    const m = forkTargetRepo.value.trim().match(/^([^/]+)\/([^/]+)$/)
-    if (!m) throw new Error('Target must be owner/repo')
-    const [, owner, repo] = m
-    const source = inv.getSource(current.source_id)
-    const kind = source?.provider || 'gitlab'
-    const branch = `catalog/${forkTargetName.value
-      .replace(/\s+/g, '-')
-      .toLowerCase()}`
-    try {
-      const prov = getProvider(kind, {
-        baseUrl: source?.base_url,
-        token: inv.getToken(current.source_id),
-      })
-      await prov.createBranch({ owner, repo, from: 'main', name: branch })
-      const seed =
-        `name: ${forkTargetName.value}\n` +
-        `kind: ${current.kind}\n` +
-        `from:\n` +
-        `  source_id: ${current.source_id}\n` +
-        `  path: ${current.path}\n`
-      await prov.putFile({
-        owner,
-        repo,
-        path: 'range42.yaml',
-        content: seed,
-        message: `seed ${forkTargetName.value} from ${current.source_id}/${current.path}`,
-        branch,
-      })
-    } catch (e) {
-      console.warn('[catalog] fork provider call failed:', e)
-    }
-    const newSourceId = `${kind}:${owner}/${repo}`
-    router.push(
-      `/catalog/${encodeURIComponent(newSourceId)}/${encodeURIComponent('range42.yaml')}`,
-    )
-    closeFork()
-  } catch (err) {
-    forkError.value = err?.message || String(err)
-  } finally {
-    forkBusy.value = false
-  }
-}
-
-// ---------- Verbs ----------
-function useEntry() {
-  if (!entry.value) return
-  const p = projects.createProject(entry.value.name)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'use',
-      source_id: entry.value.source_id,
-      path: entry.value.path,
-      sha: entry.value.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
-}
-
-function customizeEntry() {
-  if (!entry.value || customizeReadonly.value) return
-  const p = projects.createProject(`${entry.value.name} (custom)`)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'customize',
-      source_id: entry.value.source_id,
-      path: entry.value.path,
-      sha: entry.value.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+  handoff.value = { entry: entry.value, mode: 'customize', publish: true }
 }
 
 // ---------- Lifecycle ----------
 async function load() {
+  const current = ++loadGeneration
+  handoff.value = null; addition.value = false
   loading.value = true
+  entry.value = null
   loadError.value = ''
   try {
     const got = await catalog.getEntry(sourceParam.value, entryParam.value)
+    if (current !== loadGeneration) return
     entry.value = got
     if (!got) loadError.value = catalog.error.value || 'Entry not found'
   } catch (e) {
-    loadError.value = e?.message || String(e)
+    if (current === loadGeneration) loadError.value = e?.message || String(e)
   } finally {
-    loading.value = false
+    if (current === loadGeneration) loading.value = false
   }
 }
+let loadGeneration = 0
+watch([sourceParam, entryParam, () => backend.url, () => backend.token], () => load())
+onBeforeUnmount(() => { loadGeneration += 1 })
 
 onMounted(async () => {
   await ensureNamespaces(['catalog', 'common'])
@@ -227,11 +153,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="max-w-5xl mx-auto p-6">
+  <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
+    :entry="handoff.entry" :mode="handoff.mode" :publish-after-import="handoff.publish" @close="handoff = null" @opened="openCreatedProject" />
+  <CatalogAppendDialog v-if="addition && entry" :entry="entry" :initial-project-id="targetProjectId" :initial-node-id="targetNodeId" @close="addition = false" @added="onAdded" />
+  <section class="max-w-5xl mx-auto p-4 sm:p-6">
     <!-- Back link -->
     <div class="mb-4">
-      <button class="btn btn-ghost btn-sm gap-2" @click="router.push('/catalog')">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <RouterLink class="btn btn-ghost btn-sm gap-2" :to="{ path: '/catalog', query: contextQuery }">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -240,8 +169,9 @@ onMounted(async () => {
           />
         </svg>
         <span>{{ t('catalog.detail.back') }}</span>
-      </button>
+      </RouterLink>
     </div>
+    <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
 
     <!-- Loading / error -->
     <div v-if="loading" class="space-y-3" data-testid="entry-loading">
@@ -279,14 +209,13 @@ onMounted(async () => {
 
           <!-- Verbs -->
           <div class="flex items-center gap-2 flex-wrap" data-testid="entry-verbs">
-            <button type="button" class="btn btn-primary btn-sm" @click="useEntry">
+            <button type="button" class="btn btn-primary btn-sm" data-testid="catalog-add-to-project" @click="addition = true">{{ t('catalog.append.action') }}</button>
+            <button type="button" class="btn btn-outline btn-sm" @click="useEntry">
               {{ t('catalog.verbs.use') }}
             </button>
             <button
               type="button"
               class="btn btn-ghost btn-sm"
-              :disabled="customizeReadonly"
-              :title="customizeReadonly ? t('catalog.verbs.customize_readonly_hint') : undefined"
               @click="customizeEntry"
             >
               {{ t('catalog.verbs.customize') }}
@@ -367,46 +296,5 @@ onMounted(async () => {
       </section>
     </template>
 
-    <!-- Fork modal -->
-    <div v-if="forkOpen" class="modal modal-open" role="dialog" aria-modal="true">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-3">
-          {{ t('catalog.detail.fork_modal_title') }}
-        </h3>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_repo') }}</span>
-          <input
-            v-model="forkTargetRepo"
-            type="text"
-            class="input input-bordered"
-            placeholder="owner/repo"
-          />
-        </label>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_name') }}</span>
-          <input v-model="forkTargetName" type="text" class="input input-bordered" />
-        </label>
-        <p v-if="forkError" class="text-error text-sm">{{ forkError }}</p>
-        <div class="modal-action">
-          <button
-            type="button"
-            class="btn btn-ghost"
-            :disabled="forkBusy"
-            @click="closeFork"
-          >
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="forkBusy || !forkTargetRepo || !forkTargetName"
-            @click="submitFork"
-          >
-            {{ t('catalog.detail.fork_submit') }}
-          </button>
-        </div>
-      </div>
-      <div class="modal-backdrop" @click="closeFork" />
-    </div>
   </section>
 </template>

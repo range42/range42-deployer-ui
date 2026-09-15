@@ -1,4 +1,11 @@
 {
+  "git": {
+    "saved": "{branch} に保存済み · リビジョン {sha}",
+    "failed": "Git 保存に失敗しました: {error}",
+    "publish": "公開…",
+    "saving": "作業ブランチに保存中…",
+    "changedDuringSave": "保存中にプロジェクトが変更されました。デプロイ前に現在の変更を保存してください。"
+  },
   "tabs": {
     "canvas": "キャンバス",
     "config": "構成",
@@ -41,12 +48,35 @@
     "offline": "オフライン — 変更はローカルに待機中です。"
   },
   "attachments": {
-    "section": { "add": "アタッチメントを追加", "empty": "このノードにアタッチメントはありません" },
-    "editor": { "title": "タイトル", "stage": "ステージ", "order": "ステージ内の順序", "scope": "スコープ", "delete": "削除", "close": "閉じる" },
-    "catalog": { "loading": "カタログを読み込み中…", "empty": "カタログエントリが見つかりません" },
-    "inline": { "label": "インラインYAML" },
-    "file": { "label": "ファイルをアップロード（≤ 256 KB）", "size_error": "ファイルが256 KBの上限を超えています" },
-    "git": { "url_label": "リポジトリURL", "sha_label": "コミットSHA（必須）", "ref_label": "サブパス（任意）", "security_note": "コンテンツはデプロイ時にターゲットで取得されます。信頼できる固定されたソースのみを使用してください。" }
+    "section": {
+      "add": "アタッチメントを追加",
+      "empty": "このノードにアタッチメントはありません"
+    },
+    "editor": {
+      "title": "タイトル",
+      "stage": "ステージ",
+      "order": "ステージ内の順序",
+      "scope": "スコープ",
+      "delete": "削除",
+      "close": "閉じる"
+    },
+    "catalog": {
+      "loading": "カタログを読み込み中…",
+      "empty": "カタログエントリが見つかりません"
+    },
+    "inline": {
+      "label": "インラインYAML"
+    },
+    "file": {
+      "label": "ファイルをアップロード（≤ 256 KB）",
+      "size_error": "ファイルが256 KBの上限を超えています"
+    },
+    "git": {
+      "url_label": "リポジトリURL",
+      "sha_label": "コミットSHA（必須）",
+      "ref_label": "サブパス（任意）",
+      "security_note": "コンテンツはデプロイ時にターゲットで取得されます。信頼できる固定されたソースのみを使用してください。"
+    }
   },
   "deleteNode": {
     "title": "ノードを削除",
@@ -58,5 +88,37 @@
     "remove": "削除",
     "mustStopFirst": "この VM は実行中です。Proxmox から削除する前に停止してください。",
     "destroyWarning": "VM とそのディスクを完全に破棄します。"
+  },
+  "config": {
+    "loading": "保存したファイルを読み込み中…",
+    "empty": "保存したファイルはまだありません。シナリオにコンテンツを追加するか、カタログ項目を取り込んでプロジェクトファイルを作成してください。",
+    "missing": "保存したファイル「{path}」を開けません。一覧から別のファイルを選択してください。",
+    "changed": "編集中にファイルが変更されました。下書きは保持されています。保存する前に残す内容を選択してください。",
+    "reload": "下書きを破棄して保存済みファイルを読み込む",
+    "keepDraft": "次回の保存に下書きを使う",
+    "closed": "プロジェクトが閉じられたか変更されました。ファイルを保存する前にプロジェクトを開き直してください。"
+  },
+  "addCatalog": "カタログから追加",
+  "settings": {
+    "title": "プロジェクト設定",
+    "identity": "ローカルプロジェクトID",
+    "name": "プロジェクト名",
+    "nameRequired": "プロジェクト名を入力してください。",
+    "save": "プロジェクト名を保存",
+    "saved": "プロジェクト名をローカルに保存しました。",
+    "repository": "リポジトリ",
+    "localOnly": "このプロジェクトはこのブラウザーに保存されています。",
+    "branch": "作業ブランチ",
+    "notSaved": "初回のGit保存時に作成されます",
+    "configureRepository": "リポジトリを設定",
+    "target": "選択したProxmoxノード",
+    "noTarget": "このプロジェクトのノードは選択されていません。",
+    "configureTarget": "対象を設定",
+    "catalogImports": "カタログから追加 ({count})",
+    "sourceRevision": "ソースリビジョン",
+    "importCounts": "{nodes} ノード · {content} コンテンツ · {attachments} 添付ファイル"
+  },
+  "history": {
+    "file": "{ref} の {path} の履歴"
   }
 }

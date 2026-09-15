@@ -1,4 +1,11 @@
 {
+  "git": {
+    "saved": "Enregistré sur {branch} · révision {sha}",
+    "failed": "Échec Git : {error}",
+    "publish": "Publier…",
+    "saving": "Enregistrement sur la branche de travail…",
+    "changedDuringSave": "Le projet a changé pendant l’enregistrement. Enregistrez les modifications avant le déploiement."
+  },
   "tabs": {
     "canvas": "Canevas",
     "config": "Configuration",
@@ -41,12 +48,35 @@
     "offline": "Hors ligne — vos modifications sont mises en file localement."
   },
   "attachments": {
-    "section": { "add": "Ajouter une pièce jointe", "empty": "Aucune pièce jointe sur ce nœud" },
-    "editor": { "title": "Titre", "stage": "Étape", "order": "Ordre dans l'étape", "scope": "Portée", "delete": "Supprimer", "close": "Fermer" },
-    "catalog": { "loading": "Chargement du catalogue…", "empty": "Aucune entrée de catalogue trouvée" },
-    "inline": { "label": "YAML en ligne" },
-    "file": { "label": "Téléverser un fichier (≤ 256 Ko)", "size_error": "Le fichier dépasse la limite de 256 Ko" },
-    "git": { "url_label": "URL du dépôt", "sha_label": "SHA du commit (requis)", "ref_label": "Sous-chemin (optionnel)", "security_note": "Le contenu est récupéré au moment du déploiement sur la cible — n'utilisez que des sources fiables et épinglées." }
+    "section": {
+      "add": "Ajouter une pièce jointe",
+      "empty": "Aucune pièce jointe sur ce nœud"
+    },
+    "editor": {
+      "title": "Titre",
+      "stage": "Étape",
+      "order": "Ordre dans l'étape",
+      "scope": "Portée",
+      "delete": "Supprimer",
+      "close": "Fermer"
+    },
+    "catalog": {
+      "loading": "Chargement du catalogue…",
+      "empty": "Aucune entrée de catalogue trouvée"
+    },
+    "inline": {
+      "label": "YAML en ligne"
+    },
+    "file": {
+      "label": "Téléverser un fichier (≤ 256 Ko)",
+      "size_error": "Le fichier dépasse la limite de 256 Ko"
+    },
+    "git": {
+      "url_label": "URL du dépôt",
+      "sha_label": "SHA du commit (requis)",
+      "ref_label": "Sous-chemin (optionnel)",
+      "security_note": "Le contenu est récupéré au moment du déploiement sur la cible — n'utilisez que des sources fiables et épinglées."
+    }
   },
   "deleteNode": {
     "title": "Supprimer le nœud",
@@ -58,5 +88,37 @@
     "remove": "Retirer",
     "mustStopFirst": "Cette VM est en cours d'exécution — arrêtez-la avant de la supprimer de Proxmox.",
     "destroyWarning": "Ceci détruit définitivement la VM et ses disques."
+  },
+  "config": {
+    "loading": "Chargement du fichier enregistré…",
+    "empty": "Aucun fichier enregistré. Ajoutez du contenu au scénario ou importez un élément du catalogue pour créer les fichiers du projet.",
+    "missing": "Le fichier enregistré « {path} » est indisponible. Sélectionnez un autre fichier dans la liste.",
+    "changed": "Ce fichier a changé pendant votre modification. Votre brouillon est conservé. Choisissez la version à garder avant d’enregistrer.",
+    "reload": "Abandonner le brouillon et charger le fichier enregistré",
+    "keepDraft": "Garder mon brouillon pour le prochain enregistrement",
+    "closed": "Cet éditeur est fermé ou le projet a changé. Rouvrez le projet avant d’enregistrer des fichiers."
+  },
+  "addCatalog": "Ajouter depuis le catalogue",
+  "settings": {
+    "title": "Paramètres du projet",
+    "identity": "Identifiant local du projet",
+    "name": "Nom du projet",
+    "nameRequired": "Saisissez un nom de projet.",
+    "save": "Enregistrer le nom du projet",
+    "saved": "Nom du projet enregistré localement.",
+    "repository": "Dépôt",
+    "localOnly": "Ce projet est enregistré dans ce navigateur.",
+    "branch": "Branche de travail",
+    "notSaved": "Créée au premier enregistrement Git",
+    "configureRepository": "Configurer le dépôt",
+    "target": "Nœud Proxmox sélectionné",
+    "noTarget": "Aucun nœud sélectionné pour ce projet.",
+    "configureTarget": "Configurer la cible",
+    "catalogImports": "Ajouts du catalogue ({count})",
+    "sourceRevision": "Révision source",
+    "importCounts": "{nodes} nœuds · {content} contenus · {attachments} pièces jointes"
+  },
+  "history": {
+    "file": "Historique de {path} sur {ref}"
   }
 }

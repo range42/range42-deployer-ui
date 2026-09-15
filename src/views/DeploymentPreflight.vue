@@ -10,13 +10,17 @@
  * clipboard. The page title surfaces codename + scenario label so the
  * record is self-describing when shared out-of-band.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
+import { backendRequest, getBackendScope } from '@/services/backendApi'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import PreflightReport from '@/components/ui/PreflightReport.vue'
 
 const route = useRoute()
+const backend = useBackendApiStore()
+let requestVersion = 0
 const { t } = useI18n({ useScope: 'global' })
 
 const meta = ref(null)      // deployment metadata (codename + scenario label)
@@ -51,33 +55,24 @@ const reportKey = computed(() => {
 })
 
 async function loadPreflight() {
+  const version = ++requestVersion
+  const id = deploymentId.value
   loading.value = true
   loadError.value = null
   record.value = null
   meta.value = null
-  try {
-    const [metaRes, preflightRes] = await Promise.all([
-      fetch(`/v1/deployments/${encodeURIComponent(deploymentId.value)}`, {
-        credentials: 'same-origin',
-      }),
-      fetch(`/v1/deployments/${encodeURIComponent(deploymentId.value)}/preflight`, {
-        credentials: 'same-origin',
-      }),
-    ])
-    if (metaRes.ok) {
-      meta.value = await metaRes.json()
-    }
-    if (!preflightRes.ok) {
-      if (preflightRes.status === 404) loadError.value = 'not_found'
-      else loadError.value = `HTTP ${preflightRes.status}`
-      return
-    }
-    record.value = await preflightRes.json()
-  } catch (err) {
-    loadError.value = err?.message || String(err)
-  } finally {
-    loading.value = false
+  const [metaResult, reportResult] = await Promise.allSettled([
+    backendRequest(`/v1/deployments/${encodeURIComponent(id)}`),
+    backendRequest(`/v1/deployments/${encodeURIComponent(id)}/preflight`),
+  ])
+  if (version !== requestVersion) return
+  if (metaResult.status === 'fulfilled') meta.value = metaResult.value
+  if (reportResult.status === 'fulfilled') record.value = reportResult.value
+  else {
+    const error = reportResult.reason
+    loadError.value = error.status === 404 ? 'not_found' : error.message
   }
+  loading.value = false
 }
 
 async function copyShareUrl() {
@@ -105,15 +100,9 @@ async function copyShareUrl() {
   }
 }
 
-onMounted(async () => {
-  await ensureNamespaces(['deployment', 'common'])
-  await loadPreflight()
-})
-
-watch(() => route.params.id, async (id, prev) => {
-  if (!id || id === prev) return
-  await loadPreflight()
-})
+onMounted(() => { ensureNamespaces(['deployment', 'common']) })
+watch([deploymentId, getBackendScope, () => backend.token], loadPreflight, { immediate: true, flush: 'sync' })
+onBeforeUnmount(() => { requestVersion += 1 })
 </script>
 
 <template>

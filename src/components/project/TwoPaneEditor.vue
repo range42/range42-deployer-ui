@@ -10,7 +10,7 @@
  *
  * Scroll-sync: the two editors share a scrollY ref via EditorView
  * updateListener; when one scrolls, we translate the offset onto the other.
- * Save triggers: blur + Ctrl-S → emits `save({ path, content })`.
+ * Save triggers: blur or the visible Save file button → emits `save({ path, content })`.
  */
 import { computed, ref, shallowRef, watch } from 'vue'
 import CodeMirror from 'vue-codemirror6'
@@ -99,12 +99,6 @@ function onRightBlur() {
   doSave()
 }
 
-function onRightKeydown(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault()
-    doSave()
-  }
-}
 </script>
 
 <template>
@@ -135,12 +129,12 @@ function onRightKeydown(e) {
     <div class="flex flex-col min-w-0 min-h-0 border border-base-200 rounded">
       <div class="px-2 py-1 text-xs font-semibold bg-base-200 flex items-center justify-between">
         <span>{{ $t ? $t('configTab.overlay') : 'Overlay' }}</span>
+        <button type="button" class="btn btn-ghost btn-xs" :disabled="!path" @click="doSave">{{ $t('configTab.saveFile') }}</button>
         <span class="text-base-content/50 font-mono text-[10px]">{{ path }}</span>
       </div>
       <div
         class="flex-1 min-h-0 overflow-hidden"
         data-testid="two-pane-right"
-        @keydown="onRightKeydown"
       >
         <CodeMirror
           ref="rightRef"

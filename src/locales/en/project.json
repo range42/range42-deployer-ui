@@ -1,4 +1,11 @@
 {
+  "git": {
+    "saved": "Saved to {branch} · revision {sha}",
+    "failed": "Git save failed: {error}",
+    "publish": "Publish…",
+    "saving": "Saving to the working branch…",
+    "changedDuringSave": "The project changed while saving. Save the current changes before deploying."
+  },
   "tabs": {
     "canvas": "Canvas",
     "config": "Config",
@@ -41,12 +48,35 @@
     "offline": "Offline — your changes are queued locally."
   },
   "attachments": {
-    "section": { "add": "Add attachment", "empty": "No attachments on this node" },
-    "editor": { "title": "Title", "stage": "Stage", "order": "Order in stage", "scope": "Scope", "delete": "Delete", "close": "Close" },
-    "catalog": { "loading": "Loading catalog…", "empty": "No catalog entries found" },
-    "inline": { "label": "Inline YAML" },
-    "file": { "label": "Upload file (≤ 256 KB)", "size_error": "File exceeds the 256 KB limit" },
-    "git": { "url_label": "Repository URL", "sha_label": "Commit SHA (required)", "ref_label": "Subpath (optional)", "security_note": "Content is fetched at deploy time on the target — use only trusted, pinned sources." }
+    "section": {
+      "add": "Add attachment",
+      "empty": "No attachments on this node"
+    },
+    "editor": {
+      "title": "Title",
+      "stage": "Stage",
+      "order": "Order in stage",
+      "scope": "Scope",
+      "delete": "Delete",
+      "close": "Close"
+    },
+    "catalog": {
+      "loading": "Loading catalog…",
+      "empty": "No catalog entries found"
+    },
+    "inline": {
+      "label": "Inline YAML"
+    },
+    "file": {
+      "label": "Upload file (≤ 256 KB)",
+      "size_error": "File exceeds the 256 KB limit"
+    },
+    "git": {
+      "url_label": "Repository URL",
+      "sha_label": "Commit SHA (required)",
+      "ref_label": "Subpath (optional)",
+      "security_note": "Content is fetched at deploy time on the target — use only trusted, pinned sources."
+    }
   },
   "deleteNode": {
     "title": "Delete node",
@@ -58,5 +88,37 @@
     "remove": "Remove",
     "mustStopFirst": "This VM is running — stop it before deleting from Proxmox.",
     "destroyWarning": "This permanently destroys the VM and its disks."
+  },
+  "config": {
+    "loading": "Loading saved file…",
+    "empty": "No saved files yet. Add content to the scenario or import a catalog item to create project files.",
+    "missing": "The saved file “{path}” is unavailable. Select another file from the list.",
+    "changed": "This file changed while you were editing. Your draft is preserved. Choose which version to keep before saving.",
+    "reload": "Discard draft and load saved file",
+    "keepDraft": "Keep my draft for the next save",
+    "closed": "This project editor is closed or the project has changed. Reopen the project before saving files."
+  },
+  "addCatalog": "Add from catalog",
+  "settings": {
+    "title": "Project settings",
+    "identity": "Local project ID",
+    "name": "Project name",
+    "nameRequired": "Enter a project name.",
+    "save": "Save project name",
+    "saved": "Project name saved locally.",
+    "repository": "Repository",
+    "localOnly": "This project is saved in this browser.",
+    "branch": "Working branch",
+    "notSaved": "Created on the first Git save",
+    "configureRepository": "Configure repository",
+    "target": "Selected Proxmox node",
+    "noTarget": "No node selected for this project.",
+    "configureTarget": "Configure target",
+    "catalogImports": "Added from catalog ({count})",
+    "sourceRevision": "Source revision",
+    "importCounts": "{nodes} nodes · {content} content items · {attachments} attachments"
+  },
+  "history": {
+    "file": "History for {path} at {ref}"
   }
 }

@@ -16,7 +16,8 @@ function getId() {
 export function useDragAndDrop() {
   const { draggedType, isDragOver, isDragging } = state
   const { 
-    addNodes, 
+    addNodes,
+    vueFlowRef,
     screenToFlowCoordinate, 
     onNodesInitialized, 
     updateNode,
@@ -96,26 +97,19 @@ export function useDragAndDrop() {
     return null
   }
 
-  const onDrop = (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-
-    if (!draggedType.value) return
-
-    const position = screenToFlowCoordinate({
-      x: event.clientX,
-      y: event.clientY,
-    })
-
+  // Dragging and button activation share exactly the same node defaults,
+  // nesting rules and Docker host selection.
+  function addNode(type, position, onPlaced) {
     const parentInfo = findParentNodeAtPosition(position)
-    const nodeConfig = getNodeConfig(draggedType.value)
-    const nodeId = getId()
+    const nodeConfig = getNodeConfig(type)
+    let nodeId = getId()
+    while (getNodes.value.some(node => node.id === nodeId)) nodeId = getId()
 
     const baseNode = {
       id: nodeId,
-      type: draggedType.value,
+      type: type,
       data: {
-        type: draggedType.value,
+        type: type,
         label: nodeConfig.label,
         status: 'gray',
         config: nodeConfig.defaultConfig,
@@ -125,7 +119,7 @@ export function useDragAndDrop() {
     // Docker node: auto-assign the nearest vm|lxc as host_ref on drop.
     // If none exists, leave host_ref empty — the Problems panel will surface it
     // and the GroupNode/DockerNode red dot makes the issue visible.
-    if (draggedType.value === 'docker') {
+    if (type === 'docker') {
       const nearestHost = findNearestDockerHost(getNodes.value || [], position)
       if (nearestHost) {
         baseNode.data.host_ref = nearestHost.id
@@ -133,7 +127,7 @@ export function useDragAndDrop() {
     }
 
     let newNode
-    const isContainerType = containerTypes.includes(draggedType.value)
+    const isContainerType = containerTypes.includes(type)
     
     if (parentInfo && !isContainerType) {
       newNode = {
@@ -153,7 +147,7 @@ export function useDragAndDrop() {
 
       // Set default size for container types
       if (isContainerType) {
-        newNode.style = draggedType.value === 'group' 
+        newNode.style = type === 'group'
           ? { width: '450px', height: '350px' }
           : { width: '300px', height: '200px' }
       }
@@ -172,13 +166,27 @@ export function useDragAndDrop() {
         return node
       })
       off()
+      onPlaced?.()
     })
 
     addNodes([newNode])
     
-    isDragOver.value = false
-    isDragging.value = false
-    draggedType.value = null
+    return nodeId
+  }
+
+  function addComponent(type, onPlaced) {
+    const bounds = vueFlowRef.value?.getBoundingClientRect()
+    if (!bounds?.width || !bounds.height) return null
+    return addNode(type, screenToFlowCoordinate({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }), onPlaced)
+  }
+
+  const onDrop = (event, onPlaced) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!draggedType.value) return
+    const nodeId = addNode(draggedType.value, screenToFlowCoordinate({ x: event.clientX, y: event.clientY }), onPlaced)
+    onDragEnd()
+    return nodeId
   }
 
   const getNodeConfig = (type) => {
@@ -286,5 +294,6 @@ export function useDragAndDrop() {
     onDragLeave,
     onDragOver,
     onDrop,
+    addComponent,
   }
 }

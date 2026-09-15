@@ -2,12 +2,19 @@
  * useCatalog — Cross-source catalog composable.
  *
  * Fetches catalog entries from the Range42 backend (`/v1/catalog/entries`)
- * and caches them in IndexedDB keyed by `source:sha` so subsequent tile-grid
- * renders are fast. Ported from Plan C §4.
+ * and keeps a bounded-age offline fallback scoped to backend and credential
+ * identity. Every read revalidates with the backend; its short-lived metadata
+ * snapshots avoid repeated Git clones. Ported from Plan C §4.
  */
 
-import { ref } from 'vue'
+import { ref, watch, getCurrentScope, onScopeDispose } from 'vue'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { bytesToHex } from '@noble/hashes/utils.js'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { openDB, type IDBPDatabase } from 'idb'
+import { backendRequest, getBackendScope, BackendApiError } from '@/services/backendApi'
+import { deserializeToCanvas } from '@/overlay/serialize'
+import type { CatalogEntry as CatalogDocument } from '@/types/range42-schema'
 
 // =============================================================================
 // Types
@@ -53,6 +60,23 @@ export interface CatalogEntry {
   topology?: Record<string, unknown>
   inventory?: Array<Record<string, unknown>>
   metadata?: Record<string, unknown>
+  document?: Record<string, unknown>
+  readme_md?: string | null
+}
+
+/** Adapt the API detail envelope to the fields rendered by the entry viewer. */
+function presentEntry(entry: CatalogEntry): CatalogEntry {
+  const doc = entry.document ?? {}
+  const topology = Array.isArray(doc.nodes)
+    ? { ...deserializeToCanvas(doc as unknown as CatalogDocument, { nodes: {}, edges: {}, unsupported: [] }) }
+    : (doc.topology as CatalogEntry['topology']) ?? entry.topology
+  return {
+    ...entry,
+    readme: entry.readme_md ?? entry.readme,
+    topology,
+    inventory: Array.isArray(doc.inventory) ? doc.inventory : entry.inventory,
+    metadata: (doc.metadata as CatalogEntry['metadata']) ?? entry.metadata,
+  }
 }
 
 /** Paged response envelope returned by the backend (`app.schemas.v1.common.Page`). */
@@ -146,8 +170,13 @@ function buildQueryString(filters: CatalogEntryFilters): string {
   return qs ? `?${qs}` : ''
 }
 
-function cacheKey(filters: CatalogEntryFilters): string {
-  return `entries:${buildQueryString(filters)}`
+const OFFLINE_CACHE_MAX_AGE_MS = 5 * 60 * 1000
+const cacheVersion = ref(0)
+
+/** Invalidate pending readers as well as stored rows after a source/auth change. */
+export async function clearCatalogCache(): Promise<void> {
+  cacheVersion.value += 1
+  try { await (await getDb()).clear(STORE) } catch { /* Cache storage is optional. */ }
 }
 
 // =============================================================================
@@ -159,89 +188,119 @@ export function useCatalog() {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  async function listEntries(filters: CatalogEntryFilters = {}): Promise<CatalogEntry[]> {
+  const backend = useBackendApiStore()
+  let generation = 0
+  watch(() => [backend.url, backend.token], () => {
+    generation += 1
+    entries.value = []
+    loading.value = false
+    error.value = null
+  }, { flush: 'sync' })
+  watch(cacheVersion, () => {
+    generation += 1
+    entries.value = []
+    loading.value = false
+  }, { flush: 'sync' })
+  if (getCurrentScope()) onScopeDispose(() => { generation += 1 })
+
+  function begin() {
+    const current = ++generation
+    const scope = getBackendScope(), token = backend.token || ''
+    // Never persist a bearer token or reuse the old URL-only cache namespace.
+    const key = `v2:${scope}:${bytesToHex(sha256(new TextEncoder().encode(token)))}`
     loading.value = true
     error.value = null
-    const qs = buildQueryString(filters)
-    const key = cacheKey(filters)
+    return { key, active: () => current === generation && scope === getBackendScope() && token === (backend.token || '') }
+  }
+
+  async function fallback(key: string) {
     try {
-      const res = await fetch(`/v1/catalog/entries${qs}`, { credentials: 'same-origin' })
-      if (!res.ok) {
-        throw new Error(`catalog list failed: ${res.status}`)
-      }
-      const data = (await res.json()) as CatalogPage
-      entries.value = data.items || []
-      // Cache by filter key (the Page envelope carries no source SHA).
-      try {
-        const db = await getDb()
-        await db.put(STORE, { entries: entries.value, ts: Date.now() }, key)
-      } catch {
-        /* ignore cache failures */
-      }
-      return entries.value
-    } catch (err) {
-      // Fall back to cached data if available.
-      try {
-        const db = await getDb()
-        const cached = await db.get(STORE, key)
-        if (cached?.entries) {
-          entries.value = cached.entries
-          error.value = err instanceof Error ? err.message : String(err)
-          return entries.value
+      const db = await getDb()
+      const cached = await db.get(STORE, key)
+      const age = Date.now() - cached?.ts
+      return age >= 0 && age <= OFFLINE_CACHE_MAX_AGE_MS ? cached : null
+    } catch { return null }
+  }
+
+  async function listEntries(filters: CatalogEntryFilters = {}): Promise<CatalogEntry[]> {
+    const context = begin()
+    const key = `${context.key}:entries:${buildQueryString(filters)}`
+    try {
+      const collected: CatalogEntry[] = []
+      let pageFilters = { ...filters }
+      while (true) {
+        const data = await backendRequest<CatalogPage>(
+          `/v1/catalog/entries${buildQueryString(pageFilters)}`,
+        )
+        if (!context.active()) return []
+        const items = data.items ?? []
+        collected.push(...items)
+        const offset = pageFilters.offset ?? 0
+        const nextOffset = (data.offset ?? offset) + items.length
+        if (!Number.isFinite(data.total) || nextOffset >= data.total) break
+        if (!items.length || nextOffset <= offset) {
+          throw new Error('Catalog pagination did not advance. Refresh the source and retry.')
         }
-      } catch {
-        /* ignore */
+        pageFilters = { ...filters, offset: nextOffset }
       }
+      try {
+        const db = await getDb()
+        if (!context.active()) return []
+        await db.put(STORE, { entries: collected, ts: Date.now() }, key)
+      } catch { /* Optional offline cache cannot fail an authenticated read. */ }
+      if (!context.active()) return []
+      entries.value = collected
+      return collected
+    } catch (err) {
+      if (!context.active()) return []
       error.value = err instanceof Error ? err.message : String(err)
-      entries.value = []
-      return []
+      if (err instanceof BackendApiError) {
+        await clearCatalogCache()
+        return []
+      }
+      const cached = await fallback(key)
+      if (!context.active()) return []
+      entries.value = cached?.entries || []
+      return entries.value
     } finally {
-      loading.value = false
+      if (context.active()) loading.value = false
     }
   }
 
   async function getEntry(source: string, path: string): Promise<CatalogEntry | null> {
-    loading.value = true
-    error.value = null
-    const key = `entry:${source}:${path}`
+    const context = begin()
+    const key = `${context.key}:entry:${source}:${path}`
     try {
       const url = `/v1/catalog/entries/${encodeURIComponent(source)}/${path
         .split('/')
         .map(encodeURIComponent)
         .join('/')}`
-      const res = await fetch(url, { credentials: 'same-origin' })
-      if (!res.ok) {
-        throw new Error(`catalog entry fetch failed: ${res.status}`)
-      }
-      const entry = (await res.json()) as CatalogEntry
+      const response = await backendRequest<CatalogEntry>(url)
+      if (!context.active()) return null
+      const entry = presentEntry(response)
       try {
         const db = await getDb()
+        if (!context.active()) return null
         await db.put(STORE, { entry, ts: Date.now() }, key)
-      } catch {
-        /* ignore */
-      }
-      return entry
+      } catch { /* Optional cache. */ }
+      return context.active() ? entry : null
     } catch (err) {
-      try {
-        const db = await getDb()
-        const cached = await db.get(STORE, key)
-        if (cached?.entry) {
-          error.value = err instanceof Error ? err.message : String(err)
-          return cached.entry
-        }
-      } catch {
-        /* ignore */
-      }
+      if (!context.active()) return null
       error.value = err instanceof Error ? err.message : String(err)
-      return null
+      if (err instanceof BackendApiError) {
+        await clearCatalogCache()
+        return null
+      }
+      const cached = await fallback(key)
+      if (!context.active()) return null
+      return cached?.entry || null
     } finally {
-      loading.value = false
+      if (context.active()) loading.value = false
     }
   }
 
   async function clearCache(): Promise<void> {
-    const db = await getDb()
-    await db.clear(STORE)
+    await clearCatalogCache()
   }
 
   return {

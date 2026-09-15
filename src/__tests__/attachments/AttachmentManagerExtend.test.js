@@ -149,64 +149,14 @@ describe('Row Edit button', () => {
 // ---------------------------------------------------------------------------
 // 3. Global add control
 // ---------------------------------------------------------------------------
-describe('Global add control', () => {
-  it('add-node select has an option for each node', () => {
+describe('Scenario content entry point', () => {
+  it('offers scenario content instead of creating unsupported legacy attachments', async () => {
     const wrapper = mountManager()
-    const opts = wrapper.find('[data-testid="add-node"]').findAll('option')
-    // There may be a blank placeholder — at minimum vm-a is present
-    const values = opts.map((o) => o.element.value)
-    expect(values).toContain('vm-a')
-  })
-
-  it('add-kind select has the 5 kinds', () => {
-    const wrapper = mountManager()
-    const opts = wrapper.find('[data-testid="add-kind"]').findAll('option')
-    const values = opts.map((o) => o.element.value)
-    expect(values).toContain('catalog_role')
-    expect(values).toContain('catalog_container')
-    expect(values).toContain('inline_yaml')
-    expect(values).toContain('file_upload')
-    expect(values).toContain('external_git')
-  })
-
-  it('clicking Add emits update:attachments with a new inline_yaml attachment targeting vm-a', async () => {
-    const wrapper = mountManager()
-
-    await wrapper.find('[data-testid="add-node"]').setValue('vm-a')
-    await wrapper.find('[data-testid="add-kind"]').setValue('inline_yaml')
-    await wrapper.find('[data-testid="add-btn"]').trigger('click')
-
-    const emitted = wrapper.emitted('update:attachments')
-    expect(emitted).toBeTruthy()
-    const payload = emitted[emitted.length - 1][0]
-    expect(payload.length).toBe(2) // original + new
-    const newAtt = payload.find((a) => a.id !== 'a1')
-    expect(newAtt.target_node).toBe('vm-a')
-    expect(newAtt.source.kind).toBe('inline_yaml')
-  })
-
-  it('after Add the AttachmentEditor is shown for the new attachment', async () => {
-    const wrapper = mountManager()
-
-    await wrapper.find('[data-testid="add-node"]').setValue('vm-a')
-    await wrapper.find('[data-testid="add-kind"]').setValue('inline_yaml')
-    await wrapper.find('[data-testid="add-btn"]').trigger('click')
-
-    // The manager emitted but it manages its own editingId internally.
-    // The new attachment must now be passed back via props update to show editor.
-    // Simulate the parent update by setting new props.
-    const emitted = wrapper.emitted('update:attachments')
-    const newList = emitted[emitted.length - 1][0]
-    await wrapper.setProps({ attachments: newList })
-
-    expect(wrapper.findComponent(AttachmentEditor).exists()).toBe(true)
-  })
-
-  it('clicking Add without a chosen node does NOT emit', async () => {
-    const wrapper = mountManager()
-    // Don't set add-node; default select value is empty placeholder
-    await wrapper.find('[data-testid="add-kind"]').setValue('inline_yaml')
-    await wrapper.find('[data-testid="add-btn"]').trigger('click')
-    expect(wrapper.emitted('update:attachments')).toBeFalsy()
+    expect(wrapper.find('[data-testid="add-kind"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="add-node"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="scenario-content-btn"]').trigger('click')
+    expect(wrapper.emitted('open-content')).toHaveLength(1)
+    expect(wrapper.emitted('update:attachments')).toBeUndefined()
+    expect(wrapper.findComponent(AttachmentEditor).exists()).toBe(false)
   })
 })

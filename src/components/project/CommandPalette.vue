@@ -1,8 +1,7 @@
 <script setup>
 /**
- * Command palette (Ctrl/Cmd-P) — fuzzy search across current project's
- * nodes, attachments, and config files. Parent view wires `useHotkeys` to
- * toggle `open`; this component handles its own keyboard navigation and
+ * Project search across nodes, attachments, and config files.
+ * The toolbar button toggles `open`; this component handles keyboard navigation and
  * emits `jumpTo` on selection.
  */
 import { computed, nextTick, ref, watch } from 'vue'

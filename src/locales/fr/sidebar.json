@@ -1,20 +1,106 @@
 {
-  "title": "Range42",
-  "subtitle": "Constructeur d'infrastructure Cyber Range",
+  "projectTools": "Outils du projet",
+  "closeTools": "Fermer les outils du projet",
   "currentProject": "Projet actuel",
   "untitledProject": "Projet sans titre",
-  "componentsCount": "{count} composants",
-  "infrastructure.title": "Composants d'infrastructure",
-  "statusLegend.title": "Légende des statuts",
-  "statusLegend.incomplete": "Configuration incomplète",
-  "statusLegend.ready": "Prêt à déployer",
-  "statusLegend.deployed": "Déployé",
-  "statusLegend.deployedRunning": "Déployé et en cours d'exécution",
-  "statusLegend.inProgress": "En cours",
-  "statusLegend.error": "Erreur / Échec",
-  "quickActions.title": "Actions rapides",
-  "quickActions.export": "Exporter la topologie",
-  "quickActions.deploySoon": "Déployer l'infrastructure (bientôt)",
-  "quickActions.validateSoon": "Valider la configuration (bientôt)",
-  "language.label": "Langue"
+  "components": "Composants",
+  "addHint": "Cliquez pour ajouter ou glissez sur le canevas.",
+  "resources": "Ressources",
+  "statusTitle": "État des nœuds",
+  "validate": "Valider",
+  "deploy": "Déployer",
+  "language": {
+    "label": "Langue"
+  },
+  "categories": {
+    "compute": "Calcul",
+    "network": "Réseau",
+    "organization": "Organisation"
+  },
+  "catalog": {
+    "title": "Ajouter du catalogue",
+    "description": "Machines, rôles et services"
+  },
+  "resourcesItems": {
+    "templates": {
+      "title": "Modèles et ISO",
+      "description": "Stockage Proxmox"
+    },
+    "import": {
+      "title": "Importer une infrastructure",
+      "description": "Machines Proxmox existantes"
+    },
+    "export": {
+      "title": "Exporter la topologie",
+      "description": "Télécharger les fichiers du projet"
+    }
+  },
+  "statuses": {
+    "gray": "Incomplet",
+    "orange": "Prêt",
+    "green": "En cours d’exécution",
+    "red": "Erreur",
+    "blue": "Déploiement en cours"
+  },
+  "navigation": {
+    "primary": "Principale",
+    "workspace": "Espace de travail",
+    "manage": "Gestion",
+    "projects": "Projets",
+    "catalog": "Catalogue",
+    "deployments": "Déploiements",
+    "sources": "Sources",
+    "settings": "Paramètres",
+    "deployer": "Déployeur",
+    "collapse": "Réduire le menu",
+    "expand": "Développer le menu",
+    "open": "Ouvrir la navigation",
+    "close": "Fermer la navigation",
+    "title": "Navigation",
+    "breadcrumb": "Fil d’Ariane",
+    "skip": "Aller au contenu"
+  },
+  "items": {
+    "vm": {
+      "label": "Machine virtuelle",
+      "description": "Cloner un modèle de VM",
+      "add": "Ajouter une machine virtuelle"
+    },
+    "lxc": {
+      "label": "Conteneur LXC",
+      "description": "Préparer un conteneur",
+      "add": "Ajouter un conteneur LXC"
+    },
+    "docker": {
+      "label": "Service Docker",
+      "description": "Sur une VM ou un conteneur",
+      "add": "Ajouter un service Docker"
+    },
+    "network-segment": {
+      "label": "Réseau",
+      "description": "Relier les machines du projet",
+      "add": "Ajouter un réseau"
+    },
+    "router": {
+      "label": "Routeur",
+      "description": "Ajouter un équipement réseau",
+      "add": "Ajouter un routeur"
+    },
+    "edge-firewall": {
+      "label": "Pare-feu",
+      "description": "Ajouter un équipement de sécurité",
+      "add": "Ajouter un pare-feu"
+    },
+    "group": {
+      "label": "Groupe",
+      "description": "Organiser les composants",
+      "add": "Ajouter un groupe"
+    }
+  },
+  "searchProject": "Rechercher dans le projet",
+  "undo": "Annuler",
+  "redo": "Rétablir",
+  "projectActions": "Actions du projet",
+  "nodeCount": "Aucun nœud | 1 nœud | {count} nœuds",
+  "edgeCount": "Aucune connexion | 1 connexion | {count} connexions"
 }

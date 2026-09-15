@@ -1,4 +1,5 @@
 {
+  "vaultManaged": "Fourni par le coffre du backend ; les valeurs secrètes ne sont pas enregistrées dans Git.",
   "title": "Variables",
   "subtitle": "Variables d'environnement déclarées par le projet (base ⊕ calque)",
   "name": "Nom",

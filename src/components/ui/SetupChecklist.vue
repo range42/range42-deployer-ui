@@ -2,8 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useInventoryStore } from '@/stores/inventoryStore'
-import { useBackendApiStore } from '@/stores/backendApiStore.ts'
+import { useSetupStatus } from '@/composables/useSetupStatus'
 import { useProjectStore } from '@/stores/projectStore'
 
 const emit = defineEmits(['navigate'])
@@ -11,24 +10,23 @@ const emit = defineEmits(['navigate'])
 const router = useRouter()
 const { t } = useI18n()
 
-const inv = useInventoryStore()
-const backend = useBackendApiStore()
+const { hasSource, hasBackendHost } = useSetupStatus()
 const proj = useProjectStore()
 
 const steps = computed(() => [
-  {
-    id: 'source',
-    title: t('home.checklist.add_source.title'),
-    desc: t('home.checklist.add_source.desc'),
-    href: '/sources',
-    done: inv.sources.length > 0,
-  },
   {
     id: 'backend',
     title: t('home.checklist.add_backend.title'),
     desc: t('home.checklist.add_backend.desc'),
     href: '/settings#backend-api',
-    done: backend.hosts.length > 0,
+    done: hasBackendHost.value,
+  },
+  {
+    id: 'source',
+    title: t('home.checklist.add_source.title'),
+    desc: t('home.checklist.add_source.desc'),
+    href: '/sources',
+    done: hasSource.value,
   },
   {
     id: 'catalog',

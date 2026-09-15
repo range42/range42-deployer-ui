@@ -16,8 +16,8 @@
     "pending": "未完了",
     "go": "進む",
     "add_source": {
-      "title": "Gitソースを追加",
-      "desc": "GitHub、GitLab、またはGiteaインスタンスを登録して、Range42がカタログエントリを読み込めるようにします。"
+      "title": "公開カタログを接続",
+      "desc": "Gitトークンなしで標準のRange42カタログを接続・インデックス化するか、独自のリポジトリを追加します。"
     },
     "add_backend": {
       "title": "backend-apiホストを追加",

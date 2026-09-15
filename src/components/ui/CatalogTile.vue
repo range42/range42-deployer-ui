@@ -1,12 +1,16 @@
 <script setup>
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 
 const props = defineProps({
   entry: { type: Object, required: true },
+  projectId: { type: String, default: '' },
+  nodeId: { type: String, default: '' },
+  sourceReadonly: { type: Boolean, default: false },
 })
 
-defineEmits(['use', 'customize', 'fork'])
+defineEmits(['use', 'customize', 'fork', 'append'])
 
 const { t } = useI18n()
 
@@ -33,19 +37,20 @@ const kindLabel = computed(() => String(props.entry?.kind ?? '').replace(/_/g, '
 
 <template>
   <article
-    class="card card-bordered bg-base-100 hover:shadow-md transition-shadow"
+    class="card card-bordered bg-base-100 hover:shadow-md transition-shadow h-full"
     :data-kind="entry.kind"
     :data-source="entry.source_id"
   >
     <div class="card-body p-5">
       <header class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="font-semibold text-lg truncate">{{ entry.name }}</h3>
+          <h3 class="font-semibold text-lg break-words"><RouterLink class="link link-hover rounded focus-visible:outline focus-visible:outline-2" :to="{ name: 'catalog-entry', params: { source: entry.source_id, entry: entry.path }, query: projectId ? { project: projectId, ...(nodeId ? { node: nodeId } : {}) } : {} }">{{ entry.name }}</RouterLink></h3>
           <p class="text-xs text-base-content/60 truncate">
             {{ entry.source_id }} · {{ entry.path }}
           </p>
+          <span v-if="sourceReadonly" class="badge badge-ghost badge-sm mt-2" data-testid="tile-readonly-badge" :title="t('catalog.verbs.customize_readonly_hint')">{{ t('sources.access_readonly') }}</span>
         </div>
-        <span class="badge" :class="kindBadgeClass">{{ kindLabel }}</span>
+        <span class="badge shrink-0" :class="kindBadgeClass">{{ kindLabel }}</span>
       </header>
 
       <p v-if="entry.description" class="text-sm text-base-content/70 line-clamp-3 mt-2">
@@ -62,10 +67,13 @@ const kindLabel = computed(() => String(props.entry?.kind ?? '').replace(/_/g, '
         </span>
       </div>
 
-      <footer class="card-actions justify-end mt-4">
+      <p v-if="entry.kind === 'ansible_role' || entry.kind === 'container'" class="text-xs text-base-content/60 mt-2">{{ t('catalog.append.vm_required') }}</p>
+      <footer class="card-actions mt-auto pt-4">
+        <button type="button" class="btn btn-sm flex-1" :class="projectId ? 'btn-primary' : 'btn-outline'" data-testid="catalog-add-to-project" @click="$emit('append', entry)">{{ t('catalog.append.action') }}</button>
         <button
           type="button"
-          class="btn btn-primary btn-sm"
+          class="btn btn-sm flex-1"
+          :class="projectId ? 'btn-ghost' : 'btn-primary'"
           @click="$emit('use', entry)"
         >
           {{ t('catalog.verbs.use') }}

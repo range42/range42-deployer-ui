@@ -224,7 +224,15 @@ export function useTopologyResolver() {
   /**
    * Validate the entire topology
    */
-  function validateTopology(nodes: CanvasNode[], edges: Edge[]): ValidationResult {
+  function validateTopology(inputNodes: Node[], edges: Edge[]): ValidationResult {
+    const invalid = inputNodes.filter(node => !node.data || typeof node.data !== 'object' || Array.isArray(node.data))
+    if (invalid.length) {
+      errors.value = invalid.map(node => ({ nodeId: node.id, field: 'data', message: 'Node configuration is missing or invalid' }))
+      warnings.value = []
+      return { valid: false, errors: errors.value, warnings: [] }
+    }
+    // VueFlow allows absent data. It has been checked before this required-data view.
+    const nodes: CanvasNode[] = inputNodes.map(node => ({ ...node, data: node.data }))
     const allErrors: ValidationError[] = []
     const allWarnings: ValidationError[] = []
 
@@ -717,7 +725,7 @@ export function useTopologyResolver() {
         }
 
         case 'vm': {
-          const nodeData = node.data as CanvasNodeData
+          const nodeData = node.data as VmNodeData
 
           // Already deployed VMs: skip create/start, just track the existing VMID
           if (nodeData.deployed && nodeData.vmId) {
@@ -748,7 +756,7 @@ export function useTopologyResolver() {
         }
 
         case 'lxc': {
-          const lxcData = node.data as CanvasNodeData
+          const lxcData = node.data as LxcNodeData
           if (lxcData.deployed && lxcData.vmId) {
             nodeVmIds.set(node.id, Number(lxcData.vmId))
             steps.push({

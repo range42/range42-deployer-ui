@@ -26,6 +26,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
+  actionsEnabled: { type: Boolean, default: true },
   team: {
     type: Object,
     required: true,
@@ -85,7 +86,7 @@ function onOpenTerminal() { emit('open-terminal', { teamId: props.team.id }); me
           </div>
         </div>
 
-        <div class="dropdown dropdown-end">
+        <div v-if="actionsEnabled" class="dropdown dropdown-end">
           <button
             type="button"
             class="btn btn-ghost btn-xs"

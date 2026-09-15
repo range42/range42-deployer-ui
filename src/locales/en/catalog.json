@@ -1,5 +1,9 @@
 {
   "title": "Catalog",
+  "visible_results": "Showing {count} of {total} matching items",
+  "load_more": "Show more items",
+  "new_role": "New Ansible role",
+  "new_machine": "New VM blueprint",
   "subtitle": "Browse labs, gamenets, and components across your Git sources.",
   "filters": {
     "kind": "Kind",
@@ -15,10 +19,10 @@
     "difficulty_any": "Any level"
   },
   "verbs": {
-    "use": "Use",
+    "use": "Create project",
     "customize": "Customize",
     "fork": "Fork & publish",
-    "customize_readonly_hint": "You have read-only access to this source. Fork & publish to a writable repository to customize it."
+    "customize_readonly_hint": "Original source is read-only. Choose a writable destination or fork when customizing."
   },
   "empty": {
     "no_sources_title": "No Git sources configured",
@@ -38,5 +42,77 @@
     "fork_target_repo": "Target repository (owner/repo)",
     "fork_target_name": "New entry name",
     "fork_submit": "Fork"
-  }
+  },
+  "handoff": {
+    "title": "Review catalog project",
+    "origin": "Original catalog item",
+    "scope": "Imports supported range42.yaml topology, inline attachments and variable declarations. External files and dependencies must be resolved before import. The original catalog remains unchanged.",
+    "destination": "Working repository and project directory",
+    "branch": "Dedicated working branch",
+    "seed": "Reviewed base branch and exact commit",
+    "counts": "{nodes} nodes · {edges} network links · {attachments} inline attachments",
+    "fork_pending": "The first Save will request a writable fork using your chosen policy. No fork or branch has been created yet. Destination namespace:",
+    "save_hint": "Create the local project now. Editor Save and autosave will use this working branch. Publishing or merging to a base branch remains a separate action.",
+    "loading": "Loading the item and checking the destination…",
+    "back": "Change destination",
+    "import": "Create linked project",
+    "changed": "The source, destination or credential changed. Review the destination again before creating the project.",
+    "missing": "The catalog item or its source is unavailable. Refresh the catalog and try again.",
+    "role_scope": "Imports the complete supported Ansible role tree at its pinned commit, preserving its category.action.target name. Edit its files in Config, then save or publish with the existing Git workflow. This is role source editing; it does not create a deployable VM or prove runtime dependencies. Limits: 512 entries, 1 MiB per file, 2 MiB per project. Executable files, symlinks and unresolved external references require a complete repository workflow.",
+    "role_files": "{count} role files to import",
+    "role_editor": "Role source project: edit files in Config and publish explicitly. To run a supported role, open a VM scenario and choose Add role, select this local source, then review and save its copied files.",
+    "origin_changed": "The catalog origin or selected revision changed. Close this dialog and reopen the item to fetch its current content.",
+    "publication_next": "Review and import the files first. Then use Save and Publish from the project to choose the writable branch and review or direct publication. Nothing has been published yet."
+  },
+  "append": {
+    "secret_bindings": "Runtime secret bindings (optional JSON)",
+    "secret_bindings_hint": "Map Compose placeholder names to backend vault variable names. Only names are saved; missing secret declarations are added to the project. The backend operator must supply values in the workspace vault before execution.",
+    "invalid_secret_bindings": "Use a JSON mapping of placeholder names to vault variable names; do not enter secret values.",
+    "eyebrow": "Build your project",
+    "title": "Add a catalog item",
+    "action": "Add to project",
+    "scope": "Review the nodes or VM content to add. Your existing machines, settings and repository stay in this project.",
+    "project": "Project",
+    "choose_project": "Choose an existing project",
+    "target": "Target VM",
+    "choose_vm": "Choose an existing VM",
+    "instance": "Instance name (optional)",
+    "instance_hint": "For example, web-lab…",
+    "cancel": "Cancel",
+    "preview": "Addition preview",
+    "counts": "{nodes} nodes · {edges} links · {attachments} attachments · {roles} roles · {files} files",
+    "fields": {
+      "template": "Template VMID",
+      "cores": "CPU cores",
+      "memory": "Memory (MiB)",
+      "diskSize": "Disk (GiB)",
+      "image": "Image"
+    },
+    "role_hint": "Ansible roles attach to the VM you choose. Their pinned files are copied into this project for review and configuration.",
+    "container_hint": "Compose workloads run inside a selected VM. The VM must already have Docker and Compose; unsupported dependencies are explained during review. This does not create a Proxmox VM or install Docker.",
+    "vm_required": "Runs inside an existing VM",
+    "no_projects": "Create a project from Home first, then return here to add catalog items.",
+    "save_hint": "This adds a local draft. Review its settings, then save to your working branch. Deployment and publication remain separate actions.",
+    "loading": "Loading pinned content and preparing the addition…",
+    "review": "Review addition",
+    "keep_browsing": "Add and keep browsing",
+    "open_project": "Add and open project",
+    "changed": "The project, source or credentials changed. Review the addition again.",
+    "revision_changed": "This catalog item changed revision. Refresh the catalog and review its current content.",
+    "context": "Adding to {project}",
+    "context_hint": "Choose items below to extend this project. Each addition is reviewed before it is saved locally.",
+    "return_project": "Return to project",
+    "missing_project": "The requested project is no longer available. Choose another project when reviewing an addition.",
+    "added": "Added to {project}. You can choose another item or return to the project.",
+    "added_short": "Item added. Continue browsing or return to your project.",
+    "results": "{count} of {total} items",
+    "host_ports": "Host ports (optional)",
+    "host_ports_example": "For example, 8081, 8444…",
+    "host_ports_hint": "Leave blank to keep catalog ports. Otherwise provide one host port per mapping, in source order. Review shows the effective mappings.",
+    "invalid_ports": "Use comma-separated host ports between 1 and 65535.",
+    "service": "Service",
+    "effective_ports": "Host → container",
+    "directory": "Guest directory"
+  },
+  "new_container": "New Compose workload"
 }

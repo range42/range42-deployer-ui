@@ -1,0 +1,39 @@
+{
+  "ansible_core": "2.19.1",
+  "local_only": true,
+  "become_note": "Wrapper retains become:true; local inventory explicitly disables escalation for this test.",
+  "cases": [
+    {
+      "case": "lf",
+      "returncode": 0,
+      "expected_success": true,
+      "source_sha256": "a2c8e351f5a409d9b0a006b6e22aa1d9d9d38fff09709789f1358b6d4144b4af",
+      "source_bytes_preserved": true,
+      "backend_configure_scan_accepted": true
+    },
+    {
+      "case": "bom_crlf",
+      "returncode": 0,
+      "expected_success": true,
+      "source_sha256": "465c8950dd2e79c4b88f69ed1e40ca9390f5db2979e2ab72fb5af92c3787248b",
+      "source_bytes_preserved": true,
+      "backend_configure_scan_accepted": true
+    },
+    {
+      "case": "missing_relative_import",
+      "returncode": 1,
+      "expected_success": false,
+      "source_sha256": "a2c8e351f5a409d9b0a006b6e22aa1d9d9d38fff09709789f1358b6d4144b4af",
+      "source_bytes_preserved": true,
+      "backend_configure_scan_accepted": true
+    },
+    {
+      "case": "incorrect_item_vars",
+      "returncode": 2,
+      "expected_success": false,
+      "source_sha256": "a2c8e351f5a409d9b0a006b6e22aa1d9d9d38fff09709789f1358b6d4144b4af",
+      "source_bytes_preserved": true,
+      "backend_configure_scan_accepted": true
+    }
+  ]
+}

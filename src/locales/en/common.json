@@ -8,5 +8,14 @@
   "close": "Close",
   "add": "Add",
   "remove": "Remove",
-  "retry": "Retry"
+  "retry": "Retry",
+  "backend_access": {
+    "title": "Connect to your backend",
+    "description": "Enter the backend API token provided by your operator to use catalogs and Proxmox. Public repositories do not need a Git token.",
+    "token": "Backend API token",
+    "connect": "Connect backend",
+    "connecting": "Checking…",
+    "failed": "Could not connect to the backend.",
+    "storage": "The verified token is remembered in this browser for this backend."
+  }
 }

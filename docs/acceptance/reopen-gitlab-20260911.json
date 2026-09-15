@@ -1,0 +1,46 @@
+{
+  "provider": "gitlab",
+  "started": "2026-09-11T07:35:06.691Z",
+  "checks": [
+    "opened canvas/forms/files from one exact commit",
+    "kept original identity when unused locally",
+    "working branch seeded from reviewed SHA after source advanced",
+    "unmanaged repository file preserved",
+    "selected source branch unchanged by Save",
+    "same immutable metadata and binary bytes in public PR/MR and private branch",
+    "both published revisions reopen structured forms",
+    "both repository main branches unchanged"
+  ],
+  "repositories": {
+    "public": "phparage/range42-acceptance-20260910-public-gl2",
+    "private": "phparage/range42-acceptance-20260910-private-gl2"
+  },
+  "branches": {
+    "selected": "range42-acceptance/reopen-selected-20260911-901839049d",
+    "public_base": "range42-acceptance/reopen-public-base-20260911-901839049d",
+    "private": "range42-acceptance/reopen-private-20260911-901839049d",
+    "working": "range42-ui/open-27e3cbc30181445fb1f68c88c10f6ad4"
+  },
+  "commits": {
+    "loaded": "eda2e8f741e18982074f80ea4f85f1b63676886a",
+    "selected_advanced": "eeb3d411a4e299911065b4f919b69bc96b431580",
+    "reopened_saved": "4e5a3a96933d6ff5c9f9683b86ccbb2249f59978"
+  },
+  "publication": [
+    {
+      "target_id": "public-901839049d",
+      "mode": "pull_request",
+      "branch": "range42-publish/reopen-gitlab-901839049d/public-901839049d/range42-acceptance%2Freopen-public-base-20260911-901839049d/%22acceptance%2Freopen-20260911-901839049d%22",
+      "commit_sha": "0872ce516e86e712eb9a9f4dccc8ced11b4f7ac2",
+      "pr_url": "https://gitlab-ph.srv.office.lhc.lu/phparage/range42-acceptance-20260910-public-gl2/-/merge_requests/7",
+      "pr_number": 7
+    },
+    {
+      "target_id": "private-901839049d",
+      "mode": "direct",
+      "branch": "range42-acceptance/reopen-private-20260911-901839049d",
+      "commit_sha": "178e25dd95fe0d96eff2fcc7d54e735e94439ccd"
+    }
+  ],
+  "finished": "2026-09-11T07:35:32.236Z"
+}

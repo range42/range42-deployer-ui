@@ -1,20 +1,106 @@
 {
-  "title": "Range42",
-  "subtitle": "サイバーレンジ インフラ構築ツール",
+  "projectTools": "プロジェクトツール",
+  "closeTools": "プロジェクトツールを閉じる",
   "currentProject": "現在のプロジェクト",
   "untitledProject": "無題のプロジェクト",
-  "componentsCount": "{count} 個のコンポーネント",
-  "infrastructure.title": "インフラコンポーネント",
-  "statusLegend.title": "ステータス凡例",
-  "statusLegend.incomplete": "構成未完了",
-  "statusLegend.ready": "デプロイ準備完了",
-  "statusLegend.deployed": "デプロイ済み",
-  "statusLegend.deployedRunning": "デプロイ済み & 実行中",
-  "statusLegend.inProgress": "進行中",
-  "statusLegend.error": "エラー／失敗",
-  "quickActions.title": "クイックアクション",
-  "quickActions.export": "トポロジーをエクスポート",
-  "quickActions.deploySoon": "インフラをデプロイ（近日公開）",
-  "quickActions.validateSoon": "構成を検証（近日公開）",
-  "language.label": "言語"
+  "components": "コンポーネント",
+  "addHint": "クリックで追加、またはキャンバスにドラッグ。",
+  "resources": "リソース",
+  "statusTitle": "ノードの状態",
+  "validate": "検証",
+  "deploy": "デプロイ",
+  "language": {
+    "label": "言語"
+  },
+  "categories": {
+    "compute": "コンピュート",
+    "network": "ネットワーク",
+    "organization": "整理"
+  },
+  "catalog": {
+    "title": "カタログから追加",
+    "description": "マシン、ロール、ワークロード"
+  },
+  "resourcesItems": {
+    "templates": {
+      "title": "テンプレートと ISO",
+      "description": "Proxmox ストレージを参照"
+    },
+    "import": {
+      "title": "インフラをインポート",
+      "description": "既存の Proxmox ゲスト"
+    },
+    "export": {
+      "title": "トポロジーをエクスポート",
+      "description": "プロジェクトファイルを保存"
+    }
+  },
+  "statuses": {
+    "gray": "未完了",
+    "orange": "準備完了",
+    "green": "実行中",
+    "red": "エラー",
+    "blue": "デプロイ中"
+  },
+  "navigation": {
+    "primary": "メイン",
+    "workspace": "ワークスペース",
+    "manage": "管理",
+    "projects": "プロジェクト",
+    "catalog": "カタログ",
+    "deployments": "デプロイ",
+    "sources": "ソース",
+    "settings": "設定",
+    "deployer": "デプロイヤー",
+    "collapse": "サイドバーを折りたたむ",
+    "expand": "サイドバーを展開",
+    "open": "ナビゲーションを開く",
+    "close": "ナビゲーションを閉じる",
+    "title": "ナビゲーション",
+    "breadcrumb": "パンくずリスト",
+    "skip": "本文へ移動"
+  },
+  "items": {
+    "vm": {
+      "label": "仮想マシン",
+      "description": "VM テンプレートをクローン",
+      "add": "仮想マシンを追加"
+    },
+    "lxc": {
+      "label": "LXC コンテナ",
+      "description": "コンテナゲストを計画",
+      "add": "LXC コンテナを追加"
+    },
+    "docker": {
+      "label": "Docker ワークロード",
+      "description": "VM またはコンテナ上で実行",
+      "add": "Docker ワークロードを追加"
+    },
+    "network-segment": {
+      "label": "ネットワーク",
+      "description": "プロジェクトのマシンを接続",
+      "add": "ネットワークを追加"
+    },
+    "router": {
+      "label": "ルーター",
+      "description": "ネットワーク機器を追加",
+      "add": "ルーターを追加"
+    },
+    "edge-firewall": {
+      "label": "ファイアウォール",
+      "description": "セキュリティ機器を追加",
+      "add": "ファイアウォールを追加"
+    },
+    "group": {
+      "label": "グループ",
+      "description": "関連コンポーネントを整理",
+      "add": "グループを追加"
+    }
+  },
+  "searchProject": "プロジェクト内を検索",
+  "undo": "元に戻す",
+  "redo": "やり直す",
+  "projectActions": "プロジェクト操作",
+  "nodeCount": "ノードなし | ノード 1 個 | ノード {count} 個",
+  "edgeCount": "接続なし | 接続 1 本 | 接続 {count} 本"
 }

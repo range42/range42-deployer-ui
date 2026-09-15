@@ -1,4 +1,5 @@
 import { computed, type Ref } from 'vue'
+import type { Dimensions, XYPosition } from '@vue-flow/core'
 import { getNetworkColor, type NetworkColor } from '@/constants/networkColors'
 
 export interface ZoneOverlay {
@@ -13,9 +14,21 @@ export interface ZoneOverlay {
 
 const PADDING = 40
 
+/** Only the measured geometry and network metadata used by this overlay. */
+export interface NetworkZoneNode {
+  id: string
+  type?: string
+  position: XYPosition
+  computedPosition?: XYPosition
+  dimensions?: Dimensions
+  parentNode?: string
+  data?: { config?: { segmentType?: string; cidr?: string } }
+}
+export interface NetworkZoneEdge { source: string; target: string }
+
 export function useNetworkZones(
-  nodes: Ref<any[]>,
-  edges: Ref<any[]>,
+  nodes: Readonly<Ref<readonly NetworkZoneNode[]>>,
+  edges: Readonly<Ref<readonly NetworkZoneEdge[]>>,
   // Optional reactive trigger (e.g. bumped on VueFlow's `nodes-initialized`
   // event). Reading it inside the computed forces geometry to recompute once
   // node dimensions have been measured, so first-paint zones are not clipped.

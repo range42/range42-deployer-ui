@@ -1,19 +1,28 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { randomId } from '@/services/randomId'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useCatalog, applyClientFilters } from '@/composables/useCatalog'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { getProvider } from '@/services/git'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
+import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import CatalogTile from '@/components/ui/CatalogTile.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import NewRoleModal from '@/components/catalog/NewRoleModal.vue'
+import NewMachineModal from '@/components/catalog/NewMachineModal.vue'
+import NewContainerModal from '@/components/catalog/NewContainerModal.vue'
+import PublishTargetsModal from '@/components/PublishTargetsModal.vue'
 import { ensureNamespaces } from '@/i18n'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const inv = useInventoryStore()
 const projects = useProjectStore()
+const backend = useBackendApiStore()
 const catalog = useCatalog()
 // Expose composable refs as top-level template bindings for clean unwrap.
 const entries = catalog.entries
@@ -26,13 +35,66 @@ const selectedOs = ref('')
 const selectedDifficulty = ref('')
 const tagInput = ref('')
 const searchQuery = ref('')
+const newRoleOpen = ref(false)
+const newMachineOpen = ref(false)
+const newContainerOpen = ref(false)
+const draftKind = ref('role')
+const rolePublisherOpen = ref(false)
+const roleDraft = ref(null)
+const roleDraftId = ref('')
+const addition = ref(null)
+const addedMessage = ref('')
+const targetProjectId = computed(() => typeof route.query.project === 'string' ? route.query.project : '')
+const targetNodeId = computed(() => typeof route.query.node === 'string' ? route.query.node : '')
+const targetProject = computed(() => projects.getProject(targetProjectId.value))
 
-// Fork modal state
-const forkEntry = ref(null)
-const forkTargetRepo = ref('')
-const forkTargetName = ref('')
-const forkBusy = ref(false)
-const forkError = ref('')
+function openAddition(item) { addedMessage.value = ''; addition.value = item }
+function onAdded(result) {
+  addition.value = null
+  if (result.open) {
+    router.push({ path: `/project/${result.projectId}`, query: { tab: result.tab,
+      ...(result.nodeId ? { node: result.nodeId } : {}), ...(result.file ? { file: result.file } : {}) } })
+  } else {
+    addedMessage.value = t('catalog.append.added', { project: projects.getProject(result.projectId)?.name || result.projectId })
+    router.replace({ query: { ...route.query, project: result.projectId } })
+  }
+}
+
+function openNewRole() {
+  draftKind.value = 'role'
+  roleDraftId.value = `catalog-role-${randomId()}`
+  roleDraft.value = null
+  newRoleOpen.value = true
+}
+
+function openNewMachine() {
+  draftKind.value = 'machine'
+  roleDraftId.value = `catalog-machine-${randomId()}`
+  roleDraft.value = null
+  newMachineOpen.value = true
+}
+
+function openNewContainer() {
+  draftKind.value = 'container'
+  roleDraftId.value = `catalog-container-${randomId()}`
+  roleDraft.value = null
+  newContainerOpen.value = true
+}
+
+function publishRole(draft) {
+  roleDraft.value = draft
+  newRoleOpen.value = false
+  newMachineOpen.value = false
+  newContainerOpen.value = false
+  rolePublisherOpen.value = true
+}
+
+function closeRolePublisher() {
+  rolePublisherOpen.value = false
+  if (draftKind.value === 'container') newContainerOpen.value = true
+  else if (draftKind.value === 'machine') newMachineOpen.value = true
+  else newRoleOpen.value = true
+}
 
 // Kinds the backend can emit (catalog/entries.py). `unknown` is a fallback
 // bucket, not a useful filter facet, so it is intentionally omitted here.
@@ -67,6 +129,11 @@ const entriesView = computed(() =>
   }),
 )
 
+const batchSize = 24
+const visibleCount = ref(batchSize)
+const visibleEntries = computed(() => entriesView.value.slice(0, visibleCount.value))
+watch(entriesView, () => { visibleCount.value = batchSize })
+
 function toggleKind(kind) {
   const i = selectedKinds.value.indexOf(kind)
   if (i >= 0) selectedKinds.value.splice(i, 1)
@@ -88,13 +155,16 @@ function clearFilters() {
   searchQuery.value = ''
 }
 
-// Fetch the full entry set; a generous limit avoids silently truncating
-// catalogs. Real pagination is deferred (TODO) — acceptable while catalogs are
-// small. Filtering happens entirely client-side in `entriesView`, so there is
-// no per-filter refetch.
+// The composable follows backend pages; filters use the resulting full set.
 async function refresh() {
   await catalog.listEntries({ limit: 500 })
 }
+
+watch(() => [backend.url, backend.token], () => {
+  handoff.value = null
+  addition.value = null
+  void refresh()
+})
 
 onMounted(async () => {
   await ensureNamespaces(['catalog', 'common', 'sources'])
@@ -104,111 +174,63 @@ onMounted(async () => {
 
 // ----- Verb handlers -----
 
-function useEntry(entry) {
-  const p = projects.createProject(entry.name)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'use',
-      source_id: entry.source_id,
-      path: entry.path,
-      sha: entry.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+const handoff = ref(null)
+function useEntry(item) {
+  handoff.value = { entry: item, mode: 'use' }
 }
-
-function customizeEntry(entry) {
-  // Gate fork-and-edit on real write access. A source whose `writable` flag is
-  // explicitly false is read-only, so customizing (which publishes back) is not
-  // possible — fork & publish to a writable repo instead.
-  const source = inv.getSource(entry?.source_id)
-  if (source?.writable === false) return
-  const p = projects.createProject(`${entry.name} (custom)`)
-  projects.updateProject(p.id, {
-    catalogRef: {
-      mode: 'customize',
-      source_id: entry.source_id,
-      path: entry.path,
-      sha: entry.sha,
-    },
-  })
-  router.push(`/project/${p.id}?tab=canvas`)
+function customizeEntry(item) {
+  handoff.value = { entry: item, mode: 'customize' }
+}
+function openCreatedProject(project) {
+  handoff.value = null
+  router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
 }
 
 function openFork(entry) {
-  forkEntry.value = entry
-  forkTargetRepo.value = ''
-  forkTargetName.value = entry.name
-  forkError.value = ''
-}
-
-function closeFork() {
-  forkEntry.value = null
-  forkTargetRepo.value = ''
-  forkTargetName.value = ''
-  forkError.value = ''
-  forkBusy.value = false
-}
-
-async function submitFork() {
-  forkError.value = ''
-  const entry = forkEntry.value
-  if (!entry || !forkTargetRepo.value || !forkTargetName.value) {
-    forkError.value = 'Missing target repo or name'
-    return
-  }
-  forkBusy.value = true
-  try {
-    const m = forkTargetRepo.value.trim().match(/^([^/]+)\/([^/]+)$/)
-    if (!m) throw new Error('Target must be owner/repo')
-    const [, owner, repo] = m
-    const source = inv.getSource(entry.source_id)
-    const kind = source?.provider || 'gitlab'
-    const branch = `catalog/${forkTargetName.value.replace(/\s+/g, '-').toLowerCase()}`
-    try {
-      const prov = getProvider(kind, {
-        baseUrl: source?.base_url,
-        token: inv.getToken(entry.source_id),
-      })
-      await prov.createBranch({
-        owner,
-        repo,
-        from: 'main',
-        name: branch,
-      })
-      const seed = `name: ${forkTargetName.value}\nkind: ${entry.kind}\nfrom:\n  source_id: ${entry.source_id}\n  path: ${entry.path}\n`
-      await prov.putFile({
-        owner,
-        repo,
-        path: 'range42.yaml',
-        content: seed,
-        message: `seed ${forkTargetName.value} from ${entry.source_id}/${entry.path}`,
-        branch,
-      })
-    } catch (e) {
-      // provider may not be implemented (e.g. github v1) — proceed to navigate
-      console.warn('[catalog] fork provider call failed:', e)
-    }
-    const newSourceId = `${kind}:${owner}/${repo}`
-    router.push(`/catalog/${encodeURIComponent(newSourceId)}/${encodeURIComponent('range42.yaml')}`)
-    closeFork()
-  } catch (err) {
-    forkError.value = err?.message || String(err)
-  } finally {
-    forkBusy.value = false
-  }
+  handoff.value = { entry, mode: 'customize', publish: true }
 }
 </script>
 
 <template>
-  <section class="max-w-6xl mx-auto p-6">
-    <header class="mb-6">
-      <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
-      <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
+  <CatalogProjectHandoff v-if="handoff" :key="`${handoff.entry.source_id}:${handoff.entry.path}:${handoff.mode}`"
+    :entry="handoff.entry" :mode="handoff.mode" :publish-after-import="handoff.publish" @close="handoff = null" @opened="openCreatedProject" />
+  <CatalogAppendDialog v-if="addition" :entry="addition" :initial-project-id="targetProjectId" :initial-node-id="targetNodeId" @close="addition = null" @added="onAdded" />
+  <section class="max-w-7xl mx-auto p-4 sm:p-6">
+    <header class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold">{{ t('catalog.title') }}</h1>
+        <p class="text-sm text-base-content/70 mt-1">{{ t('catalog.subtitle') }}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline btn-sm" data-testid="new-catalog-role" @click="openNewRole">{{ t('catalog.new_role') }}</button>
+        <button type="button" class="btn btn-outline btn-sm" data-testid="new-catalog-container" @click="openNewContainer">{{ t('catalog.new_container') }}</button>
+        <button type="button" class="btn btn-primary btn-sm" data-testid="new-catalog-machine" @click="openNewMachine">{{ t('catalog.new_machine') }}</button>
+      </div>
     </header>
+    <div v-if="targetProject" class="rounded-xl border border-primary/25 bg-primary/5 p-4 mb-5 flex flex-wrap items-center justify-between gap-3" data-testid="catalog-project-context">
+      <div class="min-w-0"><p class="font-medium break-words">{{ t('catalog.append.context', { project: targetProject.name }) }}</p><p class="text-sm text-base-content/70 mt-1">{{ t('catalog.append.context_hint') }}</p></div>
+      <RouterLink class="btn btn-outline btn-sm" :to="{ path: `/project/${targetProject.id}`, query: { tab: 'canvas', ...(targetNodeId ? { node: targetNodeId } : {}) } }">{{ t('catalog.append.return_project') }}</RouterLink>
+    </div>
+    <p v-else-if="targetProjectId" role="alert" class="alert alert-warning mb-4">{{ t('catalog.append.missing_project') }}</p>
+    <p v-if="addedMessage" role="status" class="alert alert-success mb-4">{{ addedMessage }}</p>
 
-    <!-- Empty state when no sources -->
-    <div v-if="inv.sources.length === 0">
+    <NewRoleModal :key="`role:${roleDraftId}`" :open="newRoleOpen" @close="newRoleOpen = false" @prepared="publishRole" />
+    <NewContainerModal :key="`container:${roleDraftId}`" :open="newContainerOpen" @close="newContainerOpen = false" @prepared="publishRole" />
+    <NewMachineModal :key="`machine:${roleDraftId}`" :open="newMachineOpen" @close="newMachineOpen = false" @prepared="publishRole" />
+    <PublishTargetsModal
+      v-if="roleDraft"
+      :open="rolePublisherOpen"
+      :project-id="roleDraftId"
+      :files="roleDraft.files"
+      :message="`Add ${draftKind === 'machine' ? 'VM blueprint' : draftKind === 'container' ? 'Compose workload' : 'Ansible role'} ${roleDraft.name}`"
+      :create-only="true"
+      :component-path="roleDraft.path"
+      @close="closeRolePublisher"
+      @published="refresh"
+    />
+
+    <!-- Backend entries remain browsable before this browser loads its source mirror. -->
+    <div v-if="inv.sources.length === 0 && entries.length === 0 && !loading && !loadError">
       <EmptyState
         :title="t('catalog.empty.no_sources_title')"
         :description="t('catalog.empty.no_sources_desc')"
@@ -228,14 +250,15 @@ async function submitFork() {
         data-testid="catalog-filters"
       >
         <div>
-          <label class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.kind') }}</label>
-          <div class="flex flex-wrap gap-1 mt-1">
+          <p id="catalog-kind-label" class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.kind') }}</p>
+          <div class="flex flex-wrap gap-1 mt-1" role="group" aria-labelledby="catalog-kind-label">
             <button
               v-for="k in KINDS"
               :key="k"
               type="button"
               class="btn btn-xs"
               :class="selectedKinds.includes(k) ? 'btn-primary' : 'btn-ghost'"
+              :aria-pressed="selectedKinds.includes(k)"
               @click="toggleKind(k)"
             >
               {{ k.replace(/_/g, ' ') }}
@@ -244,14 +267,15 @@ async function submitFork() {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.source') }}</label>
-          <div class="flex flex-wrap gap-1 mt-1">
+          <p id="catalog-source-label" class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.source') }}</p>
+          <div class="flex flex-wrap gap-1 mt-1" role="group" aria-labelledby="catalog-source-label">
             <button
               v-for="s in inv.sources"
               :key="s.id"
               type="button"
               class="btn btn-xs"
               :class="selectedSources.includes(s.id) ? 'btn-primary' : 'btn-ghost'"
+              :aria-pressed="selectedSources.includes(s.id)"
               @click="toggleSource(s.id)"
             >
               {{ s.name || s.id }}
@@ -260,8 +284,9 @@ async function submitFork() {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.os') }}</label>
+          <label for="catalog-os" class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.os') }}</label>
           <input
+            id="catalog-os" name="os" autocomplete="off"
             v-model="selectedOs"
             type="text"
             class="input input-bordered input-sm w-full mt-1"
@@ -270,16 +295,17 @@ async function submitFork() {
         </div>
 
         <div>
-          <label class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.difficulty') }}</label>
-          <select v-model="selectedDifficulty" class="select select-bordered select-sm w-full mt-1">
+          <label for="catalog-difficulty" class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.difficulty') }}</label>
+          <select id="catalog-difficulty" v-model="selectedDifficulty" name="difficulty" class="select select-bordered select-sm w-full mt-1">
             <option value="">{{ t('catalog.filters.difficulty_any') }}</option>
             <option v-for="d in DIFFICULTIES" :key="d" :value="d">{{ d }}</option>
           </select>
         </div>
 
         <div class="md:col-span-2">
-          <label class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.tags') }}</label>
+          <label for="catalog-tags" class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.tags') }}</label>
           <input
+            id="catalog-tags" name="tags" autocomplete="off"
             v-model="tagInput"
             type="text"
             class="input input-bordered input-sm w-full mt-1"
@@ -288,8 +314,9 @@ async function submitFork() {
         </div>
 
         <div class="md:col-span-2">
-          <label class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.search') }}</label>
+          <label for="catalog-search" class="text-xs font-semibold text-base-content/60">{{ t('catalog.filters.search') }}</label>
           <input
+            id="catalog-search" name="search" autocomplete="off"
             v-model="searchQuery"
             type="search"
             class="input input-bordered input-sm w-full mt-1"
@@ -297,7 +324,8 @@ async function submitFork() {
           />
         </div>
 
-        <div class="md:col-span-4 flex justify-end">
+        <div class="md:col-span-2 lg:col-span-4 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-xs text-base-content/60" role="status">{{ t('catalog.append.results', { count: entriesView.length, total: entries.length }) }}</p>
           <button type="button" class="btn btn-ghost btn-sm" @click="clearFilters">
             {{ t('catalog.filters.clear') }}
           </button>
@@ -324,7 +352,7 @@ async function submitFork() {
 
       <!-- Error banner (stale cache still shown below if entries exist) -->
       <div
-        v-if="loadError && entriesView.length === 0"
+        v-if="loadError"
         class="alert alert-warning mb-4"
         role="alert"
         data-testid="catalog-error"
@@ -342,20 +370,16 @@ async function submitFork() {
         data-testid="catalog-grid"
       >
         <div
-          v-for="entry in entriesView"
+          v-for="entry in visibleEntries"
           :key="`${entry.source_id}:${entry.path}`"
           class="relative"
         >
-          <span
-            v-if="isSourceReadonly(entry.source_id)"
-            class="badge badge-ghost badge-sm absolute top-3 right-3 z-10"
-            data-testid="tile-readonly-badge"
-            :title="t('catalog.verbs.customize_readonly_hint')"
-          >
-            {{ t('sources.access_readonly') }}
-          </span>
           <CatalogTile
             :entry="entry"
+            :source-readonly="isSourceReadonly(entry.source_id)"
+            :project-id="targetProjectId"
+            :node-id="targetNodeId"
+            @append="openAddition"
             @use="useEntry"
             @customize="customizeEntry"
             @fork="openFork"
@@ -368,36 +392,14 @@ async function submitFork() {
           :description="t('catalog.empty.no_entries_desc')"
         />
       </div>
+      <div v-if="entriesView.length" class="mt-6 flex flex-col items-center gap-3">
+        <p class="text-sm text-base-content/70" role="status" data-testid="catalog-visible-count">
+          {{ t('catalog.visible_results', { count: visibleEntries.length, total: entriesView.length }) }}
+        </p>
+        <button v-if="visibleEntries.length < entriesView.length" type="button" class="btn btn-outline"
+          data-testid="catalog-load-more" @click="visibleCount += batchSize">{{ t('catalog.load_more') }}</button>
+      </div>
     </template>
 
-    <!-- Fork modal -->
-    <div v-if="forkEntry" class="modal modal-open" role="dialog" aria-modal="true">
-      <div class="modal-box max-w-md">
-        <h3 class="font-bold text-lg mb-3">{{ t('catalog.detail.fork_modal_title') }}</h3>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_repo') }}</span>
-          <input v-model="forkTargetRepo" type="text" class="input input-bordered" placeholder="owner/repo" />
-        </label>
-        <label class="form-control mb-3">
-          <span class="label label-text">{{ t('catalog.detail.fork_target_name') }}</span>
-          <input v-model="forkTargetName" type="text" class="input input-bordered" />
-        </label>
-        <p v-if="forkError" class="text-error text-sm">{{ forkError }}</p>
-        <div class="modal-action">
-          <button type="button" class="btn btn-ghost" :disabled="forkBusy" @click="closeFork">
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="forkBusy || !forkTargetRepo || !forkTargetName"
-            @click="submitFork"
-          >
-            {{ t('catalog.detail.fork_submit') }}
-          </button>
-        </div>
-      </div>
-      <div class="modal-backdrop" @click="closeFork" />
-    </div>
   </section>
 </template>

@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount as mountComponent } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
+import messages from '@/locales/en/variablesTab.json'
 import VariablesTab from '@/components/project/VariablesTab.vue'
+
+const mount = (component, options) => mountComponent(component, { ...options, global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en: { variablesTab: messages } } })] } })
 
 describe('VariablesTab', () => {
   const base = {
@@ -54,5 +58,12 @@ describe('VariablesTab', () => {
     const events = wrapper.emitted('update:overlay') || []
     const last = events[events.length - 1][0]
     expect(Object.prototype.hasOwnProperty.call(last.param_overrides.env, 'ADMIN_USER')).toBe(false)
+  })
+  it('directs secret values to the backend vault while allowing removal of an old stored override', async () => {
+    const wrapper = mount(VariablesTab, { props: { base, overlay: { param_overrides: { env: { FLAG_VALUE: 'old-local-value' } } } } })
+    expect(wrapper.find('[data-testid="override-FLAG_VALUE"]').exists()).toBe(false)
+    expect(wrapper.find('[data-name="FLAG_VALUE"]').text()).toMatch(/vault/i)
+    await wrapper.get('[data-testid="clear-FLAG_VALUE"]').trigger('click')
+    expect(wrapper.emitted('update:overlay')[0][0].param_overrides.env).not.toHaveProperty('FLAG_VALUE')
   })
 })

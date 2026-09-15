@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import DeploymentPreflight from '@/views/DeploymentPreflight.vue'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import deploymentEn from '@/locales/en/deployment.json'
 import commonEn from '@/locales/en/common.json'
+
+enableAutoUnmount(afterEach)
 
 function makeI18n() {
   return createI18n({
@@ -86,6 +90,8 @@ describe('<DeploymentPreflight>', () => {
   let originalLocation
   let originalClipboard
   beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
     originalFetch = globalThis.fetch
     originalLocation = window.location
     originalClipboard = navigator.clipboard
@@ -109,6 +115,25 @@ describe('<DeploymentPreflight>', () => {
         configurable: true,
         value: originalClipboard,
       })
+    }
+  })
+
+  it('uses the selected backend token and reloads on backend change', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://old.test', token: 'old-token' })
+    const next = backend.addHost({ url: 'https://new.test', token: 'new-token' })
+    globalThis.fetch = routedFetch({ meta: makeMeta(), preflight: makeRecord() })
+    const router = makeRouter()
+    await router.push('/deployments/d-1/preflight')
+    const wrapper = mount(DeploymentPreflight, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(globalThis.fetch.mock.calls[0][0]).toBe('https://old.test/v1/deployments/d-1')
+    backend.setActiveHost(next)
+    await flushPromises()
+    const calls = globalThis.fetch.mock.calls.slice(-2)
+    for (const [url, options] of calls) {
+      expect(url).toMatch(/^https:\/\/new.test\/v1\//)
+      expect(new Headers(options.headers).get('Authorization')).toBe('Bearer new-token')
     }
   })
 
