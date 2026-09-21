@@ -95,6 +95,11 @@
       "label": "Group",
       "description": "Organize related components",
       "add": "Add group"
+    },
+    "note": {
+      "label": "Note",
+      "description": "Add text to the canvas",
+      "add": "Add note"
     }
   },
   "searchProject": "Search project",

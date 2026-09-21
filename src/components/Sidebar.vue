@@ -24,7 +24,7 @@ function changeLocale(event: Event) {
 const categories = [
   { key: 'compute', items: [{ type: 'vm', icon: 'monitor' }, { type: 'lxc', icon: 'cube' }, { type: 'docker', icon: 'container' }] },
   { key: 'network', items: [{ type: 'network-segment', icon: 'link' }, { type: 'router', icon: 'router' }, { type: 'edge-firewall', icon: 'shield' }] },
-  { key: 'organization', items: [{ type: 'group', icon: 'folder-open' }] },
+  { key: 'organization', items: [{ type: 'group', icon: 'folder-open' }, { type: 'note', icon: 'document' }] },
 ]
 const resources = [
   { key: 'templates', icon: 'disc', action: () => emit('openTemplates') },

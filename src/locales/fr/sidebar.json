@@ -95,6 +95,11 @@
       "label": "Groupe",
       "description": "Organiser les composants",
       "add": "Ajouter un groupe"
+    },
+    "note": {
+      "label": "Note",
+      "description": "Ajouter du texte au canevas",
+      "add": "Ajouter une note"
     }
   },
   "searchProject": "Rechercher dans le projet",

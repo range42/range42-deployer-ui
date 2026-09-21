@@ -153,6 +153,8 @@ export function useDragAndDrop() {
       }
     }
 
+    if (type === 'note') newNode.style = { width: '320px', height: '200px' }
+
     const { off } = onNodesInitialized(() => {
       updateNode(nodeId, (node) => {
         if (!node.parentNode) {
@@ -191,6 +193,10 @@ export function useDragAndDrop() {
 
   const getNodeConfig = (type) => {
     const configs = {
+      note: {
+        label: 'Note',
+        defaultConfig: { name: '', text: '', color: 'yellow' },
+      },
       vm: {
         label: 'Virtual Machine',
         defaultConfig: {

@@ -18,4 +18,16 @@ describe('VueFlow topology validation boundary', () => {
     expect(resolver.validateTopology(graph, [])).toMatchObject({ valid: true, errors: [],
       warnings: [{ nodeId: 'vm', field: 'connection' }] })
   })
+
+  it('does not count annotation links as network connections or validate notes as resources', () => {
+    const resolver = useTopologyResolver()
+    const graph: Node[] = [
+      { id: 'vm', type: 'vm', position: { x: 0, y: 0 }, data: { type: 'vm', label: 'Example VM', status: 'draft' } },
+      { id: 'note', type: 'note', position: { x: 0, y: 100 }, data: { config: { text: 'Review' } } },
+    ]
+    expect(resolver.validateTopology(graph, [{ id: 'annotation', source: 'note', target: 'vm' }])).toMatchObject({
+      valid: true, errors: [], warnings: [{ nodeId: 'vm', field: 'connection' }],
+    })
+    expect(resolver.resolve([graph[1]], [], { proxmoxNode: 'example' }).steps).toEqual([])
+  })
 })

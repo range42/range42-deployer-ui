@@ -14,6 +14,7 @@ import DnsFields from '@/components/ConfigPanel/DnsFields.vue'
 import DhcpFields from '@/components/ConfigPanel/DhcpFields.vue'
 import DockerFields from '@/components/ConfigPanel/DockerFields.vue'
 import GroupFields from '@/components/ConfigPanel/GroupFields.vue'
+import NoteFields from '@/components/ConfigPanel/NoteFields.vue'
 import SimulatedInternetFields from '@/components/ConfigPanel/SimulatedInternetFields.vue'
 import EdgeFirewallFields from '@/components/ConfigPanel/EdgeFirewallFields.vue'
 import LxcFields from '@/components/ConfigPanel/LxcFields.vue'
@@ -97,11 +98,13 @@ const typeIcon = computed(() => {
     case 'lxc': return 'cube'
     case 'network-segment': return 'link'
     case 'router': return 'router'
+    case 'note': return 'document'
     default: return 'gear'
   }
 })
 
-const typeLabel = computed(() => (props.node?.type || '').replace('-', ' '))
+const typeLabel = computed(() => props.node?.type === 'note'
+  ? t('sidebar.items.note.label') : (props.node?.type || '').replace('-', ' '))
 const subtitleState = computed(() =>
   props.node?.data?.deployed ? t('configPanel.subtitle.deployed') : t('configPanel.subtitle.design'),
 )
@@ -589,6 +592,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
         <!-- Group/Container Specific Fields -->
         <GroupFields v-if="node.type === 'group'" v-model="config" />
+        <NoteFields v-if="node.type === 'note'" v-model="config" />
 
         <!-- Simulated Internet Specific Fields -->
         <SimulatedInternetFields v-if="node.type === 'simulated-internet'" v-model="config" />
@@ -604,6 +608,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
 
         <!-- Per-node Attachments -->
         <NodeAttachmentsSection
+          v-if="node.type !== 'note'"
           :node="node"
           :attachments="attachments"
           :nodes="nodes"

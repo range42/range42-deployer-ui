@@ -24,6 +24,28 @@ describe('checked local project import boundary', () => {
     expect(JSON.parse(localStorage.getItem('range42_projects'))[0].attachments).toEqual([])
   })
 
+  it.each(['import', 'load'])('upgrades legacy text annotations on %s while preserving the canvas', (operation) => {
+    const store = useProjectStore()
+    const draft = { id: 'example', name: 'Example', nodes: [
+      { id: 'note', type: 'default', position: { x: 20, y: 30 }, style: { width: '360px', height: '240px' },
+        data: { reference_only: true, label: 'Review details', config: { name: 'Review', description: 'Details' } } },
+      { id: 'other', type: 'default', data: { label: 'Other' } },
+    ], edges: [{ id: 'link', source: 'note', target: 'other' }], attachments: [] }
+    if (operation === 'import') store.importProject(draft, { generateNewId: false })
+    else {
+      localStorage.setItem('range42_projects', JSON.stringify([draft]))
+      store.loadProjects()
+    }
+    const project = store.getProject('example')
+    expect(project.nodes[0]).toMatchObject({
+      id: 'note', type: 'note', position: draft.nodes[0].position, style: draft.nodes[0].style,
+      data: { type: 'note', config: { name: 'Review', text: 'Details', color: 'yellow' } },
+    })
+    expect(project.nodes[1]).toEqual(draft.nodes[1])
+    expect(project.edges).toEqual(draft.edges)
+    expect(draft.nodes[0].type).toBe('default')
+  })
+
   it('rejects a non-text file result without changing existing projects', async () => {
     const store = useProjectStore()
     store.createProject('Existing')

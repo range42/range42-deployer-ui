@@ -4,6 +4,7 @@ import { expandScenarioReplication } from './scenarioReplication'
 import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
 import { validateBundleParameters } from './bundleParameters.ts'
+import { withoutCanvasNotes } from './canvasNotes'
 
 const BUNDLES = "{{ lookup('env', 'RANGE42_BUNDLE_DIR') }}"
 const VAULT = "{{ lookup('env', 'RANGE42_ACTIVE_CONFIG_DIR') }}/secrets/default_vault.yml"
@@ -223,6 +224,7 @@ function teardownPlay(vms) {
  */
 export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay }) {
   validateFileMap(files)
+  ;({ nodes, edges } = withoutCanvasNotes(nodes, edges))
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
   requireValue(['sdn', 'existing_bridge'].includes(scenario.network_mode), 'Choose SDN or an existing bridge network')
   requireValue(!attachments.length, 'Existing canvas attachments must be moved into the scenario Content list before generating; they cannot be silently omitted')

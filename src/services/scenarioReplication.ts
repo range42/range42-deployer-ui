@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
 import type { CanvasEdge, CanvasNode } from '@/overlay/serialize'
+import { withoutCanvasNotes } from './canvasNotes'
 
 export type ScenarioScope = 'shared' | 'per_team' | 'per_user'
 interface Cohort { team_id: string | null; user_id: string | null }
@@ -134,6 +135,7 @@ function validateCanvas(nodes: CanvasNode[], edges: CanvasEdge[], nodeScopes: Re
 /** Expand authoring intent into literal deployment rows without mutating the source canvas. */
 interface ReplicationInput { scenario: unknown; nodes: CanvasNode[]; edges: CanvasEdge[] }
 function expand(input: ReplicationInput, planning: boolean) {
+  input = { ...input, ...withoutCanvasNotes(input.nodes, input.edges) }
   const scenario = record(input.scenario, 'Scenario')
   if (scenario.replication === undefined) return null
   const replication = record(scenario.replication, 'Replication')

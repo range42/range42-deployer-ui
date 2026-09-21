@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useVueFlow, applyNodeChanges, applyEdgeChanges, addEdge } from '@vue-flow/core'
+import { withoutCanvasNotes } from '@/services/canvasNotes'
 
 // Node types that represent compute resources
 const COMPUTE_TYPES = ['vm', 'lxc', 'edge-firewall', 'router']
@@ -305,6 +306,11 @@ export function useInfraBuilder() {
     const sourceNode = allNodes.find(n => n.id === connection.source)
     const targetNode = allNodes.find(n => n.id === connection.target)
 
+    if (sourceNode?.type === 'note' || targetNode?.type === 'note') {
+      edges.value = addEdge({ ...connection, type: 'smoothstep', style: { strokeDasharray: '5 5' } }, edges.value)
+      return
+    }
+
     // Determine if this is a compute-to-network connection
     const isComputeToNetwork = (
       (COMPUTE_TYPES.includes(sourceNode?.type) && NETWORK_TYPES.includes(targetNode?.type)) ||
@@ -312,7 +318,7 @@ export function useInfraBuilder() {
     )
 
     // Count existing connections to determine interface index
-    const existingConnections = edges.value.filter(e =>
+    const existingConnections = withoutCanvasNotes(allNodes, edges.value).edges.filter(e =>
       e.source === connection.source || e.target === connection.source
     ).length
 

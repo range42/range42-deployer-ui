@@ -120,5 +120,17 @@
     "edge-firewall": "Edge Firewall connects your network segments.",
     "vuln-target": "Vulnerable targets are intentionally insecure systems for training purposes.",
     "shared-service": "Shared services are accessible from all Gamenets (Git, Chat, Wiki, Auth)."
+  },
+  "note": {
+    "text": "Note text",
+    "color": "Note color",
+    "empty": "Add text in the note settings.",
+    "hint": "Notes and their connections are annotations; they do not create infrastructure.",
+    "colors": {
+      "yellow": "Yellow",
+      "blue": "Blue",
+      "green": "Green",
+      "neutral": "Neutral"
+    }
   }
 }

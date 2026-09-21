@@ -95,6 +95,11 @@
       "label": "グループ",
       "description": "関連コンポーネントを整理",
       "add": "グループを追加"
+    },
+    "note": {
+      "label": "メモ",
+      "description": "キャンバスにテキストを追加",
+      "add": "メモを追加"
     }
   },
   "searchProject": "プロジェクト内を検索",

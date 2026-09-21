@@ -6,6 +6,16 @@ import { emitConcreteScenario } from '@/services/concreteScenario'
 import { replicatedScenario as fixture, replicationKey as key } from './fixtures/replicatedScenario'
 
 describe('concrete scenario replication', () => {
+  it('excludes canvas notes and annotation links from replication and allocation', () => {
+    const input = fixture()
+    const expanded = expandScenarioReplication(input)
+    const planned = planScenarioReplication(input)
+    input.nodes.push({ id: 'note', type: 'note', data: { config: { text: 'Review' } } })
+    input.edges.push({ id: 'annotation', source: 'note', target: 'vm1' })
+    expect(expandScenarioReplication(input)).toEqual(expanded)
+    expect(planScenarioReplication(input)).toEqual(planned)
+  })
+
   it('emits every user and only its own team network as literal VM, NIC and content targets', () => {
     const input = fixture()
     const result = emitConcreteScenario(input)

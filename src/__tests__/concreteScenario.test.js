@@ -26,6 +26,16 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it('keeps note text and annotation connections out of executable files', () => {
+    const input = fixture()
+    const expected = emitConcreteScenario(input).files
+    input.nodes.push({ id: 'note', type: 'note', data: { config: { name: 'Review', text: 'Annotation only' } } })
+    input.edges.push({ id: 'annotation', source: 'note', target: 'vm1' })
+    expect(emitConcreteScenario(input).files).toEqual(expected)
+    expect(input.nodes.at(-1).type).toBe('note')
+    expect(input.edges.at(-1).id).toBe('annotation')
+  })
+
   it('records reviewed SSH and DNS preferences on every literal VM', () => {
     const input = fixture()
     Object.assign(input.scenario.vms[0], { ssh_user: 'operator', dns_servers: '10.42.10.2, 1.1.1.1', dns_search_domain: 'lab.example' })

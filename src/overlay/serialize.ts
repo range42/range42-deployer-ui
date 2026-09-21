@@ -228,6 +228,7 @@ export interface CanvasLayout {
     connection?: Record<string, unknown>;
   }>;
   unsupported: CanvasNode[];
+  annotations?: CanvasEdge[];
 }
 
 export function edgeKey(source: string, target: string, occurrence = 0): string {
@@ -249,8 +250,13 @@ export function extractLayout(canvas: CanvasModel): CanvasLayout {
     };
   }
   const occurrences = new Map<string, number>();
+  const noteIds = new Set(canvas.nodes.filter(node => node.type === 'note').map(node => node.id));
   for (const e of canvas.edges || []) {
     if (e.data?.synthetic) continue; // docker tethers are re-derived
+    if (noteIds.has(e.source) || noteIds.has(e.target)) {
+      (layout.annotations ??= []).push(JSON.parse(JSON.stringify(e)));
+      continue;
+    }
     // Canonicalize compute<->network edges to edgeKey(computeEnd, networkEnd)
     // so the deserialize lookup (keyed compute|network) hits regardless of the
     // direction the user drew the edge. Repeated NICs keep ordered layout
@@ -340,6 +346,16 @@ export function deserializeToCanvas(
 
   for (const n of doc.nodes ?? []) walk(n, null);
   for (const u of layout.unsupported ?? []) nodes.push(JSON.parse(JSON.stringify(u)));
+  const nodeIds = new Set(nodes.map(node => node.id));
+  const noteIds = new Set(nodes.filter(node => node.type === 'note').map(node => node.id));
+  const edgeIds = new Set(edges.map(edge => edge.id));
+  for (const edge of layout.annotations ?? []) {
+    if (nodeIds.has(edge.source) && nodeIds.has(edge.target) && !edgeIds.has(edge.id)
+      && (noteIds.has(edge.source) || noteIds.has(edge.target))) {
+      edges.push(JSON.parse(JSON.stringify(edge)));
+      edgeIds.add(edge.id);
+    }
+  }
 
   return { nodes, edges, attachments };
 }

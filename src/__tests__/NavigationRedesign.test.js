@@ -71,6 +71,15 @@ it('offers a real component button without misleading shortcut badges', async ()
   expect(wrapper.emitted('addComponent')).toEqual([['vm']])
 })
 
+it('offers a draggable note in the component palette', async () => {
+  const wrapper = mount(Sidebar, { global: { plugins: [createPinia(), i18n] } })
+  await flushPromises()
+  const button = wrapper.get('button[aria-label="Add note"]')
+  expect(button.attributes('draggable')).toBe('true')
+  await button.trigger('click')
+  expect(wrapper.emitted('addComponent')).toEqual([['note']])
+})
+
 it('exposes project section state and labels the language control', async () => {
   const wrapper = mount(Sidebar, { props: { project: { name: 'Lab' } }, global: { plugins: [createPinia(), i18n] } })
   await flushPromises()

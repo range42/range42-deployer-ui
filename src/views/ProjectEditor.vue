@@ -12,6 +12,7 @@ import Sidebar from '../components/Sidebar.vue'
 
 // Node components for deployable Proxmox resources
 import InfraNodeVm from '../components/nodes/InfraNodeVm.vue'
+import NoteNode from '../components/nodes/NoteNode.vue'
 import InfraNodeLxc from '../components/nodes/InfraNodeLxc.vue'
 import InfraNodeNetwork from '../components/nodes/InfraNodeNetwork.vue'
 import InfraNodeRouter from '../components/nodes/InfraNodeRouter.vue'
@@ -730,7 +731,8 @@ const handleEdgeClick = (event) => {
   showConfigPanel.value = false // Close node config when edge is selected
 }
 
-const showEdgeConfig = computed(() => !!selectedEdge.value?.data)
+const showEdgeConfig = computed(() => !!selectedEdge.value?.data
+  && edgeSourceNode.value?.type !== 'note' && edgeTargetNode.value?.type !== 'note')
 
 // Get source and target nodes for the selected edge
 const edgeSourceNode = computed(() => {
@@ -1293,6 +1295,9 @@ const handleInfrastructureImport = (result) => {
           <MiniMap position="bottom-right" />
 
           <!-- Organization -->
+          <template #node-note="props">
+            <NoteNode v-bind="props" />
+          </template>
           <template #node-group="props">
             <GroupNode
               v-bind="props"

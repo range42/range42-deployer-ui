@@ -1,5 +1,6 @@
 // @ts-check
 import { validateAuthoredFiles } from '@/services/projectFiles'
+import { normalizeCanvasNotes } from '@/services/canvasNotes'
 
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
@@ -13,6 +14,7 @@ export const useProjectStore = defineStore('projects', () => {
       const saved = localStorage.getItem('range42_projects')
       if (saved) {
         projects.value = JSON.parse(saved)
+        projects.value.forEach(project => { project.nodes = normalizeCanvasNotes(project.nodes || []) })
       }
     } catch (error) {
       console.error('Failed to load projects:', error)
@@ -118,6 +120,7 @@ export const useProjectStore = defineStore('projects', () => {
     // Create new project object
     const project = {
       ...data,
+      nodes: normalizeCanvasNotes(data.nodes),
       id: generateNewId ? `project_${Date.now()}` : data.id,
       name: namePrefix ? `${namePrefix}${data.name}` : data.name,
       created: new Date().toISOString(),
