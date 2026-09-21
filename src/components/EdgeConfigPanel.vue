@@ -1,6 +1,11 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import FormField from '@/components/ui/FormField.vue'
+import { useI18n } from 'vue-i18n'
+import { isReferenceEdge } from '@/services/canvasNotes'
+
+const { t } = useI18n()
 
 const props = defineProps({
   edge: {
@@ -85,6 +90,7 @@ const networkNode = computed(() => {
   if (props.targetNode?.type === 'network-segment') return props.targetNode
   return null
 })
+const isNetworkConnection = computed(() => !!computeNode.value && !!networkNode.value && !isReferenceEdge(props.edge))
 
 // Network CIDR for reference
 const networkCidr = computed(() => networkNode.value?.data?.config?.cidr || 'N/A')
@@ -102,15 +108,15 @@ const connectionData = computed(() => ({
   isGateway: config.value.isGateway || undefined,
 }))
 
-// Auto-update parent when config changes
-watch(config, () => {
+// Only input events write configuration; selecting an edge just loads its form.
+function updateConnection() {
+  if (!isNetworkConnection.value) return
   // Emit the edge data in the correct format: { connection: NetworkConnectionData }
   emit('update', props.edge.id, {
     connection: connectionData.value,
     replication_intent: config.value.replication_intent || 'pair_scoped',
-    label: config.value.ipAddress || undefined
   })
-}, { deep: true })
+}
 
 const close = () => {
   emit('close')
@@ -118,16 +124,21 @@ const close = () => {
 </script>
 
 <template>
-  <div class="edge-config-panel card bg-base-200 shadow-xl">
+  <div class="edge-config-panel card bg-base-200 shadow-xl" role="region" :aria-label="t('configPanel.connection.title')">
     <div class="card-body p-4">
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h3 class="card-title text-base">
-          <AppIcon name="link" class="w-5 h-5 inline" /> Network Connection
+          <AppIcon name="link" class="w-5 h-5 inline" /> {{ t(isNetworkConnection ? 'configPanel.connection.networkTitle' : 'configPanel.connection.title') }}
         </h3>
-        <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
+        <button class="btn btn-sm btn-circle btn-ghost" :aria-label="t('configPanel.connection.close')" @click="close">✕</button>
       </div>
 
+      <FormField :model-value="edge.label ?? edge.data?.label ?? ''" :label="t('configPanel.connection.text')"
+        :hint="t('configPanel.connection.hint')" type="textarea" :rows="2" icon=""
+        @update:model-value="emit('update', edge.id, { label: $event })" />
+
+      <div v-if="isNetworkConnection" @input="updateConnection" @change="updateConnection">
       <!-- Connection Info -->
       <div class="alert alert-info mb-4 py-2">
         <div class="text-xs">
@@ -329,6 +340,7 @@ const close = () => {
           </div>
         </label>
       </div>
+      </div>
     </div>
   </div>
 </template>
@@ -337,5 +349,7 @@ const close = () => {
 .edge-config-panel {
   min-width: 280px;
   max-width: 320px;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
 }
 </style>

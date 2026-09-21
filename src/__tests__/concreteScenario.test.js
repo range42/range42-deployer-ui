@@ -26,6 +26,13 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it('excludes explicit reference lines between resources from deployment', () => {
+    const input = fixture()
+    const expected = emitConcreteScenario(input).files
+    input.edges.push({ id: 'reference', source: 'vm1', target: 'net1', data: { reference_only: true }, label: 'Reference' })
+    expect(emitConcreteScenario(input).files).toEqual(expected)
+  })
+
   it('keeps note text and annotation connections out of executable files', () => {
     const input = fixture()
     const expected = emitConcreteScenario(input).files

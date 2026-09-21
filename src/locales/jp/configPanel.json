@@ -132,5 +132,13 @@
       "green": "緑",
       "neutral": "ニュートラル"
     }
+  },
+  "connection": {
+    "title": "接続",
+    "networkTitle": "ネットワーク接続",
+    "text": "接続テキスト",
+    "hint": "線の中央に表示されます。",
+    "close": "接続設定を閉じる",
+    "edit": "接続を編集"
   }
 }

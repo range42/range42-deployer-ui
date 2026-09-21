@@ -326,7 +326,7 @@ onMounted(() => {
 
   currentProject.value = project
   loadProjectData(project)
-  ensureNamespaces(['configTab', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog', 'deployment'])
+  ensureNamespaces(['configTab', 'configPanel', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog', 'deployment'])
 })
 
 onUnmounted(() => {
@@ -731,8 +731,13 @@ const handleEdgeClick = (event) => {
   showConfigPanel.value = false // Close node config when edge is selected
 }
 
-const showEdgeConfig = computed(() => !!selectedEdge.value?.data
-  && edgeSourceNode.value?.type !== 'note' && edgeTargetNode.value?.type !== 'note')
+/** @param {string} id @param {MouseEvent} event */
+function handleEdgeLabelClick(id, event) {
+  const edge = flowGetEdges.value?.find(edge => edge.id === id)
+  if (edge) handleEdgeClick({ edge, event })
+}
+
+const showEdgeConfig = computed(() => !!selectedEdge.value && !selectedEdge.value.data?.synthetic)
 
 // Get source and target nodes for the selected edge
 const edgeSourceNode = computed(() => {
@@ -1335,7 +1340,7 @@ const handleInfrastructureImport = (result) => {
 
           <!-- Custom Edge for network connections -->
           <template #edge-network="props">
-            <NetworkEdge v-bind="props" />
+            <NetworkEdge v-bind="props" :label="typeof props.label === 'string' ? props.label : undefined" @select="handleEdgeLabelClick(props.id, $event)" />
           </template>
 
           <!-- Dashed containment tether: Docker -> VM/LXC host -->

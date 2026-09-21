@@ -9,6 +9,40 @@ vi.mock('@vue-flow/core', async importOriginal => ({
 }))
 
 describe('canvas notes', () => {
+  it('preserves reference lines between resources without adding network interfaces', () => {
+    const canvas: CanvasModel = { nodes: [
+      { id: 'first', type: 'vm', data: { config: { name: 'First' } } },
+      { id: 'second', type: 'vm', data: { config: { name: 'Second' } } },
+      { id: 'net', type: 'network-segment', data: { config: { bridge: 'vmbr10' } } },
+    ], edges: [
+      { id: 'logical', type: 'smoothstep', source: 'first', target: 'second', label: 'Service link' },
+      { id: 'reference', type: 'smoothstep', source: 'first', target: 'net', label: 'Reference', data: { reference_only: true } },
+    ], attachments: [] }
+    const doc = serializeToCatalogEntry(canvas, { name: 'Example' })
+    expect(doc.nodes?.[0].networks).toBeUndefined()
+    expect(deserializeToCanvas(doc, extractLayout(canvas)).edges).toEqual(canvas.edges)
+  })
+
+  it('updates and clears line text without adding network data to an annotation', () => {
+    const builder = useInfraBuilder()
+    builder.edges.value = [{ id: 'link', source: 'note', target: 'net' }]
+    builder.updateEdgeData('link', { label: 'Review' })
+    expect(builder.edges.value[0]).toEqual({ id: 'link', source: 'note', target: 'net', label: 'Review' })
+    builder.updateEdgeData('link', { label: '' })
+    expect(builder.edges.value[0].label).toBe('')
+  })
+
+  it('preserves network line text in the canvas without changing infrastructure exports', () => {
+    const canvas: CanvasModel = { nodes: [
+      { id: 'vm', type: 'vm', data: { config: { name: 'Example' } } },
+      { id: 'net', type: 'network-segment', data: { config: { bridge: 'vmbr10' } } },
+    ], edges: [{ id: 'link', type: 'network', source: 'vm', target: 'net', label: 'Service traffic',
+      data: { connection: { interfaceName: 'net0', ipAddress: '10.10.0.10/24' } } }], attachments: [] }
+    const doc = serializeToCatalogEntry(canvas, { name: 'Example' })
+    expect(deserializeToCanvas(doc, extractLayout(canvas)).edges[0].label).toBe('Service traffic')
+    expect(serializeToCatalogEntry({ ...canvas, edges: [{ ...canvas.edges[0], label: 'Different text' }] }, { name: 'Example' })).toEqual(doc)
+  })
+
   it.each([['note', 'vm'], ['vm', 'note']])('keeps %s to %s annotations out of network interface numbering', (source, target) => {
     flow.nodes = [{ id: 'note', type: 'note' }, { id: 'vm', type: 'vm' }, { id: 'net', type: 'network-segment' }]
     const builder = useInfraBuilder()

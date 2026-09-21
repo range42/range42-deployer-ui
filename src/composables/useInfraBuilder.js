@@ -370,19 +370,16 @@ export function useInfraBuilder() {
   const updateEdgeData = (edgeId, updates) => {
     edges.value = edges.value.map(edge => {
       if (edge.id === edgeId) {
-        // Merge connection data properly; replication_intent lives at data root
-        const newData = {
-          ...edge.data,
-          ...updates,
-          connection: {
-            ...(edge.data?.connection || {}),
-            ...(updates.connection || {})
+        const { label, ...dataUpdates } = updates
+        const updated = { ...edge }
+        if (Object.hasOwn(updates, 'label')) updated.label = label
+        if (Object.keys(dataUpdates).length) {
+          updated.data = { ...edge.data, ...dataUpdates }
+          if (dataUpdates.connection) {
+            updated.data.connection = { ...edge.data?.connection, ...dataUpdates.connection }
           }
         }
-        if (updates.replication_intent) {
-          newData.replication_intent = updates.replication_intent
-        }
-        return { ...edge, data: newData }
+        return updated
       }
       return edge
     })

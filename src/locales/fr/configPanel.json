@@ -132,5 +132,13 @@
       "green": "Vert",
       "neutral": "Neutre"
     }
+  },
+  "connection": {
+    "title": "Connexion",
+    "networkTitle": "Connexion réseau",
+    "text": "Texte de la connexion",
+    "hint": "Affiché au centre de la ligne.",
+    "close": "Fermer les paramètres de connexion",
+    "edit": "Modifier la connexion"
   }
 }

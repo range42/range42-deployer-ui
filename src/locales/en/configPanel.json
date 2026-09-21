@@ -132,5 +132,13 @@
       "green": "Green",
       "neutral": "Neutral"
     }
+  },
+  "connection": {
+    "title": "Connection",
+    "networkTitle": "Network connection",
+    "text": "Connection text",
+    "hint": "Shown at the center of the line.",
+    "close": "Close connection settings",
+    "edit": "Edit connection"
   }
 }

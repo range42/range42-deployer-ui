@@ -11,6 +11,7 @@ import type {
 } from '@/types/range42-schema';
 import { getTeamScopeAncestorId, normalizeAttachment } from '@/composables/useInfraBuilder';
 import type { Dimensions, XYPosition } from '@vue-flow/core';
+import { isReferenceEdge } from '@/services/canvasNotes';
 
 export interface CanvasNodeData {
   type?: string;
@@ -197,6 +198,7 @@ export function buildNetworks(
   if (isNetwork(nodeId, allNodes)) return [];
   const attachments: NetworkAttachment[] = [];
   for (const e of edges || []) {
+    if (isReferenceEdge(e)) continue;
     let netId: string | null = null;
     if (e.source === nodeId && isNetwork(e.target, allNodes)) netId = e.target;
     else if (e.target === nodeId && isNetwork(e.source, allNodes)) netId = e.source;
@@ -226,6 +228,7 @@ export interface CanvasLayout {
     sourceHandle?: string | null;
     targetHandle?: string | null;
     connection?: Record<string, unknown>;
+    label?: string;
   }>;
   unsupported: CanvasNode[];
   annotations?: CanvasEdge[];
@@ -250,12 +253,17 @@ export function extractLayout(canvas: CanvasModel): CanvasLayout {
     };
   }
   const occurrences = new Map<string, number>();
-  const noteIds = new Set(canvas.nodes.filter(node => node.type === 'note').map(node => node.id));
+  const networkHosts = new Set(['vm', 'lxc', 'docker', 'router', 'edge-firewall']);
   for (const e of canvas.edges || []) {
     if (e.data?.synthetic) continue; // docker tethers are re-derived
-    if (noteIds.has(e.source) || noteIds.has(e.target)) {
+    const sourceType = canvas.nodes.find(node => node.id === e.source)?.type;
+    const targetType = canvas.nodes.find(node => node.id === e.target)?.type;
+    const networkAttachment = (sourceType === 'network-segment' && networkHosts.has(targetType || ''))
+      || (targetType === 'network-segment' && networkHosts.has(sourceType || ''));
+    if (!networkAttachment || isReferenceEdge(e)) {
       (layout.annotations ??= []).push(JSON.parse(JSON.stringify(e)));
-      continue;
+      // Retain legacy handle metadata for incomplete canvases as well.
+      if (sourceType && targetType) continue;
     }
     // Canonicalize compute<->network edges to edgeKey(computeEnd, networkEnd)
     // so the deserialize lookup (keyed compute|network) hits regardless of the
@@ -277,6 +285,7 @@ export function extractLayout(canvas: CanvasModel): CanvasLayout {
       sourceHandle: e.sourceHandle,
       targetHandle: e.targetHandle,
       connection: e.data?.connection,
+      ...(typeof e.label === 'string' ? { label: e.label } : {}),
     };
   }
   return layout;
@@ -334,6 +343,7 @@ export function deserializeToCanvas(
         source: le?.source ?? n.id,
         target: le?.target ?? na.node_ref,
         type: 'network',
+        ...(le?.label !== undefined ? { label: le.label } : {}),
         sourceHandle: le?.sourceHandle, targetHandle: le?.targetHandle,
         data: { connection, useDhcp: !!na.dhcp },
       });
@@ -347,11 +357,9 @@ export function deserializeToCanvas(
   for (const n of doc.nodes ?? []) walk(n, null);
   for (const u of layout.unsupported ?? []) nodes.push(JSON.parse(JSON.stringify(u)));
   const nodeIds = new Set(nodes.map(node => node.id));
-  const noteIds = new Set(nodes.filter(node => node.type === 'note').map(node => node.id));
   const edgeIds = new Set(edges.map(edge => edge.id));
   for (const edge of layout.annotations ?? []) {
-    if (nodeIds.has(edge.source) && nodeIds.has(edge.target) && !edgeIds.has(edge.id)
-      && (noteIds.has(edge.source) || noteIds.has(edge.target))) {
+    if (nodeIds.has(edge.source) && nodeIds.has(edge.target) && !edgeIds.has(edge.id) && !edge.data?.synthetic) {
       edges.push(JSON.parse(JSON.stringify(edge)));
       edgeIds.add(edge.id);
     }

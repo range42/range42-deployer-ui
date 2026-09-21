@@ -9,6 +9,10 @@ import { computed } from 'vue'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, useVueFlow } from '@vue-flow/core'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import { getNetworkColor } from '@/constants/networkColors'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+const emit = defineEmits(['select'])
 
 const props = defineProps({
   id: String,
@@ -24,6 +28,7 @@ const props = defineProps({
   markerEnd: String,
   style: Object,
   selected: Boolean,
+  label: String,
 })
 
 const { findNode, getNodes } = useVueFlow()
@@ -151,13 +156,17 @@ const labelStyle = computed(() => {
       }"
       class="edge-label-container nodrag nopan"
     >
-      <div
+      <button
+        type="button"
+        :aria-label="t('configPanel.connection.edit')"
+        @click="emit('select', $event)"
         :class="[
           'edge-label rounded-md border px-2 py-1 shadow-sm transition-all',
           { 'ring-2 ring-primary ring-offset-1': selected }
         ]"
         :style="labelStyle"
       >
+        <div v-if="label ?? data?.label" class="mb-1 max-w-64 whitespace-pre-wrap break-words text-xs font-semibold">{{ label ?? data?.label }}</div>
         <!-- Interface Name -->
         <div v-if="connectionInfo.interfaceName" class="text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">
           {{ connectionInfo.interfaceName }}
@@ -177,7 +186,7 @@ const labelStyle = computed(() => {
           <!-- Firewall indicator -->
           <AppIcon v-if="connectionInfo.firewall" name="shield" class="w-2.5 h-2.5" title="Firewall enabled" />
         </div>
-      </div>
+      </button>
 
       <!-- Replication intent badge — rendered near midpoint for fan_out / mesh -->
       <div

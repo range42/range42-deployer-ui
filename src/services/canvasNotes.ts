@@ -18,11 +18,15 @@ export function normalizeCanvasNotes(nodes: CanvasNode[]): CanvasNode[] {
   })
 }
 
-/** Notes and their connectors describe the canvas; they are never resources. */
-export function withoutCanvasNotes<N extends { id: string; type?: string }, E extends { source: string; target: string }>(nodes: N[], edges: E[]) {
+export function isReferenceEdge(edge: { data?: Record<string, unknown> }): boolean {
+  return edge.data?.reference_only === true
+}
+
+/** Notes and reference lines describe the canvas; they are never resources. */
+export function withoutCanvasNotes<N extends { id: string; type?: string }, E extends { source: string; target: string; data?: Record<string, unknown> }>(nodes: N[], edges: E[]) {
   const notes = new Set(nodes.filter(node => node.type === 'note').map(node => node.id))
   return {
     nodes: nodes.filter(node => !notes.has(node.id)),
-    edges: edges.filter(edge => !notes.has(edge.source) && !notes.has(edge.target)),
+    edges: edges.filter(edge => !notes.has(edge.source) && !notes.has(edge.target) && !isReferenceEdge(edge)),
   }
 }
