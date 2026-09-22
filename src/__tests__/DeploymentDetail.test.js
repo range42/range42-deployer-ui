@@ -260,6 +260,22 @@ describe('<DeploymentDetail>', () => {
     expect(result.text()).toContain('Guests with a different state: 3193')
   })
 
+  it('labels network deletion by its action and displays recovery guidance', async () => {
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [{ id: 'network-partial', scope: 'runtime', state: 'partial',
+        operation: { request: { kind: 'sdn_network', action: 'delete', vnet: 'lab1' } },
+        operation_result: { desired_reached: false, partial: true, recovery: 'Inspect pending SDN changes before retrying.' },
+      }] } : { id: 'd-result', state: 'partial', project_sha: 'a'.repeat(40), scenario_label: 'demo' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-result')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.get('details summary').text()).toContain('Delete')
+    expect(wrapper.get('details summary').text()).not.toContain('Disabled')
+    expect(wrapper.get('[data-testid="runtime-result"]').text()).toContain('Inspect pending SDN changes before retrying.')
+  })
+
   it('refreshes history and blocks further changes when a runtime operation starts', async () => {
     let running = false
     globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>

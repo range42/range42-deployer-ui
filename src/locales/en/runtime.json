@@ -49,7 +49,12 @@
   "operations": {
     "vm_firewall": "VM firewall",
     "scenario_firewall": "Scenario firewalls",
-    "sdn_snat": "Outbound NAT"
+    "sdn_snat": "Outbound NAT",
+    "host_firewall": "Enable datacenter and node firewalls",
+    "runtime_observe": "Read live NAT rules",
+    "sdn_network": "Network lifecycle",
+    "firewall_rule": "Edit rule",
+    "firewall_alias": "Create alias"
   },
   "git": {
     "title": "Runtime changes in Git",
@@ -66,5 +71,85 @@
     "unsaved": "Not yet saved to Git",
     "save": "Save to Git",
     "localConflict": "This runtime record was edited locally. Review the file before saving the recorded operation."
+  },
+  "observe": "Read live NAT rules",
+  "observeScope": "This read-only attempt checks the selected node and records native NAT rules for the declared networks. It does not test guest traffic.",
+  "enableHost": "Enable datacenter and node firewalls",
+  "disableHost": "Disable datacenter and node firewalls",
+  "reviewHost": "{action} datacenter and node {name} firewalls",
+  "hostAck": "I authorize the cluster-wide switch and the selected node’s management-access changes.",
+  "hostScope": "The datacenter switch affects filtering across the cluster, including unrelated guests. Enabling first guarantees unrestricted inbound management access on TCP 22 and 8006 at datacenter and selected-node scope using the native guards. Disabling retains those rules. The saved scenario is unchanged.",
+  "report": {
+    "title": "Rules and observations",
+    "observed": "Configuration observed",
+    "partial": "Some scopes could not be read. Missing observations remain unknown.",
+    "traffic": "Traffic has not been tested. Switch configuration and rule observations are separate evidence.",
+    "scopes": {
+      "datacenter": "Datacenter",
+      "node": "Selected node",
+      "vm": "Guest"
+    },
+    "emptyRules": "No configured rules in this chain.",
+    "source": "Source",
+    "destination": "Destination",
+    "alias": "Alias",
+    "configuredFiltering": "Filtering prerequisites",
+    "liveNat": "Last native NAT observation",
+    "natUnknown": "Live rules are unknown. Run a native observation to read the selected node.",
+    "historical": "Recorded observation; state may have changed since this attempt.",
+    "noNat": "No source-scoped NAT rules were observed for these declared networks.",
+    "reasons": {
+      "datacenter_unknown": "Datacenter switch unreadable.",
+      "datacenter_disabled": "Datacenter switch disabled.",
+      "guest_unknown": "Guest switch unreadable.",
+      "guest_disabled": "Guest switch disabled.",
+      "nic_unknown": "NIC flag unreadable.",
+      "nic_disabled": "NIC flag disabled.",
+      "all_switches_enabled_traffic_unverified": "All required switches are enabled; traffic remains unverified."
+    },
+    "pending": "Pending SDN changes",
+    "identity": "Declared identity matches",
+    "active": "Active on selected node",
+    "declaredNat": "Declared NAT",
+    "configuredNat": "Configured NAT",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "network": {
+    "create": "Create network {name}",
+    "delete": "Delete network {name}",
+    "scope": "Only this VNet and its subnet are changed. Deletion requires verified ownership and no attached guests or templates; the shared zone is preserved. Applying SDN affects the cluster. Other networks retain their prior NAT rule counts. The saved scenario stays unchanged and may recreate the network on a later deployment."
+  },
+  "policy": {
+    "title": "Firewall policies and aliases",
+    "scopeHint": "These runtime changes affect the selected scope. Datacenter policies can affect other nodes and guests. Management rules are protected; referenced aliases cannot be renamed or deleted. New rules are inserted first. The saved scenario remains unchanged and a later deployment may restore its declared settings.",
+    "edit": "Edit",
+    "delete": "Delete",
+    "up": "Move up",
+    "down": "Move down",
+    "rename": "Rename alias",
+    "target": "Firewall scope",
+    "newRule": "Add rule at the start of the chain",
+    "editRule": "Edit rule",
+    "name": "Name",
+    "direction": "Direction",
+    "action": "Action",
+    "protocol": "Protocol",
+    "port": "Destination ports (e.g. 443 or 8000:8010)",
+    "source": "Source CIDR or alias (blank: any)",
+    "destination": "Destination CIDR or alias (blank: any)",
+    "review": "Review change",
+    "reset": "New rule / alias",
+    "newAlias": "Create alias",
+    "newName": "New alias name",
+    "reviewTitle": "{action} in {scope}",
+    "ack": "I have reviewed the scope, rule order and affected resources.",
+    "actions": {
+      "create": "Create",
+      "update": "Update rule",
+      "delete": "Delete",
+      "move": "Move rule",
+      "rename": "Rename alias"
+    }
   }
 }
