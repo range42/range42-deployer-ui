@@ -29,6 +29,7 @@
   "reviewFirewall": "{action} firewall for {name}",
   "scenarioGuests": "the scenario guests",
   "natScope": "This applies SDN changes and reconciles live SNAT rules across the shared host. Other subnets retain their declared settings. The saved Git scenario stays visible as the original intent.",
+  "nativeNatScope": "This applies SDN changes on the shared host. The selected subnet changes; other subnets retain their prior live SNAT state. Rule readback does not prove guest forwarding. The saved Git scenario retains the original intent.",
   "firewallScope": "The backend verifies VM ownership, applies the bundled management-access and NIC sequence, and reads the resulting state. Missing scenario guests are reported in the result.",
   "sharedAck": "I have reviewed the shared-host effect of this SDN operation.",
   "apply": "Apply reviewed change",

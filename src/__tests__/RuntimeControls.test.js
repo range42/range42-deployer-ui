@@ -35,6 +35,12 @@ async function show(props = {}) {
 }
 
 describe('live network and firewall controls', () => {
+  it('describes the native NAT operation as preserving other subnets prior live state', async () => {
+    state.runtime.contract = 'native-sdn-20260921'
+    const wrapper = await show()
+    await wrapper.get('[data-testid="runtime-nat-lab1"]').trigger('click')
+    expect(wrapper.text()).toContain('prior live SNAT state')
+  })
   it('shows a useful error and no actions for an incomplete runtime response', async () => {
     state.firewall = {}
     const wrapper = await show()

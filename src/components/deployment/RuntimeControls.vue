@@ -129,7 +129,7 @@ onBeforeUnmount(() => { version += 1 })
       </div>
       <form v-if="reviewed" class="border border-primary/30 rounded-lg p-4 space-y-3" @submit.prevent="apply">
         <h3 class="font-semibold">{{ operationTitle }}</h3>
-        <p class="text-sm">{{ t(reviewed.kind === 'sdn_snat' ? 'runtime.natScope' : 'runtime.firewallScope') }}</p>
+        <p class="text-sm">{{ t(reviewed.kind === 'sdn_snat' ? (state.runtime?.contract === 'native-sdn-20260921' ? 'runtime.nativeNatScope' : 'runtime.natScope') : 'runtime.firewallScope') }}</p>
         <label v-if="reviewed.kind === 'sdn_snat'" class="flex items-start gap-2 text-sm"><input v-model="sharedAck" type="checkbox" class="checkbox checkbox-sm" data-testid="runtime-shared-ack" />{{ t('runtime.sharedAck') }}</label>
         <div class="flex flex-wrap gap-2"><button type="submit" class="btn btn-sm btn-primary" data-testid="runtime-apply" :disabled="!canApply">{{ t('runtime.apply') }}</button><button type="button" class="btn btn-sm btn-ghost" :disabled="submitting" @click="reviewed = null">{{ t('runtime.cancel') }}</button></div>
       </form>

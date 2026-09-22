@@ -5,6 +5,7 @@ import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
 import { validateBundleParameters } from './bundleParameters.ts'
 import { withoutCanvasNotes } from './canvasNotes'
+import { firewallPolicy, firewallStages } from './scenarioFirewall'
 
 const BUNDLES = "{{ lookup('env', 'RANGE42_BUNDLE_DIR') }}"
 const VAULT = "{{ lookup('env', 'RANGE42_ACTIVE_CONFIG_DIR') }}/secrets/default_vault.yml"
@@ -80,7 +81,7 @@ function normalizedVms(rows) {
 
 function validateVariableName(name) {
   requireValue(/^[A-Za-z_][A-Za-z0-9_]*$/.test(name), `Invalid Ansible variable name: ${name}`)
-  requireValue(!/^(?:ansible_|proxmox_|r42_|vm_ci_|global_vm_|global_template_|BUNDLE_SDN_|default_admin_vm_ci_|deployer_cli_|INFRASTRUCTURE_)/i.test(name)
+  requireValue(!/^(?:ansible_|proxmox_|r42_|vm_ci_|global_vm_|global_template_|BUNDLE_SDN_|FIREWALL_|range42_fw_|vm_fw_|dc_fw_|node_fw_|default_admin_vm_ci_|deployer_cli_|INFRASTRUCTURE_)/i.test(name)
     && !['__proto__', 'constructor', 'prototype', 'hostvars', 'groups', 'inventory_hostname', 'playbook_dir', 'role_path'].includes(name), `Reserved connection or ownership variable: ${name}`)
 }
 
@@ -144,6 +145,7 @@ export function createScenarioDraft(project, nodes = [], edges = []) {
   const result = saved ? { ...saved,
     networks: draft.networks.map(network => saved.networks?.find(old => old.id === network.id) || network),
   } : draft
+  result.firewall ??= { enabled: !saved, prepare_management_access: false, arm_vms: false, ssh_mode: 'inherit', ssh_sources: '' }
   result.vms = draft.vms.map(vm => {
     const previous = saved?.vms?.find(old => old.node_id === vm.node_id)
     const configured = previous || vm
@@ -220,9 +222,9 @@ function teardownPlay(vms) {
 /** Compile one explicitly configured canvas into the existing concrete runner contract.
  * @param {{ scenario: object, nodes?: import('@/overlay/serialize').CanvasNode[], edges?: import('@/overlay/serialize').CanvasEdge[],
  * files?: import('@/services/projectFiles').ProjectFiles, attachments?: import('@/overlay/serialize').CanvasAttachment[],
- * generatedPaths?: string[], baseDoc?: object, overlay?: object }} input
+ * generatedPaths?: string[], baseDoc?: object, overlay?: object, runtimeCapabilities?: object }} input
  */
-export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay }) {
+export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay, runtimeCapabilities }) {
   validateFileMap(files)
   ;({ nodes, edges } = withoutCanvasNotes(nodes, edges))
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
@@ -237,6 +239,18 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
     requireValue(node.data?.kind !== 'team_scope' && [undefined, 'shared'].includes(node.data?.replication?.scope) && [undefined, 'shared'].includes(node.replication?.scope), 'Replicated canvas scopes require an explicit scenario replication roster and instance assignments')
   }
   const vms = normalizedVms(scenario.vms || [])
+  if (runtimeCapabilities?.available === true) {
+    const features = runtimeCapabilities.bootstrap_features || []
+    for (const vm of vms) {
+      const required = [
+        ...(vm.nics.length > 1 ? ['extra_nics'] : []),
+        ...(vm.cores !== undefined || vm.memory_mb !== undefined ? ['resources'] : []),
+        ...(vm.disk_gb !== undefined ? ['disk_resize'] : []),
+      ]
+      const missing = required.filter(feature => !features.includes(feature))
+      requireValue(!missing.length, `The selected runtime cannot apply ${missing.join(', ')} for ${vm.vm_name}. Use one NIC and inherit unsupported resource sizes from the template. Your draft choices have been retained.`)
+    }
+  }
   const networks = scenario.networks || []
   requireValue(vms.length > 0, 'Add at least one VM to the canvas and configure it')
   requireValue(networks.length > 0, 'Add a network to the canvas and connect every VM')
@@ -292,6 +306,14 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   const base = `scenarios/${scenario.label}`
   const generated = {}
   const write = (path, value, format = yaml) => { generated[`${base}/${path}`] = format(value) }
+  const policy = firewallPolicy(scenario.firewall)
+  if (policy) {
+    requireValue(!runtimeCapabilities?.available || runtimeCapabilities.contract === 'native-sdn-20260921', 'Native firewall stages require a recognized native SDN runtime')
+    requireValue(!runtimeCapabilities?.available || !policy.prepare_management_access || runtimeCapabilities.management_access_available === true,
+      'The selected backend has not authorized shared management rules. Clear that choice or use an administrator-authorized installation; the draft has been retained.')
+    write('manifest/scenario_firewall.json', policy, json)
+    for (const [path, plays] of Object.entries(firewallStages(vms, networks))) write(path, plays)
+  }
   const networkManifest = scenario.network_mode === 'sdn'
     ? { mode: 'sdn', zone: scenario.zone, vnets: networks.map(({ vnet, subnet, gateway, snat }) => ({ vnet, subnet, gateway, snat })) }
     : { mode: 'existing_bridge', bridges: networks.map(network => network.vnet) }
@@ -415,8 +437,12 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   if (roleAttachments.length) write('manifest/scenario_roles.json', { version: 1, attachments: roleAttachments }, json)
   if (bundleAttachments.length) write('manifest/scenario_bundles.json', { version: 1, attachments: bundleAttachments }, json)
   write('main.yml', [
+    ...(policy ? [imported('00_firewall_pre.yml')] : []),
     ...(scenario.network_mode === 'sdn' ? [imported('00_networks.yml')] : []),
-    imported('01_vm_bootstrap.yml'), imported('configure.yml'),
+    imported('01_vm_bootstrap.yml'),
+    ...(policy ? [imported('02_firewall_guests.yml')] : []),
+    imported('configure.yml'),
+    ...(policy ? [imported('99_firewall_finalize.yml')] : []),
   ])
   write('teardown.yml', teardownPlay(vms))
   for (const item of content) {

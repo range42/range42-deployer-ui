@@ -1,4 +1,5 @@
 {
+  "nativeNatScope": "Cette opération applique les changements SDN sur l’hôte partagé. Le sous-réseau sélectionné change ; les autres conservent leur état SNAT effectif précédent. La lecture des règles ne prouve pas le transit depuis les invités. Le scénario Git conserve l’intention initiale.",
   "title": "Réseaux et pare-feu actifs",
   "description": "Inspectez les ressources déployées et appliquez des changements explicites. Les opérations sont enregistrées dans l’historique.",
   "enabled": "Activé",

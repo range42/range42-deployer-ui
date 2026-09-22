@@ -2,13 +2,14 @@
 import { randomId } from '@/services/randomId'
 import FileAssetField from '@/components/project/FileAssetField.vue'
 import { fileContentEquals } from '@/services/projectFiles'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { createScenarioDraft, emitConcreteScenario } from '@/services/concreteScenario'
 import ScenarioReplicationPanel from '@/components/project/ScenarioReplicationPanel.vue'
 import ScenarioAllocationPanel from '@/components/project/ScenarioAllocationPanel.vue'
 import SdnInventoryPicker from '@/components/project/SdnInventoryPicker.vue'
-import { getBackendScope } from '@/services/backendApi'
+import { backendRequest, getBackendScope } from '@/services/backendApi'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { applyReplicatedAllocation, prepareReplicatedAllocation } from '@/services/scenarioAllocation'
 import CatalogRoleAttachmentPicker from '@/components/project/CatalogRoleAttachmentPicker.vue'
 import BundleLibraryModal from '@/components/project/BundleLibraryModal.vue'
@@ -34,6 +35,33 @@ const stagedRoleFiles = ref({})
 const roleProject = computed(() => ({ ...props.project, files: { ...(props.project.files || {}), ...stagedRoleFiles.value }, scenario: draft.value }))
 const migrationChoices = ref({})
 const migrateAttachments = ref(false)
+const backend = useBackendApiStore()
+const runtimeCapabilities = ref(null)
+const capabilitiesLoading = ref(false)
+let capabilitiesVersion = 0
+let reviewedCapabilitiesVersion = 0
+watch([() => props.open, getBackendScope, () => backend.token], async ([open, scope]) => {
+  const current = ++capabilitiesVersion
+  runtimeCapabilities.value = null
+  preview.value = null
+  capabilitiesLoading.value = false
+  if (!open || !scope) return
+  capabilitiesLoading.value = true
+  try {
+    const result = await backendRequest('/v1/proxmox/runtime-capabilities')
+    if (current !== capabilitiesVersion) return
+    if (result?.version === 1 && typeof result.available === 'boolean' && Array.isArray(result.bootstrap_features)
+      && result.bootstrap_features.every(feature => ['extra_nics', 'resources', 'disk_resize'].includes(feature))) runtimeCapabilities.value = result
+  } catch { /* Offline authoring retains the draft; deployment preflight remains authoritative. */ }
+  finally { if (current === capabilitiesVersion) capabilitiesLoading.value = false }
+}, { immediate: true })
+onBeforeUnmount(() => { capabilitiesVersion += 1 })
+
+function inheritTemplateResources(vm) {
+  for (const key of ['cores', 'memory_mb', 'disk_gb', 'disk_device']) delete vm[key]
+  error.value = ''
+  preview.value = null
+}
 let openedSource = ''
 const allocationPlan = computed(() => {
   if (!draft.value?.replication) return { vms: draft.value?.vms || [], networks: draft.value?.networks || [] }
@@ -156,6 +184,7 @@ function connectedEdges(vm, networkId) {
 function review() {
   error.value = ''
   try {
+    if (capabilitiesLoading.value) throw new Error('Wait for the selected backend runtime support check before reviewing.')
     if (openedSource !== scenarioReviewSource(props.project, props.nodes, props.edges)) throw new Error('Project changed since this editor opened. Reopen scenario configuration and review the current content.')
     const files = { ...(props.project.files || {}), ...stagedRoleFiles.value }
     const scenario = JSON.parse(JSON.stringify(draft.value))
@@ -177,14 +206,20 @@ function review() {
       if (!migrateAttachments.value) throw new Error('Review the legacy attachments and select their conversion before generating scenario files.')
       candidate = prepareAttachmentMigration({ project: { ...props.project, files }, scenario, nodes: props.nodes, choices: migrationChoices.value })
     }
-    preview.value = { ...emitConcreteScenario({ ...candidate, nodes: props.nodes, edges: props.edges,
+    preview.value = { ...emitConcreteScenario({ ...candidate, nodes: props.nodes, edges: props.edges, runtimeCapabilities: runtimeCapabilities.value,
       baseDoc: props.project.baseDoc, overlay: props.project.overlay,
       generatedPaths: props.project.scenario_generated_paths || [] }),
       attachments: candidate.attachments, migrationRows: candidate.rows || [], reviewSource: openedSource }
+    reviewedCapabilitiesVersion = capabilitiesVersion
   } catch (reason) { error.value = reason.message || String(reason) }
 }
 
 function applyReview() {
+  if (!preview.value || reviewedCapabilitiesVersion !== capabilitiesVersion) {
+    preview.value = null
+    error.value = 'The selected backend changed. Review the scenario again.'
+    return
+  }
   if (preview.value.reviewSource !== scenarioReviewSource(props.project, props.nodes, props.edges)) {
     preview.value = null
     error.value = 'Project changed since review. Reopen scenario configuration and review the current content.'
@@ -207,6 +242,17 @@ function applyReview() {
             </div>
             <button type="button" class="btn btn-ghost btn-sm" aria-label="Close scenario configuration" @click="emit('close')">✕</button>
           </header>
+
+          <div class="text-sm border-l-2 border-info pl-3 mb-4" role="status" data-testid="scenario-runtime-support">
+            <p v-if="capabilitiesLoading">Checking the selected backend's runtime support…</p>
+            <p v-else-if="runtimeCapabilities?.available">
+              <span v-if="!runtimeCapabilities.bootstrap_features.includes('extra_nics')">One NIC per VM. </span>
+              <span v-if="!runtimeCapabilities.bootstrap_features.includes('resources')">CPU and memory inherit the template. </span>
+              <span v-if="!runtimeCapabilities.bootstrap_features.includes('disk_resize')">Disk size inherits the template. </span>
+              Backend preflight checks these requirements again before deployment.
+            </p>
+            <p v-else>Runtime support is unverified. You can review and save a draft; backend preflight must confirm support before deployment.</p>
+          </div>
 
           <template v-if="!preview">
             <p class="text-sm mb-4">Use existing templates and connect each VM to its networks on the canvas. The first interface (net0) carries SSH access and the default route. Leave resource overrides empty to inherit the template; disk changes only grow an existing disk.</p>
@@ -259,11 +305,27 @@ function applyReview() {
                 <label class="form-control gap-1"><span>Disk size (GiB)</span><input v-model.number="vm.disk_gb" type="number" min="1" class="input input-bordered w-full" placeholder="From template" /></label>
                 <label v-if="vm.disk_gb" class="form-control gap-1"><span>Existing disk device</span><input v-model="vm.disk_device" class="input input-bordered w-full" placeholder="scsi0" /></label>
               </div>
+              <button type="button" class="btn btn-ghost btn-sm mt-2" data-testid="scenario-template-resources" @click="inheritTemplateResources(vm)">Use template CPU, memory and disk size</button>
               <div v-for="(nic, nicIndex) in vm.nics" :key="nicIndex" class="grid gap-3 sm:grid-cols-2 mt-3 border-t border-base-300 pt-3">
                 <label class="form-control gap-1"><span>net{{ nicIndex }} network{{ nicIndex === 0 ? ' (management)' : '' }}</span><select v-model="nic.network_id" :disabled="!!draft.replication" class="select select-bordered w-full"><option value="" disabled>Choose connected network</option><option v-for="network in draft.networks" :key="network.id" :value="network.id">{{ network.vnet || network.id }}</option></select></label>
                 <label v-if="!draft.replication || draft.replication.node_scopes[vm.node_id] === 'shared'" class="form-control gap-1"><span>net{{ nicIndex }} IPv4 address</span><input v-model="nic.ip" class="input input-bordered w-full" placeholder="10.42.1.10" /></label>
                 <label v-if="draft.replication" class="form-control gap-1"><span>Stable source NIC key</span><select v-model="nic.key" class="select select-bordered w-full" @change="nicIndex === 0 && (vm.primary_nic_key = nic.key)"><option value="" disabled>Select the matching canvas link</option><option v-for="edge in connectedEdges(vm, nic.network_id)" :key="edge.id" :value="edge.id">{{ edge.id }}</option></select></label>
               </div>
+            </fieldset>
+
+            <fieldset class="border border-base-300 rounded-lg p-3 my-5 space-y-3">
+              <legend class="font-semibold px-1">Native firewall preparation</legend>
+              <label class="flex items-start gap-2"><input v-model="draft.firewall.enabled" type="checkbox" class="checkbox checkbox-sm" data-testid="scenario-native-firewall" /> Report firewall state and prepare SSH rules for this scenario's guests.</label>
+              <template v-if="draft.firewall.enabled">
+                <p class="text-sm text-base-content/70">Rules are prepared after cloning. Guest arming happens only after all configuration finishes and requires the separate choice below.</p>
+                <label class="form-control gap-1"><span>Guest SSH sources</span><select v-model="draft.firewall.ssh_mode" class="select select-bordered" data-testid="scenario-ssh-mode"><option value="inherit">Inherit the backend workspace's SSH sources</option><option value="restricted">Use reviewed IPv4 /32 sources</option><option value="unrestricted">Allow SSH from any source</option></select></label>
+                <label v-if="draft.firewall.ssh_mode === 'restricted'" class="form-control gap-1"><span>Allowed IPv4 /32 sources</span><input v-model="draft.firewall.ssh_sources" class="input input-bordered" data-testid="scenario-ssh-sources" placeholder="203.0.113.7/32" /></label>
+                <p class="text-sm text-base-content/70">Source restrictions also allow the scenario's exact NIC networks so the Proxmox jump host and scenario guests retain SSH access. Existing broader rules are retained; this does not tighten an existing firewall policy.</p>
+                <label class="flex items-start gap-2"><input v-model="draft.firewall.prepare_management_access" type="checkbox" class="checkbox checkbox-sm" data-testid="scenario-management-access"
+                  :disabled="runtimeCapabilities?.management_access_available !== true && !draft.firewall.prepare_management_access" /> Prepare SSH and API management accepts on the selected node and datacenter. This affects shared host rules and leaves their firewall switches unchanged.</label>
+                <p v-if="!runtimeCapabilities?.management_access_available" class="text-sm text-base-content/70">The backend administrator must authorize shared management-rule preparation before it can be selected.</p>
+                <label class="flex items-start gap-2"><input v-model="draft.firewall.arm_vms" type="checkbox" class="checkbox checkbox-sm" data-testid="scenario-arm-vms" /> Arm this scenario's guest firewalls after configuration. Review service rules before enabling this.</label>
+              </template>
             </fieldset>
 
             <h3 class="font-semibold mt-5 mb-2">Content after VM bootstrap</h3>
