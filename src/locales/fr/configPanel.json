@@ -140,5 +140,18 @@
     "hint": "Affiché au centre de la ligne.",
     "close": "Fermer les paramètres de connexion",
     "edit": "Modifier la connexion"
+  },
+  "network": {
+    "title": "Réseau",
+    "noAddress": "Plage réseau non définie",
+    "bridge": "Pont",
+    "devices": "Aucun appareil connecté | 1 appareil connecté | {count} appareils connectés",
+    "types": {
+      "wan": "WAN",
+      "lan": "LAN",
+      "dmz": "DMZ",
+      "management": "Administration",
+      "custom": "Réseau"
+    }
   }
 }

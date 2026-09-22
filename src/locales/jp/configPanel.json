@@ -140,5 +140,18 @@
     "hint": "線の中央に表示されます。",
     "close": "接続設定を閉じる",
     "edit": "接続を編集"
+  },
+  "network": {
+    "title": "ネットワーク",
+    "noAddress": "アドレス範囲が未設定です",
+    "bridge": "ブリッジ",
+    "devices": "接続機器なし | 1 台接続 | {count} 台接続",
+    "types": {
+      "wan": "WAN",
+      "lan": "LAN",
+      "dmz": "DMZ",
+      "management": "管理",
+      "custom": "ネットワーク"
+    }
   }
 }

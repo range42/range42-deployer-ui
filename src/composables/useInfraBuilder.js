@@ -317,9 +317,10 @@ export function useInfraBuilder() {
       (NETWORK_TYPES.includes(sourceNode?.type) && COMPUTE_TYPES.includes(targetNode?.type))
     )
 
-    // Count existing connections to determine interface index
+    // Interface numbering belongs to the compute device in either draw direction.
+    const deviceId = COMPUTE_TYPES.includes(sourceNode?.type) ? connection.source : connection.target
     const existingConnections = withoutCanvasNotes(allNodes, edges.value).edges.filter(e =>
-      e.source === connection.source || e.target === connection.source
+      e.source === deviceId || e.target === deviceId
     ).length
 
     // Infer default replication intent from the team_scope ancestry of endpoints (Plan C §6).

@@ -1,6 +1,7 @@
 import { computed, type Ref } from 'vue'
 import type { Dimensions, XYPosition } from '@vue-flow/core'
 import { getNetworkColor, type NetworkColor } from '@/constants/networkColors'
+import { connectedNetworkDevices } from '@/services/networkConnections'
 
 export interface ZoneOverlay {
   id: string
@@ -10,6 +11,7 @@ export interface ZoneOverlay {
   height: number
   color: NetworkColor
   label: string
+  kind: 'group' | 'network'
 }
 
 const PADDING = 40
@@ -22,9 +24,9 @@ export interface NetworkZoneNode {
   computedPosition?: XYPosition
   dimensions?: Dimensions
   parentNode?: string
-  data?: { config?: { segmentType?: string; cidr?: string } }
+  data?: { kind?: string; config?: { name?: string; segmentType?: string; cidr?: string } }
 }
-export interface NetworkZoneEdge { source: string; target: string }
+export interface NetworkZoneEdge { source: string; target: string; data?: Record<string, unknown> }
 
 export function useNetworkZones(
   nodes: Readonly<Ref<readonly NetworkZoneNode[]>>,
@@ -40,14 +42,24 @@ export function useNetworkZones(
     const networkNodes = nodes.value.filter(n => n.type === 'network-segment')
     const result: ZoneOverlay[] = []
 
-    for (const netNode of networkNodes) {
-      const connectedIds = new Set<string>()
-      for (const edge of edges.value) {
-        if (edge.source === netNode.id) connectedIds.add(edge.target)
-        else if (edge.target === netNode.id) connectedIds.add(edge.source)
-      }
+    for (const group of nodes.value.filter(node => node.type === 'group')) {
+      if (!group.dimensions?.width || !group.dimensions?.height) continue
+      const position = group.computedPosition ?? group.position
+      const team = group.data?.kind === 'team_scope'
+      result.push({
+        id: group.id, kind: 'group', ...position,
+        width: group.dimensions.width, height: group.dimensions.height, label: '',
+        color: {
+          stroke: team ? '#6366f1' : '#64748b', label: team ? '#6366f1' : '#64748b',
+          badgeBg: team ? '#6366f1' : '#64748b',
+          bg: team ? 'rgba(99,102,241,0.04)' : 'rgba(100,116,139,0.035)',
+          border: team ? 'rgba(99,102,241,0.35)' : 'rgba(100,116,139,0.3)',
+        },
+      })
+    }
 
-      const connectedNodes = nodes.value.filter(n => connectedIds.has(n.id))
+    for (const netNode of networkNodes) {
+      const connectedNodes = connectedNetworkDevices(netNode.id, nodes.value, edges.value)
       if (connectedNodes.length === 0) continue
 
       const allNodes = [netNode, ...connectedNodes]
@@ -80,18 +92,19 @@ export function useNetworkZones(
 
       result.push({
         id: netNode.id,
+        kind: 'network',
         x: minX - PADDING,
         y: minY - PADDING,
         width: (maxX - minX) + PADDING * 2,
         height: (maxY - minY) + PADDING * 2,
         color: getNetworkColor(segmentType),
-        label: `${segmentType.toUpperCase()} Zone${cidr ? ' \u00b7 ' + cidr : ''}`,
+        label: `${netNode.data?.config?.name || segmentType.toUpperCase()}${cidr ? ' \u00b7 ' + cidr : ''}`,
       })
     }
 
     // Paint largest zones first so smaller / nested boxes (and their labels)
     // are not buried underneath an overlapping larger zone.
-    result.sort((a, b) => (b.width * b.height) - (a.width * a.height))
+    result.sort((a, b) => (b.width * b.height) - (a.width * a.height) || a.id.localeCompare(b.id))
 
     return result
   })

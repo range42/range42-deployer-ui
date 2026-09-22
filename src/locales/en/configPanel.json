@@ -140,5 +140,18 @@
     "hint": "Shown at the center of the line.",
     "close": "Close connection settings",
     "edit": "Edit connection"
+  },
+  "network": {
+    "title": "Network",
+    "noAddress": "Address range not set",
+    "bridge": "Bridge",
+    "devices": "No devices connected | 1 device connected | {count} devices connected",
+    "types": {
+      "wan": "WAN",
+      "lan": "LAN",
+      "dmz": "DMZ",
+      "management": "Management",
+      "custom": "Network"
+    }
   }
 }

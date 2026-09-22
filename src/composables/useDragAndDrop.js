@@ -61,7 +61,7 @@ export function useDragAndDrop() {
   }
 
   // Container node types that can hold child nodes
-  const containerTypes = ['network-segment', 'group']
+  const containerTypes = ['group']
 
   // Find potential parent node at drop position
   const findParentNodeAtPosition = (position) => {
@@ -147,9 +147,7 @@ export function useDragAndDrop() {
 
       // Set default size for container types
       if (isContainerType) {
-        newNode.style = type === 'group'
-          ? { width: '450px', height: '350px' }
-          : { width: '300px', height: '200px' }
+        newNode.style = { width: '450px', height: '350px' }
       }
     }
 

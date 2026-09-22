@@ -94,7 +94,7 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized, findNode } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized, findNode, fitView } = useVueFlow()
 
 // Bumped when VueFlow finishes measuring node dimensions, so the network-zone
 // overlay recomputes its geometry off real (not fallback) sizes on first paint.
@@ -584,60 +584,46 @@ function updatePublicationTargets(targets) {
   projectStore.updateProject(currentProject.value.id, { git: currentProject.value.git })
 }
 
-/** @type {number | null} */
-let layoutAnimationId = null
+let organizingLayout = false
 
-function handleAutoLayout() {
-  // Cancel any in-flight animation before starting a new one
-  if (layoutAnimationId !== null) {
-    cancelAnimationFrame(layoutAnimationId)
-    layoutAnimationId = null
-  }
-
-  const currentNodes = liveNodes.value
-  const currentEdges = liveEdges.value
-  if (currentNodes.length === 0) return
-
-  const newPositions = autoLayout.applyLayout(currentNodes, currentEdges)
-
-  // Animate nodes to new positions over 300ms
-  const duration = 300
-  const startTime = performance.now()
-  const startPositions = new Map(currentNodes.map(n => [n.id, { x: n.position.x, y: n.position.y }]))
-
-  /** @param {number} now */
-  function animate(now) {
-    const elapsed = now - startTime
-    const t = Math.min(elapsed / duration, 1)
-    const ease = 1 - Math.pow(1 - t, 3)
-
-    for (const node of currentNodes) {
-      const start = startPositions.get(node.id)
-      const target = newPositions.get(node.id)
-      if (start && target) {
-        node.position = {
-          x: start.x + (target.x - start.x) * ease,
-          y: start.y + (target.y - start.y) * ease,
-        }
+async function handleAutoLayout() {
+  if (organizingLayout || liveNodes.value.length === 0) return
+  organizingLayout = true
+  try {
+    const positions = autoLayout.applyLayout(liveNodes.value, liveEdges.value)
+    if (canvasHistory.size() === 0) canvasHistory.push(cloneSnapshot())
+    restoringHistory = true
+    const grid = editorPreferences.snapToGrid ? editorPreferences.gridSize : 1
+    // Commit positions and container sizes together: one saved edit, one Undo.
+    nodes.value = nodes.value.map(node => {
+      const placed = positions.get(node.id)
+      if (!placed) return node
+      const resized = placed.width !== undefined && placed.height !== undefined
+      return {
+        ...node,
+        position: { x: Math.round(placed.x / grid) * grid, y: Math.round(placed.y / grid) * grid },
+        ...(resized ? {
+          style: {
+            ...(typeof node.style === 'object' ? node.style : {}),
+            width: `${placed.width}px`, height: `${placed.height}px`,
+          },
+          dimensions: { width: placed.width, height: placed.height },
+        } : {}),
       }
-    }
-
-    if (t < 1) {
-      layoutAnimationId = requestAnimationFrame(animate)
-    } else {
-      layoutAnimationId = null
-    }
+    })
+    await nextTick()
+    // Let VueFlow measure the resized groups before fitting the viewport.
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    if (!editorActive) return
+    canvasHistory.push(cloneSnapshot())
+    fitView({ padding: 0.15, minZoom: 0.1, maxZoom: 1 })
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), 'error', 6000)
+  } finally {
+    restoringHistory = false
+    organizingLayout = false
   }
-
-  layoutAnimationId = requestAnimationFrame(animate)
 }
-
-onUnmounted(() => {
-  if (layoutAnimationId !== null) {
-    cancelAnimationFrame(layoutAnimationId)
-    layoutAnimationId = null
-  }
-})
 
 /** @param {import('@vue-flow/core').NodeMouseEvent} event */
 const handleNodeClick = (event) => {

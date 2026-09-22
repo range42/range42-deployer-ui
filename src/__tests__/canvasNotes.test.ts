@@ -53,6 +53,17 @@ describe('canvas notes', () => {
     expect(builder.edges.value[1].data.connection.interfaceName).toBe('net0')
   })
 
+  it('numbers interfaces on the device when a connection starts at the network', () => {
+    flow.nodes = [{ id: 'first', type: 'vm' }, { id: 'second', type: 'vm' },
+      { id: 'net', type: 'network-segment' }, { id: 'other', type: 'network-segment' }]
+    const builder = useInfraBuilder()
+    builder.onConnect({ source: 'first', target: 'net' })
+    builder.onConnect({ source: 'net', target: 'second' })
+    expect(builder.edges.value[1].data.connection.interfaceName).toBe('net0')
+    builder.onConnect({ source: 'other', target: 'second' })
+    expect(builder.edges.value[2].data.connection.interfaceName).toBe('net1')
+  })
+
   it('retains notes and their links through an export/import without adding infrastructure', () => {
     const canvas: CanvasModel = {
       nodes: [

@@ -12,6 +12,31 @@ function makeNode(over: NetworkZoneNode): NetworkZoneNode {
 }
 
 describe('useNetworkZones — Issue #68 network-zone overlay geometry', () => {
+  it('paints groups and network backgrounds in one area order and updates it after resizing', () => {
+    const nodes = ref([
+      makeNode({ id: 'large-group', type: 'group', position: { x: 0, y: 0 }, dimensions: { width: 2400, height: 1600 } }),
+      makeNode({ id: 'small-group', type: 'group', position: { x: 100, y: 100 }, dimensions: { width: 350, height: 250 } }),
+      makeNode({ id: 'wan', type: 'network-segment', position: { x: 100, y: 100 }, data: { config: { segmentType: 'wan' } } }),
+      makeNode({ id: 'vm', type: 'vm', position: { x: 800, y: 500 } }),
+    ])
+    const { zones } = useNetworkZones(nodes, ref([{ source: 'wan', target: 'vm' }]))
+    expect(zones.value.map(zone => zone.id)).toEqual(['large-group', 'wan', 'small-group'])
+    nodes.value[1].dimensions = { width: 3000, height: 2000 }
+    expect(zones.value.map(zone => zone.id)).toEqual(['small-group', 'large-group', 'wan'])
+  })
+
+  it('does not stretch a network background around notes or reference connections', () => {
+    const nodes = ref([
+      makeNode({ id: 'net', type: 'network-segment', position: { x: 0, y: 0 } }),
+      makeNode({ id: 'vm', type: 'vm', position: { x: 300, y: 0 } }),
+      makeNode({ id: 'note', type: 'note', position: { x: 9000, y: 9000 } }),
+      makeNode({ id: 'reference', type: 'vm', position: { x: 8000, y: 8000 } }),
+    ])
+    const edges = ref([{ source: 'net', target: 'vm' }, { source: 'net', target: 'note' },
+      { source: 'net', target: 'reference', data: { reference_only: true } }])
+    expect(useNetworkZones(nodes, edges).zones.value[0].width).toBe(580)
+  })
+
   it('uses absolute computedPosition (not parent-relative position) for grouped nodes', () => {
     // A network segment and a VM both live inside a topology_group whose
     // top-left is at (1000, 500). VueFlow stores `position` as parent-RELATIVE

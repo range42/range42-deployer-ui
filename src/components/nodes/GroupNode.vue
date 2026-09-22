@@ -68,10 +68,9 @@ const previewClones = computed(() => {
   >
     <!-- Node Resizer -->
     <NodeResizer
+      :is-visible="selected"
       min-width="350"
       min-height="250"
-      max-width="1200"
-      max-height="900"
     />
 
     <!-- Expanded replication preview — faint duplicated outlines (team_scope only) -->
@@ -101,20 +100,13 @@ const previewClones = computed(() => {
       class="absolute inset-0 rounded-xl transition-all duration-200 border-2"
       :class="{
         'border-dashed': true,
-        'bg-gradient-to-br from-slate-100/80 via-gray-50/50 to-slate-100/80 dark:from-slate-800/40 dark:via-gray-900/30 dark:to-slate-800/40': !isTeamScope,
         'border-slate-400/60 dark:border-slate-500/50': !isTeamScope,
-        'hover:from-slate-200/80 hover:via-gray-100/50 hover:to-slate-200/80 dark:hover:from-slate-700/40 dark:hover:via-gray-800/30 dark:hover:to-slate-700/40': !isTeamScope,
-        'bg-gradient-to-br from-indigo-100/70 via-violet-50/40 to-indigo-100/70 dark:from-indigo-900/30 dark:via-violet-900/20 dark:to-indigo-900/30': isTeamScope,
         'border-indigo-500/70 dark:border-indigo-400/70 border-[3px]': isTeamScope,
       }"
     />
 
-    <!-- Corner Accent -->
-    <div class="absolute top-0 left-0 w-12 h-12 bg-gradient-to-br from-slate-400/20 to-transparent rounded-tl-xl" />
-    <div class="absolute bottom-0 right-0 w-12 h-12 bg-gradient-to-tl from-slate-400/20 to-transparent rounded-br-xl" />
-
     <!-- Group Header -->
-    <div class="absolute top-4 left-5 right-5 flex items-center justify-between pointer-events-none z-10">
+    <div class="group-header absolute top-4 left-5 right-5 flex items-center justify-between gap-4 rounded-lg bg-base-100/90 px-3 py-2 pointer-events-auto z-10">
       <div class="flex items-center space-x-3">
         <div :class="`w-4 h-4 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
         <AppIcon :name="isTeamScope ? 'container' : 'folder'" class="w-6 h-6" />
@@ -237,7 +229,10 @@ const previewClones = computed(() => {
   min-height: 250px;
 }
 
-.group-container * {
-  transition: all 0.2s ease;
+:global(.vue-flow__node-group) {
+  pointer-events: none !important;
+}
+.group-header, .group-container :deep(.vue-flow__resize-control), .group-container :deep(.vue-flow__handle) {
+  pointer-events: auto;
 }
 </style>
