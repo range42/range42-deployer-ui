@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ProjectEditor from '@/views/ProjectEditor.vue'
+import ConfigPanel from '@/components/ConfigPanel.vue'
 import AppShell from '@/components/AppShell.vue'
 import CommandPalette from '@/components/project/CommandPalette.vue'
 import VariablesTab from '@/components/project/VariablesTab.vue'
@@ -415,5 +416,53 @@ describe('ProjectEditor saved project integration', () => {
     expect(store.getProject('saved').git.repo_name).toBe('new-repository')
     expect(store.getProject('saved').head_sha).toBe('')
     expect(store.getProject('saved').project_sha).toBe('')
+  })
+})
+
+
+describe('group deletion', () => {
+  const graph = () => ({
+    nodes: [
+      { id: 'outer', type: 'group', position: { x: 100, y: 200 }, data: {} },
+      { id: 'group', type: 'group', parentNode: 'outer', position: { x: 40, y: 80 }, data: {} },
+      { id: 'child', type: 'vm', parentNode: 'group', extent: 'parent', expandParent: true, position: { x: 20, y: 30 }, data: { config: { name: 'Keep me' } } },
+      { id: 'nested', type: 'group', parentNode: 'group', position: { x: 150, y: 100 }, data: {} },
+      { id: 'leaf', type: 'lxc', parentNode: 'nested', position: { x: 10, y: 50 }, data: {} },
+      { id: 'outside', type: 'network-segment', position: { x: 900, y: 100 }, data: {} },
+    ],
+    edges: [
+      { id: 'keep', source: 'child', target: 'outside' },
+      { id: 'inside', source: 'leaf', target: 'child' },
+      { id: 'group-link', source: 'group', target: 'outside' },
+      { id: 'unrelated', source: 'outer', target: 'outside' },
+    ],
+  })
+
+  it('removes only the group by default, preserving children in their surviving parent', async () => {
+    const saved = project({ git: undefined, ...graph() })
+    await editor(saved)
+    const flow = wrapper.getComponent(VueFlow)
+    flow.vm.$emit('nodeClick', { node: saved.nodes[1] })
+    await flushPromises()
+    wrapper.getComponent(ConfigPanel).vm.$emit('delete', 'group')
+    await flushPromises()
+    const kept = flow.props('nodes')
+    expect(kept.map(n => n.id)).toEqual(['outer', 'child', 'nested', 'leaf', 'outside'])
+    expect(kept.find(n => n.id === 'child')).toMatchObject({ parentNode: 'outer', position: { x: 60, y: 110 }, data: { config: { name: 'Keep me' } } })
+    expect(kept.find(n => n.id === 'nested')).toMatchObject({ parentNode: 'outer', position: { x: 190, y: 180 } })
+    expect(kept.find(n => n.id === 'leaf')).toMatchObject({ parentNode: 'nested', position: { x: 10, y: 50 } })
+    expect(flow.props('edges').map(e => e.id)).toEqual(['keep', 'inside', 'unrelated'])
+  })
+
+  it('recursively removes descendants and their connections only when explicitly requested', async () => {
+    const saved = project({ git: undefined, ...graph() })
+    await editor(saved)
+    const flow = wrapper.getComponent(VueFlow)
+    flow.vm.$emit('nodeClick', { node: saved.nodes[1] })
+    await flushPromises()
+    wrapper.getComponent(ConfigPanel).vm.$emit('delete', 'group', { recursive: true })
+    await flushPromises()
+    expect(flow.props('nodes').map(n => n.id)).toEqual(['outer', 'outside'])
+    expect(flow.props('edges').map(e => e.id)).toEqual(['unrelated'])
   })
 })

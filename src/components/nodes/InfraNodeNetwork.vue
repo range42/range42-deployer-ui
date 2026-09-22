@@ -54,7 +54,7 @@ const sources = [
       </div>
       <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: statusColor }" aria-hidden="true" />
     </header>
-    <div class="network-address" :class="{ 'text-sm opacity-60': !config.cidr }">
+    <div class="network-address" :class="{ 'text-sm text-base-content/75': !config.cidr }">
       {{ config.cidr || t('configPanel.network.noAddress') }}
     </div>
     <dl class="network-details">
@@ -62,7 +62,7 @@ const sources = [
       <div v-if="config.vlan != null && config.vlan !== ''"><dt>VLAN</dt><dd>{{ config.vlan }}</dd></div>
       <div v-if="config.gateway" class="network-gateway"><dt>{{ t('configPanel.fields.gateway') }}</dt><dd>{{ config.gateway }}</dd></div>
     </dl>
-    <p v-if="config.description" class="px-4 pb-3 text-xs text-base-content/60 line-clamp-2">{{ config.description }}</p>
+    <p v-if="config.description" class="px-4 pb-3 text-xs text-base-content/75 line-clamp-2">{{ config.description }}</p>
     <footer class="network-footer">
       <span class="size-1.5 rounded-full" :style="{ backgroundColor: color.stroke }" aria-hidden="true" />
       {{ t('configPanel.network.devices', devices.length) }}
@@ -82,19 +82,19 @@ const sources = [
   color: var(--color-base-content); background: var(--color-base-100);
   box-shadow: 0 3px 12px #0000000a;
 }
-.network-segment-node.selected { outline: 2px solid var(--network-accent); outline-offset: 3px; }
+.network-segment-node:hover { box-shadow: var(--shadow-md); }
 .network-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; }
 .network-icon { padding: 7px; border-radius: 8px; color: var(--network-accent); background: color-mix(in srgb, var(--network-accent) 10%, transparent); }
 .network-icon svg { width: 21px; height: 21px; }
-.network-kind { font-size: 10px; line-height: 1.6; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--network-accent); }
+.network-kind { font-size: 11px; line-height: 1.6; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--network-accent); }
 .network-address { margin: 0 16px 12px; font: 600 16px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
 .network-details { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0 16px 14px; font-size: 11px; }
 .network-details > div { display: flex; align-items: baseline; gap: 8px; }
-.network-details dt { opacity: .6; }
+.network-details dt { color: color-mix(in oklab, var(--color-base-content) 75%, transparent); }
 .network-details dd { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 .network-gateway { width: 100%; }
 .network-footer { display: flex; align-items: center; gap: 7px; padding: 9px 16px; border-top: 1px solid var(--color-base-300); font-size: 11px; }
-.network-port { width: 9px; height: 9px; border: 2px solid var(--color-base-100); background: var(--network-accent); opacity: .55; }
+.network-port { width: 9px; height: 9px; border: 2px solid var(--color-base-100); background: var(--network-accent); opacity: .85; }
 .network-port-source { width: 11px; height: 11px; border-radius: 3px; opacity: .85; }
 .network-segment-node:hover .network-port, .network-segment-node.selected .network-port { opacity: 1; }
 </style>

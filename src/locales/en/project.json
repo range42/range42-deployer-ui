@@ -87,7 +87,12 @@
     "cancel": "Cancel",
     "remove": "Remove",
     "mustStopFirst": "This VM is running — stop it before deleting from Proxmox.",
-    "destroyWarning": "This permanently destroys the VM and its disks."
+    "destroyWarning": "This permanently destroys the VM and its disks.",
+    "groupTitle": "Delete group",
+    "promptGroup": "Remove “{name}”? It contains {count} nodes, including nested groups.",
+    "groupHelp": "Remove only the group to keep its nodes and connections in place, or remove all of its contents from the canvas. Deployed resources are unchanged. You can undo either choice.",
+    "groupOnly": "Remove group only",
+    "groupRecursive": "Remove group and contents"
   },
   "config": {
     "loading": "Loading saved file…",
@@ -120,5 +125,16 @@
   },
   "history": {
     "file": "History for {path} at {ref}"
+  },
+  "canvas": {
+    "tools": "Canvas tools",
+    "select": "Select",
+    "pan": "Pan",
+    "selectLabel": "Select nodes",
+    "panLabel": "Pan canvas",
+    "selectHelp": "Drag to select · Space or right-drag to pan",
+    "panHelp": "Drag to pan · Shift-drag to select",
+    "selected": "{count} selected · Drag to move · Esc to clear",
+    "keyboardHelp": "Drag an empty area to select the nodes fully inside it, then drag the selection to move them together. Hold Space or use the right mouse button to pan. Escape clears selection. Use arrow keys to select a node, Enter to configure it, and Tab to reach canvas controls."
   }
 }

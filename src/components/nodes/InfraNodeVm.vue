@@ -49,31 +49,31 @@ function barColor(percent) {
 <template>
   <div
     class="infra-node"
-    :class="[{ 'ring-2 ring-primary ring-offset-2': selected }]"
+    :class="{ 'is-selected': selected }"
   >
     <!-- Header -->
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-2">
+    <div class="node-header">
+      <div class="node-identity">
         <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
           <AppIcon name="monitor" class="w-5 h-5" />
         </div>
         <div>
-          <div class="font-semibold text-sm leading-tight">
+          <div :title="data?.config?.name" class="node-title">
             {{ data.config?.name || 'Virtual Machine' }}
           </div>
-          <div class="text-[10px] text-base-content/50 uppercase tracking-wide">
+          <div class="text-[11px] text-base-content/75 uppercase tracking-wide">
             {{ isDeployed ? `VM #${data.config?.vmid}` : 'VM' }}
           </div>
         </div>
       </div>
       <!-- Status indicator -->
-      <div class="flex items-center gap-1.5">
-        <span v-if="data?.pendingAction" class="text-[10px] opacity-70 capitalize">{{ statusView.label }}</span>
-        <span v-if="isDeployed && !data?.pendingAction" class="text-[9px] font-medium uppercase tracking-wider" :class="{
+      <div class="node-status flex items-center gap-1.5">
+        <span v-if="data?.pendingAction" class="text-[11px] opacity-70 capitalize">{{ statusView.label }}</span>
+        <span v-if="isDeployed && !data?.pendingAction" class="text-[11px] font-medium uppercase tracking-wider" :class="{
           'text-success': statusColor === 'green',
           'text-error': statusColor === 'red',
           'text-warning': statusColor === 'orange',
-          'text-base-content/40': statusColor === 'gray',
+          'text-base-content/75': statusColor === 'gray',
           'text-info': statusColor === 'blue',
         }">{{ data.status }}</span>
         <div
@@ -95,36 +95,36 @@ function barColor(percent) {
       <span
         v-for="tag in displayTags"
         :key="tag"
-        class="px-1.5 py-0 rounded-full text-[9px] font-semibold text-white leading-relaxed"
-        :style="{ backgroundColor: getTagColor(tag).hex }"
+        class="node-tag" :title="tag"
+        :style="{ '--tag-accent': getTagColor(tag).hex }"
       >{{ tag }}</span>
-      <span v-if="overflowCount > 0" class="text-[9px] text-base-content/40">+{{ overflowCount }}</span>
+      <span v-if="overflowCount > 0" class="text-[11px] text-base-content/75">+{{ overflowCount }}</span>
     </div>
 
     <!-- Live metrics (running) or static specs (stopped) -->
     <div v-if="metrics" class="grid grid-cols-2 gap-1 text-[11px]">
       <div class="flex items-center gap-1 px-1.5 py-0.5">
-        <span class="text-base-content/40 text-[10px]">CPU</span>
+        <span class="text-base-content/75 text-[11px]">CPU</span>
         <div class="flex-1 h-1 bg-base-content/10 rounded-full overflow-hidden">
-          <div class="h-full rounded-full transition-all duration-500" :style="{ width: metrics.cpu + '%', backgroundColor: barColor(metrics.cpu) }"></div>
+          <div class="h-full rounded-full transition-[width] duration-500" :style="{ width: metrics.cpu + '%', backgroundColor: barColor(metrics.cpu) }"></div>
         </div>
-        <span class="text-[9px] font-medium min-w-[28px] text-right">{{ Math.round(metrics.cpu) }}%</span>
+        <span class="text-[11px] font-medium min-w-[28px] text-right">{{ Math.round(metrics.cpu) }}%</span>
       </div>
       <div class="flex items-center gap-1 px-1.5 py-0.5">
-        <span class="text-base-content/40 text-[10px]">RAM</span>
+        <span class="text-base-content/75 text-[11px]">RAM</span>
         <div class="flex-1 h-1 bg-base-content/10 rounded-full overflow-hidden">
-          <div class="h-full rounded-full transition-all duration-500" :style="{ width: metrics.memPercent + '%', backgroundColor: barColor(metrics.memPercent) }"></div>
+          <div class="h-full rounded-full transition-[width] duration-500" :style="{ width: metrics.memPercent + '%', backgroundColor: barColor(metrics.memPercent) }"></div>
         </div>
-        <span class="text-[9px] font-medium min-w-[28px] text-right">{{ metrics.memPercent }}%</span>
+        <span class="text-[11px] font-medium min-w-[28px] text-right">{{ metrics.memPercent }}%</span>
       </div>
     </div>
     <div v-else class="grid grid-cols-2 gap-1 text-[11px]">
       <div v-if="data.config?.cores" class="flex items-center gap-1 bg-base-200/50 rounded px-1.5 py-0.5">
-        <span class="text-base-content/40">CPU</span>
+        <span class="text-base-content/75">CPU</span>
         <span class="font-medium ml-auto">{{ data.config.cores }}c</span>
       </div>
       <div v-if="ramMB" class="flex items-center gap-1 bg-base-200/50 rounded px-1.5 py-0.5">
-        <span class="text-base-content/40">RAM</span>
+        <span class="text-base-content/75">RAM</span>
         <span class="font-medium ml-auto">{{ ramMB >= 1024 ? (ramMB / 1024).toFixed(1) + 'G' : ramMB + 'M' }}</span>
       </div>
     </div>
@@ -138,11 +138,11 @@ function barColor(percent) {
       v-if="hasPendingChanges"
       class="flex items-center justify-between px-2 py-0.5 mt-1.5 -mx-3 -mb-3 rounded-b-xl bg-amber-500/15 border-t border-amber-500/25"
     >
-      <span class="text-[9px] font-medium text-amber-600 dark:text-amber-400">
+      <span class="text-[11px] font-medium text-amber-800 dark:text-amber-200">
         {{ pendingCount }} unsaved
       </span>
       <button
-        class="text-[9px] font-medium text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200"
+        type="button" class="nodrag nopan rounded px-2 py-1 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20"
         @click.stop="emit('open-apply-dialog')"
       >Apply</button>
     </div>

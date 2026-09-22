@@ -64,4 +64,17 @@ describe('useCanvasHistory', () => {
     expect(h.canRedo.value).toBe(false)
     expect(h.size()).toBe(0)
   })
+
+  it('refreshes the current snapshot without creating an undo step or losing redo', () => {
+    const h = useCanvasHistory()
+    h.replaceCurrent({ x: 20 })
+    expect(h.canUndo.value).toBe(false)
+    h.push({ x: 100 })
+    h.undo()
+    h.replaceCurrent({ x: 30 })
+    expect(h.size()).toBe(2)
+    expect(h.canUndo.value).toBe(false)
+    expect(h.redo()).toEqual({ x: 100 })
+    expect(h.undo()).toEqual({ x: 30 })
+  })
 })

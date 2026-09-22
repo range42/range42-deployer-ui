@@ -3,7 +3,7 @@
 import { ref, onMounted, onBeforeUnmount, onUnmounted, watch, computed, provide, nextTick, defineAsyncComponent } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { VueFlow, Panel, useVueFlow, useKeyPress } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
@@ -68,6 +68,7 @@ import { useToast } from '../composables/useToast'
 import { useProjectGitSync, buildPushArgs, providerForBinding } from '../composables/useProjectGitSync'
 import { useProjectStore } from '../stores/projectStore'
 import { useEditorPreferencesStore } from '@/stores/editorPreferencesStore'
+import { removeCanvasNode } from '@/services/canvasDeletion'
 
 
 ////
@@ -94,7 +95,10 @@ const {
   loadProjectData
 } = useInfraBuilder()
 
-const { getNodes: flowGetNodes, getEdges: flowGetEdges, addNodes: vfAddNodes, addEdges: vfAddEdges, updateNodeData, onNodesInitialized, findNode, fitView } = useVueFlow()
+const { getNodes: flowGetNodes, getEdges: flowGetEdges, getSelectedNodes: selectedCanvasNodes, nodesSelectionActive, removeSelectedElements, addNodes: vfAddNodes, addEdges: vfAddEdges, addSelectedNodes, updateNodeData, onNodesInitialized, findNode, fitView } = useVueFlow()
+const canvasTool = ref('select')
+const spacePressed = useKeyPress('Space', { actInsideInputWithModifier: false })
+const canvasPanning = computed(() => canvasTool.value === 'pan' || spacePressed.value)
 
 // Bumped when VueFlow finishes measuring node dimensions, so the network-zone
 // overlay recomputes its geometry off real (not fallback) sizes on first paint.
@@ -121,7 +125,7 @@ const dragAndDropComposable = useDragAndDrop()
 const { onDragOver, onDrop, onDragLeave, isDragOver, addComponent } = dragAndDropComposable || {}
 
 const showConfigPanel = ref(false)
-/** @type {import('vue').Ref<{ openApplyDialog: () => void } | null>} */
+/** @type {import('vue').Ref<{ openApplyDialog: () => void; openDeleteDialog: () => void } | null>} */
 const configPanelRef = ref(null)
 const showExportModal = ref(false)
 const showProxmoxSettings = ref(false)
@@ -151,6 +155,7 @@ const projectId = computed(() => currentProject.value?.id || queryText(route.par
 const topologyResolver = useTopologyResolver()
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
+const selectedGroup = computed(() => flowGetNodes.value?.find(node => node.type === 'group' && node.selected))
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
 /**
@@ -342,7 +347,10 @@ onUnmounted(() => {
 // entries.
 const canvasHistory = useCanvasHistory()
 let restoringHistory = false
+const preservingNodePositions = ref(false)
 let placingComponent = false
+let movingNodes = false
+let moveStartSignature = ''
 function cloneSnapshot() {
   return JSON.parse(JSON.stringify({
     nodes: nodes.value || [],
@@ -382,8 +390,33 @@ watch(() => {
   for (const edge of snapshot.edges) delete edge.selected
   return editorAuthoredSignature(snapshot.nodes, snapshot.edges)
 }, () => {
-  if (currentProject.value && !restoringHistory && !placingComponent) canvasHistory.push(cloneSnapshot())
+  if (currentProject.value && !restoringHistory && !placingComponent && !movingNodes) canvasHistory.push(cloneSnapshot())
 })
+
+function startNodeMove() {
+  movingNodes = true
+  syncNodePositions()
+  canvasHistory.replaceCurrent(cloneSnapshot())
+  moveStartSignature = editorAuthoredSignature(nodes.value, edges.value)
+}
+
+function syncNodePositions() {
+  nodes.value = nodes.value.map(node => {
+    const position = findNode(node.id)?.position
+    return position ? { ...node, position: { ...position } } : node
+  })
+}
+
+async function finishNodeMove() {
+  // VueFlow emits every pointer movement. Record the complete gesture once.
+  // Copy its final positions into the authored graph for history and autosave.
+  syncNodePositions()
+  await nextTick()
+  if (editorActive && moveStartSignature !== editorAuthoredSignature(nodes.value, edges.value)) {
+    canvasHistory.push(cloneSnapshot())
+  }
+  movingNodes = false
+}
 
 function finishComponentPlacement() {
   nextTick(() => {
@@ -402,12 +435,21 @@ function redoCanvas() {
 }
 
 /** @param {{ nodes: import('@vue-flow/core').Node[]; edges: import('@vue-flow/core').Edge[] }} snapshot */
-function applyCanvasSnapshot(snapshot) {
+async function applyCanvasSnapshot(snapshot) {
   restoringHistory = true
+  preservingNodePositions.value = true
   // Applying a snapshot writes back via loadProjectData so selection +
   // VueFlow state stay in sync with the restored graph.
-  loadProjectData({ ...currentProject.value, ...JSON.parse(JSON.stringify(snapshot)) })
-  nextTick(() => { restoringHistory = false })
+  // Recreate the graph together: merging surviving children into a restored,
+  // unmeasured parent would clamp them against its temporary zero dimensions.
+  nodes.value = []
+  edges.value = []
+  await nextTick()
+  const restored = JSON.parse(JSON.stringify(snapshot))
+  loadProjectData({ ...currentProject.value, ...restored })
+  await nextTick()
+  restoringHistory = false
+  preservingNodePositions.value = false
 }
 
 onBeforeUnmount(() => {
@@ -656,9 +698,8 @@ const onNodeApply = (slotProps) => {
  *  - Enter opens the ConfigPanel for the currently-selected node.
  *  - Tab is intentionally NOT consumed so native handle-focus cycling still
  *    works inside VueFlow.
- * The handler only reacts when the canvas wrapper (or one of its children
- * that isn't an editable control) is the active element — preventing
- * interference with mouse interactions and form inputs.
+ * The handler only reacts when the canvas wrapper owns focus. VueFlow nodes
+ * and interactive children retain their own native keyboard behavior.
  */
 const mobileSidebarOpen = ref(false)
 function toggleMobileSidebar() { mobileSidebarOpen.value = !mobileSidebarOpen.value }
@@ -687,13 +728,22 @@ const ARROW_DIRS = {
 /** @param {KeyboardEvent} event */
 const handleCanvasKeydown = (event) => {
   const target = event.target
-  if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable))) {
+  if (event.key === 'Escape' && target instanceof HTMLElement
+    && !target.closest('input, textarea, select, button, a, [contenteditable="true"]')) {
+    removeSelectedElements()
+    nodesSelectionActive.value = false
+    selectedNode.value = null
+    event.preventDefault()
     return
   }
+  // Child controls and VueFlow nodes own their keyboard behavior. In particular,
+  // Enter must still activate zoom, connection-label and group-action buttons.
+  if (event.defaultPrevented || target !== event.currentTarget) return
 
   if (event.key === 'Enter') {
     if (selectedNode.value) {
       showConfigPanel.value = true
+      router.replace({ query: { ...route.query, node: selectedNode.value.id } })
       event.preventDefault()
     }
     return
@@ -706,6 +756,8 @@ const handleCanvasKeydown = (event) => {
   const next = nextKeyboardSelection(allNodes, selectedNode.value?.id || null, dir)
   if (next) {
     selectedNode.value = next
+    const graphNode = findNode(next.id)
+    if (graphNode) addSelectedNodes([graphNode])
     event.preventDefault()
   }
 }
@@ -749,13 +801,30 @@ const handleCloseEdgeConfig = () => {
   closeEdgeConfig()
 }
 
-/** @param {string} nodeId */
-const handleDeleteNode = (nodeId) => {
-  // Remove from controlled nodes ref (VueFlow controlled mode)
-  nodes.value = nodes.value.filter(n => n.id !== nodeId)
-  // Also remove any edges connected to this node
-  edges.value = edges.value.filter(e => e.source !== nodeId && e.target !== nodeId)
+/** @param {string} nodeId @param {{ recursive?: boolean }} [options] */
+const handleDeleteNode = async (nodeId, options = {}) => {
+  // Changing a parent extent makes VueFlow clamp and snap the node. Preserve
+  // authored positions during this update; grid snapping resumes for dragging.
+  preservingNodePositions.value = true
+  const next = removeCanvasNode(liveNodes.value, edges.value, nodeId, options.recursive === true)
+  nodes.value = next.nodes
+  edges.value = next.edges
   closeConfigPanel()
+  await nextTick()
+  preservingNodePositions.value = false
+}
+
+/** Group deletion must never bypass the same explicit choice through VueFlow's shortcut. @param {KeyboardEvent} event */
+async function handleGroupDeleteKey(event) {
+  if (!['Backspace', 'Delete'].includes(event.key) || !selectedGroup.value || event.repeat) return
+  const target = event.target
+  if (target instanceof HTMLElement && target.closest('input, textarea, select, button, a, [contenteditable="true"]')) return
+  event.preventDefault()
+  event.stopPropagation()
+  selectedNode.value = selectedGroup.value
+  showConfigPanel.value = true
+  await nextTick()
+  configPanelRef.value?.openDeleteDialog()
 }
 
 /** @param {DragEvent} event */
@@ -1233,33 +1302,67 @@ const handleInfrastructureImport = (result) => {
       <!-- VueFlow Canvas (v-show keeps state across tab switches) -->
       <div
         v-show="tab === 'canvas'"
-        class="flex-1 relative transition-colors duration-200 focus:outline-none"
+        class="canvas-workspace flex-1 relative transition-colors duration-200"
         :class="{ 'bg-primary/5 ring-2 ring-primary/20 ring-inset': isDragOver }"
         tabindex="0"
         role="application"
         aria-label="Infrastructure canvas"
+        aria-describedby="canvas-keyboard-help"
         data-testid="canvas-wrapper"
         @drop="handleDrop"
         @dragover="handleDragOver"
         @dragleave="handleDragLeave"
         @keydown="handleCanvasKeydown"
+        @keydown.capture="handleGroupDeleteKey"
       >
+        <p id="canvas-keyboard-help" class="sr-only">{{ translate('project.canvas.keyboardHelp') }}</p>
+        <p class="sr-only" role="status">{{ selectedNode ? `Selected: ${selectedNode.data?.config?.name || selectedNode.id}` : '' }}</p>
         <VueFlow
           :nodes="nodes"
           :edges="renderedEdges"
-          :snap-to-grid="editorPreferences.snapToGrid"
+          :min-zoom="0.1"
+          :selection-key-code="canvasPanning ? 'Shift' : true"
+          :pan-on-drag="canvasPanning ? true : [1, 2]"
+          :delete-key-code="selectedGroup || showConfigPanel ? null : 'Backspace'"
+          :snap-to-grid="editorPreferences.snapToGrid && !preservingNodePositions"
           :snap-grid="editorSnapGrid"
           @connect="onConnect" 
           @node-click="handleNodeClick"
           @edge-click="handleEdgeClick" 
           @nodes-change="onNodesChange" 
           @edges-change="onEdgesChange" 
+          @node-drag-start="startNodeMove"
+          @node-drag-stop="finishNodeMove"
+          @selection-drag-start="startNodeMove"
+          @selection-drag-stop="finishNodeMove"
           fit-view-on-init 
           elevate-edges-on-select 
           class="h-full w-full"
         >
           <NetworkZoneOverlay :zones="zones" />
           <Background :gap="editorPreferences.gridSize" />
+          <Panel position="top-left" class="canvas-tools rounded-xl border border-base-300 bg-base-100 p-2 shadow-md">
+            <div class="flex flex-wrap items-center gap-2">
+              <div role="group" :aria-label="translate('project.canvas.tools')" class="flex gap-1">
+                <button type="button" class="btn btn-sm" :class="canvasTool === 'select' ? 'btn-primary' : 'btn-ghost'"
+                  :aria-label="translate('project.canvas.selectLabel')" :aria-pressed="canvasTool === 'select'"
+                  @click="canvasTool = 'select'">
+                  <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="4 3" /></svg>
+                  {{ translate('project.canvas.select') }}
+                </button>
+                <button type="button" class="btn btn-sm" :class="canvasTool === 'pan' ? 'btn-primary' : 'btn-ghost'"
+                  :aria-label="translate('project.canvas.panLabel')" :aria-pressed="canvasTool === 'pan'"
+                  @click="canvasTool = 'pan'">
+                  <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4" /></svg>
+                  {{ translate('project.canvas.pan') }}
+                </button>
+              </div>
+              <p class="text-xs text-base-content/80" data-testid="canvas-selection-status" role="status">
+                {{ selectedCanvasNodes.length ? translate('project.canvas.selected', { count: selectedCanvasNodes.length })
+                  : translate(canvasPanning ? 'project.canvas.panHelp' : 'project.canvas.selectHelp') }}
+              </p>
+            </div>
+          </Panel>
           <Controls position="bottom-left">
             <!-- Public icon slots name the original buttons, retaining VueFlow's handlers and disabled states. -->
             <template #icon-zoom-in>
@@ -1283,7 +1386,7 @@ const handleInfrastructureImport = (result) => {
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 10V7a5 5 0 0 1 10 0v3h1v11H6V10zm2 0h6V7a3 3 0 0 0-6 0zm3 4a1 1 0 0 0-1 1v3h2v-3a1 1 0 0 0-1-1z" /></svg>
             </template>
           </Controls>
-          <MiniMap position="bottom-right" />
+          <MiniMap position="bottom-right" :width="160" :height="110" />
 
           <!-- Organization -->
           <template #node-note="props">

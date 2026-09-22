@@ -44,26 +44,26 @@ const statusColor = computed(() => statusView.value.dotColor)
 <template>
   <div
     class="infra-node relative rounded-lg border border-base-300 bg-base-100 p-3 min-w-[220px] shadow-sm"
-    :class="[{ 'ring-2 ring-primary ring-offset-2': selected }]"
+    :class="{ 'is-selected': selected }"
     :data-testid="`docker-node-${id || data?.id || ''}`"
   >
     <!-- Header -->
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-2">
+    <div class="node-header">
+      <div class="node-identity">
         <div class="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center">
           <AppIcon name="container" class="w-5 h-5" />
         </div>
         <div>
-          <div class="font-semibold text-sm leading-tight">
+          <div :title="data?.config?.name" class="node-title">
             {{ data?.config?.name || 'Docker Container' }}
           </div>
-          <div class="text-[10px] text-base-content/50 uppercase tracking-wide">
+          <div :title="data?.config?.image" class="truncate text-[11px] text-base-content/75">
             {{ data?.config?.image || 'docker' }}
           </div>
         </div>
       </div>
 
-      <div class="flex items-center gap-1.5">
+      <div class="node-status flex items-center gap-1.5">
         <!-- Missing-host warning — red dot surfaces Problems panel entry -->
         <span
           v-if="!isValidHost"
@@ -73,15 +73,15 @@ const statusColor = computed(() => statusView.value.dotColor)
             ? `host_ref '${hostRef}' is not a VM or LXC`
             : 'Docker containers must tether to a VM or LXC host'"
         />
-        <span v-if="data?.pendingAction" class="text-[10px] opacity-70 capitalize">{{ statusView.label }}</span>
+        <span v-if="data?.pendingAction" class="text-[11px] opacity-70 capitalize">{{ statusView.label }}</span>
         <span
-          class="text-[9px] font-medium uppercase tracking-wider"
+          class="text-[11px] font-medium uppercase tracking-wider"
           :class="{
             'text-success': statusColor === 'green',
             'text-error': statusColor === 'red',
             'text-warning': statusColor === 'orange',
             'text-info': statusColor === 'blue',
-            'text-base-content/50': statusColor === 'gray',
+            'text-base-content/75': statusColor === 'gray',
           }"
         >
           {{ data?.status || 'draft' }}
@@ -101,7 +101,7 @@ const statusColor = computed(() => statusView.value.dotColor)
       <span
         v-for="p in data.config.ports.slice(0, 3)"
         :key="p"
-        class="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
+        class="text-[11px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
       >
         {{ p }}
       </span>
@@ -120,9 +120,3 @@ const statusColor = computed(() => statusView.value.dotColor)
     />
   </div>
 </template>
-
-<style scoped>
-.infra-node {
-  transition: all 0.15s ease;
-}
-</style>

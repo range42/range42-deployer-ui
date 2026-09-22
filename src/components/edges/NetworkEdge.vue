@@ -126,9 +126,9 @@ const displayIp = computed(() => {
 const labelStyle = computed(() => {
   const color = networkColor.value
   return {
-    backgroundColor: color.bg,
-    borderColor: color.border,
-    color: color.label,
+    backgroundColor: 'var(--color-base-100)',
+    borderColor: color.stroke,
+    color: 'var(--color-base-content)',
   }
 })
 </script>
@@ -161,26 +161,26 @@ const labelStyle = computed(() => {
         :aria-label="t('configPanel.connection.edit')"
         @click="emit('select', $event)"
         :class="[
-          'edge-label rounded-md border px-2 py-1 shadow-sm transition-all',
+          'edge-label rounded-md border px-2 py-1 shadow-sm transition-colors',
           { 'ring-2 ring-primary ring-offset-1': selected }
         ]"
         :style="labelStyle"
       >
         <div v-if="label ?? data?.label" class="mb-1 max-w-64 whitespace-pre-wrap break-words text-xs font-semibold">{{ label ?? data?.label }}</div>
         <!-- Interface Name -->
-        <div v-if="connectionInfo.interfaceName" class="text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-tight">
+        <div v-if="connectionInfo.interfaceName" class="text-[11px] font-semibold text-base-content/75 leading-tight">
           {{ connectionInfo.interfaceName }}
         </div>
         
         <!-- IP Address -->
-        <div class="font-mono text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">
+        <div class="font-mono text-xs font-semibold leading-tight" :title="connectionInfo.ipAddress">
           {{ displayIp }}
         </div>
         
         <!-- Indicators -->
         <div class="flex items-center gap-1 mt-0.5">
           <!-- VLAN indicator -->
-          <span v-if="connectionInfo.vlanTag" class="text-[9px] bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 px-1 rounded font-medium">
+          <span v-if="connectionInfo.vlanTag != null && connectionInfo.vlanTag !== ''" class="text-[10px] bg-base-200 text-base-content px-1 rounded font-medium">
             VLAN {{ connectionInfo.vlanTag }}
           </span>
           <!-- Firewall indicator -->
@@ -209,17 +209,18 @@ const labelStyle = computed(() => {
 
 <style scoped>
 .edge-label-container {
-  z-index: 1000;
+  z-index: 1;
 }
 
 .edge-label {
   min-width: 60px;
+  max-width: 260px;
+  overflow-wrap: anywhere;
   text-align: center;
-  backdrop-filter: blur(4px);
 }
 
 /* Hover effect */
 .edge-label:hover {
-  transform: scale(1.05);
+  background-color: var(--color-base-200) !important;
 }
 </style>

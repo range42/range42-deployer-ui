@@ -87,7 +87,12 @@
     "cancel": "Annuler",
     "remove": "Retirer",
     "mustStopFirst": "Cette VM est en cours d'exécution — arrêtez-la avant de la supprimer de Proxmox.",
-    "destroyWarning": "Ceci détruit définitivement la VM et ses disques."
+    "destroyWarning": "Ceci détruit définitivement la VM et ses disques.",
+    "groupTitle": "Supprimer le groupe",
+    "promptGroup": "Retirer « {name} » ? Il contient {count} nœuds, groupes imbriqués inclus.",
+    "groupHelp": "Retirez uniquement le groupe pour conserver ses nœuds et connexions à leur place, ou retirez tout son contenu du canevas. Les ressources déployées restent inchangées. Les deux actions peuvent être annulées.",
+    "groupOnly": "Retirer uniquement le groupe",
+    "groupRecursive": "Retirer le groupe et son contenu"
   },
   "config": {
     "loading": "Chargement du fichier enregistré…",
@@ -120,5 +125,16 @@
   },
   "history": {
     "file": "Historique de {path} sur {ref}"
+  },
+  "canvas": {
+    "tools": "Outils du canevas",
+    "select": "Sélection",
+    "pan": "Déplacement",
+    "selectLabel": "Sélectionner des nœuds",
+    "panLabel": "Déplacer le canevas",
+    "selectHelp": "Glissez pour sélectionner · Espace ou bouton droit pour déplacer la vue",
+    "panHelp": "Glissez pour déplacer la vue · Maj + glisser pour sélectionner",
+    "selected": "{count} sélectionnés · Glissez pour déplacer · Échap pour désélectionner",
+    "keyboardHelp": "Glissez sur une zone vide pour sélectionner les nœuds entièrement inclus, puis glissez la sélection pour les déplacer ensemble. Maintenez Espace ou utilisez le bouton droit pour déplacer la vue. Échap efface la sélection. Les flèches sélectionnent un nœud, Entrée ouvre sa configuration et Tab accède aux commandes."
   }
 }

@@ -1,16 +1,15 @@
-import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, it, expect } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
+import projectMessages from '@/locales/en/project.json'
+
+enableAutoUnmount(afterEach)
 
 function makeI18n() {
   return createI18n({
     legacy: false, locale: 'en',
-    messages: { en: { project: { deleteNode: {
-      title: 'Delete node', promptProxmox: 'Delete "{name}"?', promptCanvas: 'Remove "{name}"?',
-      deleteFromProxmox: 'Delete from Proxmox', removeCanvasOnly: 'Remove from canvas only',
-      cancel: 'Cancel', remove: 'Remove', mustStopFirst: 'Stop it first', destroyWarning: 'destroys disks',
-    } } } },
+    messages: { en: { project: projectMessages } },
   })
 }
 function mountModal(node) {
@@ -47,7 +46,7 @@ describe('DeleteNodeModal', () => {
   })
   it('running deployed VM shows stop-first note', () => {
     const running = { id: 'n4', type: 'vm', data: { deployed: true, vmId: 5, status: 'running', name: 'r' } }
-    expect(mountModal(running).text()).toContain('Stop it first')
+    expect(mountModal(running).text()).toContain('stop it before deleting')
   })
   it('running deployed VM disables the Proxmox delete button', () => {
     const running = { id: 'n4', type: 'vm', data: { deployed: true, vmId: 5, status: 'running', name: 'r' } }
@@ -58,5 +57,26 @@ describe('DeleteNodeModal', () => {
     const w = mountModal(deployedVm)
     await w.find('[data-testid="cancel"]').trigger('click')
     expect(w.emitted('cancel')).toBeTruthy()
+  })
+})
+
+
+describe('group deletion choices', () => {
+  it('names the group and distinguishes keeping children from recursive removal', async () => {
+    const w = mountModal({ id: 'g', type: 'group', data: { config: { name: 'Training lab' } } })
+    await w.setProps({ descendantCount: 3 })
+    expect(w.text()).toContain('Training lab')
+    expect(w.text()).toContain('3')
+    expect(w.get('[data-testid="remove-canvas"]').text()).toBe('Remove group only')
+    await w.get('[data-testid="remove-canvas"]').trigger('click')
+    expect(w.emitted('removeCanvas')).toEqual([[]])
+    await w.get('[data-testid="remove-group-recursive"]').trigger('click')
+    expect(w.emitted('removeCanvas').at(-1)).toEqual([{ recursive: true }])
+    expect(w.emitted('deleteProxmox')).toBeUndefined()
+  })
+
+  it('does not offer recursive deletion for an empty group or an ordinary node', () => {
+    expect(mountModal({ id: 'g', type: 'group', data: {} }).find('[data-testid="remove-group-recursive"]').exists()).toBe(false)
+    expect(mountModal(deployedVm).find('[data-testid="remove-group-recursive"]').exists()).toBe(false)
   })
 })

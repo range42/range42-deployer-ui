@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, watch, onMounted, nextTick, inject } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue'
+import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n/index.js'
 import FormField from '@/components/ui/FormField.vue'
@@ -35,6 +36,7 @@ import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
 import { useProxmoxTasks } from '@/composables/useProxmoxTasks'
 import NodeAttachmentsSection from '@/components/project/attachments/NodeAttachmentsSection.vue'
 import { resolveNodeStatus } from '@/composables/useNodeStatus'
+import { canvasDescendants } from '@/services/canvasDeletion'
 
 const { t } = useI18n({ useScope: 'global' })
 const tasks = useProxmoxTasks()
@@ -50,6 +52,12 @@ const hardwareTarget = computed(() => {
 // Modal shell refs — focus is moved into the panel on open (mirrors
 // ConfirmDialog's pattern) and Escape closes via the root keydown handler.
 const modalBox = ref(null)
+const focusReady = ref(false)
+const opener = typeof document !== 'undefined' ? document.activeElement : null
+onUnmounted(async () => {
+  await nextTick()
+  if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true })
+})
 const titleId = 'config-panel-title'
 
 const props = defineProps({
@@ -185,6 +193,7 @@ onMounted(async () => {
   // Keyboard controls must work while optional backend reads are still pending.
   await nextTick()
   modalBox.value?.focus()
+  focusReady.value = true
   ensureNamespaces(['configPanel', 'project', 'common'])
 
   if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
@@ -357,9 +366,9 @@ const onDeleteProxmox = async () => {
   })
 }
 
-const onRemoveCanvas = () => {
+const onRemoveCanvas = (options = {}) => {
   showDeleteModal.value = false
-  emit('delete', props.node.id)
+  emit('delete', props.node.id, options)
   emit('close')
 }
 
@@ -375,7 +384,7 @@ const handleBackdropClick = (event) => {
 
 const onEscape = () => {
   // Defer to nested dialogs: only close the panel when no overlay is open.
-  if (showDeleteModal.value || showApplyDialog.value) return
+  if (showDeleteModal.value || showApplyDialog.value || showHardwareDialog.value) return
   emit('close')
 }
 
@@ -404,10 +413,13 @@ const {
 
 const showApplyDialog = ref(false)
 // Let the parent (node-card "Apply" strip) open the apply dialog directly.
-defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
+defineExpose({ openApplyDialog: () => { showApplyDialog.value = true }, openDeleteDialog: handleDelete })
 </script>
 
 <template>
+  <FocusTrap :active="focusReady && !showDeleteModal && !showApplyDialog && !showHardwareDialog"
+    :initial-focus="() => modalBox" :fallback-focus="() => modalBox"
+    :escape-deactivates="false" :return-focus-on-deactivate="false">
   <div class="modal modal-open" @click="handleBackdropClick">
     <div
       ref="modalBox"
@@ -468,7 +480,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
       </p>
 
       <!-- Content (scrolls between sticky header/footer) -->
-      <div class="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+      <div class="flex-1 space-y-5 overflow-y-auto overscroll-contain px-6 py-5">
         <NodeContextNotice :type="node.type" />
 
         <!-- Common Fields -->
@@ -493,12 +505,12 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
             <span
               v-for="tag in displayedTags"
               :key="tag"
-              class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white"
-              :style="{ backgroundColor: getTagColor(tag).hex }"
+              class="node-tag inline-flex items-center gap-1"
+              :style="{ '--tag-accent': getTagColor(tag).hex }"
             >
-              {{ tag }}
+              <span class="min-w-0 truncate" :title="tag">{{ tag }}</span>
               <button
-                class="ml-0.5 leading-none opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                class="ml-0.5 shrink-0 leading-none opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :aria-label="t('configPanel.a11y.removeTag', { tag })"
                 @click="removeTag(tag)"
               >&times;</button>
@@ -507,6 +519,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
           <div class="relative">
             <input
               v-model="tagInput"
+              :aria-label="t('configPanel.tags.add')"
               :placeholder="t('configPanel.tags.add')"
               class="input input-bordered input-sm w-full rounded-lg"
               @keydown.enter.prevent="addTag"
@@ -654,7 +667,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
             <div
               v-if="!node.data?.deployed"
               class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5"
-              :class="isValid ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'"
+              :class="isValid ? 'bg-success/10 text-base-content' : 'bg-warning/10 text-base-content'"
             >
               <svg v-if="isValid" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
@@ -682,6 +695,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
       </footer>
     </div>
   </div>
+  </FocusTrap>
 
   <ApplyChangesDialog
     v-if="showApplyDialog"
@@ -696,6 +710,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true } })
   <DeleteNodeModal
     :open="showDeleteModal"
     :node="node"
+    :descendant-count="node.type === 'group' ? canvasDescendants(nodes, node.id).size : 0"
     @deleteProxmox="onDeleteProxmox"
     @removeCanvas="onRemoveCanvas"
     @cancel="onDeleteCancel"

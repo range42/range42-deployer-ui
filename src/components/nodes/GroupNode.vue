@@ -60,11 +60,7 @@ const previewClones = computed(() => {
     class="group-container relative w-full h-full"
     :data-kind="kind"
     :data-team-count="teamCount"
-    :class="{
-      'ring-2 ring-slate-500 ring-offset-2': selected && !isTeamScope,
-      'ring-2 ring-indigo-500 ring-offset-2': selected && isTeamScope,
-      'shadow-xl': selected,
-    }"
+    :class="{ 'shadow-xl': selected }"
   >
     <!-- Node Resizer -->
     <NodeResizer
@@ -97,7 +93,7 @@ const previewClones = computed(() => {
 
     <!-- Group Background -->
     <div
-      class="absolute inset-0 rounded-xl transition-all duration-200 border-2"
+      class="absolute inset-0 rounded-xl transition-colors duration-200 border-2"
       :class="{
         'border-dashed': true,
         'border-slate-400/60 dark:border-slate-500/50': !isTeamScope,
@@ -106,13 +102,14 @@ const previewClones = computed(() => {
     />
 
     <!-- Group Header -->
-    <div class="group-header absolute top-4 left-5 right-5 flex items-center justify-between gap-4 rounded-lg bg-base-100/90 px-3 py-2 pointer-events-auto z-10">
-      <div class="flex items-center space-x-3">
-        <div :class="`w-4 h-4 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
-        <AppIcon :name="isTeamScope ? 'container' : 'folder'" class="w-6 h-6" />
-        <div>
+    <div class="group-header absolute top-4 left-5 right-5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-base-100 px-3 py-2 pointer-events-auto z-10">
+      <div class="flex min-w-0 flex-1 items-center gap-2">
+        <div :class="`w-3 h-3 shrink-0 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
+        <AppIcon :name="isTeamScope ? 'container' : 'folder'" class="w-5 h-5 shrink-0" />
+        <div class="min-w-0">
           <div
-            class="text-base font-bold"
+            :title="data?.config?.name"
+            class="truncate text-sm font-semibold"
             :class="isTeamScope
               ? 'text-indigo-800 dark:text-indigo-200'
               : 'text-slate-800 dark:text-slate-200'"
@@ -123,14 +120,14 @@ const previewClones = computed(() => {
             v-if="data?.config?.description"
             class="text-xs max-w-[200px] truncate"
             :class="isTeamScope
-              ? 'text-indigo-700/80 dark:text-indigo-300/70'
-              : 'text-slate-600/80 dark:text-slate-300/70'"
+              ? 'text-base-content/75'
+              : 'text-base-content/75'"
           >
             {{ data.config.description }}
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-2 pointer-events-auto">
+      <div class="flex shrink-0 flex-wrap items-center gap-2 pointer-events-auto">
         <!-- Team-scope replication chip -->
         <div
           v-if="isTeamScope"
@@ -145,7 +142,7 @@ const previewClones = computed(() => {
         <!-- Kind badge / toggle -->
         <button
           type="button"
-          class="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-full shadow-lg transition-colors"
+          class="nodrag nopan px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-full shadow-lg transition-colors"
           :class="isTeamScope
             ? 'bg-indigo-700/90 text-white hover:bg-indigo-800'
             : 'bg-slate-600/90 text-white hover:bg-slate-700'"
@@ -161,7 +158,7 @@ const previewClones = computed(() => {
         <button
           v-if="isTeamScope"
           type="button"
-          class="px-2 py-1.5 text-xs font-medium rounded-full bg-white/90 text-indigo-800 hover:bg-white shadow"
+          class="nodrag nopan px-2 py-1.5 text-xs font-medium rounded-full bg-white/90 text-indigo-800 hover:bg-white shadow"
           :data-testid="`group-expand-toggle-${data?.id || ''}`"
           :aria-pressed="expandedPreview"
           :title="expandedPreview ? 'Hide replication preview' : 'Show replication preview'"
@@ -198,10 +195,10 @@ const previewClones = computed(() => {
       v-if="!data?.hasChildren"
       class="absolute inset-0 flex items-center justify-center pointer-events-none z-5"
     >
-      <div class="text-center opacity-40 mt-10">
+      <div class="text-center text-base-content/75 mt-16">
         <AppIcon name="cube" class="w-10 h-10 mx-auto mb-2" />
-        <div class="text-sm font-semibold text-slate-700 dark:text-slate-300">Drop components here</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+        <div class="text-sm font-semibold">Drop components here</div>
+        <div class="text-xs mt-1">
           {{ isTeamScope ? 'Per-team items, replicated at deploy' : 'Networks, VMs, services...' }}
         </div>
       </div>

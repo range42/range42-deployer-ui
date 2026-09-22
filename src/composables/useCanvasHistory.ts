@@ -18,6 +18,7 @@ export const CANVAS_HISTORY_SIZE = 50
 
 export interface CanvasHistoryApi<T> {
   push: (snapshot: T) => void
+  replaceCurrent: (snapshot: T) => void
   undo: () => T | null
   redo: () => T | null
   clear: () => void
@@ -51,6 +52,13 @@ export function useCanvasHistory<T>(maxSize: number = CANVAS_HISTORY_SIZE): Canv
     return buffer.value[pointer.value] ?? null
   }
 
+  // Refresh measured positions at the start of a gesture without adding an
+  // extra undo step or discarding redo when that gesture makes no changes.
+  function replaceCurrent(snapshot: T): void {
+    if (pointer.value < 0) push(snapshot)
+    else buffer.value[pointer.value] = snapshot
+  }
+
   function redo(): T | null {
     if (pointer.value >= buffer.value.length - 1) return null
     pointer.value += 1
@@ -67,6 +75,7 @@ export function useCanvasHistory<T>(maxSize: number = CANVAS_HISTORY_SIZE): Canv
 
   return {
     push,
+    replaceCurrent,
     undo,
     redo,
     clear,
