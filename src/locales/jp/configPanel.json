@@ -1,4 +1,5 @@
 {
+  "templateRequirement": "必要な OS: {os}。選択したホストで対応するテンプレートを選んでください。",
   "header": "{type} の構成",
   "status": {
     "valid": "✓ 構成は有効です",
@@ -112,5 +113,45 @@
     "nameRequired": "名前は必須です",
     "cpuMin": "CPU コア数は 1 以上でなければなりません",
     "memoryRequired": "メモリは必須です"
+  },
+  "context": {
+    "group": "グループは関連するインフラストラクチャのコンポーネントをまとめます。",
+    "simulated-internet": "模擬インターネットは、隔離されたトレーニング環境向けに仮のパブリックIPとサービスを提供します。",
+    "edge-firewall": "エッジファイアウォールはネットワークセグメントを接続します。",
+    "vuln-target": "脆弱なターゲットは、トレーニングのために意図的に安全性を下げたシステムです。",
+    "shared-service": "共有サービス（Git、チャット、Wiki、認証）はすべてのGamenetから利用できます。"
+  },
+  "note": {
+    "text": "メモのテキスト",
+    "color": "メモの色",
+    "empty": "メモの設定でテキストを追加してください。",
+    "hint": "メモとその接続は注釈です。インフラは作成されません。",
+    "colors": {
+      "yellow": "黄",
+      "blue": "青",
+      "green": "緑",
+      "neutral": "ニュートラル"
+    }
+  },
+  "connection": {
+    "title": "接続",
+    "networkTitle": "ネットワーク接続",
+    "text": "接続テキスト",
+    "hint": "線の中央に表示されます。",
+    "close": "接続設定を閉じる",
+    "edit": "接続を編集"
+  },
+  "network": {
+    "title": "ネットワーク",
+    "noAddress": "アドレス範囲が未設定です",
+    "bridge": "ブリッジ",
+    "devices": "接続機器なし | 1 台接続 | {count} 台接続",
+    "types": {
+      "wan": "WAN",
+      "lan": "LAN",
+      "dmz": "DMZ",
+      "management": "管理",
+      "custom": "ネットワーク"
+    }
   }
 }

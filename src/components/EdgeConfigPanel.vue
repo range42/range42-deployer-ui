@@ -1,6 +1,11 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, useId, onMounted, nextTick } from 'vue'
 import AppIcon from '@/components/icons/AppIcon.vue'
+import FormField from '@/components/ui/FormField.vue'
+import { useI18n } from 'vue-i18n'
+import { isReferenceEdge } from '@/services/canvasNotes'
+
+const { t } = useI18n()
 
 const props = defineProps({
   edge: {
@@ -18,6 +23,10 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'update'])
+const panel = ref(null)
+const fieldPrefix = `connection-${useId()}`
+const opener = typeof document !== 'undefined' ? document.activeElement : null
+onMounted(() => panel.value?.focus({ preventScroll: true }))
 
 // Local form state - matches NetworkConnectionData type
 const config = ref({
@@ -85,6 +94,7 @@ const networkNode = computed(() => {
   if (props.targetNode?.type === 'network-segment') return props.targetNode
   return null
 })
+const isNetworkConnection = computed(() => !!computeNode.value && !!networkNode.value && !isReferenceEdge(props.edge))
 
 // Network CIDR for reference
 const networkCidr = computed(() => networkNode.value?.data?.config?.cidr || 'N/A')
@@ -102,36 +112,44 @@ const connectionData = computed(() => ({
   isGateway: config.value.isGateway || undefined,
 }))
 
-// Auto-update parent when config changes
-watch(config, () => {
+// Only input events write configuration; selecting an edge just loads its form.
+function updateConnection() {
+  if (!isNetworkConnection.value) return
   // Emit the edge data in the correct format: { connection: NetworkConnectionData }
   emit('update', props.edge.id, {
     connection: connectionData.value,
     replication_intent: config.value.replication_intent || 'pair_scoped',
-    label: config.value.ipAddress || undefined
   })
-}, { deep: true })
+}
 
-const close = () => {
+const close = async () => {
   emit('close')
+  await nextTick()
+  if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true })
 }
 </script>
 
 <template>
-  <div class="edge-config-panel card bg-base-200 shadow-xl">
+  <div ref="panel" class="edge-config-panel card bg-base-100 shadow-xl" role="region" tabindex="-1"
+    :aria-label="t('configPanel.connection.title')" @keydown.esc.stop.prevent="close">
     <div class="card-body p-4">
       <!-- Header -->
-      <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center justify-between gap-2 mb-4">
         <h3 class="card-title text-base">
-          <AppIcon name="link" class="w-5 h-5 inline" /> Network Connection
+          <AppIcon name="link" class="w-5 h-5 inline" /> {{ t(isNetworkConnection ? 'configPanel.connection.networkTitle' : 'configPanel.connection.title') }}
         </h3>
-        <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
+        <button type="button" class="btn btn-sm btn-circle btn-ghost shrink-0" :aria-label="t('configPanel.connection.close')" @click="close">✕</button>
       </div>
 
+      <FormField :model-value="edge.label ?? edge.data?.label ?? ''" :label="t('configPanel.connection.text')"
+        :hint="t('configPanel.connection.hint')" type="textarea" :rows="2" icon=""
+        @update:model-value="emit('update', edge.id, { label: $event })" />
+
+      <div v-if="isNetworkConnection" @input="updateConnection" @change="updateConnection">
       <!-- Connection Info -->
-      <div class="alert alert-info mb-4 py-2">
+      <div class="rounded-lg border border-base-300 bg-base-200 mb-4 p-3">
         <div class="text-xs">
-          <div v-if="computeNode" class="flex items-center gap-2">
+          <div v-if="computeNode" class="flex flex-wrap items-center gap-2 break-words">
             <span class="font-semibold">{{ computeNode.data?.config?.name || computeNode.type }}</span>
             <span>→</span>
             <span class="font-semibold">{{ networkNode?.data?.config?.name || 'Network' }}</span>
@@ -142,18 +160,19 @@ const close = () => {
 
       <!-- Interface Name -->
       <div class="form-control mb-3">
-        <label class="label py-1">
+        <label :for="`${fieldPrefix}-interface`" class="label py-1">
           <span class="label-text text-sm">Interface Name</span>
         </label>
         <input 
           v-model="config.interfaceName" 
+          :id="`${fieldPrefix}-interface`"
           type="text" 
           class="input input-bordered input-sm font-mono" 
           placeholder="e.g., net0, eth0, WAN"
         />
-        <label class="label py-0">
+        <p class="label py-0">
           <span class="label-text-alt text-xs opacity-70">Display name for this NIC</span>
-        </label>
+        </p>
       </div>
 
       <!-- IP Configuration -->
@@ -168,11 +187,12 @@ const close = () => {
       </div>
 
       <div v-if="!config.useDhcp" class="form-control mb-3">
-        <label class="label py-1">
+        <label :for="`${fieldPrefix}-ip`" class="label py-1">
           <span class="label-text text-sm">Static IP Address</span>
         </label>
         <input 
           v-model="config.ipAddress" 
+          :id="`${fieldPrefix}-ip`"
           type="text" 
           class="input input-bordered input-sm" 
           placeholder="e.g., 192.168.1.10"
@@ -181,10 +201,10 @@ const close = () => {
 
       <!-- Interface Model -->
       <div class="form-control mb-3">
-        <label class="label py-1">
+        <label :for="`${fieldPrefix}-model`" class="label py-1">
           <span class="label-text text-sm">Interface Model</span>
         </label>
-        <select v-model="config.interfaceModel" class="select select-bordered select-sm">
+        <select :id="`${fieldPrefix}-model`" v-model="config.interfaceModel" class="select select-bordered select-sm">
           <option value="virtio">VirtIO (recommended)</option>
           <option value="e1000">Intel E1000</option>
           <option value="rtl8139">Realtek RTL8139</option>
@@ -194,12 +214,13 @@ const close = () => {
 
       <!-- MAC Address -->
       <div class="form-control mb-3">
-        <label class="label py-1">
+        <label :for="`${fieldPrefix}-mac`" class="label py-1">
           <span class="label-text text-sm">MAC Address</span>
           <span class="label-text-alt text-xs">Optional</span>
         </label>
         <input 
           v-model="config.macAddress" 
+          :id="`${fieldPrefix}-mac`"
           type="text" 
           class="input input-bordered input-sm" 
           placeholder="Auto-generated"
@@ -208,12 +229,13 @@ const close = () => {
 
       <!-- VLAN Tag -->
       <div class="form-control mb-3">
-        <label class="label py-1">
+        <label :for="`${fieldPrefix}-vlan`" class="label py-1">
           <span class="label-text text-sm">VLAN Tag</span>
           <span class="label-text-alt text-xs">Optional</span>
         </label>
         <input 
           v-model.number="config.vlanTag" 
+          :id="`${fieldPrefix}-vlan`"
           type="number" 
           class="input input-bordered input-sm" 
           placeholder="1-4094"
@@ -224,18 +246,19 @@ const close = () => {
 
       <!-- Advanced Options -->
       <div class="collapse collapse-arrow bg-base-100 rounded-box mb-3">
-        <input type="checkbox" />
+        <input type="checkbox" aria-label="Advanced Options" />
         <div class="collapse-title text-sm font-medium py-2 min-h-0">
           Advanced Options
         </div>
         <div class="collapse-content">
           <!-- MTU -->
           <div class="form-control mb-2">
-            <label class="label py-1">
+            <label :for="`${fieldPrefix}-mtu`" class="label py-1">
               <span class="label-text text-sm">MTU</span>
             </label>
             <input 
               v-model.number="config.mtu" 
+              :id="`${fieldPrefix}-mtu`"
               type="number" 
               class="input input-bordered input-sm" 
               placeholder="Default (1500)"
@@ -246,11 +269,12 @@ const close = () => {
 
           <!-- Rate Limit -->
           <div class="form-control">
-            <label class="label py-1">
+            <label :for="`${fieldPrefix}-rate`" class="label py-1">
               <span class="label-text text-sm">Rate Limit (MB/s)</span>
             </label>
             <input 
               v-model.number="config.rate" 
+              :id="`${fieldPrefix}-rate`"
               type="number" 
               class="input input-bordered input-sm" 
               placeholder="Unlimited"
@@ -329,13 +353,18 @@ const close = () => {
           </div>
         </label>
       </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .edge-config-panel {
-  min-width: 280px;
-  max-width: 320px;
+  width: min(340px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 6rem);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 22%, var(--color-base-100));
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
 }
 </style>

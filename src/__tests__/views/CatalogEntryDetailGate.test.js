@@ -4,7 +4,9 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import { createI18n } from 'vue-i18n'
 import 'fake-indexeddb/auto'
+import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogEntryDetail from '@/views/CatalogEntryDetail.vue'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 import { useInventoryStore } from '@/stores/inventoryStore'
 import catalogEn from '@/locales/en/catalog.json'
 import commonEn from '@/locales/en/common.json'
@@ -51,22 +53,21 @@ async function mountDetail({ writable }) {
     repos: [],
     writable,
   })
-  globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ENTRY })
+  globalThis.fetch = vi.fn(async url => ({ ok: true, json: async () => String(url).includes('/catalog/sources') ? { items: [{ id: 'src-ro', provider: 'gitlab', base_url: 'https://gl.example', auth_kind: writable === false ? 'none' : 'pat', has_token: writable === true, repos: [] }], total: 1 } : ENTRY }))
 
   const router = makeRouter()
   router.push('/catalog/src-ro/labs%2Fweb')
   await router.isReady()
 
   const wrapper = mount(CatalogEntryDetail, {
-    global: { plugins: [pinia, makeI18n(), router] },
+    global: { plugins: [pinia, makeI18n(), router], stubs: { CatalogProjectHandoff: true } },
   })
-  // getEntry awaits IndexedDB caching, so a single flush is not enough — settle
-  // until the verbs row (which only renders once the entry resolves) appears.
-  for (let i = 0; i < 20; i++) {
+  // Entry loading includes IndexedDB and dynamic imports. Wait for its rendered
+  // result instead of assuming a fixed number of event-loop turns completes it.
+  await vi.waitFor(async () => {
     await flushPromises()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    if (wrapper.find('[data-testid="entry-verbs"]').exists()) break
-  }
+    expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(true)
+  })
   return wrapper
 }
 
@@ -84,12 +85,31 @@ describe('CatalogEntryDetail — customize gating by write access', () => {
     vi.restoreAllMocks()
   })
 
-  it('disables the customize button when the source is read-only', async () => {
+  it('reloads and clears private catalog detail when backend authentication changes', async () => {
+    const wrapper = await mountDetail({ writable: false })
+    expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(true)
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
+    useBackendApiStore().addHost({ url: 'https://other.example', token: 'different-identity' })
+    await vi.waitFor(() => expect(globalThis.fetch.mock.calls.filter(([url]) => String(url).includes('/catalog/entries'))).toHaveLength(2))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('backend API token'))
+    expect(wrapper.find('[data-testid="entry-verbs"]').exists()).toBe(false)
+  })
+
+  it('allows customizing a read-only original through a separate destination review', async () => {
     const wrapper = await mountDetail({ writable: false })
     const btn = customizeButton(wrapper)
     expect(btn).toBeTruthy()
-    expect(btn.attributes('disabled')).toBeDefined()
-    expect(btn.attributes('title')).toBe(catalogEn.verbs.customize_readonly_hint)
+    expect(btn.attributes('disabled')).toBeUndefined()
+    await btn.trigger('click')
+    expect(wrapper.findComponent(CatalogProjectHandoff).props()).toMatchObject({ entry: ENTRY, mode: 'customize' })
+  })
+
+  it('reloads the entry when a catalog detail link reuses this route component', async () => {
+    const wrapper = await mountDetail({ writable: true })
+    globalThis.fetch.mockResolvedValue({ ok: true, json: async () => ({ ...ENTRY, name: 'Second machine', path: 'machines/second' }) })
+    await wrapper.vm.$router.push('/catalog/src-ro/machines%2Fsecond?project=training')
+    await vi.waitFor(() => expect(wrapper.get('h1').text()).toBe('Second machine'))
+    expect(wrapper.find('a').attributes('href')).toContain('project=training')
   })
 
   it('enables the customize button when the source is writable', async () => {

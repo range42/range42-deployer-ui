@@ -109,3 +109,12 @@ describe('<TeamCard>', () => {
     })
   })
 })
+
+
+it('hides unsupported deployment actions when disabled by the scenario', () => {
+  const wrapper = mount(TeamCard, {
+    props: { team: baseTeam(), actionsEnabled: false },
+    global: { plugins: [makeI18n()] },
+  })
+  expect(wrapper.find('button[aria-label="Team actions"]').exists()).toBe(false)
+})

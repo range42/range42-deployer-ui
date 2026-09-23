@@ -1,0 +1,130 @@
+{
+  "kind": "github",
+  "suffix": "gh1",
+  "started": "2026-09-10T11:57:55.219Z",
+  "repositories": [
+    {
+      "name": "range42-acceptance-20260910-public-gh1",
+      "owner": "pparage",
+      "private": false,
+      "id": 1364052484,
+      "url": "https://github.com/pparage/range42-acceptance-20260910-public-gh1"
+    },
+    {
+      "name": "range42-acceptance-20260910-private-gh1",
+      "owner": "pparage",
+      "private": true,
+      "id": 1364052546,
+      "url": "https://github.com/pparage/range42-acceptance-20260910-private-gh1"
+    }
+  ],
+  "checks": [
+    {
+      "name": "same saved snapshot published to public review and private main",
+      "status": "passed",
+      "evidence": [
+        {
+          "commit_sha": "f8922cdbb0635e64ae472b7ac201bf5f594e181e",
+          "pr_url": "https://github.com/pparage/range42-acceptance-20260910-public-gh1/pull/1",
+          "mode": "pull_request"
+        },
+        {
+          "commit_sha": "213c401631d9cc989be3525b3884ddcaf1c16452",
+          "mode": "direct"
+        }
+      ]
+    },
+    {
+      "name": "atomic multi-file contribution commit",
+      "status": "passed",
+      "evidence": {
+        "sha": "f8922cdbb0635e64ae472b7ac201bf5f594e181e",
+        "parentCount": 1
+      }
+    },
+    {
+      "name": "unchanged republish reuses exact open review and commit",
+      "status": "passed",
+      "evidence": {
+        "number": 1
+      }
+    },
+    {
+      "name": "upstream contribution synchronization preserves history",
+      "status": "passed",
+      "evidence": {
+        "status": "queued",
+        "old": "f8922cdbb0635e64ae472b7ac201bf5f594e181e",
+        "updated": "784c24547cb294a228a501ab38393337855c8397"
+      }
+    },
+    {
+      "name": "stale reviewed SHA blocks final merge",
+      "status": "passed"
+    },
+    {
+      "name": "reviewed current SHA merged successfully",
+      "status": "passed",
+      "evidence": {
+        "merged": true,
+        "sha": "42f55f42b7abbdf630f863db0b9b0e21668da4a7"
+      }
+    },
+    {
+      "name": "conflicting update preserves both branch heads",
+      "status": "passed",
+      "evidence": {
+        "contribution": "985ba8e214df0455f14622f850737a8e73d65478",
+        "main": "ec51df36ff27222a0391e2c1e0c65a5493e3d273",
+        "review": "https://github.com/pparage/range42-acceptance-20260910-public-gh1/pull/2"
+      }
+    }
+  ],
+  "owner": "pparage",
+  "baseUrl": "https://github.com",
+  "publication": {
+    "commit_sha": "65cc3809fd15e1e903c84fe3b27dd8189999af53",
+    "branch": "range42-ui/acceptance-github-gh1",
+    "targets": [
+      {
+        "target_id": "public",
+        "status": "published",
+        "mode": "pull_request",
+        "destination": {
+          "source_id": "acceptance-github",
+          "provider": "github",
+          "base_url": "https://github.com",
+          "repo_owner": "pparage",
+          "id": "public",
+          "repo_name": "range42-acceptance-20260910-public-gh1",
+          "base_branch": "main",
+          "mode": "pull_request",
+          "fork_policy": "upstream"
+        },
+        "commit_sha": "f8922cdbb0635e64ae472b7ac201bf5f594e181e",
+        "branch": "range42-publish/acceptance-github-gh1/public/main/%22%22",
+        "pr_url": "https://github.com/pparage/range42-acceptance-20260910-public-gh1/pull/1",
+        "pr_number": 1
+      },
+      {
+        "target_id": "private",
+        "status": "published",
+        "mode": "direct",
+        "destination": {
+          "source_id": "acceptance-github",
+          "provider": "github",
+          "base_url": "https://github.com",
+          "repo_owner": "pparage",
+          "id": "private",
+          "repo_name": "range42-acceptance-20260910-private-gh1",
+          "base_branch": "main",
+          "mode": "direct"
+        },
+        "commit_sha": "213c401631d9cc989be3525b3884ddcaf1c16452",
+        "branch": "main"
+      }
+    ]
+  },
+  "finished": "2026-09-10T11:58:57.541Z",
+  "status": "passed"
+}

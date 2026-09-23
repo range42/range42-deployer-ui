@@ -1,0 +1,16 @@
+{
+  "provider": "gitea",
+  "started": "2026-09-10T15:26:50.617Z",
+  "checks": [
+    "dedicated branch request and result files persisted",
+    "idempotent request causes no additional commit",
+    "byte-exact readback at completed SHA",
+    "remote metadata preserved",
+    "secret-bearing runtime fields excluded"
+  ],
+  "repository": "r42binary/range42-binary-private",
+  "branch": "range42-ui/runtime-records-gitea-20260910",
+  "request_sha": "87ee3ee462c92c3dc68ebc7358a1bd468562d009",
+  "result_sha": "e2fb0ca0d41080898d135d88195013f4e1e05aca",
+  "cleanup": "Disposable Gitea container and anonymous volumes removed after binary and runtime-record checks."
+}

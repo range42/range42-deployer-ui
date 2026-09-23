@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { useBackendApiStore } from '../stores/backendApiStore'
 
 describe('inventoryStore — GitSource model (Plan C §4)', () => {
   beforeEach(() => {
@@ -68,6 +69,19 @@ describe('inventoryStore — GitSource model (Plan C §4)', () => {
     store.setToken('src-c', 'secret-token')
     expect(store.getToken('src-c')).toBe('secret-token')
     expect(localStorage.getItem('range42_token_src-c')).toBe('secret-token')
+  })
+
+  it('keeps legacy browser credentials isolated when backends reuse a source ID', () => {
+    const backend = useBackendApiStore()
+    const first = backend.addHost({ url: 'https://backend-a.test' })
+    const store = useInventoryStore()
+    store.setToken('same-id', 'token-for-a')
+    const second = backend.addHost({ url: 'https://backend-b.test' })
+    backend.setActiveHost(second)
+    expect(store.getToken('same-id')).toBeNull()
+    store.setToken('same-id', 'token-for-b')
+    backend.setActiveHost(first)
+    expect(store.getToken('same-id')).toBe('token-for-a')
   })
 
   it('updateSourceHealth mutates the source health blob', () => {

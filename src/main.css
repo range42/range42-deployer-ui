@@ -2,20 +2,29 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
+/* Explicit app preferences override the OS; system mode follows it. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) { @slot; }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) { @slot; }
+  }
+}
+
 /* VueFlow styles */
 @import '@vue-flow/core/dist/style.css';
 @import '@vue-flow/core/dist/theme-default.css';
 @import '@vue-flow/controls/dist/style.css';
 @import '@vue-flow/minimap/dist/style.css';
+@import '@vue-flow/node-resizer/dist/style.css';
 
 /* Muted placeholders */
 ::placeholder {
-  color: oklch(var(--bc) / 0.25) !important;
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent) !important;
   opacity: 1;
 }
 
 select option[disabled] {
-  color: oklch(var(--bc) / 0.25);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 /* =============================================================================
@@ -75,7 +84,7 @@ html {
 
 /* Better focus styles */
 *:focus-visible {
-  outline: 2px solid oklch(var(--p));
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
@@ -84,7 +93,7 @@ html {
    ============================================================================= */
 
 .text-gradient {
-  background: linear-gradient(135deg, oklch(var(--p)) 0%, oklch(var(--s)) 100%);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -107,7 +116,7 @@ html {
    ============================================================================= */
 
 .card-hover {
-  transition: all var(--transition-base) ease;
+  transition: transform var(--transition-base) ease, box-shadow var(--transition-base) ease, border-color var(--transition-base) ease;
 }
 
 .card-hover:hover {
@@ -116,13 +125,13 @@ html {
 }
 
 .card-interactive {
-  transition: all var(--transition-fast) ease;
+  transition: color var(--transition-fast) ease, background-color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease, transform var(--transition-fast) ease;
   cursor: pointer;
 }
 
 .card-interactive:hover {
-  background: oklch(var(--b2));
-  border-color: oklch(var(--p) / 0.3);
+  background: var(--color-base-200);
+  border-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
 }
 
 .card-interactive:active {
@@ -131,7 +140,7 @@ html {
 
 /* Glass morphism effect */
 .glass {
-  background: oklch(var(--b1) / 0.8);
+  background: color-mix(in oklab, var(--color-base-100) 80%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -141,7 +150,7 @@ html {
    ============================================================================= */
 
 .btn {
-  transition: all var(--transition-fast) ease;
+  transition: color var(--transition-fast) ease, background-color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease, transform var(--transition-fast) ease;
 }
 
 .btn-glow:hover {
@@ -159,42 +168,42 @@ html {
    ============================================================================= */
 
 .sidebar {
-  background: oklch(var(--b2));
-  border-right: 1px solid oklch(var(--b3));
+  background: var(--color-base-200);
+  border-right: 1px solid var(--color-base-300);
 }
 
 .sidebar-section {
-  border-bottom: 1px solid oklch(var(--b3) / 0.5);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-base-300) 50%, transparent);
 }
 
 .sidebar-item {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-base);
-  transition: all var(--transition-fast) ease;
+  transition: color var(--transition-fast) ease, background-color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease, transform var(--transition-fast) ease;
   cursor: pointer;
 }
 
 .sidebar-item:hover {
-  background: oklch(var(--b3));
+  background: var(--color-base-300);
 }
 
 .sidebar-item.active {
-  background: oklch(var(--p) / 0.15);
-  color: oklch(var(--p));
+  background: color-mix(in oklab, var(--color-primary) 15%, transparent);
+  color: var(--color-primary);
 }
 
 /* Draggable component cards */
 .component-card {
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--b3));
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
   cursor: grab;
-  transition: all var(--transition-fast) ease;
+  transition: color var(--transition-fast) ease, background-color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease, transform var(--transition-fast) ease;
 }
 
 .component-card:hover {
-  border-color: oklch(var(--p) / 0.5);
+  border-color: color-mix(in oklab, var(--color-primary) 50%, transparent);
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
@@ -209,45 +218,101 @@ html {
    ============================================================================= */
 
 .vue-flow__minimap {
-  transform: scale(75%);
-  transform-origin: bottom right;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
 }
 
 .vue-flow__controls {
+  border: 1px solid var(--color-base-300);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
 }
 
-.vue-flow__node {
-  cursor: pointer;
-  transition: filter var(--transition-fast) ease;
+.vue-flow__controls-button {
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  border-color: var(--color-base-300);
+  width: 36px;
+  height: 36px;
 }
 
-.vue-flow__node:hover {
-  filter: brightness(1.05);
+.vue-flow__controls-button svg { fill: currentColor; }
+.vue-flow__controls-button:hover { background: var(--color-base-200); }
+.vue-flow__controls-button:focus-visible { outline-offset: -2px; }
+.vue-flow__minimap-mask { fill: color-mix(in oklab, var(--color-base-content) 10%, transparent); }
+.vue-flow__minimap-node { fill: color-mix(in oklab, var(--color-base-content) 40%, var(--color-base-100)); }
+.vue-flow__minimap-node.selected { fill: var(--color-primary); }
+
+.canvas-workspace { min-height: 220px; background: var(--color-base-200); isolation: isolate; }
+.canvas-workspace:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.canvas-workspace .vue-flow__background { opacity: .55; }
+.canvas-tools { max-width: calc(100% - 32px); }
+.canvas-workspace .vue-flow__pane.selection { cursor: crosshair; }
+.canvas-workspace .vue-flow__selection,
+.canvas-workspace .vue-flow__nodesselection-rect {
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--color-primary) 10%, transparent);
 }
+.canvas-workspace .vue-flow__nodesselection-rect { cursor: move; }
+.canvas-workspace .vue-flow__nodesselection-rect.dragging { cursor: grabbing; }
+
+.vue-flow__node {
+  cursor: grab;
+  border-radius: var(--radius-lg);
+}
+
+.vue-flow__node.dragging { cursor: grabbing; }
+.vue-flow__node.selectable:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 4px; }
 
 .vue-flow__node.selected {
-  box-shadow: 0 0 0 2px oklch(var(--p)), var(--shadow-glow);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
 }
+
+.vue-flow__node-vm, .vue-flow__node-lxc, .vue-flow__node-docker,
+.vue-flow__node-router, .vue-flow__node-edge-firewall { width: 280px; }
 
 /* Custom node styling */
 .infra-node {
-  background: oklch(var(--b1));
-  border: 2px solid oklch(var(--b3));
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 22%, var(--color-base-100));
   border-radius: var(--radius-lg);
   padding: var(--space-3);
   min-width: 180px;
+  width: 100%;
+  color: var(--color-base-content);
+  overflow-wrap: anywhere;
   box-shadow: var(--shadow-md);
-  transition: all var(--transition-fast) ease;
+  transition: color var(--transition-fast) ease, background-color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease, transform var(--transition-fast) ease;
 }
 
-.infra-node:hover {
-  border-color: oklch(var(--p) / 0.5);
+.infra-node:hover, .infra-node.is-selected {
+  border-color: var(--color-primary);
+}
+
+.infra-appliance { background-color: var(--color-base-100); overflow-wrap: anywhere; }
+
+/* Status dots retain their signal colors; small text needs stronger tones. */
+.infra-node .text-success { color: light-dark(#166534, #86efac); }
+.infra-node .text-warning { color: light-dark(#92400e, #fcd34d); }
+.infra-node .text-error { color: light-dark(#991b1b, #fca5a5); }
+.infra-node .text-info { color: light-dark(#1e40af, #93c5fd); }
+
+.node-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.node-identity { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.node-identity > :first-child { flex-shrink: 0; }
+.node-identity > :last-child { min-width: 0; }
+.node-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 1.5; }
+.node-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--color-base-content); background: color-mix(in srgb, var(--tag-accent) 14%, var(--color-base-100)); border: 1px solid color-mix(in srgb, var(--tag-accent) 45%, var(--color-base-100)); }
+.node-status { flex-shrink: 0; color: var(--color-base-content); font-size: 10px; }
+
+@media (max-width: 640px) {
+  .vue-flow__minimap { display: none; }
 }
 
 .infra-node.status-gray {
@@ -275,15 +340,15 @@ html {
    ============================================================================= */
 
 .panel {
-  background: oklch(var(--b1));
-  border: 1px solid oklch(var(--b3));
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
 }
 
 .panel-header {
   padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid oklch(var(--b3));
+  border-bottom: 1px solid var(--color-base-300);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -295,7 +360,7 @@ html {
 
 .panel-footer {
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid oklch(var(--b3));
+  border-top: 1px solid var(--color-base-300);
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
@@ -344,16 +409,16 @@ html {
   font-size: 0.875rem;
   font-weight: 500;
   margin-bottom: var(--space-2);
-  color: oklch(var(--bc) / 0.8);
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
 }
 
 .input, .select, .textarea {
-  transition: all var(--transition-fast) ease;
+  transition: color var(--transition-fast) ease, background-color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease, transform var(--transition-fast) ease;
 }
 
 .input:focus, .select:focus, .textarea:focus {
-  border-color: oklch(var(--p));
-  box-shadow: 0 0 0 3px oklch(var(--p) / 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 10%, transparent);
 }
 
 /* =============================================================================
@@ -389,9 +454,9 @@ html {
 .skeleton {
   background: linear-gradient(
     90deg,
-    oklch(var(--b3)) 25%,
-    oklch(var(--b2)) 50%,
-    oklch(var(--b3)) 75%
+    var(--color-base-300) 25%,
+    var(--color-base-200) 50%,
+    var(--color-base-300) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
@@ -463,12 +528,12 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(var(--b3));
+  background: var(--color-base-300);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(var(--bc) / 0.3);
+  background: color-mix(in oklab, var(--color-base-content) 30%, transparent);
 }
 
 /* =============================================================================
@@ -514,3 +579,5 @@ html {
     scroll-behavior: auto !important;
   }
 }
+button, a, select, summary { touch-action: manipulation; }
+:where(h1, h2, h3, [id]) { scroll-margin-top: 1rem; }

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useVueFlow, applyNodeChanges, applyEdgeChanges, addEdge } from '@vue-flow/core'
+import { withoutCanvasNotes } from '@/services/canvasNotes'
 
 // Node types that represent compute resources
 const COMPUTE_TYPES = ['vm', 'lxc', 'edge-firewall', 'router']
@@ -287,9 +288,13 @@ export function nextKeyboardSelection(allNodes, currentId, direction) {
 export function useInfraBuilder() {
   const { updateNodeData, getNodes } = useVueFlow()
 
+  /** @type {import('vue').Ref<import('@vue-flow/core').Node[]>} */
   const nodes = ref([])
+  /** @type {import('vue').Ref<import('@vue-flow/core').Edge[]>} */
   const edges = ref([])
+  /** @type {import('vue').Ref<import('@vue-flow/core').Node | null>} */
   const selectedNode = ref(null)
+  /** @type {import('vue').Ref<import('@vue-flow/core').Edge | null>} */
   const selectedEdge = ref(null)
 
   /**
@@ -301,15 +306,21 @@ export function useInfraBuilder() {
     const sourceNode = allNodes.find(n => n.id === connection.source)
     const targetNode = allNodes.find(n => n.id === connection.target)
 
+    if (sourceNode?.type === 'note' || targetNode?.type === 'note') {
+      edges.value = addEdge({ ...connection, type: 'smoothstep', style: { strokeDasharray: '5 5' } }, edges.value)
+      return
+    }
+
     // Determine if this is a compute-to-network connection
     const isComputeToNetwork = (
       (COMPUTE_TYPES.includes(sourceNode?.type) && NETWORK_TYPES.includes(targetNode?.type)) ||
       (NETWORK_TYPES.includes(sourceNode?.type) && COMPUTE_TYPES.includes(targetNode?.type))
     )
 
-    // Count existing connections to determine interface index
-    const existingConnections = edges.value.filter(e =>
-      e.source === connection.source || e.target === connection.source
+    // Interface numbering belongs to the compute device in either draw direction.
+    const deviceId = COMPUTE_TYPES.includes(sourceNode?.type) ? connection.source : connection.target
+    const existingConnections = withoutCanvasNotes(allNodes, edges.value).edges.filter(e =>
+      e.source === deviceId || e.target === deviceId
     ).length
 
     // Infer default replication intent from the team_scope ancestry of endpoints (Plan C §6).
@@ -360,19 +371,16 @@ export function useInfraBuilder() {
   const updateEdgeData = (edgeId, updates) => {
     edges.value = edges.value.map(edge => {
       if (edge.id === edgeId) {
-        // Merge connection data properly; replication_intent lives at data root
-        const newData = {
-          ...edge.data,
-          ...updates,
-          connection: {
-            ...(edge.data?.connection || {}),
-            ...(updates.connection || {})
+        const { label, ...dataUpdates } = updates
+        const updated = { ...edge }
+        if (Object.hasOwn(updates, 'label')) updated.label = label
+        if (Object.keys(dataUpdates).length) {
+          updated.data = { ...edge.data, ...dataUpdates }
+          if (dataUpdates.connection) {
+            updated.data.connection = { ...edge.data?.connection, ...dataUpdates.connection }
           }
         }
-        if (updates.replication_intent) {
-          newData.replication_intent = updates.replication_intent
-        }
-        return { ...edge, data: newData }
+        return updated
       }
       return edge
     })

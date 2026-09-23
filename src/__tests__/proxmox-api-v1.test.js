@@ -8,7 +8,7 @@ function jsonResp(body, status = 200) {
   })
 }
 
-const HOSTS = { items: [{ id: 'H1', name: 'pve01-range42', node_name: 'pve01' }] }
+const HOSTS = { total: 1, offset: 0, items: [{ id: 'H1', name: 'pve01-range42', node_name: 'pve01' }] }
 const VMS = {
   items: [
     { vmid: 4001, name: 'vb1', type: 'qemu', status: 'running', node: 'pve01', maxmem: 4, maxcpu: 1, template: false, tags: 'admin' },
@@ -40,7 +40,7 @@ describe('proxmox api — v1 migration', () => {
 
   it('vm.list resolves the registered host then returns qemu only (normalized)', async () => {
     const calls = install(defaultHandler)
-    const out = await vm.list('ignored-node')
+    const out = await vm.list('pve01')
     expect(out.map((v) => v.vmid).sort((a, b) => a - b)).toEqual([4001, 9000])
     const vb = out.find((v) => v.vmid === 4001)
     expect(vb.status).toBe('running')
@@ -52,16 +52,24 @@ describe('proxmox api — v1 migration', () => {
 
   it('lxc.list returns lxc only from the same endpoint', async () => {
     install(defaultHandler)
-    const out = await lxc.list('ignored')
+    const out = await lxc.list('pve01')
     expect(out.map((v) => v.vmid)).toEqual([200])
   })
 
   it('vm.start posts to v1 status endpoint with vmtype=qemu', async () => {
     const calls = install(defaultHandler)
-    await vm.start({ proxmox_node: 'x', vm_id: 4001 })
+    await vm.start({ proxmox_node: 'pve01', vm_id: 4001 })
     expect(
       calls.some(([m, u]) => m === 'POST' && u.endsWith('/v1/proxmox/hosts/H1/vms/4001/status/start?vmtype=qemu')),
     ).toBe(true)
+  })
+
+  it('honors an explicit LXC type on the shared lifecycle request', async () => {
+    const calls = install(defaultHandler)
+    for (const method of ['start', 'stop', 'stopForce', 'pause', 'resume']) {
+      await vm[method]({ vm_id: 200, vmtype: 'lxc' })
+    }
+    expect(calls.filter(([method]) => method === 'POST').every(([, url]) => url.endsWith('?vmtype=lxc'))).toBe(true)
   })
 
   it('maps stop->shutdown (graceful), stopForce->stop, pause->suspend, resume->resume', async () => {
@@ -81,23 +89,23 @@ describe('proxmox api — v1 migration', () => {
 
   it('lxc.start/stop target the lxc vmtype', async () => {
     const calls = install(defaultHandler)
-    await lxc.start('n', 200)
-    await lxc.stop('n', 200)
+    await lxc.start('pve01', 200)
+    await lxc.stop('pve01', 200)
     expect(calls.some(([, u]) => u.endsWith('/vms/200/status/start?vmtype=lxc'))).toBe(true)
     expect(calls.some(([, u]) => u.endsWith('/vms/200/status/shutdown?vmtype=lxc'))).toBe(true)
   })
 
   it('throws a clear error when no host is registered', async () => {
-    install((url) => (url.endsWith('/v1/proxmox/hosts') ? jsonResp({ items: [] }) : jsonResp({})))
-    await expect(vm.list('x')).rejects.toThrow(/no proxmox host/i)
+    install((url) => (url.endsWith('/v1/proxmox/hosts') ? jsonResp({ total: 0, offset: 0, items: [] }) : jsonResp({})))
+    await expect(vm.list('pve01')).rejects.toThrow(/no proxmox host/i)
   })
 
-  it('setBaseUrl clears the host cache so a backend switch re-resolves', async () => {
+  it('a backend switch re-resolves registrations', async () => {
     const calls = install(defaultHandler)
-    await vm.list('x')
+    await vm.list('pve01')
     const before = calls.filter(([, u]) => u.endsWith('/v1/proxmox/hosts')).length
     setBaseUrl('http://api2')
-    await vm.list('x')
+    await vm.list('pve01')
     const after = calls.filter(([, u]) => u.endsWith('/v1/proxmox/hosts')).length
     expect(after).toBe(before + 1)
   })

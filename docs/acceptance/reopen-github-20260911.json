@@ -1,0 +1,46 @@
+{
+  "provider": "github",
+  "started": "2026-09-11T07:34:45.836Z",
+  "checks": [
+    "opened canvas/forms/files from one exact commit",
+    "kept original identity when unused locally",
+    "working branch seeded from reviewed SHA after source advanced",
+    "unmanaged repository file preserved",
+    "selected source branch unchanged by Save",
+    "same immutable metadata and binary bytes in public PR/MR and private branch",
+    "both published revisions reopen structured forms",
+    "both repository main branches unchanged"
+  ],
+  "repositories": {
+    "public": "pparage/range42-acceptance-20260910-public-gh1",
+    "private": "pparage/range42-acceptance-20260910-private-gh1"
+  },
+  "branches": {
+    "selected": "range42-acceptance/reopen-selected-20260911-bab06cd41a",
+    "public_base": "range42-acceptance/reopen-public-base-20260911-bab06cd41a",
+    "private": "range42-acceptance/reopen-private-20260911-bab06cd41a",
+    "working": "range42-ui/open-32a134d09b3642acb829a18d70139d7d"
+  },
+  "commits": {
+    "loaded": "950e5e9151e99750b78e29fcc05f3e46f1ef3b7c",
+    "selected_advanced": "cb8077824d01d02c916fe59f61d708ef92dc4f85",
+    "reopened_saved": "9922056a6f6d0a7bc9dd5c676efa1d429a605068"
+  },
+  "publication": [
+    {
+      "target_id": "public-bab06cd41a",
+      "mode": "pull_request",
+      "branch": "range42-publish/reopen-github-bab06cd41a/public-bab06cd41a/range42-acceptance%2Freopen-public-base-20260911-bab06cd41a/%22acceptance%2Freopen-20260911-bab06cd41a%22",
+      "commit_sha": "dd929a28dc05d495fef1c90b9457a120954a2e17",
+      "pr_url": "https://github.com/pparage/range42-acceptance-20260910-public-gh1/pull/4",
+      "pr_number": 4
+    },
+    {
+      "target_id": "private-bab06cd41a",
+      "mode": "direct",
+      "branch": "range42-acceptance/reopen-private-20260911-bab06cd41a",
+      "commit_sha": "d90f29e6c0002821663980517029e7023a687b75"
+    }
+  ],
+  "finished": "2026-09-11T07:35:31.265Z"
+}

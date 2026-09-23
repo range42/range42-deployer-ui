@@ -1,296 +1,100 @@
 <script setup>
-/**
- * Network Segment Node
- * 
- * Represents a Proxmox bridge (L2 broadcast domain).
- * Devices connect TO this node via edges - it's a connection point, not a container.
- * 
- * Visual design inspired by network diagrams - looks like a network cloud/switch.
- */
 import { computed } from 'vue'
 import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { useI18n } from 'vue-i18n'
 import { getNetworkColor } from '@/constants/networkColors'
+import { connectedNetworkDevices } from '@/services/networkConnections'
 
 const props = defineProps(['id', 'data', 'selected', 'connectable'])
-
 const { getEdges, findNode } = useVueFlow()
-
-const segmentColor = computed(() => {
-  return getNetworkColor(props.data?.config?.segmentType || 'custom')
+const { t } = useI18n()
+const config = computed(() => props.data?.config || {})
+const segmentType = computed(() => ['wan', 'lan', 'dmz', 'management'].includes(config.value.segmentType)
+  ? config.value.segmentType : 'custom')
+const color = computed(() => getNetworkColor(segmentType.value))
+const devices = computed(() => {
+  const ids = new Set(getEdges.value.flatMap(edge => [edge.source, edge.target]))
+  const nodes = [...ids].map(id => findNode(id)).filter(Boolean)
+  return connectedNetworkDevices(props.id, nodes, getEdges.value)
 })
-
-const connectedDevices = computed(() => {
-  const nodeId = props.id
-  return getEdges.value
-    .filter(e => e.source === nodeId || e.target === nodeId)
-    .map(e => {
-      const otherId = e.source === nodeId ? e.target : e.source
-      return findNode(otherId)
-    })
-    .filter(Boolean)
-})
-
-const statusColor = computed(() => {
-  switch (props.data?.status) {
-    case 'gray': return 'bg-slate-400'
-    case 'orange': return 'bg-amber-400'
-    case 'green': return 'bg-emerald-400'
-    case 'red': return 'bg-red-400'
-    default: return 'bg-slate-400'
-  }
-})
-
-// Parse CIDR to show network and prefix separately
-const networkInfo = computed(() => {
-  const cidr = props.data?.config?.cidr
-  if (!cidr) return null
-  const [network, prefix] = cidr.split('/')
-  return { network, prefix: `/${prefix}` }
-})
-
-// Get segment type badge color
-const segmentTypeColor = computed(() => {
-  const type = props.data?.config?.segmentType || 'lan'
-  const colors = {
-    wan: 'bg-red-500/90 text-white',
-    dmz: 'bg-amber-500/90 text-white', 
-    lan: 'bg-blue-500/90 text-white',
-    management: 'bg-purple-500/90 text-white',
-    custom: 'bg-slate-500/90 text-white'
-  }
-  return colors[type] || colors.custom
-})
+const statusColor = computed(() => ({ green: '#22c55e', orange: '#f59e0b', red: '#ef4444', blue: '#3b82f6' })[props.data?.status] || '#94a3b8')
+const targets = [
+  { id: 'top-1', position: Position.Top, style: { left: '25%' } },
+  { id: 'top-2', position: Position.Top, style: { left: '50%' } },
+  { id: 'top-3', position: Position.Top, style: { left: '75%' } },
+  { id: 'bottom-1', position: Position.Bottom, style: { left: '25%' } },
+  { id: 'bottom-2', position: Position.Bottom, style: { left: '50%' } },
+  { id: 'bottom-3', position: Position.Bottom, style: { left: '75%' } },
+  { id: 'left-1', position: Position.Left, style: { top: '35%' } },
+  { id: 'left-2', position: Position.Left, style: { top: '65%' } },
+  { id: 'right-1', position: Position.Right, style: { top: '35%' } },
+  { id: 'right-2', position: Position.Right, style: { top: '65%' } },
+]
+const sources = [
+  { id: 'out-top', position: Position.Top, style: { left: '88%' } },
+  { id: 'out-bottom', position: Position.Bottom, style: { left: '88%' } },
+  { id: 'out-left', position: Position.Left, style: { top: '50%' } },
+  { id: 'out-right', position: Position.Right, style: { top: '50%' } },
+]
 </script>
 
 <template>
-  <div
-    class="network-segment-node"
-    :class="{
-      'ring-2 ring-primary ring-offset-2 shadow-xl': selected,
-      'shadow-md hover:shadow-lg': !selected,
-    }"
-  >
-    <!-- Main Card -->
-    <div
-      class="relative bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 dark:from-sky-950/60 dark:via-blue-950/50 dark:to-indigo-950/40 rounded-xl border-2 overflow-hidden min-w-[220px]"
-      :style="{ borderColor: segmentColor.stroke }"
-    >
-      
-      <!-- Top accent bar with network pattern -->
-      <div class="h-2 relative overflow-hidden" :style="{ backgroundColor: segmentColor.stroke }">
-        <div class="absolute inset-0 opacity-30">
-          <svg class="w-full h-full" viewBox="0 0 100 8" preserveAspectRatio="none">
-            <pattern id="netPattern" patternUnits="userSpaceOnUse" width="20" height="8">
-              <circle cx="2" cy="4" r="1" fill="white"/>
-              <circle cx="10" cy="4" r="1" fill="white"/>
-              <circle cx="18" cy="4" r="1" fill="white"/>
-            </pattern>
-            <rect width="100" height="8" fill="url(#netPattern)"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Header -->
-      <div class="px-4 pt-3 pb-2">
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex items-center gap-2.5 min-w-0">
-            <!-- Network Icon with status ring -->
-            <div class="relative flex-shrink-0">
-              <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-sky-100 to-blue-200 dark:from-sky-900 dark:to-blue-800 flex items-center justify-center shadow-sm">
-                <svg class="w-6 h-6 text-blue-600 dark:text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
-                </svg>
-              </div>
-              <!-- Status dot -->
-              <div :class="`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ${statusColor} ring-2 ring-white dark:ring-slate-800`"></div>
-            </div>
-
-            <!-- Name & Type -->
-            <div class="min-w-0 flex-1">
-              <div class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5">
-                <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ backgroundColor: segmentColor.stroke }"></span>
-                {{ data.config?.name || data.label || 'Network Segment' }}
-              </div>
-              <div class="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide">
-                L2 BROADCAST DOMAIN
-              </div>
-            </div>
-          </div>
-
-          <!-- Segment Type Badge -->
-          <div :class="`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 ${segmentTypeColor}`">
-            {{ data.config?.segmentType || 'LAN' }}
-          </div>
-        </div>
-      </div>
-
-      <!-- Network Details Grid -->
-      <div class="px-4 pb-3 space-y-2">
-        <!-- Bridge & VLAN Row -->
-        <div class="flex items-center gap-2">
-          <div class="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-md px-2.5 py-1.5 flex-1">
-            <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span class="text-xs font-mono font-semibold text-slate-700 dark:text-slate-200">
-              {{ data.config?.bridge || 'vmbr0' }}<span v-if="data.config?.vlan" class="text-amber-600 dark:text-amber-400">:{{ data.config.vlan }}</span>
-            </span>
-            <span v-if="data.config?.vlan" class="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 rounded px-1 py-0.5 ml-auto">VLAN</span>
-          </div>
-        </div>
-
-        <!-- CIDR Display -->
-        <div v-if="networkInfo" class="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 rounded-lg px-3 py-2">
-          <div class="flex items-center justify-between">
-            <div class="flex items-baseline gap-1">
-              <span class="text-lg font-mono font-bold text-blue-700 dark:text-blue-300">
-                {{ networkInfo.network }}
-              </span>
-              <span class="text-sm font-mono font-semibold text-blue-500 dark:text-blue-400">
-                {{ networkInfo.prefix }}
-              </span>
-            </div>
-            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-            </svg>
-          </div>
-        </div>
-
-        <!-- Gateway Row -->
-        <div v-if="data.config?.gateway" class="flex items-center gap-2 text-xs">
-          <div class="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-md px-2.5 py-1.5 flex-1">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-            </svg>
-            <span class="font-medium">Gateway</span>
-            <span class="font-mono font-bold ml-auto">{{ data.config.gateway }}</span>
-          </div>
-        </div>
-
-        <!-- Description (if set) -->
-        <div v-if="data.config?.description" class="text-[11px] text-slate-500 dark:text-slate-400 leading-tight line-clamp-2 italic">
-          {{ data.config.description }}
-        </div>
-      </div>
-
-      <!-- Connected devices footer -->
-      <div class="px-4 pb-2 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z" />
+  <section class="network-segment-node" :class="{ selected }"
+    :style="{ '--network-accent': color.stroke }" :data-network-type="segmentType">
+    <header class="network-header">
+      <div class="network-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="7" y="7" width="10" height="10" rx="2" />
+          <path d="M10 2v5m4-5v5m-4 10v5m4-5v5M2 10h5m-5 4h5m10-4h5m-5 4h5M10 10h4v4h-4z" />
         </svg>
-        <span class="font-medium">{{ connectedDevices.length }} device{{ connectedDevices.length !== 1 ? 's' : '' }} connected</span>
       </div>
-
-      <!-- Bottom connection indicator bar -->
-      <div class="h-1" :style="{ background: `linear-gradient(to right, transparent, ${segmentColor.stroke}80, transparent)` }"></div>
+      <div class="min-w-0 flex-1">
+        <div class="network-kind">{{ t(`configPanel.network.types.${segmentType}`) }}</div>
+        <h3 class="truncate font-semibold" :title="config.name || data?.label">{{ config.name || data?.label || t('configPanel.network.title') }}</h3>
+      </div>
+      <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: statusColor }" aria-hidden="true" />
+    </header>
+    <div class="network-address" :class="{ 'text-sm text-base-content/75': !config.cidr }">
+      {{ config.cidr || t('configPanel.network.noAddress') }}
     </div>
-
-    <!-- Connection Handles - Multiple on each side for many connections -->
-    <!-- Top handles -->
-    <Handle 
-      id="top-1"
-      type="target" 
-      :position="Position.Top" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ top: '-6px', left: '25%' }"
-    />
-    <Handle 
-      id="top-2"
-      type="target" 
-      :position="Position.Top" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ top: '-6px', left: '50%', transform: 'translateX(-50%)' }"
-    />
-    <Handle 
-      id="top-3"
-      type="target" 
-      :position="Position.Top" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ top: '-6px', left: '75%' }"
-    />
-
-    <!-- Bottom handles -->
-    <Handle 
-      id="bottom-1"
-      type="target" 
-      :position="Position.Bottom" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ bottom: '-6px', left: '25%' }"
-    />
-    <Handle 
-      id="bottom-2"
-      type="target" 
-      :position="Position.Bottom" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ bottom: '-6px', left: '50%', transform: 'translateX(-50%)' }"
-    />
-    <Handle 
-      id="bottom-3"
-      type="target" 
-      :position="Position.Bottom" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ bottom: '-6px', left: '75%' }"
-    />
-
-    <!-- Left handles -->
-    <Handle 
-      id="left-1"
-      type="target" 
-      :position="Position.Left" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ left: '-6px', top: '35%' }"
-    />
-    <Handle 
-      id="left-2"
-      type="target" 
-      :position="Position.Left" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ left: '-6px', top: '65%' }"
-    />
-
-    <!-- Right handles -->
-    <Handle 
-      id="right-1"
-      type="target" 
-      :position="Position.Right" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ right: '-6px', top: '35%' }"
-    />
-    <Handle 
-      id="right-2"
-      type="target" 
-      :position="Position.Right" 
-      class="!bg-sky-500 !border-2 !border-sky-600 !w-3 !h-3 !rounded-full hover:!scale-125 transition-transform"
-      :style="{ right: '-6px', top: '65%' }"
-    />
-  </div>
+    <dl class="network-details">
+      <div><dt>{{ t('configPanel.network.bridge') }}</dt><dd>{{ config.bridge || '—' }}</dd></div>
+      <div v-if="config.vlan != null && config.vlan !== ''"><dt>VLAN</dt><dd>{{ config.vlan }}</dd></div>
+      <div v-if="config.gateway" class="network-gateway"><dt>{{ t('configPanel.fields.gateway') }}</dt><dd>{{ config.gateway }}</dd></div>
+    </dl>
+    <p v-if="config.description" class="px-4 pb-3 text-xs text-base-content/75 line-clamp-2">{{ config.description }}</p>
+    <footer class="network-footer">
+      <span class="size-1.5 rounded-full" :style="{ backgroundColor: color.stroke }" aria-hidden="true" />
+      {{ t('configPanel.network.devices', devices.length) }}
+    </footer>
+    <Handle v-for="port in targets" :key="port.id" :id="port.id" type="target"
+      :position="port.position" :style="port.style" :connectable="connectable" class="network-port" />
+    <Handle v-for="port in sources" :key="port.id" :id="port.id" type="source"
+      :position="port.position" :style="port.style" :connectable="connectable" class="network-port network-port-source" />
+  </section>
 </template>
 
 <style scoped>
+:global(.vue-flow__node-network-segment) { width: 280px; }
 .network-segment-node {
-  transition: all 0.2s ease;
+  width: 100%; height: 100%; min-width: 240px; border: 1px solid var(--color-base-300);
+  border-top: 3px solid var(--network-accent); border-radius: 12px;
+  color: var(--color-base-content); background: var(--color-base-100);
+  box-shadow: 0 3px 12px #0000000a;
 }
-
-.network-segment-node:hover {
-  transform: translateY(-1px);
-}
-
-/* Handle visibility on hover */
-.network-segment-node :deep(.vue-flow__handle) {
-  opacity: 0.6;
-  transition: all 0.15s ease;
-}
-
-.network-segment-node:hover :deep(.vue-flow__handle) {
-  opacity: 1;
-}
-
-/* Line clamp for description */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+.network-segment-node:hover { box-shadow: var(--shadow-md); }
+.network-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; }
+.network-icon { padding: 7px; border-radius: 8px; color: var(--network-accent); background: color-mix(in srgb, var(--network-accent) 10%, transparent); }
+.network-icon svg { width: 21px; height: 21px; }
+.network-kind { font-size: 11px; line-height: 1.6; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--network-accent); }
+.network-address { margin: 0 16px 12px; font: 600 16px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+.network-details { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0 16px 14px; font-size: 11px; }
+.network-details > div { display: flex; align-items: baseline; gap: 8px; }
+.network-details dt { color: color-mix(in oklab, var(--color-base-content) 75%, transparent); }
+.network-details dd { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.network-gateway { width: 100%; }
+.network-footer { display: flex; align-items: center; gap: 7px; padding: 9px 16px; border-top: 1px solid var(--color-base-300); font-size: 11px; }
+.network-port { width: 9px; height: 9px; border: 2px solid var(--color-base-100); background: var(--network-accent); opacity: .85; }
+.network-port-source { width: 11px; height: 11px; border-radius: 3px; opacity: .85; }
+.network-segment-node:hover .network-port, .network-segment-node.selected .network-port { opacity: 1; }
 </style>

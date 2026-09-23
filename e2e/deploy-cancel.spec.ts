@@ -1,10 +1,11 @@
 /**
  * Plan C §C6.3 — E2E flow 2: deploy-cancel + reconcile.
  *
- * Starts a deployment, pushes a partial canned SSE stream mid-deploy, hits
+ * Opens an existing running deployment, pushes a partial SSE stream, hits
  * the Cancel button, asserts the backend POST fires and the UI transitions
  * to `cancelled`. Then reloads the page and verifies state is reconstructed
- * from the REST fetch + replayed events.
+ * from the REST fetch + replayed events. deploy-happy covers creation through
+ * saved Git registration, allocation, preflight and start.
  */
 import { test, expect } from '@playwright/test'
 import { setupMockApi, seedLocalStorage, loadEvents } from './fixtures/mockApi'
@@ -12,7 +13,6 @@ import { setupMockApi, seedLocalStorage, loadEvents } from './fixtures/mockApi'
 test.describe.configure({ mode: 'serial' })
 
 test('deploy-cancel mid-stream, then reconcile after reload', async ({ page }) => {
-  const PROJECT_ID = 'project_e2e_cancel_1'
   const DEPLOYMENT_ID = 'dep-e2e-cancel'
 
   await seedLocalStorage(page, {
@@ -29,44 +29,12 @@ test('deploy-cancel mid-stream, then reconcile after reload', async ({ page }) =
       hosts: [{ id: 'pve-mock-01', name: 'pve-mock-01', node_name: 'pve-mock-01' }],
       baseUrl: 'http://mock-backend/v0',
     },
-    projects: [
-      {
-        id: PROJECT_ID,
-        name: 'E2E Cancel Project',
-        created: '2026-04-14T09:00:00Z',
-        modified: '2026-04-14T09:00:00Z',
-        nodes: [],
-        edges: [],
-        gamenet: true,
-        catalog_sha: 'cat-sha-1',
-        project_sha: 'proj-sha-1',
-      },
-    ],
   })
 
   const mock = await setupMockApi(page, {
     state: { createdDeploymentId: DEPLOYMENT_ID },
   })
 
-  await page.goto('/')
-  await page.getByText('E2E Cancel Project').first().click()
-  await expect(page.getByTestId('canvas-wrapper')).toBeVisible()
-
-  // Open Deploy form.
-  await page.getByRole('button', { name: /^Deploy$/ }).click()
-  await expect(page.getByTestId('deploy-form')).toBeVisible()
-  await page.getByTestId('deploy-field-codename').getByRole('textbox').fill('cancel-codename')
-  await page.getByTestId('deploy-field-scenario').getByRole('textbox').fill('demo_lab')
-  await page.getByTestId('deploy-field-host').getByRole('combobox').selectOption('pve-mock-01')
-  await page.getByTestId('deploy-field-team-count').getByRole('spinbutton').fill('1')
-  await page.getByTestId('deploy-field-vault').locator('input[type="password"]').fill('vault-pw')
-  await page.getByTestId('deploy-sha-ack').locator('input[type="checkbox"]').check()
-  await page.getByTestId('deploy-run-preflight').click()
-  await page.getByTestId('deploy-submit').click()
-
-  await expect(page).toHaveURL(new RegExp(`/deployments/${DEPLOYMENT_ID}`))
-
-  // Seed meta now so reload later has a record too.
   mock.state.deployments.set(DEPLOYMENT_ID, {
     id: DEPLOYMENT_ID,
     codename: 'cancel-codename',
@@ -75,6 +43,9 @@ test('deploy-cancel mid-stream, then reconcile after reload', async ({ page }) =
     team_count: 1,
     attempts: [{ attempt_id: 'a-1', state: 'deploying', started_at: '2026-04-14T10:00:00Z' }],
   })
+
+  await page.goto(`/deployments/${DEPLOYMENT_ID}`)
+  await expect(page.getByTestId('detail-state')).toHaveText(/deploying/)
 
   // Wait for stream open and push partial events.
   await expect
@@ -86,10 +57,7 @@ test('deploy-cancel mid-stream, then reconcile after reload', async ({ page }) =
   await expect(page.getByTestId('detail-state')).toHaveText(/deploying/, { timeout: 5000 })
 
   // Click Cancel — triggers POST /v1/deployments/:id/cancel.
-  await page
-    .getByRole('button', { name: /^cancel$/i })
-    .first()
-    .click()
+  await page.getByRole('button', { name: 'Cancel deployment', exact: true }).click()
   await mock.waitForPost(`/v1/deployments/${DEPLOYMENT_ID}/cancel`)
   expect(mock.state.cancelledIds.has(DEPLOYMENT_ID)).toBe(true)
 

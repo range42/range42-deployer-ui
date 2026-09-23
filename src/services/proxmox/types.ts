@@ -85,6 +85,8 @@ export interface VmListItem {
 }
 
 export interface VmActionRequest {
+  proxmox_host_id?: string
+  vmtype?: 'qemu' | 'lxc'
   proxmox_node: ProxmoxNode
   vm_id: string | number
 }
@@ -96,6 +98,8 @@ export interface VmCloneRequest extends VmActionRequest {
 }
 
 export interface VmSnapshotRequest extends VmActionRequest {
+  vmtype?: 'qemu' | 'lxc'
+  vmstate?: boolean
   vm_snapshot_name: string
   vm_snapshot_description?: string
 }
@@ -248,6 +252,7 @@ export interface TemplateInfo {
 }
 
 export interface StorageDownloadIsoRequest {
+  proxmox_host_id?: string
   proxmox_node: ProxmoxNode
   storage: string // e.g., 'local'
   url: string
@@ -275,6 +280,8 @@ export interface BaseNodeData {
   status: 'draft' | 'pending' | 'deploying' | 'running' | 'stopped' | 'error'
   description?: string
   tags?: string[]
+  deployed?: boolean
+  config?: { name?: string }
 }
 
 export interface VmDesiredConfig {
@@ -445,6 +452,7 @@ export type CanvasNodeData =
 // =============================================================================
 
 export type DeploymentStepType = 
+  | 'noop'
   | 'create_bridge'
   | 'create_vm'
   | 'create_lxc'

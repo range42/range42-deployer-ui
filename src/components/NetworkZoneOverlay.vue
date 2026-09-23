@@ -18,9 +18,10 @@ const { viewport } = useVueFlow()
   <svg
     class="vue-flow__container vue-flow__zone-overlay"
     style="z-index: 3; pointer-events: none; overflow: visible;"
+    aria-hidden="true"
   >
     <g :transform="`translate(${viewport.x}, ${viewport.y}) scale(${viewport.zoom})`">
-      <g v-for="zone in zones" :key="zone.id">
+      <g v-for="zone in zones" :key="zone.id" :data-background-id="zone.id" :data-background-kind="zone.kind">
         <rect
           :x="zone.x"
           :y="zone.y"
@@ -28,20 +29,25 @@ const { viewport } = useVueFlow()
           :height="zone.height"
           :fill="zone.color.bg"
           :stroke="zone.color.border"
-          stroke-width="1"
-          stroke-dasharray="6 3"
-          rx="12"
-          ry="12"
+          :stroke-width="zone.kind === 'group' ? 1 : 1.5"
+          :stroke-dasharray="zone.kind === 'group' ? '8 6' : '5 4'"
+          rx="16"
+          ry="16"
         />
-        <text
-          :x="zone.x + 10"
-          :y="zone.y + 16"
-          :fill="zone.color.border"
-          font-size="10"
-          font-weight="700"
-          letter-spacing="1"
-        >{{ zone.label }}</text>
+        <foreignObject
+          v-if="zone.label"
+          :x="zone.x + 12"
+          :y="zone.y + 8"
+          :width="Math.max(0, zone.width - 24)"
+          height="26"
+        >
+          <div xmlns="http://www.w3.org/1999/xhtml" class="zone-label" :style="{ color: zone.color.label }">{{ zone.label }}</div>
+        </foreignObject>
       </g>
     </g>
   </svg>
 </template>
+
+<style scoped>
+.zone-label { display: inline-block; max-width: 100%; padding: 3px 7px; border-radius: 5px; background: var(--color-base-100); font-size: 12px; line-height: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>

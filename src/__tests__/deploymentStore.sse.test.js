@@ -124,6 +124,11 @@ describe('deploymentStore.applySseEvent — all 12 event types from spec §18.2'
     expect(r.logs).toHaveLength(1);
     expect(r.logs[0].text).toBe('hello');
     expect(r.logs[0].stream).toBe('stdout');
+    applySseEvent(r, { event_type: 'log_line', event_seq: 2, payload: {
+      text: 'included task', ansible_event: 'playbook_on_include', task_action: 'include_tasks',
+    } });
+    expect(r.logs[1].ansible_event).toBe('playbook_on_include');
+    expect(r.logs[1].task_action).toBe('include_tasks');
   });
 
   it('handles log_line routed to team ring buffer when team_id present', () => {

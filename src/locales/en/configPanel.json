@@ -1,4 +1,5 @@
 {
+  "templateRequirement": "Required operating system: {os}. Choose a matching template on the selected host.",
   "header": "Configure {type}",
   "status": {
     "valid": "✓ Configuration valid",
@@ -112,5 +113,45 @@
     "nameRequired": "Name is required",
     "cpuMin": "CPU cores must be at least 1",
     "memoryRequired": "Memory is required"
+  },
+  "context": {
+    "group": "Groups organize related infrastructure components together.",
+    "simulated-internet": "Simulated Internet provides fake public IPs and services for isolated training.",
+    "edge-firewall": "Edge Firewall connects your network segments.",
+    "vuln-target": "Vulnerable targets are intentionally insecure systems for training purposes.",
+    "shared-service": "Shared services are accessible from all Gamenets (Git, Chat, Wiki, Auth)."
+  },
+  "note": {
+    "text": "Note text",
+    "color": "Note color",
+    "empty": "Add text in the note settings.",
+    "hint": "Notes and their connections are annotations; they do not create infrastructure.",
+    "colors": {
+      "yellow": "Yellow",
+      "blue": "Blue",
+      "green": "Green",
+      "neutral": "Neutral"
+    }
+  },
+  "connection": {
+    "title": "Connection",
+    "networkTitle": "Network connection",
+    "text": "Connection text",
+    "hint": "Shown at the center of the line.",
+    "close": "Close connection settings",
+    "edit": "Edit connection"
+  },
+  "network": {
+    "title": "Network",
+    "noAddress": "Address range not set",
+    "bridge": "Bridge",
+    "devices": "No devices connected | 1 device connected | {count} devices connected",
+    "types": {
+      "wan": "WAN",
+      "lan": "LAN",
+      "dmz": "DMZ",
+      "management": "Management",
+      "custom": "Network"
+    }
   }
 }

@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { createPinia, setActivePinia } from 'pinia'
 import 'fake-indexeddb/auto'
 import CatalogPickerForm from '@/components/project/attachments/sources/CatalogPickerForm.vue'
+
+enableAutoUnmount(afterEach)
 
 function makeI18n() {
   return createI18n({
@@ -36,6 +39,8 @@ describe('CatalogPickerForm', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
     globalThis.fetch = () => Promise.resolve(ANSIBLE_ROLE_RESPONSE)
   })
 
@@ -57,7 +62,9 @@ describe('CatalogPickerForm', () => {
     await flushPromises()
 
     expect(capturedUrl).toContain('kind=ansible_role')
-    expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    })
   })
 
   it('emits update:source with correct ref and sha when a row is clicked', async () => {
@@ -67,6 +74,9 @@ describe('CatalogPickerForm', () => {
     })
     await flushPromises()
 
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    })
     await wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').trigger('click')
 
     const emitted = wrapper.emitted('update:source')
@@ -115,7 +125,9 @@ describe('CatalogPickerForm', () => {
     resolve(ANSIBLE_ROLE_RESPONSE)
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="catalog-pick-loading"]').exists()).toBe(false)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-loading"]').exists()).toBe(false)
+    })
   })
 
   it('shows empty state when entries list is empty', async () => {
@@ -131,7 +143,9 @@ describe('CatalogPickerForm', () => {
     })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="catalog-pick-empty"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-empty"]').exists()).toBe(true)
+    })
   })
 
   it('highlights the currently-selected row', async () => {
@@ -143,6 +157,9 @@ describe('CatalogPickerForm', () => {
     })
     await flushPromises()
 
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]').exists()).toBe(true)
+    })
     const row = wrapper.find('[data-testid="catalog-pick-src-a:roles/wazuh"]')
     expect(row.classes()).toContain('ring')
   })

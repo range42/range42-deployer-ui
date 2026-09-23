@@ -4,11 +4,18 @@ import { useCatalog, applyClientFilters } from '../composables/useCatalog'
 // Minimal IndexedDB mock via fake-indexeddb shim. `idb` resolves its backing
 // store from the global `indexedDB`; jsdom does not provide one.
 import 'fake-indexeddb/auto'
+import { createPinia, setActivePinia } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import { useCatalogSources } from '@/composables/useCatalogSources'
+import { useInventoryStore } from '@/stores/inventoryStore'
+import canonicalTopology from '../../schema/test-vectors/topology/01-minimal.json'
 
 describe('useCatalog — cross-source catalog composable (Plan C §4)', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
     globalThis.fetch = vi.fn()
   })
 
@@ -56,6 +63,30 @@ describe('useCatalog — cross-source catalog composable (Plan C §4)', () => {
     expect(entries.value[0].name).toBe('demo-lab')
   })
 
+  it('loads every server page so entries beyond the first 500 remain searchable', async () => {
+    const page = (offset, count) => ({ ok: true, json: async () => ({
+      items: Array.from({ length: count }, (_, i) => ({ name: `entry-${offset + i}` })),
+      total: 503, offset, limit: 500,
+    }) })
+    globalThis.fetch.mockResolvedValueOnce(page(0, 500)).mockResolvedValueOnce(page(500, 3))
+    const catalog = useCatalog()
+    const out = await catalog.listEntries({ source_id: 'large', limit: 500 })
+    expect(out).toHaveLength(503)
+    expect(applyClientFilters(out, { q: 'entry-502' })).toHaveLength(1)
+    expect(globalThis.fetch.mock.calls[1][0]).toContain('offset=500')
+    expect(globalThis.fetch.mock.calls[1][0]).toContain('source_id=large')
+  })
+
+  it('does not cache an incomplete catalog when a later page fails', async () => {
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({
+      items: [{ name: 'first' }], total: 2, offset: 0, limit: 1,
+    }) }).mockRejectedValueOnce(new Error('Second page unavailable'))
+    expect(await catalog.listEntries({ limit: 1 })).toEqual([])
+    expect(catalog.error.value).toBe('Second page unavailable')
+  })
+
   it('listEntries records an error and resets entries on network failure', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -92,6 +123,210 @@ describe('useCatalog — cross-source catalog composable (Plan C §4)', () => {
     expect(url).toContain('/v1/catalog/entries/')
     expect(url).toContain(encodeURIComponent('gitlab:acme/catalog'))
     expect(url).toContain('gamenets/ctf/range42.yaml')
+  })
+
+  it('reads catalog entries from the selected backend with its gateway token', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://lab.example/api/', token: 'gateway-token' })
+    globalThis.fetch.mockResolvedValue({ ok: true, json: async () => ({ items: [] }) })
+
+    await useCatalog().listEntries()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('https://lab.example/api/v1/catalog/entries',
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer gateway-token' }) }))
+  })
+
+  it('does not show another backend’s cached catalog when the selected backend is offline', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://first.example' })
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true, json: async () => ({ items: [{ name: 'First backend catalog' }] }),
+    })
+    await catalog.listEntries()
+    globalThis.fetch.mockRejectedValueOnce(new Error('First backend offline'))
+    expect(await catalog.listEntries()).toEqual([{ name: 'First backend catalog' }])
+    const second = backend.addHost({ url: 'https://second.example' })
+    backend.setActiveHost(second)
+    globalThis.fetch.mockRejectedValueOnce(new Error('Backend offline'))
+
+    expect(await catalog.listEntries()).toEqual([])
+    expect(catalog.error.value).toBe('Backend offline')
+  })
+
+  it('expires offline metadata after five minutes without extending it on access', async () => {
+    let now = 1000000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ name: 'Saved catalog' }] }) })
+    await catalog.listEntries()
+    globalThis.fetch.mockRejectedValue(new Error('Offline'))
+    now += 299999
+    expect(await catalog.listEntries()).toEqual([{ name: 'Saved catalog' }])
+    now += 2
+    expect(await catalog.listEntries()).toEqual([])
+    expect(catalog.error.value).toBe('Offline')
+  })
+
+  it.each([401, 403])('does not expose cached private entries after gateway denial %s', async status => {
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ name: 'Private catalog' }] }) })
+    await catalog.listEntries()
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status, json: async () => ({ message: 'Access denied' }) })
+    expect(await catalog.listEntries()).toEqual([])
+    expect(catalog.entries.value).toEqual([])
+    expect(catalog.error.value).toBeTruthy()
+    globalThis.fetch.mockRejectedValueOnce(new Error('Offline after denial'))
+    expect(await catalog.listEntries()).toEqual([])
+  })
+
+  it('does not give a new or removed token the old identity’s offline catalog', async () => {
+    const backend = useBackendApiStore()
+    const host = backend.addHost({ url: 'https://private.example', token: 'first-identity' })
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ name: 'Private catalog' }] }) })
+    await catalog.listEntries()
+    backend.updateHost(host, { token: '' })
+    globalThis.fetch.mockRejectedValueOnce(new Error('Offline'))
+    expect(await catalog.listEntries()).toEqual([])
+  })
+
+  it('ignores a stale catalog response and does not clear a newer request’s loading state', async () => {
+    const backend = useBackendApiStore()
+    const firstHost = backend.addHost({ url: 'https://first.example', token: 'one' })
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    let finishOld, finishNew
+    globalThis.fetch.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
+    const old = catalog.listEntries()
+    backend.updateHost(firstHost, { url: 'https://second.example', token: 'two' })
+    globalThis.fetch.mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve }))
+    const current = catalog.listEntries()
+    finishOld({ ok: true, json: async () => ({ items: [{ name: 'Old private catalog' }] }) })
+    expect(await old).toEqual([])
+    expect(catalog.loading.value).toBe(true)
+    expect(catalog.entries.value).toEqual([])
+    finishNew({ ok: true, json: async () => ({ items: [{ name: 'New catalog' }] }) })
+    expect(await current).toEqual([{ name: 'New catalog' }])
+  })
+
+  it('does not continue old pagination against a newly selected backend', async () => {
+    const backend = useBackendApiStore()
+    const host = backend.addHost({ url: 'https://first.example' })
+    const catalog = useCatalog()
+    let finishOld
+    globalThis.fetch.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
+    const pending = catalog.listEntries({ limit: 1 })
+    backend.updateHost(host, { url: 'https://second.example' })
+    finishOld({ ok: true, json: async () => ({ items: [{ name: 'First' }], total: 2, offset: 0, limit: 1 }) })
+    expect(await pending).toEqual([])
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not resurrect a deleted detail or overwrite a newer request with a stale failure', async () => {
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ name: 'Private entry' }) })
+    await catalog.getEntry('source', 'path')
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ message: 'Deleted' }) })
+    expect(await catalog.getEntry('source', 'path')).toBeNull()
+    expect(catalog.error.value).toBe('Deleted')
+    let failOld
+    globalThis.fetch.mockImplementationOnce(() => new Promise((_resolve, reject) => { failOld = reject }))
+    const old = catalog.listEntries()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ name: 'Current' }] }) })
+    await catalog.listEntries()
+    failOld(new Error('Old request failed'))
+    await old
+    expect(catalog.entries.value).toEqual([{ name: 'Current' }])
+    expect(catalog.error.value).toBeNull()
+  })
+
+  it.each(['deleteSource', 'rotateToken', 'refreshSource'])('invalidates offline records on source mutation: %s', async action => {
+    const catalog = useCatalog()
+    await catalog.clearCache()
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [{ name: 'Old private source' }] }) })
+    await catalog.listEntries()
+    const source = { id: 'source', provider: 'github', base_url: 'https://github.com', backend_url: '', repos: [], auth: { kind: 'pat' } }
+    useInventoryStore().syncSources([source], '')
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, status: action === 'deleteSource' ? 204 : 200,
+      json: async () => ({ ...source, auth_kind: 'pat', finished_at: 'now', repos_seen: 1, entries_indexed: 1 }) })
+    await useCatalogSources()[action]('source', 'replacement-token')
+    globalThis.fetch.mockRejectedValueOnce(new Error('Offline'))
+    expect(await catalog.listEntries()).toEqual([])
+  })
+
+  it('does not let an older read refill private cache after another catalog caller is denied', async () => {
+    const older = useCatalog(), denied = useCatalog()
+    await older.clearCache()
+    let finishOld
+    globalThis.fetch.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
+    const pending = older.listEntries()
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ message: 'Denied' }) })
+    await denied.listEntries()
+    expect(denied.error.value).toBeTruthy()
+    finishOld({ ok: true, json: async () => ({ items: [{ name: 'Old private' }] }) })
+    expect(await pending).toEqual([])
+    expect(older.loading.value).toBe(false)
+    globalThis.fetch.mockRejectedValueOnce(new Error('Offline'))
+    expect(await useCatalog().listEntries()).toEqual([])
+  })
+
+  it('does not send a source mutation to a backend changed while invalidating browser cache', async () => {
+    const backend = useBackendApiStore()
+    const host = backend.addHost({ url: 'https://first.example', token: 'first' })
+    globalThis.fetch.mockResolvedValue({ ok: true, status: 204 })
+    const pending = useCatalogSources().deleteSource('old-source')
+    backend.updateHost(host, { url: 'https://second.example', token: 'second' })
+    await expect(pending).rejects.toThrow(/backend changed|backend or credential changed/)
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('surfaces the backend explanation when an entry cannot be loaded', async () => {
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: false, status: 409,
+      json: async () => ({ code: 'SOURCE_EMPTY', message: 'Connect a repository before indexing.' }),
+    })
+    const catalog = useCatalog()
+    expect(await catalog.getEntry('missing-source', 'missing-entry')).toBeNull()
+    expect(catalog.error.value).toBe('Connect a repository before indexing.')
+  })
+
+  it('presents README and manifest details from the backend detail envelope', async () => {
+    globalThis.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        name: 'Demo lab', kind: 'lab', source_id: 's1', path: 'labs/demo',
+        readme_md: '# Set up the demo lab',
+        document: { name: 'untrusted override', source_id: 'other',
+          topology: { nodes: [{ id: 'vm1' }], edges: [] },
+          inventory: [{ name: 'Ubuntu' }], metadata: { maintainer: 'Range42' } },
+      }),
+    })
+
+    const entry = await useCatalog().getEntry('s1', 'labs/demo')
+    expect(entry.readme).toBe('# Set up the demo lab')
+    expect(entry.topology.nodes).toEqual([{ id: 'vm1' }])
+    expect(entry.inventory).toEqual([{ name: 'Ubuntu' }])
+    expect(entry.metadata).toEqual({ maintainer: 'Range42' })
+    expect(entry.name).toBe('Demo lab')
+    expect(entry.source_id).toBe('s1')
+  })
+
+  it('converts canonical manifest nodes into a topology preview', async () => {
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({
+      name: canonicalTopology.name, kind: 'gamenet', source_id: 's1', path: 'minimal',
+      document: canonicalTopology,
+    }) })
+    const entry = await useCatalog().getEntry('s1', 'minimal')
+    expect(entry.topology?.nodes).toEqual([expect.objectContaining({
+      id: 'host-01', type: 'vm', position: { x: 0, y: 0 },
+      data: expect.objectContaining({ config: expect.objectContaining({ template: '9001' }) }),
+    })])
   })
 })
 

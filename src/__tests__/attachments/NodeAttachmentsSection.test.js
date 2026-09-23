@@ -67,7 +67,7 @@ describe('NodeAttachmentsSection', () => {
   // -----------------------------------------------------------------------
   // 3. Clicking Add creates a new attachment and emits update:attachments
   // -----------------------------------------------------------------------
-  it('adding an inline_yaml attachment emits update:attachments with correct new row', async () => {
+  it('opens scenario content for this VM without creating a retired attachment', async () => {
     const wrapper = mount(NodeAttachmentsSection, {
       props: {
         node: NODE_A,
@@ -77,20 +77,12 @@ describe('NodeAttachmentsSection', () => {
       global: { plugins: [makeI18n()] },
     })
 
-    const select = wrapper.find('[data-testid="att-add-kind"]')
-    await select.setValue('inline_yaml')
-
-    const addBtn = wrapper.find('[data-testid="att-add-btn"]')
+    expect(wrapper.find('[data-testid="att-add-kind"]').exists()).toBe(false)
+    const addBtn = wrapper.find('[data-testid="scenario-content-btn"]')
     await addBtn.trigger('click')
 
-    const emitted = wrapper.emitted('update:attachments')
-    expect(emitted).toBeTruthy()
-    expect(emitted.length).toBe(1)
-
-    const newList = emitted[0][0]
-    expect(newList).toHaveLength(1)
-    expect(newList[0].target_node).toBe('vm-a')
-    expect(newList[0].source.kind).toBe('inline_yaml')
+    expect(wrapper.emitted('open-content')).toEqual([['vm-a']])
+    expect(wrapper.emitted('update:attachments')).toBeUndefined()
   })
 
   // -----------------------------------------------------------------------

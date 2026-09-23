@@ -60,18 +60,19 @@ export const useUserStore = defineStore('user', () => {
   }
 
   const settings = ref<UserSettings>(load())
+  const storageError = ref('')
 
-  watch(
-    settings,
-    (next) => {
-      try {
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
-    },
-    { deep: true },
-  )
+  function retryPersistence(): boolean {
+    try {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(settings.value))
+      storageError.value = ''
+      return true
+    } catch {
+      storageError.value = 'Identity could not be stored. Changes apply only in this session.'
+      return false
+    }
+  }
+  watch(settings, retryPersistence, { deep: true, flush: 'sync' })
 
   const display_name = computed(() => settings.value.display_name)
   const color = computed(() => settings.value.color)
@@ -100,6 +101,8 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     settings,
+    storageError,
+    retryPersistence,
     display_name,
     color,
     isConfigured,

@@ -1,10 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { createAttachment, removeAttachment } from '@/composables/useAttachments'
+import { removeAttachment } from '@/composables/useAttachments'
 import AttachmentEditor from './AttachmentEditor.vue'
-
-const KINDS = ['catalog_role', 'catalog_container', 'inline_yaml', 'file_upload', 'external_git']
 
 const props = defineProps({
   node: {
@@ -21,11 +19,10 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:attachments'])
+const emit = defineEmits(['update:attachments', 'open-content'])
 
 const { t } = useI18n()
 
-const selectedKind = ref('inline_yaml')
 const editingId = ref(null)
 
 const nodeAttachments = computed(() =>
@@ -35,12 +32,6 @@ const nodeAttachments = computed(() =>
 const editingAttachment = computed(() =>
   editingId.value ? props.attachments.find((a) => a.id === editingId.value) ?? null : null,
 )
-
-function onAdd() {
-  const att = createAttachment(selectedKind.value, props.node.id)
-  emit('update:attachments', [...props.attachments, att])
-  editingId.value = att.id
-}
 
 function onEditorUpdate(next) {
   emit('update:attachments', props.attachments.map((a) => (a.id === next.id ? next : a)))
@@ -82,24 +73,9 @@ function onEditorDelete() {
       {{ t('project.attachments.section.empty') }}
     </div>
 
-    <!-- Add control -->
-    <div class="flex gap-2 items-center">
-      <select
-        v-model="selectedKind"
-        data-testid="att-add-kind"
-        class="select select-bordered select-sm flex-1"
-      >
-        <option v-for="kind in KINDS" :key="kind" :value="kind">{{ kind }}</option>
-      </select>
-      <button
-        data-testid="att-add-btn"
-        type="button"
-        class="btn btn-sm btn-primary"
-        @click="onAdd"
-      >
-        {{ t('project.attachments.section.add') }}
-      </button>
-    </div>
+    <p class="text-sm text-base-content/70">Add files, scripts, playbooks and verified bundles in Scenario Content. Existing attachments stay available here until you review their conversion.</p>
+    <button data-testid="scenario-content-btn" type="button" class="btn btn-sm btn-primary"
+      @click="emit('open-content', node.type === 'vm' ? node.id : '')">Open Scenario Content</button>
 
     <!-- Inline editor -->
     <AttachmentEditor

@@ -1,13 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../views/Home.vue'
-import ProjectEditor from '../views/ProjectEditor.vue'
-import Settings from '../views/Settings.vue'
-import CatalogList from '../views/CatalogList.vue'
-import CatalogEntryDetail from '../views/CatalogEntryDetail.vue'
-import DeploymentsList from '../views/DeploymentsList.vue'
-import DeploymentDetail from '../views/DeploymentDetail.vue'
-import DeploymentPreflight from '../views/DeploymentPreflight.vue'
-import Sources from '../views/Sources.vue'
+const Home = () => import('../views/Home.vue')
+const ProjectEditor = () => import('../views/ProjectEditor.vue')
+const Settings = () => import('../views/Settings.vue')
+const CatalogList = () => import('../views/CatalogList.vue')
+const CatalogEntryDetail = () => import('../views/CatalogEntryDetail.vue')
+const DeploymentsList = () => import('../views/DeploymentsList.vue')
+const DeploymentDetail = () => import('../views/DeploymentDetail.vue')
+const DeploymentPreflight = () => import('../views/DeploymentPreflight.vue')
+const Sources = () => import('../views/Sources.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),

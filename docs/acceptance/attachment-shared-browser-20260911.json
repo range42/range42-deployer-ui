@@ -1,0 +1,22 @@
+{
+  "url": "http://100.64.0.14:3002",
+  "project_id": "attachment-shared-1789120389731",
+  "authentication": "fresh browser token accepted; settings ready",
+  "entry": "Config tab opens Scenario Content",
+  "cancellation": "original attachments retained",
+  "preview": "no project mutation before Apply",
+  "apply": "attachments, files and scenario saved together",
+  "raw_task_bytes": "UTF8 BOM and CRLF retained",
+  "binary_bytes": "00 ff 80 0a retained",
+  "variables": {
+    "MESSAGE": "kept"
+  },
+  "original_archive": "all original attachment records retained",
+  "reload": "byte-identical regeneration",
+  "browser": {
+    "secureContext": false,
+    "randomUUID": "undefined"
+  },
+  "scope": "local browser authoring; no Git publication, reservations, guest or network creation",
+  "errors": []
+}

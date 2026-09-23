@@ -91,7 +91,17 @@ docker compose up --build
 
 The UI is available at `http://localhost:3000` (configurable via `UI_PORT` in `.env`).
 
-Configure the backend API URL in the settings modal once the app is running.
+Configure and select the backend API URL in **Settings → Backend API hosts**,
+then open **Git Sources** to connect the recommended public Range42 catalog.
+No Git token is required for the default repository. See
+[catalog onboarding](docs/catalog-onboarding.md) for custom repositories,
+credentials, and deployment prerequisites.
+
+Git-bound projects save edits to a dedicated working branch. See the
+[Git authoring workflow](docs/git-authoring-workflow.md) for publishing the same
+snapshot to public and private repositories, creating Ansible roles, and the
+[concrete scenario authoring workflow](docs/concrete-scenario-authoring.md) for
+SDN, VM bootstrap, guest content updates and deployment VM teardown.
 
 ### Docker: Build & Push
 
@@ -134,6 +144,15 @@ npm install
 # Start development server
 npm run dev
 
+# Check application Vue/TypeScript before building
+npm run typecheck
+
+# Check explicitly migrated JavaScript modules and Vue scripts
+npm run typecheck:migrated
+
+# Verify checker coverage and its JavaScript boundary
+npm run test:typecheck
+
 # Build for production
 npm run build
 
@@ -141,11 +160,37 @@ npm run build
 npm run preview
 ```
 
+The application checker includes every implementation `.ts`, `.tsx` and `.vue`
+file under `src`, with strict TypeScript and template checks for TypeScript SFCs.
+Existing JavaScript is included for module inference (`allowJs: true`) but is not
+checked by default (`checkJs: false`), including JavaScript-script Vue components.
+The explicit `typecheck-migrated.json` list opts reviewed files into `@ts-check`. Tests and
+tooling are outside this application configuration. See [typecheck coverage](docs/typechecking.md)
+for the exact boundary; a successful Vite build is not a typecheck.
+
+## Navigation and appearance
+
+The sidebar groups Projects, Catalog and Deployments under Workspace, with
+Sources and Settings under Manage. Collapse it explicitly to keep more canvas
+space; the preference survives navigation and reload. Smaller screens use
+separate navigation and project-tools drawers.
+
+Project components can be clicked or dragged onto the canvas. Search project,
+Undo, Redo and Save are visible controls; app-specific keyboard shortcuts and
+their badges have been removed. Standard keyboard navigation and editor text
+editing remain available. Settings → Appearance selects System, Light or Dark
+and remembers the choice.
+
+See [navigation design and acceptance](docs/navigation-design.md) for interaction
+details, screenshots and the limits of the browser checks.
+
 ## Internationalization (i18n)
 
 - The app uses `vue-i18n` with per-page/component JSON files under `src/locales/<lang>/...`.
 - Default and fallback locale is English (`en`). French (`fr`) is provided as a proof of concept.
-- Language can be switched at runtime from the sidebar language selector.
+- Language can be switched at runtime from the project sidebar language selector
+  (inside Project tools on smaller screens). The redesigned navigation and
+  component palette have English, French and Japanese strings.
 
 Development notes:
 - i18n runtime is initialized in `src/i18n/index.js` with secure lazy-loading via `import.meta.glob`.
@@ -163,4 +208,3 @@ To be defined.
 ## License
 
 - GPL-3.0 license
-

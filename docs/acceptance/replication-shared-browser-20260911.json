@@ -1,0 +1,77 @@
+{
+  "ui_commit": "45a4f042347dfadcc2ce4d7dfcf44ee61e0f9f83",
+  "api_commit": "052e0893cb8b32bf640ed44fbd2f80867ae3cb05",
+  "url": "http://100.64.0.14:3002",
+  "checks": [
+    {
+      "authentication": "fresh browser rejected bad token, accepted valid token, retained on reload",
+      "defaultSourceStatus": 200,
+      "settings": "ready",
+      "errors": []
+    },
+    {
+      "projectConfiguration": "fresh project selected shared backend, authenticated readiness and saved",
+      "errors": []
+    },
+    {
+      "capacity": "actual shared API reports24logicalCPUs with RAM/storage",
+      "observed": "2026-09-11T09:20:09.273520Z",
+      "errors": []
+    },
+    {
+      "gitReopening": "real public Git revision restored into fresh dedicated working branch",
+      "revision": "range42-publish/replication-github-72f2f261ec/public-72f2f261ec/range42-acceptance%2Freplication-public-base-20260911-72f2f261ec/%22acceptance%2Freplication-20260911-72f2f261ec%22 \u00b7 9ffd95d49d81aba734c57114adadc35625bb061e",
+      "authoring": "Structured authoring verified: VM, network, content and bundle forms match the saved generated files. Renew any allocation before deploying; allocation ownership is local to its original browser.",
+      "id": "replication-github-72f2f261ec",
+      "nodes": 2,
+      "edges": 1,
+      "scenario": true,
+      "generatedPaths": 9,
+      "opened": {
+        "branch": "range42-publish/replication-github-72f2f261ec/public-72f2f261ec/range42-acceptance%2Freplication-public-base-20260911-72f2f261ec/%22acceptance%2Freplication-20260911-72f2f261ec%22",
+        "commit_sha": "9ffd95d49d81aba734c57114adadc35625bb061e",
+        "mode": "structured",
+        "authoring_status": "structured"
+      },
+      "branch": "range42-ui/open-e8b50244be7b465c8a9844036ecc6a43",
+      "base": "range42-publish/replication-github-72f2f261ec/public-72f2f261ec/range42-acceptance%2Freplication-public-base-20260911-72f2f261ec/%22acceptance%2Freplication-20260911-72f2f261ec%22",
+      "hasBinary": true,
+      "retainedLocalDraft": true,
+      "secureContext": false,
+      "randomUUID": "undefined",
+      "errors": []
+    },
+    {
+      "reload": "opened project and shared authentication retained",
+      "errors": []
+    },
+    {
+      "replication": "real shared API keyed reserve, Apply, reload and release passed",
+      "localId": "replication-shared-1789118412339",
+      "hostId": "851183b8578f4a84",
+      "nodes": 2,
+      "sourceVms": 1,
+      "teams": 2,
+      "instances": [
+        {
+          "vm_id": 60000,
+          "nics": 1
+        },
+        {
+          "vm_id": 60001,
+          "nics": 1
+        },
+        {
+          "vm_id": 60002,
+          "nics": 1
+        }
+      ],
+      "networks": 2,
+      "reservationId": "b695d2d819794390b5eb7845eec1ffef",
+      "leaseStatus": 200,
+      "releaseStatus": 204,
+      "errors": []
+    }
+  ],
+  "scope": "Real HTTP browser and backend reservation acceptance; no guest or SDN resource creation."
+}

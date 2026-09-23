@@ -1,4 +1,5 @@
 {
+  "vaultManaged": "Supplied by the backend vault; secret values are not saved to Git.",
   "title": "Variables",
   "subtitle": "Environment variables declared by the project (base ⊕ overlay)",
   "name": "Name",

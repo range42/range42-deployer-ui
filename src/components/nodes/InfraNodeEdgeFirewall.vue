@@ -29,7 +29,7 @@ const applianceIcon = computed(() => {
 
 <template>
   <div
-    class="rounded-xl shadow-lg p-4 min-w-[200px] border-2 transition-all duration-200"
+    class="infra-appliance rounded-xl shadow-lg p-4 min-w-[200px] border-2 transition-colors duration-200"
     :class="{
       'bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-emerald-950/50 dark:via-teal-950/40 dark:to-cyan-950/40': true,
       'border-emerald-400 shadow-xl shadow-emerald-200/50 dark:shadow-emerald-900/30 ring-2 ring-emerald-300/50': selected,
@@ -42,7 +42,7 @@ const applianceIcon = computed(() => {
         <div :class="`w-4 h-4 rounded-full ${statusColor} ring-2 ring-white/50`"></div>
         <AppIcon :name="applianceIcon" class="w-6 h-6" />
       </div>
-      <div class="px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold uppercase tracking-wider rounded-full shadow">
+      <div class="px-3 py-1 bg-gradient-to-r from-emerald-800 to-teal-800 text-white text-xs font-bold uppercase tracking-wider rounded-full shadow">
         Edge FW
       </div>
     </div>
@@ -53,27 +53,27 @@ const applianceIcon = computed(() => {
         {{ data.config?.name || 'Edge Firewall' }}
       </div>
       
-      <div class="text-xs text-emerald-700/80 dark:text-emerald-300/70 space-y-1">
+      <div class="text-xs text-emerald-900 dark:text-emerald-100 space-y-1">
         <div v-if="data.config?.applianceType" class="flex items-center gap-2">
-          <span class="opacity-60">Appliance:</span>
+          <span class="opacity-85">Appliance:</span>
           <span class="font-semibold uppercase">{{ data.config.applianceType }}</span>
         </div>
         
         <!-- WAN Interface -->
         <div v-if="data.config?.wanIp" class="flex items-center gap-2 bg-red-100/50 dark:bg-red-900/30 px-2 py-1 rounded">
-          <span class="text-red-600 dark:text-red-400 font-medium">WAN:</span>
+          <span class="text-red-800 dark:text-red-300 font-medium">WAN:</span>
           <span class="font-mono text-xs">{{ data.config.wanIp }}</span>
         </div>
         
         <!-- LAN Interface -->
         <div v-if="data.config?.lanIp" class="flex items-center gap-2 bg-green-100/50 dark:bg-green-900/30 px-2 py-1 rounded">
-          <span class="text-green-600 dark:text-green-400 font-medium">LAN:</span>
+          <span class="text-green-800 dark:text-green-300 font-medium">LAN:</span>
           <span class="font-mono text-xs">{{ data.config.lanIp }}</span>
         </div>
         
         <!-- DMZ Interface -->
         <div v-if="data.config?.dmzIp" class="flex items-center gap-2 bg-orange-100/50 dark:bg-orange-900/30 px-2 py-1 rounded">
-          <span class="text-orange-600 dark:text-orange-400 font-medium">DMZ:</span>
+          <span class="text-orange-800 dark:text-orange-300 font-medium">DMZ:</span>
           <span class="font-mono text-xs">{{ data.config.dmzIp }}</span>
         </div>
       </div>

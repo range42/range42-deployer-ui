@@ -51,6 +51,7 @@ const rows = computed(() => {
 })
 
 function setOverride(name, value) {
+  if (rows.value.find(row => row.name === name)?.secret) return
   const next = {
     ...props.overlay,
     param_overrides: {
@@ -145,7 +146,9 @@ function onEditInput(event, name) {
           </td>
           <td class="font-mono text-xs">{{ displayValue(row) }}</td>
           <td>
+            <p v-if="row.secret" class="text-xs text-base-content/65">{{ $t ? $t('variablesTab.vaultManaged') : 'Supplied by the backend vault; secret values are not saved to Git.' }}</p>
             <input
+              v-else
               type="text"
               class="input input-xs input-bordered w-full font-mono"
               :value="row.hasOverride ? String(row.override ?? '') : ''"
