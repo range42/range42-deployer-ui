@@ -30,7 +30,7 @@
     "@vue-flow/controls": "^1.1.2",
     "@vue-flow/core": "^1.45.0",
     "@vue-flow/minimap": "^1.5.3",
-    "@vue-flow/node-resizer": "^1.5.0",
+    "@vue-flow/node-resizer": "^1.5.1",
     "focus-trap-vue": "^4.0.3",
     "idb": "^8.0.0",
     "markdown-it": "15.0.2",
