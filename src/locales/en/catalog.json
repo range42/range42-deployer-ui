@@ -154,7 +154,8 @@
     "component": "Machines & components",
     "container": "Compose workloads",
     "ansible_role": "Ansible roles",
-    "unknown": "Other format"
+    "unknown": "Other format",
+    "scenario": "Scenarios"
   },
   "card_hints": {
     "container": "Requires an existing VM with Docker and Compose.",

@@ -53,6 +53,22 @@ async function editor(query = '', overrides = {}) {
 }
 
 describe('Actual ProjectEditor tab and selection navigation', () => {
+  it('opens native projects in the file editor and hides canvas generation', async () => {
+    await editor('?tab=canvas', { native_scenario: { version: 1, path: 'training/example' }, nodes: [] })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="project-tab-config"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.find('[data-testid="project-tab-canvas"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="project-scenario"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Validate Topology')
+  })
+
+  it('opens the catalog from a native project without an unused canvas append destination', async () => {
+    const { router } = await editor('?tab=config', { native_scenario: { version: 1, path: 'training/example' }, nodes: [] })
+    wrapper.findComponent(Sidebar).vm.$emit('openInventory')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/catalog')
+    expect(router.currentRoute.value.query.project).toBeUndefined()
+  })
   it('hydrates the URL-selected Config file without visiting Home or clicking a file', async () => {
     await editor('?tab=config&file=second.yml')
     expect(wrapper.get('[data-testid="project-tab-config"]').attributes('aria-selected')).toBe('true')

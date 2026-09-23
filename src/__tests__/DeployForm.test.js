@@ -45,6 +45,13 @@ function baseProps(overrides = {}) {
 function fetchMockHosts(extra = {}) {
   return vi.fn(async (url, opts) => {
     if (typeof url !== 'string') url = String(url)
+    if (url.includes('/v1/contexts')) return { ok: true, status: 200, json: async () => ({ items: extra.contexts || [
+      { id: 'training-demo', label: 'Training environment', target_host_id: 'host-2', ready: true, issues: [] },
+    ] }) }
+    if (url.includes('/native-scenario')) return { ok: true, status: 200, json: async () => ({
+      path: 'training/exercise-a', actions: { full: 'exercise.setup.sh', teardown: 'exercise.delete_all.sh' },
+      features: [{ id: 'WAZUH', label: 'Monitoring', description: 'Optional monitoring', default: false }],
+    }) }
     if (url.includes('/v1/proxmox/hosts') && (!opts || opts.method !== 'POST')) {
       return {
         ok: true, status: 200,
@@ -79,6 +86,62 @@ describe('<DeployForm>', () => {
   })
   afterEach(() => {
     globalThis.fetch = originalFetch
+  })
+
+  it('deploys a native scenario with its chosen environment and feature selections', async () => {
+    const fetchSpy = fetchMockHosts()
+    globalThis.fetch = fetchSpy
+    const wrapper = mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'training/exercise-a' },
+      projectSha: 'a'.repeat(40), gamenet: false }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    await wrapper.get('[data-testid="native-context"]').setValue('training-demo')
+    await wrapper.get('[data-testid="native-feature-WAZUH"]').setValue(true)
+    await wrapper.get('[data-testid="deploy-field-codename"] input').setValue('native')
+    await wrapper.get('[data-testid="deploy-sha-ack"] input').setValue(true)
+    expect(wrapper.find('[data-testid="deploy-vault-override"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
+    await flushPromises()
+    const request = fetchSpy.mock.calls.find(([url, opts]) => String(url).endsWith('/v1/deployments') && opts?.method === 'POST')
+    const body = JSON.parse(request[1].body)
+    expect(body.scenario_label).toBe('exercise-a')
+    expect(body.target_host_id).toBe('host-2')
+    expect(body.native).toEqual({ context_id: 'training-demo', path: 'training/exercise-a', features: { WAZUH: true }, parameters: {} })
+    expect(body).not.toHaveProperty('secrets')
+  })
+
+  it('explains missing native environments and blocks deployment', async () => {
+    globalThis.fetch = fetchMockHosts({ contexts: [] })
+    const wrapper = mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'training/exercise-a' },
+      projectSha: 'a'.repeat(40), gamenet: false }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="native-context-empty"]').text()).toMatch(/environment/i)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('reloads native environment access after rotating the backend token', async () => {
+    const backend = useBackendApiStore()
+    const id = backend.addHost({ url: 'https://native.test', token: 'old-token' })
+    const fetchSpy = fetchMockHosts()
+    globalThis.fetch = fetchSpy
+    mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'training/exercise-a' },
+      projectSha: 'a'.repeat(40), gamenet: false }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    backend.updateHost(id, { token: 'new-token' })
+    await flushPromises()
+    const calls = fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/v1/contexts'))
+    expect(calls).toHaveLength(2)
+    expect(new Headers(calls[1][1].headers).get('Authorization')).toBe('Bearer new-token')
+  })
+
+  it.each(['{"api_token":"private"}', '{"ratio":1e999}'])('rejects unsafe native parameters %s', async parameters => {
+    globalThis.fetch = fetchMockHosts()
+    const wrapper = mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'training/exercise-a' },
+      projectSha: 'a'.repeat(40), gamenet: false }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    await wrapper.get('[data-testid="deploy-sha-ack"] input').setValue(true)
+    await wrapper.get('[data-testid="native-parameters"]').setValue(parameters)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeDefined()
   })
 
   it('renders fields: codename, scenario_label, target_host, team_count, vault pw, SHA-pin', async () => {

@@ -11,6 +11,7 @@ export interface ProjectDraft extends CanvasModel {
   baseDoc?: Record<string, unknown> & { env?: unknown }
   scenario?: Record<string, unknown> & { label?: string; allocation?: Record<string, unknown> }
   scenario_generated_paths?: string[]
+  native_scenario?: import('@/services/nativeScenario').NativeScenario
   overlay?: Record<string, unknown>
   git?: ProjectGitBinding
   head_sha?: string

@@ -37,6 +37,7 @@ const props = defineProps({
   baseFs: { type: Object, required: true },
   attachments: { type: Array, default: () => [] },
   nodes: { type: Array, default: () => [] },
+  showAttachments: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:attachments', 'save', 'open-content', 'select'])
 const { t } = useI18n({ useScope: 'global' })
@@ -194,7 +195,8 @@ const yamlWarning = computed(() => {
 </script>
 
 <template>
-  <div class="config-tab flex flex-col lg:grid lg:grid-cols-[minmax(180px,240px)_1fr_minmax(240px,320px)] gap-2 h-full min-h-0 overflow-y-auto lg:overflow-hidden">
+  <div class="config-tab flex flex-col lg:grid gap-2 h-full min-h-0 overflow-y-auto lg:overflow-hidden"
+    :class="showAttachments ? 'lg:grid-cols-[minmax(180px,240px)_1fr_minmax(240px,320px)]' : 'lg:grid-cols-[minmax(180px,240px)_1fr]'">
     <div class="border-b lg:border-b-0 lg:border-r border-base-300 h-40 lg:h-full min-h-0 shrink-0 overflow-hidden">
       <FileTree
         :overlay-fs="overlayFs"
@@ -248,7 +250,7 @@ const yamlWarning = computed(() => {
       </div>
     </div>
 
-    <div class="border-t lg:border-t-0 lg:border-l border-base-300 h-60 lg:h-full min-h-0 min-w-0 shrink-0 overflow-auto">
+    <div v-if="showAttachments" class="border-t lg:border-t-0 lg:border-l border-base-300 h-60 lg:h-full min-h-0 min-w-0 shrink-0 overflow-auto">
       <AttachmentManager
         :attachments="attachments"
         :nodes="nodes"

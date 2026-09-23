@@ -154,7 +154,8 @@
     "component": "Machines et composants",
     "container": "Applications Compose",
     "ansible_role": "Rôles Ansible",
-    "unknown": "Autre format"
+    "unknown": "Autre format",
+    "scenario": "Scénarios"
   },
   "card_hints": {
     "container": "Nécessite une VM existante avec Docker et Compose.",

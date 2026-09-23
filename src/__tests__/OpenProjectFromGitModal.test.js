@@ -18,7 +18,7 @@ vi.mock('@/services/git', () => ({ getProvider }))
 enableAutoUnmount(afterEach)
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks() })
 
-function modal() {
+function modal(props = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const inventory = useInventoryStore()
@@ -29,13 +29,32 @@ function modal() {
   const provider = { listCommits: vi.fn(async () => [{ sha: 'a'.repeat(40) }]),
     getFileContent: vi.fn(async ({ path }) => ({ content: files[path], sha: 'blob' })), createBranch: vi.fn() }
   getProvider.mockReturnValue(provider)
-  const wrapper = mount(OpenProjectFromGitModal, { props: { open: true }, global: {
+  const wrapper = mount(OpenProjectFromGitModal, { props: { open: true, ...props }, global: {
     plugins: [pinia, createI18n({ legacy: false, locale: 'en', messages: { en: { publishing, reopening } } })],
   } })
   return { wrapper, files, inventory, provider }
 }
 
 describe('Open from Git review', () => {
+  it('opens a catalog-selected native scenario in Config with its pinned revision', async () => {
+    const pinned = 'b'.repeat(40)
+    const { wrapper, provider, files } = modal({ initial: { source_id: 'source', repo_owner: 'owner',
+      repo_name: 'repo', base_branch: 'review', subdir: '', native_path: 'scenarios/native', revision: pinned } })
+    for (const path of Object.keys(files)) delete files[path]
+    files['scenarios/native/main.yml'] = '- hosts: proxmox\n  tasks: []\n'
+    files['scenarios/native/manifest/scenario_vms.json'] = '{"vms":[{"vm_id":2001}]}'
+    provider.listTree = vi.fn(async () => Object.keys(files).map(path => ({ path, type: 'blob', mode: '100644', sha: 'blob' })))
+    await flushPromises()
+    expect(wrapper.get('[data-testid="native-scenario-path"]').element.value).toBe('scenarios/native')
+    await wrapper.get('[data-testid="open-git-preview"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="open-git-revision"]').text()).toContain(pinned)
+    expect(wrapper.text()).toContain('Native scenario')
+    await wrapper.get('[data-testid="open-git-import"]').trigger('click')
+    expect(wrapper.emitted('opened')[0][0].native_scenario.path).toBe('scenarios/native')
+    expect(provider.createBranch).not.toHaveBeenCalled()
+  })
+
   it('shows the pinned preview and imports only after an explicit click', async () => {
     const { wrapper, provider } = modal()
     await wrapper.get('[data-testid="repository-source"]').setValue('source')

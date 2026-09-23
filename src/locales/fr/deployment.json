@@ -278,5 +278,26 @@
     "confirm": "Confirmer la libération",
     "releasing": "Vérification et libération…",
     "cancel": "Annuler"
+  },
+  "native": {
+    "workflow": "Déployer le scénario natif complet, avec ses modèles, réseaux et étapes personnalisées.",
+    "loading": "Chargement des options et des environnements de déploiement…",
+    "empty": "Aucun environnement de déploiement connecté. Demandez à un administrateur de connecter les contextes Range42 du deployer-cli.",
+    "environment": "Environnement de déploiement",
+    "choose": "Choisissez un environnement de déploiement prêt.",
+    "features": "Composants facultatifs",
+    "parameters": "Paramètres avancés du scénario",
+    "parametersHint": "Valeurs JSON propres au scénario. Conservez les identifiants dans le coffre de l’environnement.",
+    "invalidParameters": "Utilisez un objet JSON avec des valeurs simples. Les variables d’environnement et les options sont gérées séparément.",
+    "credentials": "Inventaire, identifiants et accès SSH proviennent du contexte Range42 sélectionné.",
+    "full": "Déployer le scénario complet",
+    "configure": "Configurer",
+    "deploy_vms": "Déployer uniquement les VM",
+    "teardown": "Supprimer les VM et modèles du scénario",
+    "delete_vms": "Supprimer uniquement les VM",
+    "reset": "Réinitialiser le scénario",
+    "deploy_networks": "Créer les réseaux du scénario",
+    "delete_networks": "Supprimer les réseaux du scénario",
+    "pinned": "Ces actions utilisent la révision du dépôt enregistrée pour ce déploiement."
   }
 }
