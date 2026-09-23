@@ -13,7 +13,7 @@ import { fileBytes, isBinaryFile } from '@/services/projectFiles'
 import PublishRepositoryFields from '@/components/PublishRepositoryFields.vue'
 import ForkDestinationField from '@/components/ForkDestinationField.vue'
 
-const props = defineProps({ open: Boolean })
+const props = defineProps({ open: Boolean, initial: { type: Object, default: null } })
 const emit = defineEmits(['close', 'opened'])
 const { t } = useI18n()
 const inventory = useInventoryStore()
@@ -21,6 +21,8 @@ const projects = useProjectStore()
 const { loadSources } = useCatalogSources()
 const repository = ref({ source_id: '', repo_owner: '', repo_name: '', base_branch: 'main', subdir: '' })
 const password = ref('')
+const nativeMode = ref(false)
+const nativePath = ref('')
 const forkOwner = ref('')
 /** @type {import('vue').Ref<import('@/services/gitProjectOpen').GitProjectPreview | null>} */
 const preview = ref(null)
@@ -58,6 +60,13 @@ watch(() => props.open, async open => {
   error.value = ''
   busy.value = false
   if (!open) return
+  if (props.initial) {
+    const initial = props.initial
+    repository.value = { source_id: initial.source_id || '', repo_owner: initial.repo_owner || '',
+      repo_name: initial.repo_name || '', base_branch: initial.base_branch || 'main', subdir: initial.subdir || '' }
+    nativeMode.value = Boolean(initial.native_path)
+    nativePath.value = initial.native_path || ''
+  }
   await ensureNamespaces(['publishing', 'reopening'])
   if (!inventory.sources.length) void Promise.resolve(loadSources()).catch(cause => { error.value = cause instanceof Error ? cause.message : String(cause) })
   await nextTick()
@@ -89,7 +98,10 @@ async function review() {
     const token = inventory.getToken(selected.id)
     password.value = ''
     busy.value = true
-    const reviewed = await loadGitProject(binding, projects.projects.map(project => project.id))
+    if (nativeMode.value && !nativePath.value.trim()) throw new Error(t('reopening.native_path_required'))
+    const matchesInitial = props.initial && Object.entries(repository.value).every(([key, value]) => value === (props.initial?.[key] || ''))
+    const reviewed = await loadGitProject(binding, projects.projects.map(project => project.id), nativeMode.value
+      ? { nativePath: nativePath.value.trim(), ...(matchesInitial && nativePath.value === props.initial?.native_path ? { revision: props.initial?.revision } : {}) } : {})
     if (current !== request || !props.open || identity !== sourceIdentity.value) return
     if (inventory.getToken(selected.id) !== token) throw new Error(t('reopening.source_changed'))
     reviewedConnection = { identity, source_id: selected.id, token }
@@ -133,6 +145,16 @@ function back() { preview.value = null; reviewedConnection = null; error.value =
           <p class="text-sm">{{ t('reopening.hint') }}</p>
           <p v-if="!inventory.sources.length" class="text-sm">{{ t('publishing.no_sources') }} <a href="/sources" class="link">{{ t('publishing.manage_sources') }}</a></p>
           <PublishRepositoryFields :model-value="repository" @update:model-value="updateRepository" :sources="inventory.sources" :disabled="busy" />
+          <label class="flex items-center gap-2">
+            <input v-model="nativeMode" type="checkbox" class="checkbox checkbox-sm" :disabled="busy" data-testid="native-scenario-mode" />
+            <span>{{ t('reopening.native_mode') }}</span>
+          </label>
+          <label v-if="nativeMode" class="block">
+            <span class="label text-sm">{{ t('reopening.native_path') }}</span>
+            <input v-model="nativePath" name="native-scenario-path" autocomplete="off" :spellcheck="false" :disabled="busy"
+              class="input input-bordered w-full" data-testid="native-scenario-path" placeholder="scenarios/blank_scenario_2_subnets" />
+            <span class="block text-xs text-base-content/70 mt-1">{{ t('reopening.native_hint') }}</span>
+          </label>
           <label v-if="source" class="block">
             <span class="label text-sm">{{ t('publishing.credentials_title') }}</span>
             <span v-if="inventory.getToken(source.id)" class="text-success block text-sm">{{ t('publishing.credential_connected') }}</span>
@@ -155,7 +177,7 @@ function back() { preview.value = null; reviewedConnection = null; error.value =
           <p class="text-sm">{{ t('reopening.seed_hint') }}</p>
           <p class="text-sm">{{ t('reopening.graph', { nodes: preview.canvas.nodes.length, edges: preview.canvas.edges.length }) }}</p>
           <div class="rounded-lg border border-base-300 bg-base-200 p-3 space-y-2 text-sm" data-testid="open-git-authoring">
-            <p>{{ t(`reopening.status_${preview.authoring.status}`) }}</p>
+            <p>{{ t(preview.authoring.native_scenario ? 'reopening.native_review' : `reopening.status_${preview.authoring.status}`) }}</p>
             <p v-if="preview.authoring.issue" class="break-words">{{ preview.authoring.issue }}</p>
             <label v-if="preview.authoring.status === 'conflict'" class="flex items-start gap-2">
               <input v-model="filesOnly" type="checkbox" class="checkbox checkbox-sm shrink-0" data-testid="open-git-files-only" />

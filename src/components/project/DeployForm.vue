@@ -44,6 +44,7 @@ import { useI18n } from 'vue-i18n'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { getScenarioAllocationProof } from '@/services/scenarioAllocation'
+import NativeDeploymentFields from './NativeDeploymentFields.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -56,6 +57,7 @@ const props = defineProps({
   projectSha: { type: String, default: '' },
   existingCodenames: { type: Array, default: () => [] },
   allocation: { type: Object, default: null },
+  nativeScenario: { type: Object, default: null },
 })
 
 const emit = defineEmits(['close', 'created'])
@@ -68,8 +70,10 @@ let hostsVersion = 0
 let validationVersion = 0
 
 // ---------- form state ----------
-const codename = ref('')
-const scenarioLabel = ref(props.initialScenarioLabel)
+const nativeName = computed(() => props.nativeScenario?.path?.split('/').at(-1) || '')
+const nativeSelection = ref(null)
+const codename = ref(props.nativeScenario ? nativeName.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '_').slice(0, 32) : '')
+const scenarioLabel = ref(props.nativeScenario ? nativeName.value : props.initialScenarioLabel)
 const usesPinnedScenario = computed(() => !!props.projectSha && scenarioLabel.value.trim() !== '_universal')
 const targetHost = ref('')
 const allocationBackendMatches = computed(() => props.allocation?.backend_url === getBackendScope())
@@ -148,6 +152,7 @@ const hardErrors = computed(() => {
     errTeamCount.value,
     errVault.value,
     errAllocation.value,
+    props.nativeScenario && !nativeSelection.value ? t('deployment.native.choose') : null,
   ].filter(Boolean)
 })
 
@@ -253,6 +258,10 @@ async function submit() {
       project_sha: props.projectSha,
       // Required by DeploymentCreate; a non-gamenet lab is a single team.
       team_count: props.gamenet ? Number(teamCount.value) : 1,
+      ...(props.nativeScenario && nativeSelection.value ? { native: {
+        path: props.nativeScenario.path, context_id: nativeSelection.value.context_id,
+        features: nativeSelection.value.features, parameters: nativeSelection.value.parameters,
+      } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }
     const created = await backendRequest('/v1/deployments', {
@@ -277,6 +286,12 @@ function onCancel() {
   emit('close')
 }
 
+function selectNative(selection) {
+  nativeSelection.value = selection
+  targetHost.value = selection?.target_host_id || ''
+  scenarioLabel.value = nativeName.value
+}
+
 watch(
   [() => props.visible, () => props.projectId, () => props.localProjectId, getBackendScope, () => backend.token],
   ([visible]) => {
@@ -296,6 +311,7 @@ watch(
     shaAck.value = false
     vaultOverride.value = false
     vaultPassword.value = ''
+    nativeSelection.value = null
     if (visible) loadHosts()
   },
   { immediate: true, flush: 'sync' },
@@ -341,6 +357,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         {{ t('deployment.deploy.backend', { backend: backendLabel }) }}
       </p>
       <fieldset class="space-y-3" :disabled="submitting">
+        <NativeDeploymentFields v-if="nativeScenario" :project-id="projectId" :revision="projectSha" :path="nativeScenario.path" @select="selectNative" />
         <!-- Codename -->
         <div class="form-control" data-testid="deploy-field-codename">
           <label class="label pb-1">
@@ -364,6 +381,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
           </label>
           <input
             v-model="scenarioLabel"
+            :readonly="!!nativeScenario"
             type="text"
             class="input input-bordered input-sm"
             :placeholder="t('deployment.deploy.fields.scenarioPlaceholder')"
@@ -380,7 +398,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
           <select
             v-model="targetHost"
             class="select select-bordered select-sm"
-            :disabled="hostsLoading || !!hostsError"
+            :disabled="hostsLoading || !!hostsError || !!nativeScenario"
             @blur="onBlurTriggerPreflight"
           >
             <option value="" disabled>{{ t('deployment.deploy.fields.hostPlaceholder') }}</option>
@@ -401,7 +419,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         </div>
 
         <!-- Team count (gamenet only) -->
-        <div v-if="gamenet" class="form-control" data-testid="deploy-field-team-count">
+        <div v-if="gamenet && !nativeScenario" class="form-control" data-testid="deploy-field-team-count">
           <label class="label pb-1">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.teamCount') }}<span class="text-error ml-0.5">*</span></span>
           </label>
@@ -418,7 +436,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         </div>
 
         <!-- Backend credentials are inherited unless explicitly overridden. -->
-        <div class="form-control space-y-2" data-testid="deploy-field-vault">
+        <div v-if="!nativeScenario" class="form-control space-y-2" data-testid="deploy-field-vault">
           <p class="text-sm text-base-content/70">{{ t('deployment.deploy.fields.backendCredentials') }}</p>
           <label class="flex items-center gap-2 text-sm">
             <input v-model="vaultOverride" type="checkbox" class="checkbox checkbox-sm" data-testid="deploy-vault-override" />

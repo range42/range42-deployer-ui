@@ -333,8 +333,36 @@ describe('<DeploymentDetail>', () => {
     await wrapper.get('[data-testid="maintenance-start"]').trigger('click')
     await flushPromises()
     const attemptCall = globalThis.fetch.mock.calls.find(([url, options]) => url.endsWith('/attempts') && options?.method === 'POST')
-    expect(JSON.parse(attemptCall[1].body)).toEqual({ scope: 'teardown' })
+    expect(JSON.parse(attemptCall[1].body)).toEqual({ scope: 'teardown', confirm_codename: 'DEMO' })
     expect(globalThis.fetch.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+  })
+
+  it('offers only declared native lifecycle actions and confirms destructive scope', async () => {
+    globalThis.fetch = vi.fn(async (url, options = {}) => ({ ok: true, status: 200, json: async () => {
+      if (url.endsWith('/preflight')) return { result: 'pass', checks: [] }
+      if (url.endsWith('/attempts')) return options.method === 'POST' ? { id: 'native-cleanup', state: 'deploying' } : { items: [], total: 0 }
+      return { id: 'd-native', codename: 'NATIVE', state: 'succeeded', project_sha: 'a'.repeat(40), scenario_label: 'example',
+        native: { context_id: 'training', path: 'training/example', descriptor: { actions: {
+          full: 'example.setup.sh', deploy_vms: 'example.setup_vms_only.sh', delete_networks: 'example.delete_networks.sh',
+        } } } }
+    } }))
+    const router = makeRouter()
+    await router.push('/deployments/d-native')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    const options = wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option => option.element.value)
+    expect(options).toEqual(['full', 'deploy_vms', 'delete_networks'])
+    expect(wrapper.find('[data-testid="configure-project-sha"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="runtime-stub"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="maintenance-scope"]').setValue('delete_networks')
+    await wrapper.get('[data-testid="maintenance-preflight"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="maintenance-start"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="maintenance-confirm"]').setValue('NATIVE')
+    await wrapper.get('[data-testid="maintenance-start"]').trigger('click')
+    await flushPromises()
+    const attempt = globalThis.fetch.mock.calls.find(([url, opts]) => url.endsWith('/attempts') && opts?.method === 'POST')
+    expect(JSON.parse(attempt[1].body)).toEqual({ scope: 'delete_networks', confirm_codename: 'NATIVE' })
   })
 
   it('defaults to Overview when team_count <= 1'  , async () => {

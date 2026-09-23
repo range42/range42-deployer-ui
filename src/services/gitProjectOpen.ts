@@ -7,6 +7,7 @@ import { serializeToCatalogEntry, type CanvasModel } from '@/overlay/serialize'
 import { inspectProjectAuthoring, objectValue, publicProjectOverlay, type AuthoringInspection } from '@/services/projectAuthoring'
 import { captureCanvasSnapshot, readCanvasSnapshot } from '@/services/projectCanvasSnapshot'
 import { cloneFiles, validateAuthoredFiles, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
+import { loadNativeScenario } from '@/services/nativeScenario'
 
 export interface GitProjectPreview {
   catalogRef?: Record<string, string | number>
@@ -64,7 +65,8 @@ function restoreCanvas(state: ProjectState) {
 }
 
 /** Read-only preview: every document and asset comes from the selected branch's one HEAD. */
-export async function loadGitProject(input: ProjectGitBinding, existingIds: string[]): Promise<GitProjectPreview> {
+export async function loadGitProject(input: ProjectGitBinding, existingIds: string[],
+  options: { nativePath?: string; revision?: string } = {}): Promise<GitProjectPreview> {
   const binding = { ...input }
   validateProjectBinding(binding)
   const nonce = randomId().replace(/-/g, '')
@@ -73,7 +75,9 @@ export async function loadGitProject(input: ProjectGitBinding, existingIds: stri
     source: { id: binding.source_id, provider: binding.provider, repos: [{ owner: binding.repo_owner,
       repo: binding.repo_name, branch: binding.branch || 'main' }] },
     branchStrategy: binding.branch_strategy, projectPath: binding.subdir || '', workingBranch })
-  const state = await adapter.load(`open-${nonce}`, { branch: binding.branch || 'main' })
+  const state = options.nativePath
+    ? await loadNativeScenario(binding, options.nativePath, providerForBinding(binding), options.revision)
+    : await adapter.load(`open-${nonce}`, { branch: binding.branch || 'main' })
   if (!state.revision || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(state.revision.commit_sha)) throw new Error('Git did not return an exact project commit SHA')
   validateAuthoredFiles(state.files || {})
   const { canvas, topology } = restoreCanvas(state)
@@ -105,6 +109,7 @@ export function prepareGitProjectImport(preview: GitProjectPreview, mode: 'struc
     gamenet: preview.gamenet, bridge_base: preview.bridge_base, git: preview.binding, head_sha: preview.revision.commit_sha,
     git_opened: { ...preview.revision, mode: useScenario ? 'structured' : 'files', authoring_status: preview.authoring.status },
     ...(useScenario ? { scenario: preview.authoring.scenario } : {}),
+    ...(preview.authoring.native_scenario ? { native_scenario: preview.authoring.native_scenario } : {}),
     scenario_generated_paths: useScenario ? preview.authoring.generated_paths : [],
   }))
 }

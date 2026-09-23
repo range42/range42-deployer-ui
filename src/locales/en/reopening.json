@@ -24,5 +24,10 @@
   "back": "Change repository",
   "source_changed": "The Git source or selected backend changed. Preview the project again with the current connection.",
   "opened_revision": "Opened from {branch} at {sha}.",
-  "files_notice": "Opened with canvas and files only. Save preserves existing scenario files; structured authoring must be configured explicitly."
+  "files_notice": "Opened with canvas and files only. Save preserves existing scenario files; structured authoring must be configured explicitly.",
+  "native_mode": "Open a native scenario",
+  "native_path": "Scenario directory",
+  "native_path_required": "Choose a scenario directory before previewing.",
+  "native_hint": "Use a directory containing main.yml and manifest/scenario_vms.json. The full repository stays on the saved Git revision, including shared bundles.",
+  "native_review": "Native scenario: edit the original files in Config. Save preserves native stages and dependencies. Deployment requires a compatible native context."
 }

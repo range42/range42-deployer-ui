@@ -86,6 +86,11 @@ const effectiveState = computed(() => {
 const supportsConcreteActions = computed(() => !!meta.value?.project_sha && !isRetired.value)
 const supportsLegacyActions = computed(() => !!meta.value && !meta.value.project_sha && !isRetired.value)
 const maintenanceScope = ref('configure')
+const maintenanceActions = computed(() => meta.value?.native
+  ? Object.keys(meta.value.native.descriptor?.actions || {}).filter(action => ['full', 'configure', 'teardown', 'deploy_vms', 'delete_vms', 'reset', 'deploy_networks', 'delete_networks'].includes(action))
+  : ['configure', 'teardown'])
+watch(maintenanceActions, actions => { if (!actions.includes(maintenanceScope.value)) maintenanceScope.value = actions[0] || '' })
+const maintenanceDestructive = computed(() => ['teardown', 'delete_vms', 'delete_networks', 'reset'].includes(maintenanceScope.value))
 const maintenanceSha = ref('')
 const maintenanceConfirm = ref('')
 const maintenanceRecord = ref(null)
@@ -95,7 +100,7 @@ const maintenanceBusy = ref(false)
 let maintenanceVersion = 0
 const canMaintain = computed(() => supportsConcreteActions.value && !loading.value && !loadError.value
   && ['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value))
-const maintenanceRequest = computed(() => maintenanceScope.value === 'configure'
+const maintenanceRequest = computed(() => meta.value?.native ? { scope: maintenanceScope.value } : maintenanceScope.value === 'configure'
   ? { scope: 'configure', project_sha: maintenanceSha.value.trim() } : { scope: 'teardown' })
 const maintenanceWarnings = computed(() => maintenanceRecord.value?.result === 'warn'
   || maintenanceRecord.value?.checks?.some(check => check.result === 'warn'))
@@ -104,7 +109,8 @@ const canRunMaintenance = computed(() => canMaintain.value && !maintenanceBusy.v
   && !maintenanceRecord.value.checks?.some(check => check.result === 'block')
   && JSON.stringify(maintenanceSnapshot.value) === JSON.stringify(maintenanceRequest.value)
   && (!maintenanceWarnings.value || maintenanceWarningsAck.value)
-  && (maintenanceScope.value !== 'teardown' || (meta.value?.codename && maintenanceConfirm.value === meta.value.codename)))
+  && maintenanceActions.value.includes(maintenanceScope.value)
+  && (!maintenanceDestructive.value || (meta.value?.codename && maintenanceConfirm.value === meta.value.codename)))
 watch([maintenanceScope, maintenanceSha], () => {
   maintenanceVersion += 1
   maintenanceRecord.value = null
@@ -406,7 +412,7 @@ async function checkMaintenance() {
   if (!canMaintain.value || maintenanceBusy.value) return
   actionError.value = null
   const snapshot = { ...maintenanceRequest.value }
-  if (snapshot.scope === 'configure' && !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(snapshot.project_sha)) {
+  if (!meta.value?.native && snapshot.scope === 'configure' && !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/.test(snapshot.project_sha)) {
     actionError.value = t('deployment.maintenance.invalidSha')
     return
   }
@@ -433,6 +439,7 @@ async function runMaintenance() {
   if (!canRunMaintenance.value) return
   const context = contextVersion
   const snapshot = { ...maintenanceSnapshot.value }
+  if (maintenanceDestructive.value) snapshot.confirm_codename = maintenanceConfirm.value
   maintenanceBusy.value = true
   actionError.value = null
   try {
@@ -610,23 +617,22 @@ onBeforeUnmount(() => {
 
     <section v-if="canMaintain" class="rounded border border-base-300 p-4 mb-4 space-y-3" aria-labelledby="maintenance-heading">
       <h2 id="maintenance-heading" class="font-semibold">{{ t('deployment.maintenance.title') }}</h2>
-      <p class="text-sm text-base-content/70">{{ t('deployment.maintenance.description') }}</p>
+      <p class="text-sm text-base-content/70">{{ t(meta.native ? 'deployment.native.pinned' : 'deployment.maintenance.description') }}</p>
       <label class="form-control gap-1"><span>{{ t('deployment.maintenance.action') }}</span>
         <select v-model="maintenanceScope" class="select select-bordered w-full" data-testid="maintenance-scope" :disabled="maintenanceBusy">
-          <option value="configure">{{ t('deployment.maintenance.configure') }}</option>
-          <option value="teardown">{{ t('deployment.maintenance.teardown') }}</option>
+          <option v-for="action in maintenanceActions" :key="action" :value="action">{{ t(`deployment.${meta.native ? 'native' : 'maintenance'}.${action}`) }}</option>
         </select>
       </label>
-      <label v-if="maintenanceScope === 'configure'" class="form-control gap-1"><span>{{ t('deployment.maintenance.revision') }}</span>
+      <label v-if="maintenanceScope === 'configure' && !meta.native" class="form-control gap-1"><span>{{ t('deployment.maintenance.revision') }}</span>
         <input v-model="maintenanceSha" class="input input-bordered font-mono w-full" data-testid="configure-project-sha" :disabled="maintenanceBusy" spellcheck="false" />
         <span class="text-xs text-base-content/70">{{ t('deployment.maintenance.revisionHint') }}</span>
       </label>
-      <label v-else class="form-control gap-1"><span>{{ t('deployment.maintenance.confirm', { codename: meta.codename }) }}</span>
+      <label v-if="maintenanceDestructive" class="form-control gap-1"><span>{{ t('deployment.maintenance.confirm', { codename: meta.codename }) }}</span>
         <input v-model="maintenanceConfirm" class="input input-bordered w-full" data-testid="maintenance-confirm" :disabled="maintenanceBusy" autocomplete="off" />
       </label>
       <div class="flex flex-wrap gap-2">
         <button type="button" class="btn btn-outline btn-sm" data-testid="maintenance-preflight" :disabled="maintenanceBusy" @click="checkMaintenance">{{ t('deployment.maintenance.preflight') }}</button>
-        <button type="button" class="btn btn-sm" :class="maintenanceScope === 'teardown' ? 'btn-error' : 'btn-primary'" data-testid="maintenance-start" :disabled="!canRunMaintenance" @click="runMaintenance">{{ t('deployment.maintenance.start') }}</button>
+        <button type="button" class="btn btn-sm" :class="maintenanceDestructive ? 'btn-error' : 'btn-primary'" data-testid="maintenance-start" :disabled="!canRunMaintenance" @click="runMaintenance">{{ t('deployment.maintenance.start') }}</button>
       </div>
       <PreflightReport v-if="maintenanceRecord" :record="maintenanceRecord" />
       <label v-if="maintenanceWarnings" class="flex items-center gap-2 text-sm"><input v-model="maintenanceWarningsAck" type="checkbox" class="checkbox checkbox-sm" />{{ t('deployment.deploy.preflight.acknowledge') }}</label>
@@ -665,12 +671,12 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
-      <DeploymentAllocations v-if="meta && !loadError" :deployment-id="String(route.params.id)" :disabled="allocationReleaseDisabled" />
-      <SnapshotSets v-if="supportsConcreteActions && meta && !loadError" :deployment-id="String(route.params.id)"
+      <DeploymentAllocations v-if="meta && !meta.native && !loadError" :deployment-id="String(route.params.id)" :disabled="allocationReleaseDisabled" />
+      <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"
         :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
-      <RuntimeControls v-if="supportsConcreteActions" :deployment-id="String(route.params.id)"
+      <RuntimeControls v-if="supportsConcreteActions && !meta?.native" :deployment-id="String(route.params.id)"
         :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
-      <RuntimeGitRecords v-if="supportsConcreteActions" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
+      <RuntimeGitRecords v-if="supportsConcreteActions && !meta?.native" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
       <div class="card card-compact bg-base-100 border border-base-300 mb-4">
         <div class="card-body p-4">
           <h2 class="card-title text-sm">{{ t('deployment.detail.overview.stateChainHeading') }}</h2>

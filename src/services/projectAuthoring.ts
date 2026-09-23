@@ -3,14 +3,17 @@ import type { CanvasModel } from '@/overlay/serialize'
 import type { ProjectState } from '@/services/projectRepo'
 import { emitConcreteScenario } from '@/services/concreteScenario'
 import { fileContentEquals, validateAuthoredFilePath } from '@/services/projectFiles'
+import { nativeScenario, type NativeScenario } from '@/services/nativeScenario'
 
 type ObjectValue = Record<string, unknown>
 export interface AuthoringInput {
+  native_scenario?: unknown
   scenario?: unknown
   generated_paths?: unknown
   variables?: unknown
 }
 export interface AuthoringMetadata {
+  native_scenario?: NativeScenario
   version: 1
   project_id: string
   generated_paths: string[]
@@ -18,6 +21,7 @@ export interface AuthoringMetadata {
   variables: ObjectValue[]
 }
 export interface AuthoringInspection {
+  native_scenario?: NativeScenario
   status: 'structured' | 'files' | 'legacy' | 'conflict'
   project_id?: string
   scenario?: ObjectValue
@@ -131,7 +135,9 @@ export function captureProjectAuthoring(projectId: string, input: AuthoringInput
   })
   if (new Set(generated_paths).size !== generated_paths.length) throw new Error('Duplicate generated path ownership')
   if (!input.scenario && generated_paths.length) throw new Error('Generated path ownership requires structured scenario configuration')
+  if (input.native_scenario && (input.scenario || generated_paths.length)) throw new Error('Native scenario files cannot be owned by the canvas generator')
   return { version: 1, project_id: projectId, generated_paths, variables: variablesSnapshot(input.variables),
+    ...(input.native_scenario ? { native_scenario: nativeScenario(input.native_scenario) } : {}),
     ...(input.scenario ? { scenario: scenarioSnapshot(input.scenario) } : {}) }
 }
 
@@ -159,7 +165,8 @@ export function inspectProjectAuthoring(state: Pick<ProjectState, 'meta' | 'file
     if (typeof input.project_id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(input.project_id)) project_id = input.project_id
     if (input.version !== 1) throw new Error('Unsupported authoring metadata version')
     const metadata = captureProjectAuthoring(project_id || '', input)
-    if (!metadata.scenario) return { status: 'files', project_id, variables, generated_paths: [] }
+    if (!metadata.scenario) return { status: 'files', project_id, variables, generated_paths: [],
+      ...(metadata.native_scenario ? { native_scenario: metadata.native_scenario } : {}) }
     const files = state.files || {}
     for (const path of metadata.generated_paths) if (!Object.hasOwn(files, path)) throw new Error(`Generated file is missing: ${path}`)
     const generated = emitConcreteScenario({ scenario: metadata.scenario, ...canvas, files,

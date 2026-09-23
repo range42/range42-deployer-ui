@@ -11,6 +11,7 @@ import { prepareCatalogProject, type CatalogProjectPreview } from '@/services/ca
 import { getBackendScope } from '@/services/backendApi'
 import { randomId } from '@/services/randomId'
 import { ensureNamespaces } from '@/i18n'
+import OpenProjectFromGitModal from '@/components/OpenProjectFromGitModal.vue'
 
 const props = defineProps<{ entry: CatalogEntry; mode: 'use' | 'customize'; publishAfterImport?: boolean }>()
 const emit = defineEmits<{ close: []; opened: [project: CatalogProjectPreview['project']] }>()
@@ -30,6 +31,9 @@ const focusReady = ref(false)
 let epoch = 0
 let reviewed: { identity: string; tokens: Array<[string, string | null]> } | null = null
 const source = computed(() => inventory.getSource(props.entry.source_id))
+const nativeInitial = computed(() => ({ source_id: props.entry.source_id,
+  repo_owner: source.value?.repos[0]?.owner || '', repo_name: source.value?.repos[0]?.repo || '',
+  base_branch: source.value?.repos[0]?.branch || 'main', subdir: '', native_path: props.entry.path, revision: props.entry.sha }))
 const originIdentity = computed(() => JSON.stringify([getBackendScope(), props.entry.source_id, props.entry.path,
   props.entry.sha, props.entry.kind, props.mode, source.value?.id, source.value?.provider, source.value?.base_url,
   source.value?.backend_url, source.value?.repos]))
@@ -57,6 +61,7 @@ onBeforeUnmount(() => { epoch += 1; reviewed = null })
 function close() { epoch += 1; reviewed = null; emit('close') }
 
 onMounted(async () => {
+  if (props.entry.kind === 'scenario') return
   const current = ++epoch
   const originalIdentity = identity.value
   try {
@@ -110,7 +115,8 @@ function back() { epoch += 1; preview.value = undefined; reviewed = null; error.
 </script>
 
 <template>
-  <ProjectRepositoryConnection v-if="phase === 'connection'" :open="true" :binding="chosen" @close="close" @connected="review" />
+  <OpenProjectFromGitModal v-if="entry.kind === 'scenario'" :open="true" :initial="nativeInitial" @close="close" @opened="emit('opened', $event)" />
+  <ProjectRepositoryConnection v-else-if="phase === 'connection'" :open="true" :binding="chosen" @close="close" @connected="review" />
   <FocusTrap initial-focus="#catalog-handoff-title" v-else :active="focusReady" fallback-focus="#catalog-handoff-title" :escape-deactivates="false">
     <div class="modal modal-open transition-none z-[1000] p-2 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="catalog-handoff-title" @keydown.esc.prevent="close">
       <section class="modal-box w-full max-w-2xl max-h-[92vh] overflow-y-auto space-y-4">

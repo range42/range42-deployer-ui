@@ -60,6 +60,7 @@ import { useTopologyResolver } from '../composables/useTopologyResolver'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useObservedGuestStatus } from '@/composables/useObservedGuestStatus'
 import { prepareEditorBranchRecovery, editorAuthoredSignature } from '@/services/gitEditorRecovery'
+import { createNativeFilesFs } from '@/services/nativeScenario'
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
 
 // setBaseUrl is managed via useApiConfig composable
@@ -595,6 +596,7 @@ function applyScenario(result) {
 }
 
 function openScenarioContent(target = '') {
+  if (currentProject.value?.native_scenario) { void setTab('config'); return }
   scenarioContentTarget.value = typeof target === 'string' ? target : ''
   showScenarioAuthoring.value = true
 }
@@ -913,25 +915,27 @@ const confirmDeleteProject = () => {
 // URL state supports direct entry, reload and browser Back/Forward.
 // Canvas and the cached Config editor retain their local buffers across tabs.
 const TABS = ['canvas', 'config', 'variables', 'history', 'settings']
+const availableTabs = computed(() => currentProject.value?.native_scenario ? ['config', 'history', 'settings'] : TABS)
 const tab = computed(() => {
   const q = route.query.tab
   const v = Array.isArray(q) ? q[0] : q
-  return TABS.includes(String(v)) ? String(v) : 'canvas'
+  return availableTabs.value.includes(String(v)) ? String(v) : availableTabs.value[0]
 })
 
 /** @param {string} next */
 function setTab(next) {
-  if (!TABS.includes(next)) return
+  if (!availableTabs.value.includes(next)) return
   if (route.query.tab === next) return
   return router.push({ query: { ...route.query, tab: next } })
 }
 
 /** @param {KeyboardEvent} event @param {string} current */
 async function handleTabKeydown(event, current) {
-  const index = TABS.indexOf(current)
-  const next = event.key === 'ArrowRight' ? TABS[(index + 1) % TABS.length]
-    : event.key === 'ArrowLeft' ? TABS[(index + TABS.length - 1) % TABS.length]
-      : event.key === 'Home' ? TABS[0] : event.key === 'End' ? TABS.at(-1) : null
+  const tabs = availableTabs.value
+  const index = tabs.indexOf(current)
+  const next = event.key === 'ArrowRight' ? tabs[(index + 1) % tabs.length]
+    : event.key === 'ArrowLeft' ? tabs[(index + tabs.length - 1) % tabs.length]
+      : event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs.at(-1) : null
   if (!next) return
   event.preventDefault()
   const tablist = event.currentTarget instanceof Element ? event.currentTarget.closest('[role=tablist]') : null
@@ -964,8 +968,8 @@ function openCatalog() {
     // the pending debounce into an unrelated Git write.
     if (autosaveTimer !== null) clearTimeout(autosaveTimer)
     autosaveTimer = null
-    router.push({ path: '/catalog', query: { project: currentProject.value.id,
-      ...(selectedNode.value ? { node: selectedNode.value.id } : {}) } })
+    router.push({ path: '/catalog', query: currentProject.value.native_scenario ? {} : {
+      project: currentProject.value.id, ...(selectedNode.value ? { node: selectedNode.value.id } : {}) } })
   } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
 }
 
@@ -1006,7 +1010,7 @@ const baseFiles = ref({})
 
 const configOverlayFs = computed(() => {
   const ownerId = currentProject.value?.id
-  return createMemoryFs({
+  const local = createMemoryFs({
     files: overlayFiles.value || {},
     onChange: (files) => {
       if (!ownerId || !editorActive || currentProject.value?.id !== ownerId) {
@@ -1016,6 +1020,12 @@ const configOverlayFs = computed(() => {
       scheduleAutosave()
     },
   })
+  const project = currentProject.value
+  if (project?.native_scenario && project.git && project.head_sha) {
+    try { return createNativeFilesFs(project.git, project.head_sha, providerForBinding(project.git), local) }
+    catch (error) { return { ...local, listTree: async () => { throw error } } }
+  }
+  return local
 })
 const configBaseFs = computed(() => createMemoryFs({ files: baseFiles.value }))
 
@@ -1200,7 +1210,7 @@ const handleInfrastructureImport = (result) => {
                   Proxmox Settings
                 </button>
               </li>
-              <li>
+              <li v-if="!currentProject.native_scenario">
                 <button class="gap-3" @click="handleOpenValidate">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -1209,7 +1219,7 @@ const handleInfrastructureImport = (result) => {
                 </button>
               </li>
               <li class="divider my-1" role="separator"></li>
-              <li>
+              <li v-if="!currentProject.native_scenario">
                 <button class="gap-3" @click="showExportModal = true">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -1236,15 +1246,15 @@ const handleInfrastructureImport = (result) => {
           <button v-if="tab === 'canvas'" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canUndo.value" @click="undoCanvas">{{ translate('sidebar.undo') }}</button>
           <button v-if="tab === 'canvas'" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canRedo.value" @click="redoCanvas">{{ translate('sidebar.redo') }}</button>
           <!-- Organize layout button -->
-          <button class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout" aria-label="Organize topology layout">
+          <button v-if="!currentProject.native_scenario" class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout" aria-label="Organize topology layout">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
             </svg>
             <span class="hidden sm:inline">Organize</span>
           </button>
 
-          <button type="button" class="btn btn-outline btn-sm" data-testid="project-add-catalog" @click="openCatalog">{{ translate('project.addCatalog') }}</button>
-          <button type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="openScenarioContent()">Scenario</button>
+          <button v-if="!currentProject.native_scenario" type="button" class="btn btn-outline btn-sm" data-testid="project-add-catalog" @click="openCatalog">{{ translate('project.addCatalog') }}</button>
+          <button v-if="!currentProject.native_scenario" type="button" class="btn btn-outline btn-sm" data-testid="project-scenario" @click="openScenarioContent()">Scenario</button>
 
         </div>
       </header>
@@ -1283,7 +1293,7 @@ const handleInfrastructureImport = (result) => {
       <!-- Tab strip -->
       <div role="tablist" class="tabs tabs-lift px-3 pt-1 border-b border-base-300" data-testid="project-tabs">
         <button
-          v-for="t in ['canvas', 'config', 'variables', 'history', 'settings']"
+          v-for="t in availableTabs"
           :key="t"
           type="button"
           role="tab"
@@ -1478,6 +1488,7 @@ const handleInfrastructureImport = (result) => {
             :path="selectedFilePath"
             :overlay-fs="configOverlayFs"
             :base-fs="configBaseFs"
+            :show-attachments="!currentProject.native_scenario"
             @select="selectConfigFile"
             :attachments="attachmentsRef"
             :nodes="liveNodes"
@@ -1591,7 +1602,7 @@ const handleInfrastructureImport = (result) => {
     <ProjectRepositoryConnection v-if="showRepositoryConnection && currentProject" :open="showRepositoryConnection"
       :binding="currentProject.git" @close="showRepositoryConnection = false" @connected="connectProjectRepository" />
 
-    <ScenarioAuthoringModal v-if="showScenarioAuthoring && currentProject" :open="showScenarioAuthoring"
+    <ScenarioAuthoringModal v-if="showScenarioAuthoring && currentProject && !currentProject.native_scenario" :open="showScenarioAuthoring"
       :project="currentProject" :nodes="liveNodes" :edges="liveEdges"
       :initial-target="scenarioContentTarget"
       @close="showScenarioAuthoring = false" @generated="applyScenario" />
@@ -1612,12 +1623,13 @@ const handleInfrastructureImport = (result) => {
       :project-id="registeredProjectId || currentProject.id"
       :local-project-id="currentProject.id"
       :project-name="currentProject.name"
-      :initial-scenario-label="currentProject.scenario?.label || ''"
+      :initial-scenario-label="currentProject.scenario?.label || currentProject.native_scenario?.path.split('/').at(-1) || ''"
+      :native-scenario="currentProject.native_scenario"
       :allocation="currentProject.scenario?.allocation"
       :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
       :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
       :existing-codenames="existingCodenames"
-      :gamenet="!currentProject.scenario && !!currentProject?.gamenet"
+      :gamenet="!currentProject.scenario && !currentProject.native_scenario && !!currentProject?.gamenet"
       @close="showDeployForm = false"
       @created="refreshActiveDeployment"
     />

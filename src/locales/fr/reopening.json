@@ -24,5 +24,10 @@
   "back": "Changer de dépôt",
   "source_changed": "La source Git ou le backend sélectionné a changé. Relancez l’aperçu avec la connexion actuelle.",
   "opened_revision": "Ouvert depuis {branch} au commit {sha}.",
-  "files_notice": "Ouvert avec le canevas et les fichiers uniquement. L’enregistrement conserve les fichiers de scénario existants ; la configuration structurée doit être définie explicitement."
+  "files_notice": "Ouvert avec le canevas et les fichiers uniquement. L’enregistrement conserve les fichiers de scénario existants ; la configuration structurée doit être définie explicitement.",
+  "native_mode": "Ouvrir un scénario natif",
+  "native_path": "Dossier du scénario",
+  "native_path_required": "Choisissez un dossier de scénario avant la prévisualisation.",
+  "native_hint": "Choisissez un dossier contenant main.yml et manifest/scenario_vms.json. Le dépôt complet, y compris les bundles partagés, reste à la révision Git sélectionnée.",
+  "native_review": "Scénario natif : modifiez les fichiers originaux dans Config. L’enregistrement préserve les étapes et les dépendances. Le déploiement nécessite un contexte natif compatible."
 }

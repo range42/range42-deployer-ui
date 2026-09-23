@@ -5,6 +5,7 @@ import project from '@/locales/en/project.json'
 import ConfigTab from '@/components/project/ConfigTab.vue'
 import FileTree from '@/components/project/FileTree.vue'
 import TwoPaneEditor from '@/components/project/TwoPaneEditor.vue'
+import AttachmentManager from '@/components/project/AttachmentManager.vue'
 import { createMemoryFs } from '@/services/projectRepo/memoryFs'
 
 enableAutoUnmount(afterEach)
@@ -23,6 +24,12 @@ async function select(wrapper, path) {
 }
 
 describe('Config tab selected file continuity', () => {
+  it('can hide generated attachment controls for native repository editing', async () => {
+    const wrapper = mountFiles({ 'main.yml': '- hosts: all\n' }, { showAttachments: false })
+    await flushPromises()
+    expect(wrapper.findComponent(AttachmentManager).exists()).toBe(false)
+    expect(wrapper.findComponent(TwoPaneEditor).exists()).toBe(true)
+  })
   it('prefills an existing saved file on initial Config tab entry', async () => {
     const wrapper = mountFiles({ 'first.yml': 'saved: content\n' })
     await flushPromises()
