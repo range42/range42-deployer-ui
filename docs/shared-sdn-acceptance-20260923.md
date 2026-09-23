@@ -1,6 +1,6 @@
 # Shared native SDN acceptance — 23 September 2026
 
-The served UI revision is `13ad4fb248486b61d04a8ee6071e810684e21fd4`, paired with
+The served UI revision is `d646e9ece966f0c645b29827cfa80fe38f2a3643`, paired with
 backend revision `d06d936bae89b6aed7599b1f28a0803a5e384568` and the verified
 `native-sdn-20260921` runtime. The full guest cycle ran on backend `69ac8cb`;
 API `4e70f13` then corrected event draining after runner exit; the final
@@ -86,3 +86,18 @@ The earlier full guest and Git-write checks retain their recorded revisions;
 the final integrated heads received the subsequent regression, packaging and
 read-only checks. No second guest lifecycle or unrelated native-context run is
 claimed. Review, paired merge and `dev`-to-`main` promotion remain outstanding.
+
+## Current status during historical replay
+
+Follow-up UI `d646e9e` keeps the current REST status while replaying events from
+older attempts. Previously the first failed full attempt in this long history
+could replace the current successful status. A state event must now reach the
+current attempt's recorded event cursor before replacing the REST snapshot;
+log progress alone cannot make a historical state current. Logs remain visible
+and newer state transitions still apply.
+
+The regression failed with the old behavior and passes with the correction.
+The complete UI suite now passes 1,956 tests (10 skipped), along with migrated
+types and production build. This code revision is installed as image
+`sha256:20f5b0cfe04c3e3816c23e1b0bd662a9e3acca8e72713e8da574044608a41027`;
+the public index and unchanged runtime configuration match their expected bytes.
