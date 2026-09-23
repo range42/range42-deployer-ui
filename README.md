@@ -1,86 +1,69 @@
+# range42-deployer-ui
 
-# Table of Contents
+A web interface for designing, customizing, and deploying Proxmox cyber range
+scenarios. Part of the [Range42](https://github.com/range42/range42) platform.
 
-- [Project Overview](#Project-Overview)
-- [Repository Content](#Repository-Content)
-- [Getting Started](#Getting-Started)
-- [Contributing](#Contributing)
-- [License](#License)
+## How it works
 
----
+Build a topology on the VueFlow canvas or open a ready-made scenario from
+[range42-playbooks](https://github.com/range42/range42-playbooks) or a compatible
+private repository. Git-bound projects save a revision that the
+[backend API](https://github.com/range42/range42-backend-api) checks and executes.
+The backend owns deployment attempts, credentials, and runner recovery; the UI
+shows preflight results, progress, and logs.
 
-# Project Overview
+```text
+Operator browser
+    |
+range42-deployer-ui <----> Public forks / private Git repositories
+    |
+    | REST + server-sent events, through Kong when configured
+    v
+range42-backend-api ----> Saved scenario playbooks ----> Proxmox / SDN
+```
 
-**RANGE42** is a modular cyber range platform designed for real-world readiness.
-We build, deploy, and document offensive, defensive, and hybrid cyber training environments using reproducible, infrastructure-as-code methodologies.
+## Key features
 
-## What we build
+- **Visual topology editor:** configure guests, SDN networks, replication, and
+  catalog attachments; review validation before generating a concrete scenario.
+- **Ready-made scenarios:** fork public repositories or connect private ones,
+  edit scenario files and shared dependencies, and select declared features and
+  parameters. Deploy through an existing Range42 context. See
+  [ready-made scenario deployment](docs/native-scenarios.md).
+- **Git authoring:** save working branches, publish revisions, and reopen projects
+  with their repository files. See the [Git workflow](docs/git-authoring-workflow.md).
+- **Deployment monitoring:** inspect preflight checks, attempts, logs, and live
+  events; request cancellation through the backend. Available lifecycle actions
+  depend on the scenario and target capabilities.
+- **Infrastructure inspection:** browse registered hosts, import existing guests,
+  and review supported runtime changes and snapshot operations. See the
+  [UI/backend capability matrix](docs/ui-backend-capability-matrix.md).
+- **Project dashboard:** search, duplicate, and manage projects with a persistent
+  local editing state and Git-backed saved revisions.
 
-- Proxmox-based cyber ranges with dynamic catalog 
-- Ansible roles for automated deployments (Wazuh, Kong, Docker, etc.)
-- Private APIs for range orchestration and telemetry
-- Developer and testing toolkits and JSON transformers for automation pipelines
-- ...
+## Tech stack
 
-## Repository Overview
-
-- **RANGE42 deployer UI** : A web interface to visually design infrastructure schemas and trigger deployments.
-- **RANGE42 deployer backend API** : Orchestrates deployments by executing playbooks and bundles from the catalog.
-- **RANGE42 catalog** : A collection of Ansible roles and Docker/Docker Compose stacks, forming deployable bundles.
-- **RANGE42 playbooks** : Centralized playbooks that can be invoked by the backend or CLI.
-- **RANGE42 proxmox role** : An Ansible role for controlling Proxmox nodes via the Proxmox API.
-- **RANGE42 devkit** : Helper scripts for testing, debugging, and development workflows.
-- **RANGE42 kong API gateway** : A network service in front of the backend API, handling authentication, ACLs, and access control policies.
-- **RANGE42 swagger API spec** : OpenAPI/Swagger JSON definition of the backend API.
-
----
-
-### Putting it all together
-
-These repositories provide a modular and extensible platform to design, manage and deploy infrastructures automatically  either from the UI (coming soon) or from the CLI through the playbooks repository.
-
-# Repository Content
-
-**range42-deployer-ui** is a web application designed to visually orchestrate and manage infrastructure through an intuitive interface powered by **VueFlow**. The primary goal of this project is to enable users to build, configure, and deploy complex infrastructure systems using a node-based visual editor.
-
-## Node-Based Infrastructure Design
-
-Users interact with a canvas where each node represents a component of the infrastructure (e.g., networks, VMs, Docker containers). Each node's behavior and configuration depend on its type:
-
-* **Settings**: Nodes require user input to define parameters essential for backend deployment.
-* **Status Indicators**: Each node is marked with a colored status indicator:
-
-  * **Gray**: Incomplete / missing required configuration.
-  * **Orange**: Ready to deploy.
-  * **Red**: Deployment error or misconfiguration.
-  * **Green**: Successfully deployed.
-
-## UI/UX Principles
-
-* Built using **VueFlow** for seamless node manipulation and interactions.
-* Leverages **DaisyUI** for styling and component consistency.
-* Adheres to **UI/UX best practices**, focusing on clarity, responsiveness, and accessibility.
-
-## Data Management
-
-The application uses **localStorage** to store and manage local project data directly in the browser, ensuring quick access and offline capabilities. Future versions will integrate SQLite WASM for more robust data persistence.
-
-## Project Structure & Data Scope
-
-* Each **Project** corresponds to a VueFlow workspace and is stored as a JSON object.
-* Projects include all configuration data needed to build and deploy infrastructure.
-* A **shared inventory system** exists across all projects, containing pre-made, pre-configured components (like base Docker images, VM templates, or network presets) for reuse and standardization.
-
-## Key Features
-
-* Visual drag-and-drop interface to define and manage infrastructure.
-* Per-node configuration system with validation.
-* Deployment tracking and feedback via status indicators.
-* Persistent local storage using localStorage.
-* Project isolation with shared global data for reusability.
-* Sidebar navigation with responsive design.
+| Layer | Library |
+|---|---|
+| UI framework | Vue 3 |
+| Canvas | VueFlow |
+| Styling | Tailwind CSS v4 + DaisyUI |
+| State | Pinia |
+| Router | Vue Router |
+| i18n | vue-i18n |
+| Build | Vite |
+| Unit tests | Vitest + Vue Test Utils |
+| Browser tests | Playwright |
 
 ## Getting Started
+
+### Prerequisites
+
+- Node.js `^20.19.0`, `^22.12.0`, or `^24.0.0` for local development; CI and the
+  Docker builder use Node 24.
+- A reachable Range42 backend API with the target Proxmox hosts registered.
+- For ready-made scenario execution, existing Range42 contexts exposed by the
+  backend. See [scenario deployment prerequisites](docs/native-scenarios.md).
 
 ### Docker
 
@@ -105,7 +88,7 @@ SDN, VM bootstrap, guest content updates and deployment VM teardown.
 
 ### Docker: Build & Push
 
-The multi-stage `Dockerfile` uses **Debian stable (bookworm)** for both the builder and runtime stages.
+The multi-stage `Dockerfile` uses **Debian bookworm** for both the builder and runtime stages.
 Stage 1 runs `npm ci` + `npm run build` to produce the production bundle.
 Stage 2 serves the compiled SPA with nginx.
 
@@ -139,7 +122,7 @@ docker push "${IMAGE}:latest"
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
 # Start development server
 npm run dev
@@ -184,6 +167,36 @@ and remembers the choice.
 See [navigation design and acceptance](docs/navigation-design.md) for interaction
 details, screenshots and the limits of the browser checks.
 
+## Project structure
+
+```text
+src/
+├── components/             # Canvas, catalog, and deployment controls
+│   ├── nodes/              # VueFlow node components
+│   └── deployment/         # Runtime controls, allocations, snapshots
+├── composables/            # Editor, Git, catalog, and infrastructure workflows
+├── services/
+│   ├── git/                # GitHub, GitLab, and Gitea providers
+│   ├── projectRepo/        # Project files and revision persistence
+│   └── proxmox/            # Backend-mediated infrastructure operations
+├── stores/                 # Projects, backend hosts, sources, and preferences
+├── views/                  # Dashboard, editor, catalog, settings, deployments
+├── i18n/                   # Locale setup and loading
+└── locales/                # English, French, and Japanese translations
+```
+
+## Data and storage
+
+| Data | Storage |
+|---|---|
+| Local projects and editing preferences | Browser storage |
+| Saved scenario files and project revisions | Connected Git repositories |
+| Backend connections and Git source preferences | Browser storage scoped by the relevant connection |
+| Deployment attempts, logs, allocations, and runtime state | Backend API |
+
+See [Git project reopening](docs/git-project-reopening.md) for how saved
+repositories and local drafts are restored.
+
 ## Internationalization (i18n)
 
 - The app uses `vue-i18n` with per-page/component JSON files under `src/locales/<lang>/...`.
@@ -198,13 +211,30 @@ Development notes:
 - When adding a new page/component, create a JSON file under each locale using the same filename.
 - Avoid using `v-html` for translated strings; keep translations as plain text.
 
-Docs: see `docs/i18n-plan.md` for structure, conventions, and acceptance tests.
+Docs: see `docs/i18n-guide.md` for structure, conventions, and acceptance tests.
 
+## Testing
+
+```bash
+# Unit tests
+npm run test:unit -- --run
+
+# Lint without changing source files
+npx eslint .
+
+# Check application and migrated modules
+npm run typecheck:migrated
+npm run test:typecheck
+
+# Browser tests
+npm run test:e2e
+```
 
 ## Contributing
 
-To be defined.
+See the [Range42](https://github.com/range42/range42) root repository for
+platform-wide contribution context.
 
 ## License
 
-- GPL-3.0 license
+GPL-3.0 — see [LICENSE](LICENSE).
