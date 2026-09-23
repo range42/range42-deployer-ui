@@ -118,10 +118,19 @@ describes controlled-service coverage; shared installation is separate evidence.
 
 ## Upstream dependencies and UI boundaries
 
+22 September application update: capability-aware authoring and native firewall
+stages now target playbooks `6dcf31b` / controller `617b57c`. Unsupported multiple
+NIC/resource/disk requests are preserved and explicitly refused against that
+runtime. Guest arming is opt-in after configuration; shared management accepts
+also require administrator installation authority. See [concrete authoring](concrete-scenario-authoring.md).
+The entries below for network deletion, host/DC arming, aliases/policy objects and
+full declared/live reporting remain application integration work; the native
+primitives are already present. Shared-context acceptance remains API #74.
+
 | Capability | Existing primitive / missing contract | Owner and UI status |
 | --- | --- | --- |
-| Selected network removal | Installed whole-zone deletion is not equivalent to removing one deployment VNet. Draft selected deletion has a legacy `net*` consumer, not generated `r42*` teardown or automatic journal recovery. | Record the required exact selected identity, shared-zone preservation, guest-attachment refusal and durable completion contract for Hyde; keep generic UI network deletion unsupported. |
-| Alias/custom policy objects | DC/VM alias and rule primitives already exist. Ownership namespaces, references, ordering and rename/delete behavior are not a complete deployment contract. | UI/API integration needs an agreed contract with Hyde; do not claim primitive support is absent. |
+| Selected network removal | Native bootstrap/apply/delete primitives exist. Selected deployment deletion still needs application ownership/reference checks and a durable plan. | API #41 / UI #101: exact selected identity, shared-zone preservation, attached-guest refusal and completion/recovery checks. Generic UI network deletion remains unsupported. |
+| Alias/custom policy objects | DC/VM alias and rule primitives already exist. Ownership namespaces, references, ordering and rename/delete behavior need an application contract. | API #83 / UI #101 own the UI/API integration. |
 | Host/DC firewall arming | Controller/composite primitives exist; installed deployment operation schema rejects them. | Separate explicit host-operator workflow and acceptance required. VM toggles must not arm host/DC firewalls. |
 | Guest firewall versus Proxmox filtering | Verified guest firewall attachments exist; VM, NIC, DC/node and guest OS states are different. | Label each layer and baseline effects. Do not infer reachability from switches or rule counts. |
 | Isolated template creation | Historical family builder exists. The new isolated source has tests, but no installed UI/backend consumer or accepted reusable template result. | Record prerequisites/ownership/completion proof for Hyde; template browsing does not imply build support. |

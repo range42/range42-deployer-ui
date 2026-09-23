@@ -2,7 +2,12 @@
 
 The editor writes executable Ansible files under `scenarios/<name>/` in the project's Git repository. SDN is the default network setup. Generation uses Hyde's `proxmox/sdn_network.bootstrap` bundle and the current `proxmox/vm.bootstrap` contract; it does not generate `_universal` topology input.
 
-Current source baseline: UI `7c0aeda` / API `553af0a`, reviewed on 14 September 2026. See the [screen/action matrix](ui-backend-capability-matrix.md) for installed capabilities and the distinction between implementation and acceptance evidence.
+Native contract update: 22 September 2026, playbooks `6dcf31b` and controller
+`617b57c`. The selected backend reports its installed support through
+`GET /v1/proxmox/runtime-capabilities`. Native VM bootstrap supports one NIC and
+template CPU/memory/disk sizes. Unsupported requested overrides remain in the
+draft; choose **Use template CPU, memory and disk size** explicitly to clear them.
+An offline preview is labelled unverified and still requires backend preflight.
 
 ## From a new project to deployment
 
@@ -20,20 +25,40 @@ Registration uses `PUT /v1/projects/{id}` with only the project name, source, re
 
 | File | Purpose |
 | --- | --- |
-| `main.yml` | Imports network setup, VM bootstrap and guest configuration in that order. |
+| `main.yml` | Imports network setup, VM bootstrap and guest configuration, with the reviewed firewall stages at their defined boundaries. |
+| `00_firewall_pre.yml` | When selected: validates SSH sources, reports native firewall status and optionally prepares shared management accepts. |
 | `00_networks.yml` | Imports Hyde's SDN bootstrap bundle with explicit zone/VNet/subnet/gateway/NAT values. Omitted for existing bridges. |
 | `01_vm_bootstrap.yml` | Imports the VM bootstrap bundle once per VM, cloning the selected template and configuring cloud-init. |
+| `02_firewall_guests.yml` | When selected: checks every VM's deployment ownership and prepares SSH accepts using exact NIC CIDRs. |
 | `configure.yml` | Runs only the selected files, scripts, playbooks and bundles on existing guests. |
+| `99_firewall_finalize.yml` | When selected: checks ownership again, arms guests only on reviewed opt-in, then reports status. |
 | `teardown.yml` | Checks ownership, shuts down and removes this deployment's VMs, and waits for Proxmox task completion. Shared networks remain in place. |
 | `hosts.yml` | Declares matching guest names and addresses, a local API host and an SSH hypervisor host. |
 | `manifest/scenario_vms.json` | Declares the concrete VMIDs, names, addresses, networks and template references checked by the backend. |
 | `manifest/scenario_networks.json` | Declares SDN objects or required existing bridges for network preflight. |
+| `manifest/scenario_firewall.json` | Stores reviewed arming, shared management-rule consent and inherited/explicit SSH sources. |
 | `manifest/scenario_instances.json` | Maps source/team/user identities to explicit VM/network instances when replication is enabled. |
 | `manifest/scenario_roles.json` / `scenario_bundles.json` | Records imported role trees or sealed bundle attachment provenance when present. |
 
 VM inventory aliases and bootstrap variables derive from the same configuration. The emitter checks duplicate VMIDs and addresses, overlapping subnets, gateway conflicts, missing assets and canvas/configuration mismatches. Reopening Scenario includes newly drawn nodes while retaining existing explicit configuration.
 
 Generated control files are regenerated on Save. Edit source content files in the **Config** tab; use the Scenario form for generated control-file changes. Existing unrelated project files are preserved. Generation refuses to replace an independently authored scenario at the same path.
+
+New drafts select native firewall preparation with guest arming off. Existing
+saved scenarios opt into the extra stages explicitly. Inherited SSH sources come
+from the existing backend workspace vault; reviewed restrictions accept IPv4 /32
+sources and add the exact networks of all manifest NICs. The adapter calls native
+per-VM declaration primitives, avoiding the native manifest sweep's /24/template-IP
+assumptions. Existing broader accepts remain; preparation does not tighten them.
+The backend pins `FIREWALL_ARM_VMS=NO` unless the saved policy explicitly selects
+arming, even when the workspace vault says YES.
+
+Preparing shared datacenter/node management accepts requires the scenario choice
+and backend administrator setting `RANGE42_SCENARIO_MANAGEMENT_ACCESS=1`. This is
+disabled by default and does not enable the datacenter/node firewall switches.
+Guest arming remains a separate choice after service configuration. Source
+restrictions and firewall preferences cannot be overridden through public content
+variables. Configure-only attempts do not rerun the firewall preparation stages.
 
 ## Files, scripts, playbooks and bundles
 
@@ -57,8 +82,8 @@ Configure runs the candidate commit's `configure.yml`. The backend requires its 
 
 ## Backend prerequisites and current bounds
 
-The backend needs an exact installed playbooks/controller/catalog dependency profile, with `RANGE42_BUNDLE_DIR` and Ansible role paths bound to that profile. The assessed installation uses playbooks `a150867` and controller `99fd63c`. A branch name or an unmerged source draft does not authorize execution or substitute for an installed runtime fingerprint. Hyde owns upstream SDN/controller implementation; missing contracts are recorded in the [capability matrix](ui-backend-capability-matrix.md#upstream-dependencies-and-ui-boundaries).
+The backend needs an exact installed playbooks/controller/catalog dependency profile, with `RANGE42_BUNDLE_DIR` and Ansible role paths bound to that profile. The native application adapter recognizes unchanged playbooks `6dcf31b` and controller `617b57c` by source digests. A branch name does not authorize execution or substitute for the installed runtime fingerprint. Source changes require another reviewed adapter contract. No private marker files need to be added to Hyde's native repositories.
 
 The backend supplies selected-host API credentials and runtime SSH addresses. Existing bundles read `<workspace>/secrets/default_vault.yml`; the workspace also needs suitable guest cloud-init keys and SSH access to the hypervisor. Generated inventory uses an explicitly configured jump SSH command, accepting new host keys into the workspace's known-hosts file and continuing to reject changed keys. No API credentials or private keys are generated into Git.
 
-This emitter supports explicit VM instances, multiple NICs, CPU/memory/disk-growth overrides and reviewed team/user replication. LXC/Docker/router/firewall-node execution and template creation remain unsupported. Supported legacy task/variable attachments have an explicit review-and-apply migration that preserves original assets; unsupported forms still block generation rather than being omitted. The generated scenario does not expose native reset/rollback/snapshot playbook actions, even when similarly named files exist. Reviewed QEMU snapshot sets, including rollback and retention review, are available through the separate [Snapshot sets](snapshot-sets.md) workflow. The generated workflow provides full deployment, configure and VM teardown. Teardown preserves shared networks and does not release [durable deployment allocations](deployment-allocations.md) automatically.
+The source model preserves explicit VM instances, multiple NICs, CPU/memory/disk-growth choices and reviewed team/user replication. Execution is limited to the selected runtime’s advertised support; the reviewed native bootstrap currently requires one NIC and template resource sizes. LXC/Docker/router/firewall-node execution and template creation remain unsupported. Supported legacy task/variable attachments have an explicit review-and-apply migration that preserves original assets; unsupported forms still block generation rather than being omitted. The generated scenario does not expose native reset/rollback/snapshot playbook actions, even when similarly named files exist. Reviewed QEMU snapshot sets, including rollback and retention review, are available through the separate [Snapshot sets](snapshot-sets.md) workflow. The generated workflow provides full deployment, configure and VM teardown. Teardown preserves shared networks and does not release [durable deployment allocations](deployment-allocations.md) automatically.

@@ -26,6 +26,72 @@ function fixture() {
 }
 
 describe('concrete scenario emitter', () => {
+  it.each([{ enabled: 'false' }, { enabled: true, arm_vms: 'YES' }, { enabled: true, prepare_management_access: 1 }])('refuses non-boolean firewall choices rather than silently changing intent: %j', firewall => {
+    const input = fixture()
+    input.scenario.firewall = firewall
+    expect(() => emitConcreteScenario(input)).toThrow(/firewall choices/i)
+  })
+
+  it('retains but refuses shared management preparation when the selected backend has not authorized it', () => {
+    const input = fixture()
+    input.scenario.firewall = { enabled: true, prepare_management_access: true, arm_vms: false }
+    input.runtimeCapabilities = { version: 1, available: true, contract: 'native-sdn-20260921', bootstrap_features: [], management_access_available: false }
+    expect(() => emitConcreteScenario(input)).toThrow(/management rules/)
+    expect(input.scenario.firewall.prepare_management_access).toBe(true)
+  })
+  it('orders reviewed native firewall stages around bootstrap and configuration, with arming off by default', () => {
+    const input = fixture()
+    input.scenario.firewall = { enabled: true, prepare_management_access: false, arm_vms: false, ssh_mode: 'inherit' }
+    const files = emitConcreteScenario(input).files
+    expect(parse(files['scenarios/demo/main.yml']).map(play => play['ansible.builtin.import_playbook'])).toEqual([
+      '00_firewall_pre.yml', '00_networks.yml', '01_vm_bootstrap.yml', '02_firewall_guests.yml', 'configure.yml', '99_firewall_finalize.yml',
+    ])
+    expect(JSON.parse(files['scenarios/demo/manifest/scenario_firewall.json'])).toEqual({
+      version: 1, prepare_management_access: false, arm_vms: false, ssh_sources: null,
+    })
+    expect(files['scenarios/demo/99_firewall_finalize.yml']).toContain('FIREWALL_ARM_VMS')
+    expect(files['scenarios/demo/00_firewall_pre.yml']).toContain('r42_fw_prepare_management_access')
+    expect(files['scenarios/demo/02_firewall_guests.yml']).toContain('range42-deployment:')
+  })
+
+  it('uses the exact declared CIDRs for restricted SSH without inventing template addresses', () => {
+    const input = fixture()
+    input.scenario.networks[0].subnet = '10.42.10.0/23'
+    input.scenario.firewall = { enabled: true, prepare_management_access: false, arm_vms: true, ssh_mode: 'restricted', ssh_sources: '203.0.113.7/32' }
+    const files = emitConcreteScenario(input).files
+    expect(JSON.parse(files['scenarios/demo/manifest/scenario_firewall.json']).ssh_sources).toEqual(['203.0.113.7/32'])
+    expect(files['scenarios/demo/02_firewall_guests.yml']).toContain('10.42.10.0/23')
+    expect(files['scenarios/demo/02_firewall_guests.yml']).not.toContain('ssh_all_vms')
+    expect(JSON.parse(files['scenarios/demo/manifest/scenario_vms.json']).templates).toEqual([{ vm_id: 9232 }])
+  })
+
+  it.each(['203.0.113.7/24', '{{ secret }}', 'bad'])('refuses unsafe source restriction %s', source => {
+    const input = fixture()
+    input.scenario.firewall = { enabled: true, ssh_mode: 'restricted', ssh_sources: source }
+    expect(() => emitConcreteScenario(input)).toThrow(/SSH sources/)
+  })
+
+  it.each([
+    ['CPU and memory overrides', { cores: 4 }, 'resources'],
+    ['disk resizing', { disk_gb: 50 }, 'disk_resize'],
+    ['multiple NICs', { nics: [{ network_id: 'net1', ip: '10.42.10.10' }, { network_id: 'net1', ip: '10.42.10.11' }] }, 'extra_nics'],
+  ])('refuses %s unsupported by the selected runtime without altering the draft', (_label, choices, feature) => {
+    const input = fixture()
+    Object.assign(input.scenario.vms[0], choices)
+    if (feature === 'extra_nics') input.edges.push({ source: 'vm1', target: 'net1' })
+    input.runtimeCapabilities = { version: 1, available: true, contract: 'native-sdn-20260921', bootstrap_features: [] }
+    const saved = structuredClone(input)
+    expect(() => emitConcreteScenario(input)).toThrow(new RegExp(feature))
+    expect(input).toEqual(saved)
+  })
+
+  it('emits template inheritance for a recognized native runtime without private bootstrap inputs', () => {
+    const input = fixture()
+    input.runtimeCapabilities = { version: 1, available: true, bootstrap_features: [] }
+    const output = emitConcreteScenario(input)
+    expect(output.files['scenarios/demo/01_vm_bootstrap.yml']).not.toMatch(/global_vm_extra_config|global_vm_disk/)
+  })
+
   it('excludes explicit reference lines between resources from deployment', () => {
     const input = fixture()
     const expected = emitConcreteScenario(input).files

@@ -9,8 +9,10 @@ import FileAssetField from '@/components/project/FileAssetField.vue'
 import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
 
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn() }))
+vi.mock('@/services/backendApi', async importOriginal => ({ ...await importOriginal(), backendRequest: vi.fn() }))
+import { backendRequest } from '@/services/backendApi'
 enableAutoUnmount(afterEach)
-beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()) })
+beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()); backendRequest.mockReset() })
 const nodes = [{ id: 'vm', type: 'vm', data: { config: { name: 'guest' } } },
   { id: 'net', type: 'network-segment', data: { config: {} } }]
 const edges = [{ source: 'vm', target: 'net' }]
@@ -23,6 +25,67 @@ function modal(overrides = {}) {
 }
 
 describe('scenario authoring review', () => {
+  it('reviews native firewall stages and sources with guest arming requiring a separate opt-in', async () => {
+    const wrapper = modal()
+    await wrapper.get('[data-testid="scenario-native-firewall"]').setValue(true)
+    expect(wrapper.get('[data-testid="scenario-arm-vms"]').element.checked).toBe(false)
+    expect(wrapper.get('[data-testid="scenario-management-access"]').element.disabled).toBe(true)
+    await wrapper.get('[data-testid="scenario-ssh-mode"]').setValue('restricted')
+    await wrapper.get('[data-testid="scenario-ssh-sources"]').setValue('203.0.113.7/32')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    expect(JSON.parse(wrapper.emitted('generated')[0][0].files['scenarios/demo/manifest/scenario_firewall.json'])).toEqual({
+      version: 1, arm_vms: false, prepare_management_access: false, ssh_sources: ['203.0.113.7/32'],
+    })
+  })
+
+  it('waits for runtime support before creating a review', async () => {
+    useBackendApiStore().addHost({ url: 'https://backend.test' })
+    backendRequest.mockImplementation(() => new Promise(() => {}))
+    const wrapper = modal()
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    expect(wrapper.find('[data-testid="scenario-apply"]').exists()).toBe(false)
+    expect(wrapper.get('[role="alert"]').text()).toContain('Wait for')
+  })
+
+  it('shows installed native limits and only clears unsupported resource choices on explicit template inheritance', async () => {
+    useBackendApiStore().addHost({ url: 'https://backend.test' })
+    backendRequest.mockResolvedValue({ version: 1, available: true, contract: 'native-sdn-20260921', bootstrap_features: [] })
+    const wrapper = modal(), project = wrapper.props('project')
+    await flushPromises()
+    expect(backendRequest).toHaveBeenCalledWith('/v1/proxmox/runtime-capabilities')
+    expect(wrapper.text()).toContain('One NIC')
+    await wrapper.get('[data-testid="scenario-vm-cores"]').setValue(4)
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    expect(wrapper.find('[data-testid="scenario-apply"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="scenario-vm-cores"]').element.value).toBe('4')
+    expect(project.scenario.vms[0]).not.toHaveProperty('cores')
+    await wrapper.get('[data-testid="scenario-template-resources"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-review"]').trigger('click')
+    await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
+    const result = wrapper.emitted('generated')[0][0]
+    expect(result.scenario.vms[0]).not.toHaveProperty('cores')
+    expect(result.files['scenarios/demo/01_vm_bootstrap.yml']).not.toContain('global_vm_extra_config')
+  })
+
+  it('discards stale support after a backend switch and labels offline review as unverified', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://first.test' })
+    let resolve
+    backendRequest.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+      .mockRejectedValue(new Error('unavailable'))
+    const wrapper = modal()
+    await flushPromises()
+    backend.addHost({ url: 'https://second.test' })
+    backend.setActiveHost(backend.hosts.at(-1).id)
+    await flushPromises()
+    expect(resolve).toBeTypeOf('function')
+    resolve({ version: 1, available: true, bootstrap_features: [] })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Runtime support is unverified')
+    expect(wrapper.text()).not.toContain('One NIC')
+  })
+
   it('copies explicitly reviewed SDN settings into the draft while preserving the project until file review', async () => {
     setActivePinia(createPinia())
     const backend = useBackendApiStore(); backend.addHost({ url: 'https://backend.test' })

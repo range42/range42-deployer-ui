@@ -13,10 +13,13 @@ for (const width of [1440, 390]) {
       vms: [{ node_id: 'vm', vm_id: 3101, vm_name: 'guest', template_vm_id: 9901, network_id: 'net', ip: '10.42.1.10', ssh_user: 'alice' }], content: [] } }
     const api = await routeApi(page, [project]), reads: string[] = [], errors: string[] = []
     page.on('pageerror', error => errors.push(error.message))
-    await page.route(/\/v1\/(?:auth\/me|admin\/audit|proxmox\/hosts)(?:[/?]|$)/, async route => {
+    await page.route(/\/v1\/(?:auth\/me|admin\/audit|proxmox\/(?:hosts|runtime-capabilities))(?:[/?]|$)/, async route => {
       expect(route.request().method()).toBe('GET')
       const url = new URL(route.request().url()), path = url.pathname
       reads.push(path)
+      if (path === '/v1/proxmox/runtime-capabilities') return route.fulfill({ json: {
+        version: 1, available: true, contract: 'native-sdn-20260921', bootstrap_features: [], management_access_available: false,
+      } })
       const items = path.endsWith('/hosts') ? [{ id: 'host', name: 'Reviewed host', node_name: 'pve01' }]
         : path.endsWith('/zones') ? [
           { zone: 'training', type: 'simple', nodes: ['pve01'], state: null, has_pending: false },
@@ -45,6 +48,7 @@ for (const width of [1440, 390]) {
 
     await page.goto('/project/sdn-review?tab=config')
     await page.getByTestId('project-scenario').click()
+    await expect(page.getByTestId('scenario-runtime-support')).toContainText('One NIC')
     await expect.poll(() => page.getByRole('dialog').evaluate(element => element.contains(document.activeElement))).toBe(true)
     const picker = page.getByTestId('sdn-inventory-picker')
     await picker.locator('summary').click()
@@ -66,6 +70,16 @@ for (const width of [1440, 390]) {
     await page.getByTestId('scenario-vm-ssh-user').fill('operator')
     await page.getByTestId('scenario-vm-dns').fill('10.42.1.2, 1.1.1.1')
     await page.getByTestId('scenario-vm-domain').fill('lab.example')
+    await page.getByTestId('scenario-vm-cores').fill('4')
+    await page.getByTestId('scenario-review').click()
+    await expect(page.getByTestId('scenario-apply')).toHaveCount(0)
+    await expect(page.getByTestId('scenario-vm-cores')).toHaveValue('4')
+    await page.getByTestId('scenario-template-resources').click()
+    await page.getByTestId('scenario-native-firewall').check()
+    await expect(page.getByTestId('scenario-arm-vms')).not.toBeChecked()
+    await expect(page.getByTestId('scenario-management-access')).toBeDisabled()
+    await page.getByTestId('scenario-ssh-mode').selectOption('restricted')
+    await page.getByTestId('scenario-ssh-sources').fill('203.0.113.7/32')
     await page.getByTestId('scenario-review').click()
     await expect(page.getByTestId('scenario-apply')).toBeVisible()
     expect(await savedScenario()).toEqual(project.scenario)
@@ -75,6 +89,8 @@ for (const width of [1440, 390]) {
     expect(saved).toMatchObject({ zone: 'training', networks: [{ id: 'net', vnet: 'labnet', snat: false }], vms: [{ storage: 'fast-pool', ssh_user: 'operator', dns_servers: '10.42.1.2, 1.1.1.1', dns_search_domain: 'lab.example' }] })
     const manifest = await page.evaluate(() => JSON.parse(JSON.parse(localStorage.getItem('range42_projects') || '[]')[0].files['scenarios/demo/manifest/scenario_vms.json']))
     expect(manifest.vms[0].cloud_init).toEqual({ ssh_user: 'operator', dns_servers: ['10.42.1.2', '1.1.1.1'], dns_search_domain: 'lab.example' })
+    const firewall = await page.evaluate(() => JSON.parse(JSON.parse(localStorage.getItem('range42_projects') || '[]')[0].files['scenarios/demo/manifest/scenario_firewall.json']))
+    expect(firewall).toEqual({ version: 1, prepare_management_access: false, arm_vms: false, ssh_sources: ['203.0.113.7/32'] })
     await page.reload()
     expect(await savedScenario()).toEqual(saved)
     expect(api.state.writes).toEqual([])

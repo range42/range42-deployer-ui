@@ -60,6 +60,9 @@ export async function routeApi(page: Page, projects: Array<{ id: string; name: s
       return route.fulfill({ status: entry ? 200 : 404, json: entry || { code: 'CATALOG_ENTRY_NOT_FOUND' } })
     }
     if (url.pathname === '/v1/proxmox/hosts') return route.fulfill({ json: pageOf([]) })
+    if (url.pathname === '/v1/proxmox/runtime-capabilities') return route.fulfill({ json: {
+      version: 1, available: false, bootstrap_features: [], operations: [], management_access_available: false,
+    } })
     if (url.pathname === '/v1/deployments') return route.fulfill({ json: pageOf(state.deployments) })
     if (url.pathname.endsWith('/preflight')) return route.fulfill({ status: state.preflightStatus, json: state.preflightStatus === 200
       ? { result: 'block', blocking: true, checks: [{ check: 'git_revision', result: 'block', detail: 'Review this saved revision before starting.' }], ts: '2026-09-14T08:00:00Z' }
