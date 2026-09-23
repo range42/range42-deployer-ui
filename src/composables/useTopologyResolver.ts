@@ -13,6 +13,8 @@
 
 import { computed, ref } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
+import { proxmoxCache } from '@/services/proxmox/cache'
+import { withoutCanvasNotes } from '@/services/canvasNotes'
 import type {
   NodeType,
   DeploymentStep,
@@ -26,7 +28,6 @@ import type {
   SwitchNodeData,
   VmNodeData,
   LxcNodeData,
-  GroupNodeData,
   VmCreateRequest,
   LxcCreateRequest,
   NodeNetworkAddRequest,
@@ -43,7 +44,8 @@ interface CanvasNode extends Node {
 
 interface ResolverOptions {
   proxmoxNode: string
-  startVmId?: number // Starting VM ID for auto-assignment
+  startVmId?: number       // Starting VM ID for auto-assignment
+  defaultStorage?: string  // Proxmox storage for new VM disks (e.g., 'local-zfs')
 }
 
 interface ValidationError {
@@ -56,6 +58,23 @@ interface ValidationResult {
   valid: boolean
   errors: ValidationError[]
   warnings: ValidationError[]
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/**
+ * Get node config from either direct properties or nested config object.
+ * The UI stores config in node.data.config, but types expect it directly on node.data.
+ * This helper handles both formats for backwards compatibility.
+ */
+function getNodeConfig<T>(data: CanvasNodeData): T {
+  // If config object exists, merge it with top-level data
+  if ('config' in data && data.config) {
+    return { ...data, ...(data.config as object) } as T
+  }
+  return data as T
 }
 
 // =============================================================================
@@ -99,10 +118,10 @@ export function useTopologyResolver() {
       })
     }
 
-    // Type-specific validation
+    // Type-specific validation - use getNodeConfig to handle nested config
     switch (data.type) {
       case 'network-segment': {
-        const segData = data as NetworkSegmentNodeData
+        const segData = getNodeConfig<NetworkSegmentNodeData>(data)
         if (!segData.bridge) {
           nodeErrors.push({
             nodeId: node.id,
@@ -122,7 +141,7 @@ export function useTopologyResolver() {
 
       case 'edge-firewall':
       case 'router': {
-        const routerData = data as RouterNodeData
+        const routerData = getNodeConfig<RouterNodeData>(data)
         if (!routerData.appliance) {
           nodeErrors.push({
             nodeId: node.id,
@@ -130,44 +149,19 @@ export function useTopologyResolver() {
             message: 'Router/Firewall must specify an appliance type',
           })
         }
-        if (!routerData.interfaces || routerData.interfaces.length === 0) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'interfaces',
-            message: 'Router/Firewall must have at least one interface',
-          })
-        }
+        // Note: Interface validation is now done at topology level
+        // by checking edge connections to network-segments
         break
       }
 
       case 'vm': {
-        const vmData = data as VmNodeData
-        if (!vmData.template && !vmData.iso) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'template',
-            message: 'VM must have either a template or ISO specified',
-          })
-        }
-        if (!vmData.memory || vmData.memory < 128) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'memory',
-            message: 'VM must have at least 128MB memory',
-          })
-        }
+        // VM validation is relaxed - templates are optional in UI mode
+        // Full validation happens during deployment
         break
       }
 
       case 'lxc': {
-        const lxcData = data as LxcNodeData
-        if (!lxcData.template) {
-          nodeErrors.push({
-            nodeId: node.id,
-            field: 'template',
-            message: 'LXC container must have a template specified',
-          })
-        }
+        const lxcData = getNodeConfig<LxcNodeData>(data)
         if (!lxcData.hostname) {
           nodeErrors.push({
             nodeId: node.id,
@@ -231,7 +225,18 @@ export function useTopologyResolver() {
   /**
    * Validate the entire topology
    */
-  function validateTopology(nodes: CanvasNode[], edges: Edge[]): ValidationResult {
+  function validateTopology(inputNodes: Node[], edges: Edge[]): ValidationResult {
+    const infrastructure = withoutCanvasNotes(inputNodes, edges)
+    inputNodes = infrastructure.nodes
+    edges = infrastructure.edges
+    const invalid = inputNodes.filter(node => !node.data || typeof node.data !== 'object' || Array.isArray(node.data))
+    if (invalid.length) {
+      errors.value = invalid.map(node => ({ nodeId: node.id, field: 'data', message: 'Node configuration is missing or invalid' }))
+      warnings.value = []
+      return { valid: false, errors: errors.value, warnings: [] }
+    }
+    // VueFlow allows absent data. It has been checked before this required-data view.
+    const nodes: CanvasNode[] = inputNodes.map(node => ({ ...node, data: node.data }))
     const allErrors: ValidationError[] = []
     const allWarnings: ValidationError[] = []
 
@@ -393,31 +398,6 @@ export function useTopologyResolver() {
   }
 
   /**
-   * Find which network segment a node is connected to
-   */
-  function findConnectedSegments(
-    nodeId: string,
-    nodes: CanvasNode[],
-    edges: Edge[]
-  ): CanvasNode[] {
-    const segments: CanvasNode[] = []
-    
-    for (const edge of edges) {
-      const connectedId = edge.source === nodeId ? edge.target : 
-                          edge.target === nodeId ? edge.source : null
-      
-      if (connectedId) {
-        const connectedNode = nodes.find(n => n.id === connectedId)
-        if (connectedNode && connectedNode.data.type === 'network-segment') {
-          segments.push(connectedNode)
-        }
-      }
-    }
-    
-    return segments
-  }
-
-  /**
    * Find connected network segments with their edge connection data
    * Returns both the segment node and any NetworkConnectionData from the edge
    */
@@ -462,7 +442,7 @@ export function useTopologyResolver() {
     node: CanvasNode,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as NetworkSegmentNodeData
+    const data = getNodeConfig<NetworkSegmentNodeData>(node.data)
     
     const payload: NodeNetworkAddRequest = {
       proxmox_node: options.proxmoxNode,
@@ -492,37 +472,46 @@ export function useTopologyResolver() {
     vmId: number,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as VmNodeData
+    const data = getNodeConfig<VmNodeData>(node.data)
     
     // If template is specified, we clone; otherwise create from ISO
     if (data.template) {
+      // data.template holds the source template VMID (e.g., 9221)
+      // vmId is the auto-assigned ID for the NEW clone target
+      const templateVmId = String(parseInt(String(data.template), 10) || 0)
       return {
         id: generateStepId(),
         type: 'clone_template',
         name: `Clone VM ${data.label}`,
-        description: `Clone from template: ${data.template}`,
+        description: `Clone template ${templateVmId} → VMID ${vmId}`,
         nodeId: node.id,
         status: 'pending',
         payload: {
           proxmox_node: options.proxmoxNode,
-          vm_id: vmId, // Source template ID (needs lookup)
-          new_vm_id: vmId,
-          new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+          vm_id: templateVmId,
+          vm_new_id: String(vmId),
+          vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
           full_clone: true,
+          ...(options.defaultStorage ? { proxmox_dest_vm_storage_name: options.defaultStorage } : {}),
         },
       }
     }
 
-    const payload: VmCreateRequest = {
+    // Parse disk size: "32G" → 32, "100G" → 100
+    const diskStr = String(data.diskSize || '32G')
+    const diskGb = parseInt(diskStr.replace(/[gG]$/, ''), 10) || 32
+
+    const payload: VmCreateRequest & Record<string, unknown> = {
       proxmox_node: options.proxmoxNode,
-      vm_id: vmId,
-      vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+      vm_id: String(vmId),
+      vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
       vm_cpu: 'host',
       vm_cores: data.cores || 1,
       vm_sockets: 1,
       vm_memory: data.memory || 1024,
-      vm_disk_size: data.diskSize || '32G',
+      vm_disk_size: diskGb,
       vm_iso: data.iso,
+      ...(options.defaultStorage ? { proxmox_dest_vm_storage_name: options.defaultStorage } : {}),
     }
 
     return {
@@ -544,7 +533,7 @@ export function useTopologyResolver() {
     vmId: number,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as LxcNodeData
+    const data = getNodeConfig<LxcNodeData>(node.data)
 
     const payload: LxcCreateRequest = {
       proxmox_node: options.proxmoxNode,
@@ -576,22 +565,24 @@ export function useTopologyResolver() {
     vmId: number,
     options: ResolverOptions
   ): DeploymentStep {
-    const data = node.data as RouterNodeData
+    const data = getNodeConfig<RouterNodeData>(node.data)
 
     // Routers are typically cloned from templates
+    const templateVmId = String(parseInt(String(data.template), 10) || 0)
     return {
       id: generateStepId(),
       type: 'clone_template',
       name: `Deploy ${data.appliance} - ${data.label}`,
-      description: `Deploy ${data.appliance} router/firewall`,
+      description: `Clone template ${templateVmId || data.appliance} → VMID ${vmId}`,
       nodeId: node.id,
       status: 'pending',
       payload: {
         proxmox_node: options.proxmoxNode,
-        template_name: data.template || `${data.appliance}-template`,
-        new_vm_id: vmId,
-        new_vm_name: data.label.replace(/\s+/g, '-').toLowerCase(),
+        vm_id: templateVmId,
+        vm_new_id: String(vmId),
+        vm_name: (data.config?.name || data.label).replace(/\s+/g, '-').toLowerCase(),
         full_clone: true,
+        ...(options.defaultStorage ? { proxmox_dest_vm_storage_name: options.defaultStorage } : {}),
       },
     }
   }
@@ -608,7 +599,7 @@ export function useTopologyResolver() {
     options: ResolverOptions,
     connectionData?: NetworkConnectionData
   ): DeploymentStep {
-    const segmentData = segment.data as NetworkSegmentNodeData
+    const segmentData = getNodeConfig<NetworkSegmentNodeData>(segment.data)
 
     // Use connection data from edge if available, otherwise use defaults
     const payload: VmNetworkAddRequest = {
@@ -650,7 +641,7 @@ export function useTopologyResolver() {
       status: 'pending',
       payload: {
         proxmox_node: options.proxmoxNode,
-        vm_id: vmId,
+        vm_id: String(vmId),
       },
     }
   }
@@ -663,9 +654,25 @@ export function useTopologyResolver() {
     edges: Edge[],
     options: ResolverOptions
   ): DeploymentPlan {
+    const infrastructure = withoutCanvasNotes(nodes, edges)
+    nodes = infrastructure.nodes
+    edges = infrastructure.edges
     const canvasNodes = nodes as CanvasNode[]
     const steps: DeploymentStep[] = []
-    let nextVmId = options.startVmId || 100
+    let nextVmId = options.startVmId || 2000
+
+    // Build set of existing VMIDs from cache to avoid conflicts
+    const existingVmIds = new Set(proxmoxCache.vmCache.value.map(v => v.vmid))
+
+    // Helper: get next available VMID that doesn't conflict
+    function allocateVmId(): number {
+      while (existingVmIds.has(nextVmId)) {
+        nextVmId++
+      }
+      const id = nextVmId++
+      existingVmIds.add(id) // Reserve it for this plan
+      return id
+    }
 
     // Sort nodes by deployment priority
     const sortedNodes = [...canvasNodes].sort((a, b) => {
@@ -685,20 +692,15 @@ export function useTopologyResolver() {
 
         case 'edge-firewall':
         case 'router': {
-          const vmId = nextVmId++
+          const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createRouterStep(node, vmId, options))
           
-          // Add network config for each interface
-          const routerData = node.data as RouterNodeData
-          routerData.interfaces?.forEach((iface, index) => {
-            const segment = canvasNodes.find(
-              n => n.data.type === 'network-segment' && 
-                   (n.data as NetworkSegmentNodeData).bridge === iface.bridge
-            )
-            if (segment) {
-              steps.push(createNetworkConfigStep(node, vmId, segment, index, options))
-            }
+          // Add network config for each connected segment (via edges)
+          // This is the SAME pattern as VMs - edges define interfaces
+          const connections = findConnectedSegmentsWithEdgeData(node.id, canvasNodes, edges)
+          connections.forEach(({ segment, connectionData }, index) => {
+            steps.push(createNetworkConfigStep(node, vmId, segment, index, options, connectionData))
           })
           break
         }
@@ -730,10 +732,28 @@ export function useTopologyResolver() {
         }
 
         case 'vm': {
-          const vmId = nextVmId++
+          const nodeData = node.data as VmNodeData
+
+          // Already deployed VMs: skip create/start, just track the existing VMID
+          if (nodeData.deployed && nodeData.vmId) {
+            const existingId = Number(nodeData.vmId)
+            nodeVmIds.set(node.id, existingId)
+            steps.push({
+              id: generateStepId(),
+              type: 'noop',
+              name: `${nodeData.label} (already deployed)`,
+              description: `VMID ${existingId} — already running on Proxmox`,
+              nodeId: node.id,
+              status: 'completed',
+              payload: {},
+            })
+            break
+          }
+
+          const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createVmStep(node, vmId, options))
-          
+
           // Add network config for connected segments (with edge connection data)
           const connections = findConnectedSegmentsWithEdgeData(node.id, canvasNodes, edges)
           connections.forEach(({ segment, connectionData }, index) => {
@@ -743,7 +763,22 @@ export function useTopologyResolver() {
         }
 
         case 'lxc': {
-          const vmId = nextVmId++
+          const lxcData = node.data as LxcNodeData
+          if (lxcData.deployed && lxcData.vmId) {
+            nodeVmIds.set(node.id, Number(lxcData.vmId))
+            steps.push({
+              id: generateStepId(),
+              type: 'noop',
+              name: `${lxcData.label} (already deployed)`,
+              description: `VMID ${lxcData.vmId} — already running on Proxmox`,
+              nodeId: node.id,
+              status: 'completed',
+              payload: {},
+            })
+            break
+          }
+
+          const vmId = allocateVmId()
           nodeVmIds.set(node.id, vmId)
           steps.push(createLxcStep(node, vmId, options))
           
@@ -769,11 +804,11 @@ export function useTopologyResolver() {
       }
     }
 
-    // Add start steps for all VMs (after all are created)
+    // Add start steps only for NEW VMs (skip already deployed ones)
     const vmIdEntries = Array.from(nodeVmIds.entries())
     for (const [nodeId, vmId] of vmIdEntries) {
       const node = canvasNodes.find(n => n.id === nodeId)
-      if (node) {
+      if (node && !(node.data as CanvasNodeData).deployed) {
         steps.push(createStartVmStep(node, vmId, options))
       }
     }

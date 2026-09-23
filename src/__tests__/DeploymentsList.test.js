@@ -1,0 +1,207 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
+import { useBackendApiStore } from '@/stores/backendApiStore'
+import { createI18n } from 'vue-i18n'
+import DeploymentsList from '@/views/DeploymentsList.vue'
+import deploymentEn from '@/locales/en/deployment.json'
+
+enableAutoUnmount(afterEach)
+
+function makeI18n() {
+  return createI18n({
+    legacy: false,
+    locale: 'en',
+    fallbackLocale: 'en',
+    messages: { en: { deployment: deploymentEn } },
+  })
+}
+
+function makeRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/deployments', name: 'deployments', component: { template: '<div/>' } },
+      { path: '/deployments/:id', name: 'deployment-detail', component: { template: '<div/>' } },
+    ],
+  })
+}
+
+function fetchMock(deployments) {
+  return vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ items: deployments, total: deployments.length }),
+  }))
+}
+
+async function settle(wrapper) {
+  // Let onMounted chain (ensureNamespaces → fetch → state update) fully settle.
+  // In jsdom the async import chain can span several macrotasks. Keep pumping
+  // until either the list renders or we give up.
+  for (let i = 0; i < 20; i++) {
+    await flushPromises()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    if (!wrapper) continue
+    if (wrapper.find('[data-testid="deployments-root"]').exists()) return
+    if (wrapper.text().includes('No deployments yet')) return
+    if (wrapper.find('.alert-warning').exists()) return
+  }
+}
+
+const SAMPLE = [
+  { id: 'd-1', codename: 'alpha', scenario_label: 'demo_lab', state: 'deploying', started_at: '2026-04-14T10:00Z', attempts_count: 1, project_id: 'p1', project_name: 'Project One' },
+  { id: 'd-2', codename: 'bravo', scenario_label: 'forensics_lab', state: 'succeeded', started_at: '2026-04-13T10:00Z', attempts_count: 2, project_id: 'p1', project_name: 'Project One' },
+  { id: 'd-3', codename: 'charlie', scenario_label: 'misp_lab', state: 'failed', started_at: '2026-04-12T10:00Z', attempts_count: 3, project_id: 'p2', project_name: 'Project Two' },
+  { id: 'd-4', codename: 'delta', scenario_label: 'kunai_lab', state: 'torn_down', started_at: '2026-04-11T10:00Z', attempts_count: 1, project_id: null, project_name: null },
+]
+
+describe('<DeploymentsList>', () => {
+  let originalFetch
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    originalFetch = globalThis.fetch
+  })
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('loads all pages from the selected backend using its gateway token', async () => {
+    useBackendApiStore().addHost({ url: 'https://backend.test', token: 'gateway' })
+    globalThis.fetch = vi.fn(async url => {
+      const offset = Number(new URL(url, 'http://ui.test').searchParams.get('offset') || 0)
+      return { ok: true, status: 200, json: async () => ({ items: [SAMPLE[offset]], total: 4, offset, limit: 1 }) }
+    })
+    const router = makeRouter()
+    await router.push('/deployments')
+    const wrapper = mount(DeploymentsList, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.findAll('[data-testid="deployment-row"]')).toHaveLength(4)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(4)
+    for (const [url, options] of globalThis.fetch.mock.calls) {
+      expect(url).toMatch(/^https:\/\/backend.test\/v1\//)
+      expect(new Headers(options.headers).get('Authorization')).toBe('Bearer gateway')
+    }
+  })
+
+  it('does not mix delayed results from the previous backend', async () => {
+    const backend = useBackendApiStore()
+    backend.addHost({ url: 'https://old.test' })
+    const next = backend.addHost({ url: 'https://new.test' })
+    let oldResponse
+    globalThis.fetch = vi.fn(url => url.startsWith('https://old.test')
+      ? new Promise(resolve => { oldResponse = resolve })
+      : Promise.resolve({ ok: true, status: 200, json: async () => ({ items: [SAMPLE[1]], total: 1 }) }))
+    const router = makeRouter()
+    await router.push('/deployments')
+    const wrapper = mount(DeploymentsList, { global: { plugins: [router, makeI18n()] } })
+    await flushPromises()
+    backend.setActiveHost(next)
+    await settle(wrapper)
+    expect(wrapper.text()).toContain('bravo')
+    expect(oldResponse).toBeTypeOf('function')
+    oldResponse({ ok: true, status: 200, json: async () => ({ items: [SAMPLE[0]], total: 1 }) })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('alpha')
+  })
+
+  it('splits active from past and groups past by project', async () => {
+    globalThis.fetch = fetchMock(SAMPLE)
+    const router = makeRouter()
+    router.push('/deployments')
+    await router.isReady()
+    const wrapper = mount(DeploymentsList, {
+      global: { plugins: [router, makeI18n()] },
+    })
+    await settle(wrapper)
+
+    // Active section has the 'deploying' one.
+    const active = wrapper.find('[data-testid="deployments-active"]')
+    expect(active.exists()).toBe(true)
+    expect(active.text()).toContain('alpha')
+    expect(active.text()).not.toContain('bravo')
+
+    // Past section groups by project.
+    const past = wrapper.find('[data-testid="deployments-past"]')
+    const groups = past.findAll('[data-testid="past-group"]')
+    expect(groups.length).toBe(3) // Project One, Project Two, (no project)
+    expect(groups[0].text()).toContain('Project One')
+    expect(groups[0].text()).toContain('bravo')
+  })
+
+  it('failed-only filter keeps only failed deployments', async () => {
+    globalThis.fetch = fetchMock(SAMPLE)
+    const router = makeRouter()
+    router.push('/deployments')
+    await router.isReady()
+    const wrapper = mount(DeploymentsList, {
+      global: { plugins: [router, makeI18n()] },
+    })
+    await settle(wrapper)
+    const failedBtn = wrapper.findAll('button').find(b => b.text() === 'Failed only')
+    await failedBtn.trigger('click')
+    await flushPromises()
+    const rows = wrapper.findAll('[data-testid="deployment-row"]')
+    expect(rows.length).toBe(1)
+    expect(rows[0].text()).toContain('charlie')
+  })
+
+  it('in-progress-only filter hides terminal states', async () => {
+    globalThis.fetch = fetchMock(SAMPLE)
+    const router = makeRouter()
+    router.push('/deployments')
+    await router.isReady()
+    const wrapper = mount(DeploymentsList, {
+      global: { plugins: [router, makeI18n()] },
+    })
+    await settle(wrapper)
+    const inProgBtn = wrapper.findAll('button').find(b => b.text() === 'In-progress only')
+    await inProgBtn.trigger('click')
+    await flushPromises()
+    const rows = wrapper.findAll('[data-testid="deployment-row"]')
+    expect(rows.length).toBe(1)
+    expect(rows[0].text()).toContain('alpha')
+  })
+
+  it('keeps completed, partial and unknown outcomes in history with real navigation links', async () => {
+    globalThis.fetch = fetchMock(['completed', 'partial', 'unknown'].map((state, index) => ({
+      id: `terminal-${index}`, codename: state, state,
+    })))
+    const router = makeRouter()
+    await router.push('/deployments')
+    const wrapper = mount(DeploymentsList, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.find('[data-testid="deployments-active"]').findAll('[data-testid="deployment-row"]')).toHaveLength(0)
+    const rows = wrapper.find('[data-testid="deployments-past"]').findAll('[data-testid="deployment-row"]')
+    expect(rows).toHaveLength(3)
+    expect(rows[0].element.tagName).toBe('A')
+    expect(rows[0].attributes('href')).toBe('/deployments/terminal-0')
+    expect(rows[0].find('button, a').exists()).toBe(false)
+  })
+
+  it('shows empty state when backend returns zero deployments', async () => {
+    globalThis.fetch = fetchMock([])
+    const router = makeRouter()
+    router.push('/deployments')
+    await router.isReady()
+    const wrapper = mount(DeploymentsList, {
+      global: { plugins: [router, makeI18n()] },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No deployments yet')
+  })
+
+  it('shows load-error alert when fetch rejects', async () => {
+    globalThis.fetch = vi.fn(async () => { throw new Error('ECONNREFUSED') })
+    const router = makeRouter()
+    router.push('/deployments')
+    await router.isReady()
+    const wrapper = mount(DeploymentsList, {
+      global: { plugins: [router, makeI18n()] },
+    })
+    await flushPromises()
+    expect(wrapper.html()).toContain('ECONNREFUSED')
+  })
+})

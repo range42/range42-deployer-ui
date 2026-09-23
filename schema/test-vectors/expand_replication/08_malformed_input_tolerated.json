@@ -1,0 +1,39 @@
+{
+  "name": "loosely-typed YAML must not crash either implementation — bare scope stays shared, non-string templates are left alone",
+  "operator": "expand_replication",
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "malformed input fixture",
+      "nodes": [
+        { "id": "shared-by-bare-key", "kind": "vm",
+          "replication": { "scope": null },
+          "config": { "name": "untouched" } },
+        { "id": "web", "kind": "vm",
+          "replication": { "scope": "per_team" },
+          "config": { "name_template": null, "vlan_template": 9 },
+          "networks": [ { "ip_template": 7 } ] }
+      ]
+    },
+    "team_count": 1
+  },
+  "expected": {
+    "plays_per_team": 1,
+    "handler_namespaces": [],
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "malformed input fixture",
+      "nodes": [
+        { "id": "shared-by-bare-key", "kind": "vm",
+          "replication": { "scope": null },
+          "config": { "name": "untouched" } },
+        { "id": "web__team_1", "kind": "vm",
+          "replication": { "scope": "per_team" },
+          "config": { "name_template": null, "vlan_template": 9 },
+          "networks": [ { "ip_template": 7 } ] }
+      ]
+    }
+  }
+}

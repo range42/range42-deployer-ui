@@ -1,7 +1,11 @@
 /**
  * Inventory Drag & Drop Composable
  * 
- * Handles dragging inventory components from the InventoryBrowser to the canvas.
+ * Handles dragging inventory components onto the canvas. Historically fed
+ * from the retired `InventoryBrowser` modal; after Plan C §4 (C2.8) the UI
+ * surfaces catalog entries via `/catalog` — this composable still powers
+ * drag payloads emitted from any component/tile that hands off a
+ * `InventoryComponent` shape.
  * Integrates with useDragAndDrop for node creation.
  */
 

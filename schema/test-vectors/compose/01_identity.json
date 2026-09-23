@@ -1,0 +1,31 @@
+{
+  "name": "identity overlay — no fields touched",
+  "operator": "compose",
+  "input": {
+    "base": {
+      "schema_version": "1.0",
+      "kind": "lab",
+      "name": "Blue Team Fundamentals",
+      "nodes": [
+        { "id": "net-lan", "kind": "network",
+          "config": { "bridge": "vmbr143", "vlan": 143 } }
+      ],
+      "execution": { "stages": ["network", "base", "install", "configure", "start"] }
+    },
+    "overlay": {
+      "schema_version": "1.0",
+      "source_url": "https://github.com/range42/catalog-main",
+      "source_sha": "f4a9c2e"
+    }
+  },
+  "expected": {
+    "schema_version": "1.0",
+    "kind": "lab",
+    "name": "Blue Team Fundamentals",
+    "nodes": [
+      { "id": "net-lan", "kind": "network",
+        "config": { "bridge": "vmbr143", "vlan": 143 } }
+    ],
+    "execution": { "stages": ["network", "base", "install", "configure", "start"] }
+  }
+}

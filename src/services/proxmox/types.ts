@@ -30,15 +30,15 @@ export interface ApiError {
 
 export interface VmCreateRequest {
   proxmox_node: ProxmoxNode
-  vm_id: number
+  vm_id: string           // Backend expects string
   vm_name: string
-  vm_cpu: string // e.g., 'host', 'kvm64'
+  vm_cpu: string          // e.g., 'host', 'kvm64'
   vm_cores: number
   vm_sockets: number
-  vm_memory: number // MB
-  vm_disk_size?: string // e.g., '32G'
-  vm_iso?: string // ISO path
-  vm_template?: string // Template to clone from
+  vm_memory: number       // MB
+  vm_disk_size?: number   // GB as integer (backend expects int)
+  vm_iso?: string         // ISO path
+  vm_template?: string    // Template to clone from
 }
 
 export interface VmConfig {
@@ -56,6 +56,18 @@ export interface VmConfig {
 
 export type VmStatus = 'running' | 'stopped' | 'paused' | 'unknown'
 
+export interface VmActionResult {
+  status: string
+  upid?: string
+}
+
+export interface TaskStatus {
+  upid: string
+  status: 'running' | 'stopped'
+  exitstatus?: string
+  node: string
+}
+
 export interface VmListItem {
   vmid: number
   name: string
@@ -66,23 +78,30 @@ export interface VmListItem {
   maxcpu: number
   uptime: number
   node: ProxmoxNode
+  isTemplate: boolean
+  tags: string
+  /** 'qemu' | 'lxc' — populated by the v1 list endpoint. */
+  type?: 'qemu' | 'lxc'
 }
 
 export interface VmActionRequest {
+  proxmox_host_id?: string
+  vmtype?: 'qemu' | 'lxc'
   proxmox_node: ProxmoxNode
-  vm_id: number
+  vm_id: string | number
 }
 
 export interface VmCloneRequest extends VmActionRequest {
-  new_vm_id: number
-  new_vm_name: string
+  vm_new_id: string | number
+  vm_name: string
   full_clone?: boolean
 }
 
 export interface VmSnapshotRequest extends VmActionRequest {
-  snapshot_name: string
-  description?: string
-  include_ram?: boolean
+  vmtype?: 'qemu' | 'lxc'
+  vmstate?: boolean
+  vm_snapshot_name: string
+  vm_snapshot_description?: string
 }
 
 // =============================================================================
@@ -233,6 +252,7 @@ export interface TemplateInfo {
 }
 
 export interface StorageDownloadIsoRequest {
+  proxmox_host_id?: string
   proxmox_node: ProxmoxNode
   storage: string // e.g., 'local'
   url: string
@@ -260,6 +280,44 @@ export interface BaseNodeData {
   status: 'draft' | 'pending' | 'deploying' | 'running' | 'stopped' | 'error'
   description?: string
   tags?: string[]
+  deployed?: boolean
+  config?: { name?: string }
+}
+
+export interface VmDesiredConfig {
+  name?: string
+  cores?: number
+  memory?: number
+  tags?: string[]
+  description?: string
+}
+
+export interface VmActualConfig {
+  name?: string
+  cores?: number
+  memory?: number
+  tags?: string[]
+  description?: string
+}
+
+export interface PendingChange {
+  field: string
+  label: string
+  desired: unknown
+  actual: unknown
+  category: 'live' | 'restart' | 'redeploy'
+}
+
+export interface LiveMetrics {
+  cpu: number          // 0-100 percentage
+  mem: number          // bytes used
+  maxmem: number       // bytes total
+  memPercent: number   // computed: mem/maxmem * 100
+  uptime: number       // seconds
+  diskRead?: number
+  diskWrite?: number
+  netIn?: number
+  netOut?: number
 }
 
 export interface GroupNodeData extends BaseNodeData {
@@ -287,14 +345,11 @@ export interface RouterNodeData extends BaseNodeData {
   appliance: 'pfsense' | 'opnsense' | 'vyos' | 'custom'
   template?: string // Proxmox template name
   vmId?: number
-  interfaces: {
-    name: string // e.g., 'WAN', 'LAN', 'DMZ'
-    bridge: string
-    address?: string
-    dhcp?: boolean
-  }[]
   cpu?: number
   memory?: number // MB
+  // Network connections are defined by EDGES to network-segment nodes
+  // Each edge represents one interface (WAN, LAN, DMZ, etc.)
+  // Edge data contains: IP address, interface name, VLAN tag, etc.
 }
 
 export interface VmNodeData extends BaseNodeData {
@@ -307,9 +362,8 @@ export interface VmNodeData extends BaseNodeData {
   memory: number // MB
   diskSize: string // e.g., '32G'
   os?: string
-  bridge: string // Primary network
-  ipAddress?: string
-  gateway?: string
+  // Network connections are defined by EDGES to network-segment nodes
+  // Each edge = one NIC with its own IP/config
 }
 
 export interface LxcNodeData extends BaseNodeData {
@@ -320,10 +374,9 @@ export interface LxcNodeData extends BaseNodeData {
   cores: number
   memory: number // MB
   rootfsSize: string
-  bridge: string
-  ipAddress?: string
-  gateway?: string
   unprivileged?: boolean
+  // Network connections are defined by EDGES to network-segment nodes
+  // Each edge = one NIC with its own IP/config
 }
 
 export interface SwitchNodeData extends BaseNodeData {
@@ -351,15 +404,30 @@ export interface SwitchNodeData extends BaseNodeData {
 /**
  * Network connection data stored on edges between nodes.
  * Represents the actual network interface configuration.
+ * 
+ * IMPORTANT: This is the PRIMARY way to define network connections.
+ * Each edge from a device (VM/LXC/Router/Firewall) to a network-segment
+ * represents ONE NIC with its configuration.
  */
 export interface NetworkConnectionData {
+  /** Display name for this interface (e.g., 'WAN', 'LAN', 'eth0') */
+  interfaceName?: string
+  /** NIC model for the virtual interface */
   interfaceModel: 'virtio' | 'e1000' | 'rtl8139'
-  ipAddress?: string        // Static IP (CIDR notation, e.g., '10.0.100.10/24')
-  macAddress?: string       // Custom MAC address (optional)
-  firewall: boolean         // Enable Proxmox firewall on this interface
-  vlanTag?: number          // Optional VLAN tag for this connection
-  mtu?: number              // Custom MTU (optional)
-  rate?: number             // Rate limit in MB/s (optional)
+  /** Static IP in CIDR notation (e.g., '10.0.100.10/24') or 'dhcp' */
+  ipAddress?: string
+  /** Custom MAC address (optional, auto-generated if not set) */
+  macAddress?: string
+  /** Enable Proxmox firewall on this interface */
+  firewall: boolean
+  /** VLAN tag for this connection (overrides segment default) */
+  vlanTag?: number
+  /** Custom MTU (optional, uses bridge default if not set) */
+  mtu?: number
+  /** Rate limit in MB/s (optional) */
+  rate?: number
+  /** Whether this is the default gateway interface */
+  isGateway?: boolean
 }
 
 /**
@@ -384,6 +452,7 @@ export type CanvasNodeData =
 // =============================================================================
 
 export type DeploymentStepType = 
+  | 'noop'
   | 'create_bridge'
   | 'create_vm'
   | 'create_lxc'

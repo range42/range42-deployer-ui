@@ -1,0 +1,140 @@
+{
+  "git": {
+    "saved": "Enregistré sur {branch} · révision {sha}",
+    "failed": "Échec Git : {error}",
+    "publish": "Publier…",
+    "saving": "Enregistrement sur la branche de travail…",
+    "changedDuringSave": "Le projet a changé pendant l’enregistrement. Enregistrez les modifications avant le déploiement."
+  },
+  "tabs": {
+    "canvas": "Canevas",
+    "config": "Configuration",
+    "variables": "Variables",
+    "history": "Historique",
+    "settings": "Paramètres",
+    "import": "Importer"
+  },
+  "problems": {
+    "title": "Problèmes",
+    "none": "Aucun problème détecté.",
+    "open": "Ouvrir le problème"
+  },
+  "activityTerminal": {
+    "title": "Activité",
+    "empty": "Aucune activité pour le moment.",
+    "filterAll": "Tout",
+    "filterProxmox": "Proxmox",
+    "filterDeploy": "Déploiement",
+    "clear": "Effacer",
+    "close": "Fermer le terminal d'activité"
+  },
+  "palette": {
+    "placeholder": "Rechercher des nœuds…",
+    "empty": "Aucun nœud ne correspond à votre recherche."
+  },
+  "fork_to_override": {
+    "action": "Forker pour surcharger",
+    "hint": "Forkez cette entrée de catalogue dans votre propre source pour la personnaliser."
+  },
+  "drift": {
+    "banner": "Ce projet a divergé de sa source amont.",
+    "view": "Voir les divergences",
+    "rebase": "Rebaser sur l'amont"
+  },
+  "save": {
+    "success": "Projet enregistré.",
+    "pr_opened": "Pull request ouverte",
+    "conflict": "Enregistrement bloqué par un conflit — ouvrez la PR pour résoudre.",
+    "offline": "Hors ligne — vos modifications sont mises en file localement."
+  },
+  "attachments": {
+    "section": {
+      "add": "Ajouter une pièce jointe",
+      "empty": "Aucune pièce jointe sur ce nœud"
+    },
+    "editor": {
+      "title": "Titre",
+      "stage": "Étape",
+      "order": "Ordre dans l'étape",
+      "scope": "Portée",
+      "delete": "Supprimer",
+      "close": "Fermer"
+    },
+    "catalog": {
+      "loading": "Chargement du catalogue…",
+      "empty": "Aucune entrée de catalogue trouvée"
+    },
+    "inline": {
+      "label": "YAML en ligne"
+    },
+    "file": {
+      "label": "Téléverser un fichier (≤ 256 Ko)",
+      "size_error": "Le fichier dépasse la limite de 256 Ko"
+    },
+    "git": {
+      "url_label": "URL du dépôt",
+      "sha_label": "SHA du commit (requis)",
+      "ref_label": "Sous-chemin (optionnel)",
+      "security_note": "Le contenu est récupéré au moment du déploiement sur la cible — n'utilisez que des sources fiables et épinglées."
+    }
+  },
+  "deleteNode": {
+    "title": "Supprimer le nœud",
+    "promptProxmox": "Supprimer « {name} » — que faire sur Proxmox ?",
+    "promptCanvas": "Retirer « {name} » du canevas ?",
+    "deleteFromProxmox": "Supprimer de Proxmox",
+    "removeCanvasOnly": "Retirer du canevas uniquement",
+    "cancel": "Annuler",
+    "remove": "Retirer",
+    "mustStopFirst": "Cette VM est en cours d'exécution — arrêtez-la avant de la supprimer de Proxmox.",
+    "destroyWarning": "Ceci détruit définitivement la VM et ses disques.",
+    "groupTitle": "Supprimer le groupe",
+    "promptGroup": "Retirer « {name} » ? Il contient {count} nœuds, groupes imbriqués inclus.",
+    "groupHelp": "Retirez uniquement le groupe pour conserver ses nœuds et connexions à leur place, ou retirez tout son contenu du canevas. Les ressources déployées restent inchangées. Les deux actions peuvent être annulées.",
+    "groupOnly": "Retirer uniquement le groupe",
+    "groupRecursive": "Retirer le groupe et son contenu"
+  },
+  "config": {
+    "loading": "Chargement du fichier enregistré…",
+    "empty": "Aucun fichier enregistré. Ajoutez du contenu au scénario ou importez un élément du catalogue pour créer les fichiers du projet.",
+    "missing": "Le fichier enregistré « {path} » est indisponible. Sélectionnez un autre fichier dans la liste.",
+    "changed": "Ce fichier a changé pendant votre modification. Votre brouillon est conservé. Choisissez la version à garder avant d’enregistrer.",
+    "reload": "Abandonner le brouillon et charger le fichier enregistré",
+    "keepDraft": "Garder mon brouillon pour le prochain enregistrement",
+    "closed": "Cet éditeur est fermé ou le projet a changé. Rouvrez le projet avant d’enregistrer des fichiers."
+  },
+  "addCatalog": "Ajouter depuis le catalogue",
+  "settings": {
+    "title": "Paramètres du projet",
+    "identity": "Identifiant local du projet",
+    "name": "Nom du projet",
+    "nameRequired": "Saisissez un nom de projet.",
+    "save": "Enregistrer le nom du projet",
+    "saved": "Nom du projet enregistré localement.",
+    "repository": "Dépôt",
+    "localOnly": "Ce projet est enregistré dans ce navigateur.",
+    "branch": "Branche de travail",
+    "notSaved": "Créée au premier enregistrement Git",
+    "configureRepository": "Configurer le dépôt",
+    "target": "Nœud Proxmox sélectionné",
+    "noTarget": "Aucun nœud sélectionné pour ce projet.",
+    "configureTarget": "Configurer la cible",
+    "catalogImports": "Ajouts du catalogue ({count})",
+    "sourceRevision": "Révision source",
+    "importCounts": "{nodes} nœuds · {content} contenus · {attachments} pièces jointes"
+  },
+  "history": {
+    "file": "Historique de {path} sur {ref}"
+  },
+  "canvas": {
+    "tools": "Outils du canevas",
+    "select": "Sélection",
+    "pan": "Déplacement",
+    "selectLabel": "Sélectionner des nœuds",
+    "panLabel": "Déplacer le canevas",
+    "selectHelp": "Glissez pour sélectionner · Espace ou bouton droit pour déplacer la vue",
+    "panHelp": "Glissez pour déplacer la vue · Maj + glisser pour sélectionner",
+    "selected": "{count} sélectionnés · Glissez pour déplacer · Échap pour désélectionner",
+    "keyboardHelp": "Glissez sur une zone vide pour sélectionner les nœuds entièrement inclus, puis glissez la sélection pour les déplacer ensemble. Maintenez Espace ou utilisez le bouton droit pour déplacer la vue. Échap efface la sélection. Les flèches sélectionnent un nœud, Entrée ouvre sa configuration et Tab accède aux commandes."
+  }
+}

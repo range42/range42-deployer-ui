@@ -1,0 +1,303 @@
+{
+  "list": {
+    "title": "Déploiements",
+    "subtitle": "Déploiements actifs et historique, groupés par projet.",
+    "active": "Actifs",
+    "past": "Passés",
+    "activeHeading": "Actifs",
+    "pastHeading": "Passés",
+    "noActive": "Aucun déploiement actif.",
+    "noPast": "Aucun déploiement passé pour l'instant.",
+    "emptyAll": "Aucun déploiement pour l'instant. Lancez-en un depuis un projet.",
+    "filters": {
+      "failedOnly": "Échecs uniquement",
+      "inProgressOnly": "En cours uniquement",
+      "clear": "Effacer les filtres"
+    },
+    "row": {
+      "codename": "Nom de code",
+      "scenario": "Scénario",
+      "state": "État",
+      "started": "Lancé",
+      "attempts": "Tentatives",
+      "open": "Ouvrir",
+      "attemptCount": "{n} tentative | {n} tentatives",
+      "noProject": "(sans projet)"
+    },
+    "loading": "Chargement des déploiements…"
+  },
+  "maintenance": {
+    "title": "Mettre à jour le contenu ou supprimer les VM",
+    "description": "La configuration exécute le playbook configure sur les VM existantes. La suppression vérifie leur appartenance au déploiement et conserve les réseaux partagés.",
+    "action": "Action",
+    "configure": "Appliquer le contenu et la configuration enregistrés",
+    "teardown": "Supprimer les VM du déploiement",
+    "revision": "Commit enregistré du projet",
+    "revisionHint": "Utilise par défaut le dernier commit enregistré du projet associé dans ce navigateur. Les VM, l’inventaire et les réseaux doivent rester identiques au déploiement initial.",
+    "invalidSha": "Saisissez le SHA complet du commit enregistré, de 40 ou 64 caractères.",
+    "confirm": "Saisissez {codename} pour confirmer la suppression des VM",
+    "preflight": "Vérifier l’action choisie",
+    "start": "Exécuter l’action vérifiée"
+  },
+  "detail": {
+    "prepareDescription": "Vérifiez les réseaux et les ressources, puis lancez ce déploiement.",
+    "runPreflight": "Vérifier le déploiement",
+    "start": "Lancer le déploiement",
+    "startFailed": "Échec de préparation : {reason}. Vérifiez la configuration du backend avant de réessayer.",
+    "back": "Retour aux déploiements",
+    "cancel": "Annuler le déploiement",
+    "pause": "Pause",
+    "teardown": "Démanteler…",
+    "overview": {
+      "stateChainHeading": "Machine à états",
+      "phaseHeading": "Phase actuelle",
+      "attemptHeading": "Tentative en cours",
+      "lastHeartbeat": "Dernier battement",
+      "noAttempts": "Aucune tentative enregistrée.",
+      "connection": {
+        "label": "Flux",
+        "idle": "inactif",
+        "connecting": "connexion…",
+        "open": "en direct",
+        "retrying": "nouvelle tentative",
+        "closed": "fermé",
+        "exhausted": "déconnecté"
+      }
+    },
+    "teams": {
+      "heading": "Équipes",
+      "empty": "Aucune équipe pour l'instant — elles apparaissent au fil du déploiement."
+    },
+    "logs": {
+      "heading": "Logs",
+      "filterPlaceholder": "Filtrer…",
+      "download": "Télécharger events.jsonl",
+      "empty": "Aucune ligne de log reçue pour l'instant.",
+      "teamFilter": "Affichage des logs de l'équipe {id}",
+      "clearTeamFilter": "Retirer le filtre d'équipe",
+      "showRoutine": "Afficher les tâches ignorées et incluses"
+    },
+    "preflight": "Préalable",
+    "preflightLink": "Voir le rapport préalable",
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "teams": "Équipes",
+      "logs": "Logs"
+    },
+    "notFound": "Déploiement introuvable.",
+    "retired": {
+      "title": "Scénario retiré",
+      "description": "_universal a été retiré. Le démarrage, la reconfiguration, la réinitialisation, les instantanés, la restauration et la destruction de ce scénario historique ne sont plus disponibles. Ses tentatives, équipes et journaux restent consultables.",
+      "replacement": "Ouvrez ou rouvrez le projet, configurez et enregistrez un scénario concret, puis créez un nouveau déploiement depuis son commit Git enregistré. Conservez cette fiche pour consulter l’historique du déploiement initial."
+    }
+  },
+  "team": {
+    "ariaLabel": "Équipe {id}",
+    "menuLabel": "Actions de l'équipe",
+    "openLogs": "Ouvrir les logs de cette équipe",
+    "noLogsYet": "Aucun log.",
+    "queued": "en file",
+    "reset": "Réinitialiser l'équipe",
+    "snapshot": "Snapshot",
+    "rollback": "Restaurer",
+    "copy_ssh": "Copier la commande SSH",
+    "open_terminal": "Ouvrir le terminal",
+    "snapshotCount": "{n} snapshot | {n} snapshots",
+    "status": {
+      "pending": "en attente",
+      "deploying": "déploiement",
+      "deployed": "déployée",
+      "failed": "en échec",
+      "partial": "partielle",
+      "unknown": "inconnu"
+    },
+    "actions": {
+      "reset": "Réinitialiser l'équipe",
+      "snapshot": "Snapshot",
+      "rollback": "Restaurer",
+      "copySsh": "Copier la commande SSH",
+      "openTerminal": "Ouvrir le terminal"
+    }
+  },
+  "deploy": {
+    "pinnedPreflight": "Créez le déploiement pour vérifier la révision du scénario, les réseaux et les ressources avant de le lancer.",
+    "backend": "Backend : {backend}",
+    "backendSameOrigin": "Site actuel",
+    "hostsLoading": "Chargement des hôtes Proxmox…",
+    "hostsEmpty": "Aucun hôte Proxmox enregistré sur ce backend.",
+    "title": "Déployer",
+    "submit": "Déployer",
+    "submitting": "Déploiement…",
+    "fields": {
+      "codename": "Nom de code",
+      "codenamePlaceholder": "nom-court-unique",
+      "scenario": "Libellé du scénario",
+      "scenarioPlaceholder": "ex. demo_lab",
+      "host": "Hôte Proxmox cible",
+      "hostPlaceholder": "Sélectionner un hôte",
+      "teamCount": "Nombre d'équipes",
+      "vault": "Mot de passe Vault",
+      "backendCredentials": "Utilisez les identifiants configurés sur le backend. Aucun mot de passe Vault n’est nécessaire ici.",
+      "vaultOverride": "Utiliser un mot de passe Vault personnalisé pour ce déploiement",
+      "vaultOverrideHint": "Cela remplace le modèle d’identifiants du backend, y compris ses identifiants SSH et Proxmox. Le scénario doit fournir les identifiants chiffrés correspondants."
+    },
+    "err": {
+      "teamCountRange": "Le nombre d’équipes doit être un entier de 1 à 64.",
+      "codenameRequired": "Le nom de code est obligatoire.",
+      "codenameShape": "Commence par une lettre ; lettres, chiffres, tirets et traits de soulignement ; 2 à 32 caractères. Conversion en majuscules.",
+      "codenameTaken": "Ce nom de code est déjà utilisé par un autre déploiement local.",
+      "scenarioRequired": "Le libellé du scénario est obligatoire.",
+      "hostRequired": "Choisissez un hôte Proxmox cible.",
+      "teamCountNaN": "Le nombre d'équipes doit être un nombre.",
+      "teamCountMin": "Le nombre d'équipes doit être au moins 1.",
+      "vaultRequired": "Le mot de passe Vault est obligatoire."
+    },
+    "shaPin": {
+      "heading": "Épinglage SHA",
+      "catalog": "SHA du catalogue",
+      "project": "SHA du projet",
+      "ack": "Je confirme le déploiement avec exactement ces révisions."
+    },
+    "preflight": {
+      "heading": "Validation du projet",
+      "run": "Valider le projet",
+      "running": "En cours…",
+      "blocking": "La validation du projet a signalé des problèmes bloquants. Corrigez-les avant le déploiement.",
+      "acknowledge": "Accepter les avertissements préalables.",
+      "description": "Valide les documents du projet enregistrés. Les réseaux, VM et ressources sont vérifiés avant le déploiement."
+    },
+    "allocationPinRequired": "Enregistrez ce scénario dans Git avec un commit précis avant de transférer sa réservation.",
+    "allocationTargetChanged": "Ces valeurs ont été réservées pour une autre cible ou un autre backend. Revenez à la configuration du scénario et réservez à nouveau avant de les utiliser ici.",
+    "reviewFromHome": "Vérifiez ce projet, puis choisissez Déployer. Les contrôles habituels de sauvegarde et d’enregistrement du backend précèdent la création du déploiement."
+  },
+  "teardown": {
+    "title": "Démanteler le déploiement",
+    "confirmLabel": "Saisissez le nom de code pour confirmer : {codename}",
+    "inputPlaceholder": "Saisissez ici le nom de code",
+    "mismatch": "La valeur saisie ne correspond pas au nom de code.",
+    "cancel": "Annuler",
+    "destroy": "Détruire le déploiement",
+    "destroying": "Destruction…",
+    "error": "Échec du démantèlement."
+  },
+  "reset": {
+    "title": "Réinitialiser l'équipe {id}",
+    "body": "Cela relancera le provisionnement de l'équipe {id}.",
+    "queuedNotice": "Un déploiement est en cours — cette réinitialisation sera mise en file.",
+    "cancel": "Annuler",
+    "confirm": "Réinitialiser",
+    "confirmQueue": "Mettre en file",
+    "queuedToast": "Réinitialisation mise en file pour l'équipe {id}.",
+    "runNowToast": "Réinitialisation en file pour l'équipe {id} — lancer maintenant ?",
+    "runNow": "Lancer",
+    "dismiss": "Ignorer"
+  },
+  "snapshot": {
+    "title": "Créer un snapshot — équipe {id}",
+    "name": "Nom du snapshot",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "error": "Échec de création du snapshot."
+  },
+  "rollback": {
+    "title": "Restaurer l'équipe {id}",
+    "chooseSnapshot": "Choisir un snapshot",
+    "noSnapshots": "Cette équipe n'a encore aucun snapshot.",
+    "cancel": "Annuler",
+    "confirm": "Restaurer",
+    "missingHeader": "Des snapshots requis sont manquants sur certaines VMs :",
+    "partial": "Restaurer uniquement les VMs avec snapshots valides",
+    "error": "Échec de la restauration."
+  },
+  "preflight": {
+    "title": "Rapport préalable",
+    "subtitle": "Instantané immuable des vérifications pour ce déploiement.",
+    "copyLink": "Copier le lien partageable",
+    "linkCopied": "Lien copié",
+    "empty": "Ce rapport ne contient aucune vérification.",
+    "generatedAt": "Généré",
+    "attempt": "Tentative",
+    "summary": {
+      "ok": "Toutes les vérifications sont passées",
+      "warn": "Avertissements non bloquants",
+      "block": "Problèmes bloquants détectés"
+    },
+    "result": {
+      "pass": "ok",
+      "warn": "avert.",
+      "block": "bloqué"
+    },
+    "category": {
+      "resources": "Ressources",
+      "vmids": "VMIDs",
+      "ips": "IP",
+      "sdn": "SDN",
+      "git": "Sources Git",
+      "secrets": "Secrets"
+    },
+    "loadFailed": "Échec du chargement du rapport.",
+    "notFound": "Rapport introuvable.",
+    "loading": "Chargement du rapport préalable…"
+  },
+  "states": {
+    "pending": "en attente",
+    "preflight_running": "préalable en cours",
+    "preflight_review": "revue du préalable",
+    "deploying": "déploiement",
+    "completed": "terminé",
+    "partial": "partiel",
+    "failed": "en échec",
+    "cancelled": "annulé",
+    "unknown": "inconnu"
+  },
+  "phases": {
+    "network": "réseau",
+    "router": "routeur",
+    "vm": "vm",
+    "install": "installation",
+    "configure": "configuration",
+    "validate": "validation"
+  },
+  "allocations": {
+    "title": "Allocations du déploiement",
+    "description": "Ces identifiants de VM et adresses n’expirent pas. Ils restent réservés jusqu’à leur libération explicite.",
+    "loading": "Lecture des allocations…",
+    "refresh": "Actualiser les allocations",
+    "absent": "Aucune allocation permanente n’est enregistrée pour ce déploiement.",
+    "released": "Allocation libérée. Le backend confirme qu’aucune allocation permanente ne subsiste.",
+    "target": "Cible",
+    "revision": "Révision enregistrée du projet",
+    "created": "Réservée depuis",
+    "unnamed": "VM",
+    "noAddresses": "Aucune adresse enregistrée.",
+    "busy": "La libération est indisponible pendant une opération ou lorsque l’état du déploiement est incertain. Actualisez après la fin de l’opération.",
+    "review": "Examiner la libération",
+    "confirmTitle": "Libérer ces allocations ?",
+    "confirmDescription": "Le backend vérifie l’absence de VM allouées et d’opérations actives avant de rendre ces identifiants et adresses réutilisables. La libération conserve l’historique et ne supprime ni machines ni réseaux.",
+    "confirm": "Confirmer la libération",
+    "releasing": "Vérification et libération…",
+    "cancel": "Annuler"
+  },
+  "native": {
+    "workflow": "Déployer le scénario natif complet, avec ses modèles, réseaux et étapes personnalisées.",
+    "loading": "Chargement des options et des environnements de déploiement…",
+    "empty": "Aucun environnement de déploiement connecté. Demandez à un administrateur de connecter les contextes Range42 du deployer-cli.",
+    "environment": "Environnement de déploiement",
+    "choose": "Choisissez un environnement de déploiement prêt.",
+    "features": "Composants facultatifs",
+    "parameters": "Paramètres avancés du scénario",
+    "parametersHint": "Valeurs JSON propres au scénario. Conservez les identifiants dans le coffre de l’environnement.",
+    "invalidParameters": "Utilisez un objet JSON avec des valeurs simples. Les variables d’environnement et les options sont gérées séparément.",
+    "credentials": "Inventaire, identifiants et accès SSH proviennent du contexte Range42 sélectionné.",
+    "full": "Déployer le scénario complet",
+    "configure": "Configurer",
+    "deploy_vms": "Déployer uniquement les VM",
+    "teardown": "Supprimer les VM et modèles du scénario",
+    "delete_vms": "Supprimer uniquement les VM",
+    "reset": "Réinitialiser le scénario",
+    "deploy_networks": "Créer les réseaux du scénario",
+    "delete_networks": "Supprimer les réseaux du scénario",
+    "pinned": "Ces actions utilisent la révision du dépôt enregistrée pour ce déploiement."
+  }
+}

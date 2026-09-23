@@ -1,20 +1,111 @@
 {
-  "title": "Range42",
-  "subtitle": "Cyber Range Infrastructure Builder",
-  "currentProject": "Current Project",
-  "untitledProject": "Untitled Project",
-  "componentsCount": "{count} components",
-  "infrastructure.title": "Infrastructure Components",
-  "statusLegend.title": "Status Legend",
-  "statusLegend.incomplete": "Incomplete Configuration",
-  "statusLegend.ready": "Ready to Deploy",
-  "statusLegend.deployed": "Deployed",
-  "statusLegend.deployedRunning": "Deployed & Running",
-  "statusLegend.inProgress": "In Progress",
-  "statusLegend.error": "Error / Failed",
-  "quickActions.title": "Quick Actions",
-  "quickActions.export": "Export Topology",
-  "quickActions.deploySoon": "Deploy Infrastructure (Coming Soon)",
-  "quickActions.validateSoon": "Validate Configuration (Coming Soon)",
-  "language.label": "Language"
+  "projectTools": "Project tools",
+  "closeTools": "Close project tools",
+  "currentProject": "Current project",
+  "untitledProject": "Untitled project",
+  "components": "Components",
+  "addHint": "Click to add, or drag onto the canvas.",
+  "resources": "Resources",
+  "statusTitle": "Node status",
+  "validate": "Validate",
+  "deploy": "Deploy",
+  "language": {
+    "label": "Language"
+  },
+  "categories": {
+    "compute": "Compute",
+    "network": "Network",
+    "organization": "Organization"
+  },
+  "catalog": {
+    "title": "Add from catalog",
+    "description": "Machines, roles & workloads"
+  },
+  "resourcesItems": {
+    "templates": {
+      "title": "Templates & ISOs",
+      "description": "Browse Proxmox storage"
+    },
+    "import": {
+      "title": "Import infrastructure",
+      "description": "Existing Proxmox guests"
+    },
+    "export": {
+      "title": "Export topology",
+      "description": "Download project files"
+    }
+  },
+  "statuses": {
+    "gray": "Incomplete",
+    "orange": "Ready",
+    "green": "Running",
+    "red": "Error",
+    "blue": "Deploying"
+  },
+  "navigation": {
+    "primary": "Primary",
+    "workspace": "Workspace",
+    "manage": "Manage",
+    "projects": "Projects",
+    "catalog": "Catalog",
+    "deployments": "Deployments",
+    "sources": "Sources",
+    "settings": "Settings",
+    "deployer": "Deployer",
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "open": "Open navigation",
+    "close": "Close navigation",
+    "title": "Navigation",
+    "breadcrumb": "Breadcrumb",
+    "skip": "Skip to content"
+  },
+  "items": {
+    "vm": {
+      "label": "Virtual machine",
+      "description": "Clone a VM template",
+      "add": "Add virtual machine"
+    },
+    "lxc": {
+      "label": "LXC container",
+      "description": "Plan a container guest",
+      "add": "Add LXC container"
+    },
+    "docker": {
+      "label": "Docker workload",
+      "description": "Run on a VM or container",
+      "add": "Add Docker workload"
+    },
+    "network-segment": {
+      "label": "Network",
+      "description": "Connect project machines",
+      "add": "Add network"
+    },
+    "router": {
+      "label": "Router",
+      "description": "Add a network appliance",
+      "add": "Add router"
+    },
+    "edge-firewall": {
+      "label": "Firewall",
+      "description": "Add a firewall appliance",
+      "add": "Add firewall"
+    },
+    "group": {
+      "label": "Group",
+      "description": "Organize related components",
+      "add": "Add group"
+    },
+    "note": {
+      "label": "Note",
+      "description": "Add text to the canvas",
+      "add": "Add note"
+    }
+  },
+  "searchProject": "Search project",
+  "undo": "Undo",
+  "redo": "Redo",
+  "projectActions": "Project actions",
+  "nodeCount": "No nodes | 1 node | {count} nodes",
+  "edgeCount": "No connections | 1 connection | {count} connections"
 }

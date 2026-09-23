@@ -1,48 +1,95 @@
 <script setup>
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import AppIcon from '@/components/icons/AppIcon.vue'
+import { getTagColor } from '@/constants/tags'
+import { resolveNodeStatus } from '@/composables/useNodeStatus'
 
 const props = defineProps(['data', 'selected'])
 
-const statusClass = computed(() => {
-  const status = props.data?.status || 'gray'
-  return `status-${status}`
-})
+const statusView = computed(() =>
+  resolveNodeStatus(props.data?.status, props.data?.pendingAction),
+)
+const statusClass = computed(() => `status-${statusView.value.dotColor}`)
+const displayTags = computed(() => (props.data?.tags || []).slice(0, 3))
+const overflowCount = computed(() => Math.max(0, (props.data?.tags || []).length - 3))
+
+const metrics = computed(() => props.data?.liveMetrics)
+
+function barColor(percent) {
+  if (percent > 80) return '#ef4444'  // red
+  if (percent > 50) return '#f59e0b'  // amber
+  return '#22c55e'                     // green
+}
 </script>
 
 <template>
   <div
     class="infra-node"
-    :class="[statusClass, { 'ring-2 ring-primary ring-offset-2': selected }]"
+    :class="[statusClass, { 'is-selected': selected }]"
   >
     <!-- Header -->
-    <div class="flex items-center justify-between mb-2.5">
-      <div class="flex items-center gap-2">
+    <div class="node-header">
+      <div class="node-identity">
         <div class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-          <span class="text-lg">📦</span>
+          <AppIcon name="cube" class="w-5 h-5" />
         </div>
         <div>
-          <div class="font-semibold text-sm">
+          <div :title="data?.config?.name" class="node-title">
             {{ data.config?.name || 'Container' }}
           </div>
-          <div class="text-[10px] text-base-content/50 uppercase tracking-wide">LXC</div>
+          <div class="text-[11px] text-base-content/75 uppercase tracking-wide">LXC</div>
         </div>
       </div>
-      <div :class="`status-dot ${data?.status || 'gray'}`"></div>
+      <div class="node-status flex items-center gap-1.5">
+        <span v-if="data?.pendingAction" class="text-[11px] opacity-70 capitalize">{{ statusView.label }}</span>
+        <div :class="['status-dot', statusView.dotColor, { pulse: statusView.pulse }]"></div>
+      </div>
     </div>
 
-    <!-- Specs -->
-    <div class="grid grid-cols-2 gap-1.5 text-xs">
+    <!-- Tags -->
+    <div v-if="displayTags.length" class="flex gap-1 flex-wrap mb-1.5">
+      <span
+        v-for="tag in displayTags"
+        :key="tag"
+        class="node-tag" :title="tag"
+        :style="{ '--tag-accent': getTagColor(tag).hex }"
+      >{{ tag }}</span>
+      <span v-if="overflowCount > 0" class="text-[11px] text-base-content/75">+{{ overflowCount }}</span>
+    </div>
+
+    <!-- Live metrics (running) or static specs (stopped) -->
+    <div v-if="metrics" class="grid grid-cols-2 gap-1.5 text-xs">
+      <div class="flex items-center gap-1 px-2 py-1">
+        <span class="text-base-content/75 text-[11px]">CPU</span>
+        <div class="flex-1 h-1 bg-base-content/10 rounded-full overflow-hidden">
+          <div class="h-full rounded-full transition-[width] duration-500" :style="{ width: metrics.cpu + '%', backgroundColor: barColor(metrics.cpu) }"></div>
+        </div>
+        <span class="text-[11px] font-medium min-w-[28px] text-right">{{ Math.round(metrics.cpu) }}%</span>
+      </div>
+      <div class="flex items-center gap-1 px-2 py-1">
+        <span class="text-base-content/75 text-[11px]">RAM</span>
+        <div class="flex-1 h-1 bg-base-content/10 rounded-full overflow-hidden">
+          <div class="h-full rounded-full transition-[width] duration-500" :style="{ width: metrics.memPercent + '%', backgroundColor: barColor(metrics.memPercent) }"></div>
+        </div>
+        <span class="text-[11px] font-medium min-w-[28px] text-right">{{ metrics.memPercent }}%</span>
+      </div>
+      <div v-if="data.config?.template" class="col-span-2 flex items-center gap-1 bg-base-200/50 rounded px-2 py-1">
+        <span class="text-base-content/75">Template</span>
+        <span class="font-medium ml-auto truncate max-w-[100px]">{{ data.config.template }}</span>
+      </div>
+    </div>
+    <div v-else class="grid grid-cols-2 gap-1.5 text-xs">
       <div v-if="data.config?.cpu" class="flex items-center gap-1 bg-base-200/50 rounded px-2 py-1">
-        <span class="text-base-content/50">CPU</span>
+        <span class="text-base-content/75">CPU</span>
         <span class="font-medium ml-auto">{{ data.config.cpu }}</span>
       </div>
       <div v-if="data.config?.memory" class="flex items-center gap-1 bg-base-200/50 rounded px-2 py-1">
-        <span class="text-base-content/50">RAM</span>
+        <span class="text-base-content/75">RAM</span>
         <span class="font-medium ml-auto">{{ data.config.memory }}</span>
       </div>
       <div v-if="data.config?.template" class="col-span-2 flex items-center gap-1 bg-base-200/50 rounded px-2 py-1">
-        <span class="text-base-content/50">Template</span>
+        <span class="text-base-content/75">Template</span>
         <span class="font-medium ml-auto truncate max-w-[100px]">{{ data.config.template }}</span>
       </div>
     </div>

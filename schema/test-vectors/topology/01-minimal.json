@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "kind": "gamenet",
+  "name": "Minimal single-team topology",
+  "naming_prefix": "min",
+  "bridge_base": 140,
+  "nodes": [
+    {
+      "id": "host-01",
+      "kind": "vm",
+      "role": "admin",
+      "replication": { "scope": "shared" },
+      "template_vmid": 9001,
+      "config": { "cores": 1, "memory": 1024 },
+      "attachments": []
+    }
+  ]
+}

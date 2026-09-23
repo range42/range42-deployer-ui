@@ -1,0 +1,46 @@
+{
+  "provider": "gitea",
+  "started": "2026-09-11T07:43:15.901Z",
+  "checks": [
+    "opened canvas/forms/files from one exact commit",
+    "kept original identity when unused locally",
+    "working branch seeded from reviewed SHA after source advanced",
+    "unmanaged repository file preserved",
+    "selected source branch unchanged by Save",
+    "same immutable metadata and binary bytes in public PR/MR and private branch",
+    "both published revisions reopen structured forms",
+    "both repository main branches unchanged"
+  ],
+  "repositories": {
+    "public": "r42reopen/range42-reopen-public",
+    "private": "r42reopen/range42-reopen-private"
+  },
+  "branches": {
+    "selected": "range42-acceptance/reopen-selected-20260911-6cee296d1a",
+    "public_base": "range42-acceptance/reopen-public-base-20260911-6cee296d1a",
+    "private": "range42-acceptance/reopen-private-20260911-6cee296d1a",
+    "working": "range42-ui/open-0c1476578fa4412c9235e132ed9d31e4"
+  },
+  "commits": {
+    "loaded": "b09b4f197f20960be841be02ba948ad13e18b20f",
+    "selected_advanced": "8914b15fa929ae838fe0c9b93c6d2b5b4427fe1b",
+    "reopened_saved": "332f7c854e8460c5b203e9df1cd5eb08e40e3365"
+  },
+  "publication": [
+    {
+      "target_id": "public-6cee296d1a",
+      "mode": "pull_request",
+      "branch": "range42-publish/0b231c91cd55b8095d826610f637417b882e1e0ef22914c851aaf1c85fcc9645",
+      "commit_sha": "8e8caab169ca1bab52239e69bdd596a00fbe5aad",
+      "pr_url": "http://127.0.0.1:3301/r42reopen/range42-reopen-public/pulls/1",
+      "pr_number": 1
+    },
+    {
+      "target_id": "private-6cee296d1a",
+      "mode": "direct",
+      "branch": "range42-acceptance/reopen-private-20260911-6cee296d1a",
+      "commit_sha": "6d0e66f4c1e088406fb448ddcde6b4640f4d1458"
+    }
+  ],
+  "finished": "2026-09-11T07:43:32.318Z"
+}

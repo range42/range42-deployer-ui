@@ -1,0 +1,31 @@
+{
+  "welcome": "Welcome to Range42",
+  "welcome_sub": "Finish a few steps to start building cyber range scenarios.",
+  "banner": {
+    "title": "Finish setting up Range42",
+    "body": "Add a Git source and a backend-api host to start deploying. You can keep building in the meantime.",
+    "open": "Open setup",
+    "dismiss": "Dismiss"
+  },
+  "wizard": {
+    "title": "Set up Range42",
+    "close": "Close"
+  },
+  "checklist": {
+    "done": "Done",
+    "pending": "Pending",
+    "go": "Go",
+    "add_source": {
+      "title": "Connect the public catalog",
+      "desc": "Connect and index the default Range42 catalog without a Git token, or add your own repository."
+    },
+    "add_backend": {
+      "title": "Add a backend-api host",
+      "desc": "Register a backend-api host (its URL plus the Proxmox node it targets) so Range42 can deploy your scenarios."
+    },
+    "browse_catalog": {
+      "title": "Browse the catalog",
+      "desc": "Pick a scenario, component, or lab to start a new project."
+    }
+  }
+}

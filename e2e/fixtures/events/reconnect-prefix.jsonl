@@ -1,0 +1,3 @@
+{"event_type":"attempt_start","event_seq":1200,"attempt_id":"a-1","ts":"2026-04-14T10:00:00Z","payload":{"attempt_id":"a-1"}}
+{"event_type":"state_transition","event_seq":1201,"attempt_id":"a-1","ts":"2026-04-14T10:00:01Z","payload":{"from":"preflight","to":"deploying"}}
+{"event_type":"phase_transition","event_seq":1202,"attempt_id":"a-1","ts":"2026-04-14T10:00:02Z","payload":{"to":"vm"}}

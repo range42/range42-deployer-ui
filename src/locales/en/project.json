@@ -1,0 +1,140 @@
+{
+  "git": {
+    "saved": "Saved to {branch} · revision {sha}",
+    "failed": "Git save failed: {error}",
+    "publish": "Publish…",
+    "saving": "Saving to the working branch…",
+    "changedDuringSave": "The project changed while saving. Save the current changes before deploying."
+  },
+  "tabs": {
+    "canvas": "Canvas",
+    "config": "Config",
+    "variables": "Variables",
+    "history": "History",
+    "settings": "Settings",
+    "import": "Import"
+  },
+  "problems": {
+    "title": "Problems",
+    "none": "No problems detected.",
+    "open": "Open problem"
+  },
+  "activityTerminal": {
+    "title": "Activity",
+    "empty": "No activity yet.",
+    "filterAll": "All",
+    "filterProxmox": "Proxmox",
+    "filterDeploy": "Deploy",
+    "clear": "Clear",
+    "close": "Close activity terminal"
+  },
+  "palette": {
+    "placeholder": "Search nodes…",
+    "empty": "No nodes match your search."
+  },
+  "fork_to_override": {
+    "action": "Fork to override",
+    "hint": "Fork this catalog entry into your own source to customise it."
+  },
+  "drift": {
+    "banner": "This project has drifted from its upstream source.",
+    "view": "View drift details",
+    "rebase": "Rebase onto upstream"
+  },
+  "save": {
+    "success": "Project saved.",
+    "pr_opened": "Pull request opened",
+    "conflict": "Save blocked by a conflict — open the PR to resolve.",
+    "offline": "Offline — your changes are queued locally."
+  },
+  "attachments": {
+    "section": {
+      "add": "Add attachment",
+      "empty": "No attachments on this node"
+    },
+    "editor": {
+      "title": "Title",
+      "stage": "Stage",
+      "order": "Order in stage",
+      "scope": "Scope",
+      "delete": "Delete",
+      "close": "Close"
+    },
+    "catalog": {
+      "loading": "Loading catalog…",
+      "empty": "No catalog entries found"
+    },
+    "inline": {
+      "label": "Inline YAML"
+    },
+    "file": {
+      "label": "Upload file (≤ 256 KB)",
+      "size_error": "File exceeds the 256 KB limit"
+    },
+    "git": {
+      "url_label": "Repository URL",
+      "sha_label": "Commit SHA (required)",
+      "ref_label": "Subpath (optional)",
+      "security_note": "Content is fetched at deploy time on the target — use only trusted, pinned sources."
+    }
+  },
+  "deleteNode": {
+    "title": "Delete node",
+    "promptProxmox": "Delete \"{name}\" — what should happen on Proxmox?",
+    "promptCanvas": "Remove \"{name}\" from the canvas?",
+    "deleteFromProxmox": "Delete from Proxmox",
+    "removeCanvasOnly": "Remove from canvas only",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "mustStopFirst": "This VM is running — stop it before deleting from Proxmox.",
+    "destroyWarning": "This permanently destroys the VM and its disks.",
+    "groupTitle": "Delete group",
+    "promptGroup": "Remove “{name}”? It contains {count} nodes, including nested groups.",
+    "groupHelp": "Remove only the group to keep its nodes and connections in place, or remove all of its contents from the canvas. Deployed resources are unchanged. You can undo either choice.",
+    "groupOnly": "Remove group only",
+    "groupRecursive": "Remove group and contents"
+  },
+  "config": {
+    "loading": "Loading saved file…",
+    "empty": "No saved files yet. Add content to the scenario or import a catalog item to create project files.",
+    "missing": "The saved file “{path}” is unavailable. Select another file from the list.",
+    "changed": "This file changed while you were editing. Your draft is preserved. Choose which version to keep before saving.",
+    "reload": "Discard draft and load saved file",
+    "keepDraft": "Keep my draft for the next save",
+    "closed": "This project editor is closed or the project has changed. Reopen the project before saving files."
+  },
+  "addCatalog": "Add from catalog",
+  "settings": {
+    "title": "Project settings",
+    "identity": "Local project ID",
+    "name": "Project name",
+    "nameRequired": "Enter a project name.",
+    "save": "Save project name",
+    "saved": "Project name saved locally.",
+    "repository": "Repository",
+    "localOnly": "This project is saved in this browser.",
+    "branch": "Working branch",
+    "notSaved": "Created on the first Git save",
+    "configureRepository": "Configure repository",
+    "target": "Selected Proxmox node",
+    "noTarget": "No node selected for this project.",
+    "configureTarget": "Configure target",
+    "catalogImports": "Added from catalog ({count})",
+    "sourceRevision": "Source revision",
+    "importCounts": "{nodes} nodes · {content} content items · {attachments} attachments"
+  },
+  "history": {
+    "file": "History for {path} at {ref}"
+  },
+  "canvas": {
+    "tools": "Canvas tools",
+    "select": "Select",
+    "pan": "Pan",
+    "selectLabel": "Select nodes",
+    "panLabel": "Pan canvas",
+    "selectHelp": "Drag to select · Space or right-drag to pan",
+    "panHelp": "Drag to pan · Shift-drag to select",
+    "selected": "{count} selected · Drag to move · Esc to clear",
+    "keyboardHelp": "Drag an empty area to select the nodes fully inside it, then drag the selection to move them together. Hold Space or use the right mouse button to pan. Escape clears selection. Use arrow keys to select a node, Enter to configure it, and Tab to reach canvas controls."
+  }
+}

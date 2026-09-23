@@ -1,155 +1,100 @@
 <script setup>
 import { computed } from 'vue'
-import { Handle, Position } from '@vue-flow/core'
-import { NodeResizer } from '@vue-flow/node-resizer'
+import { Handle, Position, useVueFlow } from '@vue-flow/core'
+import { useI18n } from 'vue-i18n'
+import { getNetworkColor } from '@/constants/networkColors'
+import { connectedNetworkDevices } from '@/services/networkConnections'
 
-const props = defineProps(['data', 'selected'])
-
-const statusColor = computed(() => {
-  switch (props.data.status) {
-    case 'gray':
-      return 'bg-gray-400'
-    case 'orange':
-      return 'bg-orange-400'
-    case 'green':
-      return 'bg-green-400'
-    case 'red':
-      return 'bg-red-400'
-    default:
-      return 'bg-gray-400'
-  }
+const props = defineProps(['id', 'data', 'selected', 'connectable'])
+const { getEdges, findNode } = useVueFlow()
+const { t } = useI18n()
+const config = computed(() => props.data?.config || {})
+const segmentType = computed(() => ['wan', 'lan', 'dmz', 'management'].includes(config.value.segmentType)
+  ? config.value.segmentType : 'custom')
+const color = computed(() => getNetworkColor(segmentType.value))
+const devices = computed(() => {
+  const ids = new Set(getEdges.value.flatMap(edge => [edge.source, edge.target]))
+  const nodes = [...ids].map(id => findNode(id)).filter(Boolean)
+  return connectedNetworkDevices(props.id, nodes, getEdges.value)
 })
+const statusColor = computed(() => ({ green: '#22c55e', orange: '#f59e0b', red: '#ef4444', blue: '#3b82f6' })[props.data?.status] || '#94a3b8')
+const targets = [
+  { id: 'top-1', position: Position.Top, style: { left: '25%' } },
+  { id: 'top-2', position: Position.Top, style: { left: '50%' } },
+  { id: 'top-3', position: Position.Top, style: { left: '75%' } },
+  { id: 'bottom-1', position: Position.Bottom, style: { left: '25%' } },
+  { id: 'bottom-2', position: Position.Bottom, style: { left: '50%' } },
+  { id: 'bottom-3', position: Position.Bottom, style: { left: '75%' } },
+  { id: 'left-1', position: Position.Left, style: { top: '35%' } },
+  { id: 'left-2', position: Position.Left, style: { top: '65%' } },
+  { id: 'right-1', position: Position.Right, style: { top: '35%' } },
+  { id: 'right-2', position: Position.Right, style: { top: '65%' } },
+]
+const sources = [
+  { id: 'out-top', position: Position.Top, style: { left: '88%' } },
+  { id: 'out-bottom', position: Position.Bottom, style: { left: '88%' } },
+  { id: 'out-left', position: Position.Left, style: { top: '50%' } },
+  { id: 'out-right', position: Position.Right, style: { top: '50%' } },
+]
 </script>
 
 <template>
-  <div
-    class="network-container relative w-full h-full"
-    :class="{
-      'ring-2 ring-primary ring-offset-2': selected,
-      'shadow-lg': selected,
-    }"
-  >
-    <!-- Node Resizer with constraints -->
-    <NodeResizer 
-      min-width="250" 
-      min-height="200" 
-      max-width="800" 
-      max-height="600"
-      :style="{ 
-        background: selected ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-        border: selected ? '1px solid rgb(59, 130, 246)' : 'none'
-      }"
-    />
-
-    <!-- Network Background - This will now scale with the container -->
-    <div 
-      class="absolute inset-0 rounded-xl transition-all duration-200"
-      :class="{
-        'bg-blue-50 dark:bg-blue-950/20': true,
-        'border-2 border-dashed border-blue-300 dark:border-blue-600': true,
-        'hover:bg-blue-100 dark:hover:bg-blue-950/30 hover:border-blue-400 dark:hover:border-blue-500': true,
-      }"
-    />
-
-    <!-- Network Header -->
-    <div class="absolute top-3 left-4 right-4 flex items-center justify-between pointer-events-none z-10">
-      <div class="flex items-center space-x-2">
-        <div :class="`w-3 h-3 rounded-full ${statusColor}`"></div>
-        <span class="text-lg">🌐</span>
-        <span class="text-sm font-medium text-base-content">
-          {{ data.config?.name || 'Network Zone' }}
-        </span>
+  <section class="network-segment-node" :class="{ selected }"
+    :style="{ '--network-accent': color.stroke }" :data-network-type="segmentType">
+    <header class="network-header">
+      <div class="network-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="7" y="7" width="10" height="10" rx="2" />
+          <path d="M10 2v5m4-5v5m-4 10v5m4-5v5M2 10h5m-5 4h5m10-4h5m-5 4h5M10 10h4v4h-4z" />
+        </svg>
       </div>
-      <div class="text-xs opacity-60 uppercase tracking-wide bg-base-100/90 dark:bg-base-300/90 px-2 py-1 rounded backdrop-blur-sm">
-        Network
+      <div class="min-w-0 flex-1">
+        <div class="network-kind">{{ t(`configPanel.network.types.${segmentType}`) }}</div>
+        <h3 class="truncate font-semibold" :title="config.name || data?.label">{{ config.name || data?.label || t('configPanel.network.title') }}</h3>
       </div>
+      <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: statusColor }" aria-hidden="true" />
+    </header>
+    <div class="network-address" :class="{ 'text-sm text-base-content/75': !config.cidr }">
+      {{ config.cidr || t('configPanel.network.noAddress') }}
     </div>
-
-    <!-- Network Details -->
-    <div class="absolute top-11 left-4 text-xs pointer-events-none z-10 flex flex-wrap gap-1">
-      <div v-if="data.config?.bridge" class="bg-primary/20 text-primary-content px-2 py-1 rounded backdrop-blur-sm">
-        🔌 {{ data.config.bridge }}{{ data.config.vlan ? `:${data.config.vlan}` : '' }}
-      </div>
-      <div v-if="data.config?.cidr" class="bg-base-100/90 dark:bg-base-300/90 text-base-content px-2 py-1 rounded backdrop-blur-sm">
-        {{ data.config.cidr }}
-      </div>
-      <div v-if="data.config?.gateway" class="bg-base-100/90 dark:bg-base-300/90 text-base-content px-2 py-1 rounded backdrop-blur-sm">
-        GW: {{ data.config.gateway }}
-      </div>
-    </div>
-
-    <!-- Drop Zone Hint (when empty) - Now properly centered -->
-    <div 
-      v-if="!data.hasChildren" 
-      class="absolute inset-0 flex items-center justify-center pointer-events-none z-5"
-    >
-      <div class="text-center opacity-40 text-base-content">
-        <div class="text-3xl mb-2">📦</div>
-        <div class="text-sm font-medium">Drop VMs and containers here</div>
-        <div class="text-xs mt-1">Drag components into this network zone</div>
-      </div>
-    </div>
-
-    <!-- Connection Handles with better positioning -->
-    <Handle 
-      type="target" 
-      :position="Position.Top" 
-      class="!bg-blue-500 !border-2 !border-blue-600 !w-4 !h-4 !rounded-full"
-      :style="{ top: '-8px', left: '50%', transform: 'translateX(-50%)' }"
-    />
-    <Handle 
-      type="source" 
-      :position="Position.Bottom" 
-      class="!bg-blue-500 !border-2 !border-blue-600 !w-4 !h-4 !rounded-full"
-      :style="{ bottom: '-8px', left: '50%', transform: 'translateX(-50%)' }"
-    />
-    <Handle 
-      type="source" 
-      :position="Position.Left" 
-      class="!bg-blue-500 !border-2 !border-blue-600 !w-4 !h-4 !rounded-full"
-      :style="{ left: '-8px', top: '50%', transform: 'translateY(-50%)' }"
-    />
-    <Handle 
-      type="source" 
-      :position="Position.Right" 
-      class="!bg-blue-500 !border-2 !border-blue-600 !w-4 !h-4 !rounded-full"
-      :style="{ right: '-8px', top: '50%', transform: 'translateY(-50%)' }"
-    />
-  </div>
+    <dl class="network-details">
+      <div><dt>{{ t('configPanel.network.bridge') }}</dt><dd>{{ config.bridge || '—' }}</dd></div>
+      <div v-if="config.vlan != null && config.vlan !== ''"><dt>VLAN</dt><dd>{{ config.vlan }}</dd></div>
+      <div v-if="config.gateway" class="network-gateway"><dt>{{ t('configPanel.fields.gateway') }}</dt><dd>{{ config.gateway }}</dd></div>
+    </dl>
+    <p v-if="config.description" class="px-4 pb-3 text-xs text-base-content/75 line-clamp-2">{{ config.description }}</p>
+    <footer class="network-footer">
+      <span class="size-1.5 rounded-full" :style="{ backgroundColor: color.stroke }" aria-hidden="true" />
+      {{ t('configPanel.network.devices', devices.length) }}
+    </footer>
+    <Handle v-for="port in targets" :key="port.id" :id="port.id" type="target"
+      :position="port.position" :style="port.style" :connectable="connectable" class="network-port" />
+    <Handle v-for="port in sources" :key="port.id" :id="port.id" type="source"
+      :position="port.position" :style="port.style" :connectable="connectable" class="network-port network-port-source" />
+  </section>
 </template>
 
 <style scoped>
-.network-container {
-  /* Ensure the container takes full available space */
-  min-width: 250px;
-  min-height: 200px;
+:global(.vue-flow__node-network-segment) { width: 280px; }
+.network-segment-node {
+  width: 100%; height: 100%; min-width: 240px; border: 1px solid var(--color-base-300);
+  border-top: 3px solid var(--network-accent); border-radius: 12px;
+  color: var(--color-base-content); background: var(--color-base-100);
+  box-shadow: 0 3px 12px #0000000a;
 }
-
-/* Smooth transitions for all interactive states */
-.network-container * {
-  transition: all 0.2s ease;
-}
-
-/* Ensure proper layering of child nodes */
-.network-container :deep(.vue-flow__node) {
-  z-index: 10;
-  position: relative;
-}
-
-/* Handle hover effects */
-.network-container:hover :deep(.vue-flow__handle) {
-  opacity: 1;
-  transform: scale(1.1);
-}
-
-/* Default handle state */
-.network-container :deep(.vue-flow__handle) {
-  opacity: 0.7;
-  transition: all 0.2s ease;
-}
-
-/* Ensure proper backdrop for network info */
-.network-container .backdrop-blur-sm {
-  backdrop-filter: blur(4px);
-}
+.network-segment-node:hover { box-shadow: var(--shadow-md); }
+.network-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 12px; }
+.network-icon { padding: 7px; border-radius: 8px; color: var(--network-accent); background: color-mix(in srgb, var(--network-accent) 10%, transparent); }
+.network-icon svg { width: 21px; height: 21px; }
+.network-kind { font-size: 11px; line-height: 1.6; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--network-accent); }
+.network-address { margin: 0 16px 12px; font: 600 16px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+.network-details { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0 16px 14px; font-size: 11px; }
+.network-details > div { display: flex; align-items: baseline; gap: 8px; }
+.network-details dt { color: color-mix(in oklab, var(--color-base-content) 75%, transparent); }
+.network-details dd { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.network-gateway { width: 100%; }
+.network-footer { display: flex; align-items: center; gap: 7px; padding: 9px 16px; border-top: 1px solid var(--color-base-300); font-size: 11px; }
+.network-port { width: 9px; height: 9px; border: 2px solid var(--color-base-100); background: var(--network-accent); opacity: .85; }
+.network-port-source { width: 11px; height: 11px; border-radius: 3px; opacity: .85; }
+.network-segment-node:hover .network-port, .network-segment-node.selected .network-port { opacity: 1; }
 </style>

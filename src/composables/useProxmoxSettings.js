@@ -85,7 +85,12 @@ function deleteCookie(name) {
 // Legacy alias for backwards compatibility
 export const normalizeProxmoxBaseUrl = normalizeBackendApiUrl
 
-export const useProxmoxSettingsStore = defineStore('proxmoxSettings', () => {
+// NOTE: This per-project, cookie-backed store MUST use a different Pinia id
+// from the global `proxmoxSettingsStore` (id 'proxmoxSettings', localStorage).
+// They are distinct concerns and previously collided on the same id, which
+// caused Pinia to return whichever registered first — corrupting state for the
+// other consumer. See GitHub issue #45.
+export const useProxmoxSettingsStore = defineStore('proxmoxProjectSettings', () => {
   // Reactive state
   const settings = ref({})
 

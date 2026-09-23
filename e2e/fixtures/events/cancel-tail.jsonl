@@ -1,0 +1,2 @@
+{"event_type":"state_transition","event_seq":8,"attempt_id":"a-1","ts":"2026-04-14T10:00:07Z","payload":{"from":"deploying","to":"cancelled"}}
+{"event_type":"attempt_end","event_seq":9,"attempt_id":"a-1","ts":"2026-04-14T10:00:08Z","payload":{"attempt_id":"a-1","terminal_state":"cancelled"}}

@@ -7,27 +7,36 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: {
     host: '0.0.0.0',
-    port: 3002,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-  optimizeDeps: {
-    exclude: ['@sqlite.org/sqlite-wasm'],
+    port: parseInt(process.env.VITE_DEV_PORT || '3000', 10),
+    hmr: process.env.VITE_HMR_HOST
+      ? { host: process.env.VITE_HMR_HOST }
+      : undefined,
+    proxy: process.env.VITE_API_URL
+      ? {
+          '/v0': { target: process.env.VITE_API_URL, changeOrigin: true },
+          // /v1 is the build-from-scratch API surface (deployments, projects,
+          // proxmox hosts, preflight, SSE events). Without this the browser's
+          // v1 calls hit the dev server (404) instead of the backend.
+          '/v1': { target: process.env.VITE_API_URL, changeOrigin: true },
+          '/ws': { target: process.env.VITE_API_URL.replace(/^http/, 'ws'), ws: true },
+        }
+      : undefined,
   },
   plugins: [
     vue(),
     vueJsx(),
-    vueDevTools(),
+    mode === 'development' && vueDevTools(),
     tailwindcss(),
-  ],
+  ].filter(Boolean),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
-})
+  worker: {
+    format: 'es',
+  },
+}))

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useInfrastructureImport } from '@/composables/useInfrastructureImport'
 import { setBaseUrl } from '@/services/proxmox/api'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 // Props — receive config from ProjectEditor (per-project settings)
 const props = defineProps<{
@@ -83,9 +84,9 @@ function getStatusBadge(status: string | undefined) {
 
 // Load on mount: configure API client from props and fetch
 onMounted(() => {
-  if (isConfigured.value) {
-    setBaseUrl(props.apiUrl!)
-    setNode(props.proxmoxNode!)
+  if (props.apiUrl && props.proxmoxNode) {
+    setBaseUrl(props.apiUrl)
+    setNode(props.proxmoxNode)
     fetchResources()
   }
 })
@@ -97,7 +98,7 @@ onMounted(() => {
       <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold flex items-center gap-2">
-          <span>📥</span>
+          <AppIcon name="inbox" class="w-5 h-5" />
           Import Infrastructure
         </h2>
         <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
@@ -105,7 +106,7 @@ onMounted(() => {
 
       <!-- Not Configured Warning -->
       <div v-if="!isConfigured" class="alert alert-warning mb-4">
-        <span>⚠️ Proxmox connection not configured. Please configure your Proxmox settings first.</span>
+        <span>Proxmox connection not configured. Please configure your Proxmox settings first.</span>
       </div>
 
       <!-- Error Display -->
@@ -122,14 +123,14 @@ onMounted(() => {
             :class="{ 'tab-active': activeTab === 'vms' }"
             @click="activeTab = 'vms'"
           >
-            🖥️ VMs ({{ vms.length }})
+            <AppIcon name="monitor" class="w-4 h-4 inline" /> VMs ({{ vms.length }})
           </a>
           <a 
             class="tab" 
             :class="{ 'tab-active': activeTab === 'lxcs' }"
             @click="activeTab = 'lxcs'"
           >
-            📦 Containers ({{ lxcs.length }})
+            <AppIcon name="cube" class="w-4 h-4 inline" /> Containers ({{ lxcs.length }})
           </a>
         </div>
 
@@ -139,7 +140,7 @@ onMounted(() => {
           <button class="btn btn-sm btn-ghost" @click="deselectAll">Deselect All</button>
           <button class="btn btn-sm btn-ghost" @click="fetchResources" :disabled="isLoading">
             <span v-if="isLoading" class="loading loading-spinner loading-xs"></span>
-            <span v-else>🔄 Refresh</span>
+            <span v-else><AppIcon name="refresh" class="w-4 h-4 inline" /> Refresh</span>
           </button>
           <div class="flex-1"></div>
           <span class="text-sm text-base-content/60 self-center">
@@ -216,16 +217,28 @@ onMounted(() => {
       </template>
 
       <!-- Footer -->
-      <div class="modal-action">
-        <button class="btn btn-ghost" @click="close">Cancel</button>
-        <button
-          class="btn btn-primary"
-          :disabled="selectedResources.length === 0 || isImporting || !isConfigured"
-          @click="handleImport"
-        >
-          <span v-if="isImporting" class="loading loading-spinner loading-xs"></span>
-          <span v-else>Import {{ selectedResources.length }} Resource(s)</span>
-        </button>
+      <div class="modal-action border-t border-base-300 pt-4 mt-4">
+        <div class="flex justify-between items-center w-full">
+          <div class="text-sm text-base-content/60">
+            {{ selectedResources.length }} resource(s) selected
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" @click="close">Cancel</button>
+            <button
+              class="btn btn-primary gap-1"
+              :disabled="selectedResources.length === 0 || isImporting || !isConfigured"
+              @click="handleImport"
+            >
+              <span v-if="isImporting" class="loading loading-spinner loading-xs"></span>
+              <template v-else>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import {{ selectedResources.length }} Resource(s)
+              </template>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-backdrop bg-black/50" @click="close"></div>

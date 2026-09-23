@@ -1,0 +1,140 @@
+{
+  "git": {
+    "saved": "{branch} に保存済み · リビジョン {sha}",
+    "failed": "Git 保存に失敗しました: {error}",
+    "publish": "公開…",
+    "saving": "作業ブランチに保存中…",
+    "changedDuringSave": "保存中にプロジェクトが変更されました。デプロイ前に現在の変更を保存してください。"
+  },
+  "tabs": {
+    "canvas": "キャンバス",
+    "config": "構成",
+    "variables": "変数",
+    "history": "履歴",
+    "settings": "設定",
+    "import": "インポート"
+  },
+  "problems": {
+    "title": "問題",
+    "none": "問題はありません。",
+    "open": "問題を開く"
+  },
+  "activityTerminal": {
+    "title": "アクティビティ",
+    "empty": "まだアクティビティはありません。",
+    "filterAll": "すべて",
+    "filterProxmox": "Proxmox",
+    "filterDeploy": "デプロイ",
+    "clear": "クリア",
+    "close": "アクティビティ端末を閉じる"
+  },
+  "palette": {
+    "placeholder": "ノードを検索…",
+    "empty": "一致するノードがありません。"
+  },
+  "fork_to_override": {
+    "action": "フォークして上書き",
+    "hint": "このカタログエントリを自分のソースにフォークしてカスタマイズします。"
+  },
+  "drift": {
+    "banner": "このプロジェクトは上流ソースから乖離しています。",
+    "view": "乖離の詳細を表示",
+    "rebase": "上流にリベース"
+  },
+  "save": {
+    "success": "プロジェクトを保存しました。",
+    "pr_opened": "プルリクエストを作成しました",
+    "conflict": "コンフリクトにより保存がブロックされました — PR で解決してください。",
+    "offline": "オフライン — 変更はローカルに待機中です。"
+  },
+  "attachments": {
+    "section": {
+      "add": "アタッチメントを追加",
+      "empty": "このノードにアタッチメントはありません"
+    },
+    "editor": {
+      "title": "タイトル",
+      "stage": "ステージ",
+      "order": "ステージ内の順序",
+      "scope": "スコープ",
+      "delete": "削除",
+      "close": "閉じる"
+    },
+    "catalog": {
+      "loading": "カタログを読み込み中…",
+      "empty": "カタログエントリが見つかりません"
+    },
+    "inline": {
+      "label": "インラインYAML"
+    },
+    "file": {
+      "label": "ファイルをアップロード（≤ 256 KB）",
+      "size_error": "ファイルが256 KBの上限を超えています"
+    },
+    "git": {
+      "url_label": "リポジトリURL",
+      "sha_label": "コミットSHA（必須）",
+      "ref_label": "サブパス（任意）",
+      "security_note": "コンテンツはデプロイ時にターゲットで取得されます。信頼できる固定されたソースのみを使用してください。"
+    }
+  },
+  "deleteNode": {
+    "title": "ノードを削除",
+    "promptProxmox": "「{name}」を削除します — Proxmox 上でどうしますか？",
+    "promptCanvas": "「{name}」をキャンバスから削除しますか？",
+    "deleteFromProxmox": "Proxmox から削除",
+    "removeCanvasOnly": "キャンバスからのみ削除",
+    "cancel": "キャンセル",
+    "remove": "削除",
+    "mustStopFirst": "この VM は実行中です。Proxmox から削除する前に停止してください。",
+    "destroyWarning": "VM とそのディスクを完全に破棄します。",
+    "groupTitle": "グループを削除",
+    "promptGroup": "「{name}」を削除しますか？ネストされたグループを含め、{count} 個のノードがあります。",
+    "groupHelp": "グループのみを削除すると、ノードと接続は元の位置に残ります。内容も含めてキャンバスから削除することもできます。デプロイ済みのリソースは変更されません。どちらの操作も元に戻せます。",
+    "groupOnly": "グループのみを削除",
+    "groupRecursive": "グループと内容を削除"
+  },
+  "config": {
+    "loading": "保存したファイルを読み込み中…",
+    "empty": "保存したファイルはまだありません。シナリオにコンテンツを追加するか、カタログ項目を取り込んでプロジェクトファイルを作成してください。",
+    "missing": "保存したファイル「{path}」を開けません。一覧から別のファイルを選択してください。",
+    "changed": "編集中にファイルが変更されました。下書きは保持されています。保存する前に残す内容を選択してください。",
+    "reload": "下書きを破棄して保存済みファイルを読み込む",
+    "keepDraft": "次回の保存に下書きを使う",
+    "closed": "プロジェクトが閉じられたか変更されました。ファイルを保存する前にプロジェクトを開き直してください。"
+  },
+  "addCatalog": "カタログから追加",
+  "settings": {
+    "title": "プロジェクト設定",
+    "identity": "ローカルプロジェクトID",
+    "name": "プロジェクト名",
+    "nameRequired": "プロジェクト名を入力してください。",
+    "save": "プロジェクト名を保存",
+    "saved": "プロジェクト名をローカルに保存しました。",
+    "repository": "リポジトリ",
+    "localOnly": "このプロジェクトはこのブラウザーに保存されています。",
+    "branch": "作業ブランチ",
+    "notSaved": "初回のGit保存時に作成されます",
+    "configureRepository": "リポジトリを設定",
+    "target": "選択したProxmoxノード",
+    "noTarget": "このプロジェクトのノードは選択されていません。",
+    "configureTarget": "対象を設定",
+    "catalogImports": "カタログから追加 ({count})",
+    "sourceRevision": "ソースリビジョン",
+    "importCounts": "{nodes} ノード · {content} コンテンツ · {attachments} 添付ファイル"
+  },
+  "history": {
+    "file": "{ref} の {path} の履歴"
+  },
+  "canvas": {
+    "tools": "キャンバスツール",
+    "select": "選択",
+    "pan": "移動",
+    "selectLabel": "ノードを選択",
+    "panLabel": "キャンバスを移動",
+    "selectHelp": "ドラッグで選択 · Space または右ドラッグで画面を移動",
+    "panHelp": "ドラッグで画面を移動 · Shift + ドラッグで選択",
+    "selected": "{count} 個選択中 · ドラッグで移動 · Esc で解除",
+    "keyboardHelp": "空白部分をドラッグすると、範囲内に完全に入ったノードを選択できます。選択範囲をドラッグしてまとめて移動します。Space を押しながら、または右ボタンでドラッグすると画面を移動できます。Escape で選択を解除します。矢印キーでノードを選択し、Enter で設定を開き、Tab でキャンバスの操作ボタンに移動します。"
+  }
+}

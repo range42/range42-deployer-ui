@@ -1,0 +1,303 @@
+{
+  "list": {
+    "title": "Deployments",
+    "subtitle": "Active deployments and history, grouped by project.",
+    "active": "Active",
+    "past": "Past",
+    "activeHeading": "Active",
+    "pastHeading": "Past",
+    "noActive": "No active deployments.",
+    "noPast": "No past deployments yet.",
+    "emptyAll": "No deployments yet. Launch one from a project.",
+    "filters": {
+      "failedOnly": "Failed only",
+      "inProgressOnly": "In-progress only",
+      "clear": "Clear filters"
+    },
+    "row": {
+      "codename": "Codename",
+      "scenario": "Scenario",
+      "state": "State",
+      "started": "Started",
+      "attempts": "Attempts",
+      "open": "Open",
+      "attemptCount": "{n} attempt | {n} attempts",
+      "noProject": "(no project)"
+    },
+    "loading": "Loading deployments…"
+  },
+  "maintenance": {
+    "title": "Update content or remove deployment VMs",
+    "description": "Configuration runs the scenario's configure playbook on existing VMs. Teardown verifies ownership and removes deployment VMs while preserving shared networks.",
+    "action": "Action",
+    "configure": "Apply saved content and configuration",
+    "teardown": "Remove deployment VMs",
+    "revision": "Saved project commit",
+    "revisionHint": "Defaults to the linked project's latest saved commit in this browser. VM, inventory and network definitions must match the original deployment.",
+    "invalidSha": "Enter the full 40- or 64-character saved commit SHA.",
+    "confirm": "Type {codename} to confirm VM removal",
+    "preflight": "Check selected action",
+    "start": "Run checked action"
+  },
+  "detail": {
+    "prepareDescription": "Check network and resource readiness, then start this deployment.",
+    "runPreflight": "Run deployment preflight",
+    "start": "Start deployment",
+    "startFailed": "Deployment setup failed: {reason}. Review the backend configuration before retrying.",
+    "back": "Back to deployments",
+    "cancel": "Cancel deployment",
+    "pause": "Pause",
+    "teardown": "Teardown…",
+    "overview": {
+      "stateChainHeading": "State machine",
+      "phaseHeading": "Current phase",
+      "attemptHeading": "Current attempt",
+      "lastHeartbeat": "Last heartbeat",
+      "noAttempts": "No attempts recorded yet.",
+      "connection": {
+        "label": "Stream",
+        "idle": "idle",
+        "connecting": "connecting",
+        "open": "live",
+        "retrying": "retrying",
+        "closed": "closed",
+        "exhausted": "disconnected"
+      }
+    },
+    "teams": {
+      "heading": "Teams",
+      "empty": "No teams yet — they appear as the deployment progresses."
+    },
+    "logs": {
+      "heading": "Logs",
+      "filterPlaceholder": "Filter…",
+      "download": "Download events.jsonl",
+      "empty": "No log lines received yet.",
+      "teamFilter": "Showing logs for team {id}",
+      "clearTeamFilter": "Clear team filter",
+      "showRoutine": "Show skipped and included tasks"
+    },
+    "preflight": "Preflight",
+    "preflightLink": "View preflight record",
+    "tabs": {
+      "overview": "Overview",
+      "teams": "Teams",
+      "logs": "Logs"
+    },
+    "notFound": "Deployment not found.",
+    "retired": {
+      "title": "Retired scenario",
+      "description": "_universal is retired. Starting, configuring, resetting, snapshotting, rolling back and tearing down this historical scenario are unavailable. Its attempts, teams and logs remain accessible.",
+      "replacement": "Open or reopen the project, configure and save a concrete scenario, then create a new deployment from its saved Git commit. Keep this record for the original deployment history."
+    }
+  },
+  "team": {
+    "ariaLabel": "Team {id}",
+    "menuLabel": "Team actions",
+    "openLogs": "Open logs for this team",
+    "noLogsYet": "No logs yet.",
+    "queued": "queued",
+    "reset": "Reset team",
+    "snapshot": "Snapshot",
+    "rollback": "Rollback",
+    "copy_ssh": "Copy SSH command",
+    "open_terminal": "Open terminal",
+    "snapshotCount": "{n} snapshot | {n} snapshots",
+    "status": {
+      "pending": "pending",
+      "deploying": "deploying",
+      "deployed": "deployed",
+      "failed": "failed",
+      "partial": "partial",
+      "unknown": "unknown"
+    },
+    "actions": {
+      "reset": "Reset team",
+      "snapshot": "Snapshot",
+      "rollback": "Rollback",
+      "copySsh": "Copy SSH command",
+      "openTerminal": "Open terminal"
+    }
+  },
+  "deploy": {
+    "pinnedPreflight": "Create the deployment to review its pinned scenario, network and resource checks before starting.",
+    "backend": "Backend: {backend}",
+    "backendSameOrigin": "Current site",
+    "hostsLoading": "Loading Proxmox hosts…",
+    "hostsEmpty": "No Proxmox hosts registered on this backend.",
+    "title": "Deploy",
+    "submit": "Deploy",
+    "submitting": "Deploying…",
+    "fields": {
+      "codename": "Codename",
+      "codenamePlaceholder": "short-unique-name",
+      "scenario": "Scenario label",
+      "scenarioPlaceholder": "e.g. demo_lab",
+      "host": "Target Proxmox host",
+      "hostPlaceholder": "Select a host",
+      "teamCount": "Team count",
+      "vault": "Vault password",
+      "backendCredentials": "Use the credentials configured on the backend. No vault password is needed here.",
+      "vaultOverride": "Use a custom vault password for this deployment",
+      "vaultOverrideHint": "This replaces the backend credential template, including its saved SSH and Proxmox credentials. The scenario must supply the matching encrypted credentials."
+    },
+    "err": {
+      "teamCountRange": "Team count must be a whole number from 1 to 64.",
+      "codenameRequired": "Codename is required.",
+      "codenameShape": "Starts with a letter; letters, digits, underscores and dashes; 2–32 characters. Converted to uppercase.",
+      "codenameTaken": "This codename is already used by another local deployment.",
+      "scenarioRequired": "Scenario label is required.",
+      "hostRequired": "Choose a target Proxmox host.",
+      "teamCountNaN": "Team count must be a number.",
+      "teamCountMin": "Team count must be at least 1.",
+      "vaultRequired": "Vault password is required."
+    },
+    "shaPin": {
+      "heading": "SHA pin",
+      "catalog": "Catalog SHA",
+      "project": "Project SHA",
+      "ack": "I confirm deploying with these exact revisions."
+    },
+    "preflight": {
+      "heading": "Project validation",
+      "run": "Validate project",
+      "running": "Running…",
+      "blocking": "Project validation reported blocking issues. Fix them before deploying.",
+      "acknowledge": "Acknowledge preflight warnings.",
+      "description": "Validates the stored project documents. Network, VM and resource checks run in deployment preflight."
+    },
+    "allocationPinRequired": "Save this scenario to Git at an exact commit before handing off its reservation.",
+    "allocationTargetChanged": "These values were reserved for another target or backend. Return to scenario configuration and reserve again before using them here.",
+    "reviewFromHome": "Review this project, then choose Deploy. Its normal Save and backend registration checks run before a deployment is created."
+  },
+  "teardown": {
+    "title": "Teardown deployment",
+    "confirmLabel": "Type the codename to confirm: {codename}",
+    "inputPlaceholder": "Type the codename here",
+    "mismatch": "Entered value does not match the codename.",
+    "cancel": "Cancel",
+    "destroy": "Destroy deployment",
+    "destroying": "Destroying…",
+    "error": "Teardown failed."
+  },
+  "reset": {
+    "title": "Reset team {id}",
+    "body": "This will re-run the team provisioning for team {id}.",
+    "queuedNotice": "A deployment is in flight — this reset will be queued to run afterwards.",
+    "cancel": "Cancel",
+    "confirm": "Reset",
+    "confirmQueue": "Queue reset",
+    "queuedToast": "Reset queued for team {id}.",
+    "runNowToast": "Queued reset for team {id} — run now?",
+    "runNow": "Run now",
+    "dismiss": "Dismiss"
+  },
+  "snapshot": {
+    "title": "Create snapshot — team {id}",
+    "name": "Snapshot name",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "Cancel",
+    "create": "Create",
+    "error": "Failed to create snapshot."
+  },
+  "rollback": {
+    "title": "Rollback team {id}",
+    "chooseSnapshot": "Choose a snapshot",
+    "noSnapshots": "This team has no snapshots yet.",
+    "cancel": "Cancel",
+    "confirm": "Rollback",
+    "missingHeader": "Required snapshots are missing on some VMs:",
+    "partial": "Rollback only VMs with valid snapshots",
+    "error": "Rollback failed."
+  },
+  "preflight": {
+    "title": "Preflight record",
+    "subtitle": "Immutable snapshot of the checks run for this deployment.",
+    "copyLink": "Copy shareable link",
+    "linkCopied": "Link copied",
+    "empty": "This preflight record has no checks.",
+    "generatedAt": "Generated",
+    "attempt": "Attempt",
+    "summary": {
+      "ok": "All checks passed",
+      "warn": "Non-blocking warnings",
+      "block": "Blocking issues found"
+    },
+    "result": {
+      "pass": "pass",
+      "warn": "warn",
+      "block": "block"
+    },
+    "category": {
+      "resources": "Resources",
+      "vmids": "VMIDs",
+      "ips": "IPs",
+      "sdn": "SDN",
+      "git": "Git sources",
+      "secrets": "Secrets"
+    },
+    "loadFailed": "Failed to load preflight record.",
+    "notFound": "Preflight record not found.",
+    "loading": "Loading preflight record…"
+  },
+  "states": {
+    "pending": "pending",
+    "preflight_running": "preflight running",
+    "preflight_review": "preflight review",
+    "deploying": "deploying",
+    "completed": "completed",
+    "partial": "partial",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "unknown": "unknown"
+  },
+  "phases": {
+    "network": "network",
+    "router": "router",
+    "vm": "vm",
+    "install": "install",
+    "configure": "configure",
+    "validate": "validate"
+  },
+  "allocations": {
+    "title": "Deployment allocations",
+    "description": "These VM IDs and addresses do not expire. They stay reserved until explicitly released.",
+    "loading": "Reading allocations…",
+    "refresh": "Refresh allocations",
+    "absent": "No committed allocation record exists for this deployment.",
+    "released": "Allocation released. The backend confirms no committed allocation record remains.",
+    "target": "Target",
+    "revision": "Saved project revision",
+    "created": "Reserved since",
+    "unnamed": "VM",
+    "noAddresses": "No addresses recorded.",
+    "busy": "Release is unavailable while an operation is active or deployment status is uncertain. Refresh after the operation finishes.",
+    "review": "Review allocation release",
+    "confirmTitle": "Release these assignments?",
+    "confirmDescription": "The backend checks that no allocated VMs or active operations remain before freeing these IDs and addresses for reuse. Release keeps deployment history and does not remove guests or networks.",
+    "confirm": "Confirm release",
+    "releasing": "Checking and releasing…",
+    "cancel": "Cancel"
+  },
+  "native": {
+    "workflow": "Deploy the complete native scenario, including templates, networks and custom stages.",
+    "loading": "Loading scenario options and deployment environments…",
+    "empty": "No deployment environment is connected. Ask an administrator to connect the deployer-cli’s Range42 contexts.",
+    "environment": "Deployment environment",
+    "choose": "Choose a ready deployment environment.",
+    "features": "Optional components",
+    "parameters": "Advanced scenario parameters",
+    "parametersHint": "JSON values for scenario-specific settings. Keep credentials in the environment’s vault.",
+    "invalidParameters": "Use a JSON object with simple values. Environment and feature variables are managed separately.",
+    "credentials": "Inventory, credentials and SSH access come from the selected Range42 context.",
+    "full": "Deploy complete scenario",
+    "configure": "Configure",
+    "deploy_vms": "Deploy VMs only",
+    "teardown": "Delete scenario VMs and templates",
+    "delete_vms": "Delete VMs only",
+    "reset": "Reset scenario",
+    "deploy_networks": "Create scenario networks",
+    "delete_networks": "Delete scenario networks",
+    "pinned": "Lifecycle actions use this deployment’s saved repository revision."
+  }
+}

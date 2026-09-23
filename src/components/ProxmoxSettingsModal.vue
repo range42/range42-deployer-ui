@@ -1,6 +1,11 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useProxmoxSettings, DEFAULT_BACKEND_API_URL } from '../composables/useProxmoxSettings'
+import { useBackendApiStore } from '@/stores/backendApiStore.ts'
+import FormSection from '@/components/ui/FormSection.vue'
+import ProxmoxCapacityPanel from '@/components/proxmox/ProxmoxCapacityPanel.vue'
+import BackendReadinessDetails from '@/components/BackendReadinessDetails.vue'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
 
 const DEFAULT_API_URL = DEFAULT_BACKEND_API_URL
 
@@ -17,6 +22,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved'])
 
+const { confirm } = useConfirmDialog()
 const modalRef = ref(null)
 
 const {
@@ -28,15 +34,41 @@ const {
   resetSettings
 } = useProxmoxSettings(computed(() => props.projectId))
 
+const backendApi = useBackendApiStore()
+const savedHosts = computed(() => backendApi.hosts)
+
 const formBaseUrl = ref('')
 const formDefaultNode = ref('')
+const selectedHostId = ref('')
 const isSaving = ref(false)
 const saveError = ref(null)
+const capacityBackendId = computed(() => {
+  const url = formBaseUrl.value.trim().replace(/\/+$/, '')
+  const selected = backendApi.getHost(selectedHostId.value)
+  if (selected?.url === url) return selected.id
+  const matching = savedHosts.value.filter(host => host.url === url)
+  return matching.length === 1 ? matching[0].id : ''
+})
 
 const populateForm = () => {
-  formBaseUrl.value = currentBaseUrl.value || DEFAULT_API_URL
-  formDefaultNode.value = currentDefaultNode.value || ''
+  formBaseUrl.value = currentBaseUrl.value || backendApi.activeHost?.url || DEFAULT_API_URL
+  formDefaultNode.value = currentDefaultNode.value || backendApi.activeHost?.nodeName || ''
+  // Pre-select the saved host whose url+node match the current settings.
+  const match = savedHosts.value.find(
+    (h) => h.url === formBaseUrl.value && h.nodeName === formDefaultNode.value,
+  )
+  selectedHostId.value = match?.id || ''
   saveError.value = null
+}
+
+// Picking a saved host fills the URL + node fields.
+const applySavedHost = (id) => {
+  selectedHostId.value = id
+  const host = backendApi.getHost(id)
+  if (host) {
+    formBaseUrl.value = host.url
+    formDefaultNode.value = host.nodeName
+  }
 }
 
 const openDialog = async () => {
@@ -55,14 +87,15 @@ const closeDialog = () => {
 }
 
 const handleDialogClose = () => {
+  invalidateConnection()
   if (props.visible) {
     emit('close')
   }
 }
 
 watch(
-  () => props.visible,
-  (visible) => {
+  () => [props.visible, props.projectId],
+  ([visible]) => {
     if (visible) {
       populateForm()
       openDialog()
@@ -87,6 +120,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  invalidateConnection()
   const dialog = modalRef.value
   if (dialog) {
     dialog.removeEventListener('close', handleDialogClose)
@@ -98,7 +132,71 @@ const isFormValid = computed(() => {
   return formBaseUrl.value.trim() !== '' && formDefaultNode.value.trim() !== ''
 })
 
+// Connection test
+const connectionStatus = ref(null) // null | 'testing' | 'success' | 'error'
+const connectionInfo = ref('')
+const connectionChecks = ref(null)
+let connectionGeneration = 0
+
+function invalidateConnection() {
+  connectionGeneration += 1
+  connectionStatus.value = null
+  connectionInfo.value = ''
+  connectionChecks.value = null
+  saveError.value = null
+}
+
+watch(
+  () => [props.visible, props.projectId, formBaseUrl.value, formDefaultNode.value,
+    selectedHostId.value, capacityBackendId.value, backendApi.getHost(capacityBackendId.value)?.token],
+  invalidateConnection,
+  { flush: 'sync' },
+)
+
+const testConnection = async () => {
+  const url = formBaseUrl.value.trim().replace(/\/+$/, '')
+  if (!url || !props.visible) return false
+  const generation = ++connectionGeneration
+  const isCurrent = () => generation === connectionGeneration && props.visible
+
+  connectionStatus.value = 'testing'
+  connectionInfo.value = 'Testing connection...'
+  connectionChecks.value = null
+
+  try {
+    const matchedHost = backendApi.getHost(capacityBackendId.value)
+    const hostToken = matchedHost?.token
+    const resp = await fetch(url + '/v1/health/ready', {
+      method: 'GET', signal: AbortSignal.timeout(8000),
+      headers: { Accept: 'application/json', ...(matchedHost ? backendApi.authHeaders(matchedHost.id) : {}) },
+    })
+    if (!isCurrent()) return false
+    if (resp.ok) {
+      const data = await resp.json()
+      if (!isCurrent()) return false
+      connectionChecks.value = data?.checks ?? null
+      connectionStatus.value = data?.ready === true ? 'success' : 'error'
+      connectionInfo.value = data?.ready === true ? 'Backend ready' : 'Backend reachable but not ready. Check its health in Settings.'
+      return data?.ready === true
+    } else {
+      connectionStatus.value = 'error'
+      if (resp.status === 401) {
+        if (matchedHost) backendApi.recordAuthFailure(matchedHost.id, url, hostToken)
+        connectionInfo.value = 'A backend API token is required. Close this dialog and connect to the backend, or edit its token in Settings.'
+      } else {
+        connectionInfo.value = resp.status === 403 ? 'Access denied. Check the backend token permissions.' : 'Server returned HTTP ' + resp.status
+      }
+    }
+  } catch (e) {
+    if (!isCurrent()) return false
+    connectionStatus.value = 'error'
+    connectionInfo.value = e.name === 'TimeoutError' ? 'Connection timed out (8s)' : 'Cannot reach server: ' + e.message
+  }
+  return false
+}
+
 const handleSave = async () => {
+  if (isSaving.value || connectionStatus.value === 'testing') return
   if (!isFormValid.value) {
     saveError.value = 'Both Base URL and Default Node are required'
     return
@@ -106,10 +204,27 @@ const handleSave = async () => {
 
   isSaving.value = true
   saveError.value = null
+  const baseUrl = formBaseUrl.value.trim()
+  const defaultNode = formDefaultNode.value.trim()
 
   try {
-    const success = updateSettings(formBaseUrl.value.trim(), formDefaultNode.value.trim())
+    // Only a check of these unchanged project/host credentials may authorize saving.
+    const verification = testConnection()
+    const generation = connectionGeneration
+    const verified = await verification
+    if (!verified || generation !== connectionGeneration || !props.visible) {
+      if (connectionStatus.value === 'error') saveError.value = connectionInfo.value
+      return
+    }
+    const success = updateSettings(baseUrl, defaultNode)
     if (success) {
+      // Sync to global localStorage for components that read defaultStorage/defaultNode
+      localStorage.setItem('range42_proxmox_settings', JSON.stringify({
+        baseUrl,
+        defaultNode,
+        defaultStorage: 'local-zfs',
+      }))
+
       emit('saved')
       emit('close')
       closeDialog()
@@ -124,14 +239,21 @@ const handleSave = async () => {
   }
 }
 
-const handleReset = () => {
-  if (confirm('Are you sure you want to reset Proxmox settings for this project?')) {
+const handleReset = async () => {
+  const ok = await confirm({
+    title: 'Reset Settings',
+    message: 'Are you sure you want to reset Proxmox settings for this project?',
+    confirmText: 'Reset',
+    confirmClass: 'btn-warning',
+  })
+  if (ok) {
     resetSettings()
     populateForm()
   }
 }
 
 const handleClose = () => {
+  invalidateConnection()
   emit('close')
   closeDialog()
 }
@@ -144,9 +266,9 @@ const formatDate = (isoString) => {
 </script>
 
 <template>
-  <dialog ref="modalRef" class="modal">
-    <div class="modal-box max-w-2xl">
-      <h3 class="font-bold text-lg mb-4">⚙️ Proxmox Configuration</h3>
+  <dialog ref="modalRef" class="modal" aria-labelledby="proxmox-configuration-title">
+    <div class="modal-box max-w-2xl overscroll-contain">
+      <h3 id="proxmox-configuration-title" class="font-bold text-lg mb-4">Proxmox Configuration</h3>
       
       <!-- Info Alert -->
       <div class="alert alert-info mb-4">
@@ -175,44 +297,61 @@ const formatDate = (isoString) => {
         <span class="text-sm">Proxmox settings not configured. Please configure before using Proxmox operations.</span>
       </div>
 
-      <!-- Form -->
-      <div class="form-control mb-4">
-        <label class="label">
-          <span class="label-text font-semibold">🌐 Backend API URL</span>
-          <span class="label-text-alt text-xs opacity-70">Required</span>
-        </label>
-        <input 
-          v-model="formBaseUrl" 
-          type="text" 
-          placeholder="http://127.0.0.1:8000" 
-          class="input input-bordered w-full"
-          :class="{ 'input-error': saveError && !formBaseUrl.trim() }"
-        />
-        <label class="label">
-          <span class="label-text-alt text-xs opacity-70">
-            URL of the Range42 Backend API service (e.g., http://192.168.1.100:8000). This is NOT the Proxmox URL directly.
-          </span>
-        </label>
-      </div>
+      <!-- Pick from saved backend-api hosts (Settings → Backend API hosts) -->
+      <fieldset class="fieldset mb-4 min-w-0" data-testid="saved-host-picker">
+        <legend class="fieldset-legend">Use a saved backend-api host</legend>
+        <select
+          class="select w-full"
+          aria-label="Saved backend connection"
+          :value="selectedHostId"
+          @change="applySavedHost($event.target.value)"
+        >
+          <option value="">— Manual entry —</option>
+          <option v-for="h in savedHosts" :key="h.id" :value="h.id">
+            {{ h.label || h.url }} ({{ h.url }} · node {{ h.nodeName }})
+          </option>
+        </select>
+        <p class="text-xs text-base-content/80 whitespace-normal">Selecting a host fills the fields below. You can still edit them manually.</p>
+      </fieldset>
 
-      <div class="form-control mb-4">
-        <label class="label">
-          <span class="label-text font-semibold">🖥️ Proxmox Node</span>
-          <span class="label-text-alt text-xs opacity-70">Required</span>
-        </label>
-        <input 
-          v-model="formDefaultNode" 
-          type="text" 
-          placeholder="pve" 
-          class="input input-bordered w-full"
-          :class="{ 'input-error': saveError && !formDefaultNode.trim() }"
-        />
-        <label class="label">
-          <span class="label-text-alt text-xs opacity-70">
-            The Proxmox node name where VMs will be deployed (e.g., pve, px-testing, node1)
-          </span>
-        </label>
+      <!-- Form -->
+      <FormSection variant="bordered" :columns="1" class="mb-4">
+        <div class="min-w-0">
+          <label for="proxmox-backend-url" class="block text-sm font-medium mb-1">Backend API URL <span aria-hidden="true">*</span></label>
+          <input id="proxmox-backend-url" v-model="formBaseUrl" name="backend_url" type="url" required autocomplete="url" spellcheck="false"
+            class="input input-bordered w-full focus-visible:outline-2 focus-visible:outline-offset-2" placeholder="http://127.0.0.1:8000"
+            aria-describedby="proxmox-backend-url-hint" :aria-invalid="!!saveError && !formBaseUrl.trim()" />
+          <p id="proxmox-backend-url-hint" class="text-xs text-base-content/80 mt-1">URL of the Range42 Backend API service.</p>
+        </div>
+        <div class="min-w-0">
+          <label for="proxmox-node-name" class="block text-sm font-medium mb-1">Proxmox Node <span aria-hidden="true">*</span></label>
+          <input id="proxmox-node-name" v-model="formDefaultNode" name="proxmox_node" type="text" required autocomplete="off" spellcheck="false"
+            class="input input-bordered w-full focus-visible:outline-2 focus-visible:outline-offset-2" placeholder="pve"
+            aria-describedby="proxmox-node-name-hint" :aria-invalid="!!saveError && !formDefaultNode.trim()" />
+          <p id="proxmox-node-name-hint" class="text-xs text-base-content/80 mt-1">The Proxmox node where VMs will be deployed, for example pve01.</p>
+        </div>
+      </FormSection>
+
+      <ProxmoxCapacityPanel v-if="visible" :backend-id="capacityBackendId" :node-name="formDefaultNode" />
+
+      <!-- Connection Test -->
+      <div class="flex flex-wrap items-center gap-2 mb-4" role="status">
+        <button
+          class="btn btn-sm btn-outline gap-1"
+          :disabled="!formBaseUrl.trim() || connectionStatus === 'testing' || isSaving"
+          @click="testConnection"
+        >
+          <span v-if="connectionStatus === 'testing'" class="loading loading-spinner loading-xs"></span>
+          <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Test Connection
+        </button>
+        <span v-if="connectionStatus === 'success'" class="text-sm text-success">{{ connectionInfo }}</span>
+        <span v-if="connectionStatus === 'error'" class="text-sm text-error">{{ connectionInfo }}</span>
+        <span v-if="connectionStatus === 'testing'" class="text-sm text-info">{{ connectionInfo }}</span>
       </div>
+      <BackendReadinessDetails class="mb-4" :checks="connectionChecks" />
 
       <!-- Error Message -->
       <div v-if="saveError" class="alert alert-error mb-4">
@@ -223,24 +362,37 @@ const formatDate = (isoString) => {
       </div>
 
       <!-- Actions -->
-      <div class="modal-action">
-        <button 
-          v-if="isConfigured" 
-          class="btn btn-ghost btn-sm" 
-          @click="handleReset"
-          :disabled="isSaving"
-        >
-          Reset
-        </button>
-        <button class="btn" type="button" @click="handleClose" :disabled="isSaving">Cancel</button>
-        <button 
-          class="btn btn-primary" 
-          @click="handleSave"
-          :disabled="!isFormValid || isSaving"
-        >
-          <span v-if="isSaving" class="loading loading-spinner loading-sm"></span>
-          <span v-else>Save Settings</span>
-        </button>
+      <div class="modal-action border-t border-base-300 pt-4">
+        <div class="flex justify-between items-center w-full">
+          <button 
+            v-if="isConfigured" 
+            class="btn btn-ghost btn-sm gap-1" 
+            @click="handleReset"
+            :disabled="isSaving"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Reset
+          </button>
+          <div v-else></div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" type="button" @click="handleClose">Cancel</button>
+            <button 
+              class="btn btn-primary gap-1" 
+              @click="handleSave"
+              :disabled="!isFormValid || isSaving || connectionStatus === 'testing'"
+            >
+              <span v-if="isSaving" class="loading loading-spinner loading-sm"></span>
+              <template v-else>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Save Settings
+              </template>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop" @submit.prevent="handleClose">

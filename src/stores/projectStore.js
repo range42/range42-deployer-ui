@@ -1,7 +1,12 @@
+// @ts-check
+import { validateAuthoredFiles } from '@/services/projectFiles'
+import { normalizeCanvasNotes } from '@/services/canvasNotes'
+
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 
 export const useProjectStore = defineStore('projects', () => {
+  /** @type {import('vue').Ref<import('@/types/project').ProjectDraft[]>} */
   const projects = ref([])
 
   const loadProjects = () => {
@@ -9,6 +14,7 @@ export const useProjectStore = defineStore('projects', () => {
       const saved = localStorage.getItem('range42_projects')
       if (saved) {
         projects.value = JSON.parse(saved)
+        projects.value.forEach(project => { project.nodes = normalizeCanvasNotes(project.nodes || []) })
       }
     } catch (error) {
       console.error('Failed to load projects:', error)
@@ -24,6 +30,7 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  /** @param {string} name */
   const createProject = (name) => {
     const project = {
       id: `project_${Date.now()}`,
@@ -31,7 +38,8 @@ export const useProjectStore = defineStore('projects', () => {
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
       nodes: [],
-      edges: []
+      edges: [],
+      attachments: []
     }
 
     projects.value.push(project)
@@ -39,22 +47,32 @@ export const useProjectStore = defineStore('projects', () => {
     return project
   }
 
+  /** @param {string | undefined} id */
   const getProject = (id) => {
     return projects.value.find(p => p.id === id)
   }
 
+  /** @param {import('@/types/project').ProjectDraft[]} nextProjects */
+  function persistCandidate(nextProjects) {
+    try { localStorage.setItem('range42_projects', JSON.stringify(nextProjects)) }
+    catch { throw new Error('Browser storage is full or unavailable. Remove unused projects or use smaller files, then try again. No new files were saved.') }
+  }
+
+  /**
+   * @param {string} id
+   * @param {Partial<import('@/types/project').ProjectDraft>} updates
+   */
   const updateProject = (id, updates) => {
     const index = projects.value.findIndex(p => p.id === id)
     if (index !== -1) {
-      Object.assign(
-        projects.value[index],
-        updates,
-        { modified: new Date().toISOString() }
-      )
-      saveProjects()
+      if (Object.hasOwn(updates, 'files')) validateAuthoredFiles(updates.files)
+      const next = { ...projects.value[index], ...updates, modified: new Date().toISOString() }
+      persistCandidate(projects.value.map((project, position) => position === index ? next : project))
+      Object.assign(projects.value[index], next)
     }
   }
 
+  /** @param {string} id */
   const deleteProject = (id) => {
     const index = projects.value.findIndex(p => p.id === id)
     if (index !== -1) {
@@ -63,6 +81,7 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  /** @param {string} id */
   const exportProject = (id) => {
     const project = getProject(id)
     if (!project) return
@@ -78,9 +97,72 @@ export const useProjectStore = defineStore('projects', () => {
     linkElement.click()
   }
 
+  /**
+   * Import a project from JSON data
+   * @template {import('@/types/project').ProjectDraft} T
+   * @param {T|string} projectData - Project data (object or JSON string)
+   * @param {Object} [options] - Import options
+   * @param {boolean} [options.generateNewId] - Generate a new ID for the project (default: true)
+   * @param {string} [options.namePrefix] - Prefix to add to project name (optional)
+   * @returns {T & { created: string; modified: string }} The imported project
+   */
+  const importProject = (projectData, options = {}) => {
+    const { generateNewId = true, namePrefix = '' } = options
+    
+    // Parse if string
+    const data = typeof projectData === 'string' ? JSON.parse(projectData) : projectData
+    
+    // Validate required fields
+    if (!data.name || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+      throw new Error('Invalid project format: missing name, nodes, or edges')
+    }
+    
+    // Create new project object
+    const project = {
+      ...data,
+      nodes: normalizeCanvasNotes(data.nodes),
+      id: generateNewId ? `project_${Date.now()}` : data.id,
+      name: namePrefix ? `${namePrefix}${data.name}` : data.name,
+      created: new Date().toISOString(),
+      modified: new Date().toISOString(),
+    }
+    
+    // Check for duplicate ID
+    if (!generateNewId && getProject(project.id)) {
+      throw new Error(`Project with ID ${project.id} already exists`)
+    }
+    
+    if (Object.hasOwn(project, 'files')) validateAuthoredFiles(project.files)
+    persistCandidate([...projects.value, project])
+    projects.value.push(project)
+    return project
+  }
+
+  /**
+   * Import project from a File object (for file input handling)
+   * @param {File} file - File object from file input
+   * @returns {Promise<import('@/types/project').ProjectDraft>} The imported project
+   */
+  const importProjectFromFile = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        try {
+          if (typeof reader.result !== 'string') throw new Error('Project file did not contain text')
+          const project = importProject(reader.result)
+          resolve(project)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsText(file)
+    })
+  }
+
   const clearAllData = () => {
+    persistCandidate([])
     projects.value = []
-    saveProjects()
   }
 
   /**
@@ -156,6 +238,8 @@ export const useProjectStore = defineStore('projects', () => {
     updateProject,
     deleteProject,
     exportProject,
+    importProject,
+    importProjectFromFile,
     clearAllData,
     updateNodeStatus,
     updateNodeStatuses,

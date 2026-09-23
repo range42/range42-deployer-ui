@@ -1,73 +1,45 @@
-
 # range42-deployer-ui
 
-A web interface to visually design infrastructure topologies and trigger deployments against a live Proxmox cluster.
-Part of the [range42](https://github.com/range42/range42) cyber range platform.
-
----
+A web interface for designing, customizing, and deploying Proxmox cyber range
+scenarios. Part of the [Range42](https://github.com/range42/range42) platform.
 
 ## How it works
 
-The deployer UI is the operator's cockpit for the range42 platform. Users build infrastructure topologies on a node-based canvas — each node is a typed component (VM, LXC container, network segment, router, firewall, group). Once a topology is configured, the UI dispatches a step-by-step deployment plan to the [range42-backend-api](https://github.com/range42/range42-backend-api), which executes Ansible playbooks from the [range42-playbooks](https://github.com/range42/range42-playbooks) repository against the target Proxmox cluster.
+Build a topology on the VueFlow canvas or open a ready-made scenario from
+[range42-playbooks](https://github.com/range42/range42-playbooks) or a compatible
+private repository. Git-bound projects save a revision that the
+[backend API](https://github.com/range42/range42-backend-api) checks and executes.
+The backend owns deployment attempts, credentials, and runner recovery; the UI
+shows preflight results, progress, and logs.
 
-```
+```text
 Operator browser
-    │
-    ▼
-range42-deployer-ui   ──── reads/writes ────►  GitHub inventory repos
-    │
-    │  REST (via range42-backend-api)
-    ▼
-range42-backend-api  ──── invokes ────►  range42-playbooks  ──── controls ────►  Proxmox
-                      ◄─── Kong API gateway (auth / ACL / rate-limiting) ──────────┘
+    |
+range42-deployer-ui <----> Public forks / private Git repositories
+    |
+    | REST + server-sent events, through Kong when configured
+    v
+range42-backend-api ----> Saved scenario playbooks ----> Proxmox / SDN
 ```
 
----
+## Key features
 
-## Key Features
-
-### Visual topology editor
-
-- Drag-and-drop canvas powered by **VueFlow**.
-- Node types: `vm`, `lxc`, `network-segment`, `router`, `edge-firewall`, `group`, `switch`, `dns`, `dhcp`, `load-balancer`, `vuln-target`, `gamenet`, and more.
-- Per-node configuration panels with live validation.
-- Node status indicators updated in real time from Proxmox polling:
-  - **Gray** — incomplete / missing required config.
-  - **Orange** — ready to deploy.
-  - **Green** — deployed and running.
-  - **Red** — deployment error or misconfiguration.
-- Topology validation before deployment with detailed error reporting.
-
-### Deployment engine
-
-- Sequential step-by-step plan execution: `create_bridge` → `create_vm` → `clone_template` → `create_lxc` → `configure_network` → `add_firewall_rule` → `start_vm` → `start_lxc`.
-- Pause mid-deployment (completes the current step first).
-- Cancel via `AbortController`.
-- Resume from the last completed step.
-- Retry or skip individual failed steps without restarting.
-- Real-time log stream with `info`, `success`, `warning`, `error` levels.
-
-### Infrastructure import
-
-Import live Proxmox resources directly onto the canvas: connect to a Proxmox node, browse running VMs and LXC containers with their real-time status (running / stopped / paused), select one or many, and add them as configured nodes.
-
-### Template & ISO browser
-
-Browse Proxmox storage pools for LXC templates and ISO images, filter by name, and trigger ISO downloads by URL — all from within the project editor.
-
-### Git-backed inventory
-
-The inventory system connects to external GitHub repositories as component catalogs. Each registered inventory repo exposes a `manifest.json` with typed components (`vms/`, `networks/`, `services/`, `scenarios/`). The UI can read from read-only repos or, with a GitHub token, write new components, delete entries, or fork a read-only catalog to a personal namespace.
-
-### VM lifecycle management
-
-Per-node runtime controls for start, stop, pause, resume, snapshot creation, snapshot revert, and delete — scoped per role category (admin, student, vuln).
-
-### Project management dashboard
-
-Grid/list view toggle, project search and filter, per-project node stats (total, running, ready, error), project duplication, and confirmed-delete flow.
-
----
+- **Visual topology editor:** configure guests, SDN networks, replication, and
+  catalog attachments; review validation before generating a concrete scenario.
+- **Ready-made scenarios:** fork public repositories or connect private ones,
+  edit scenario files and shared dependencies, and select declared features and
+  parameters. Deploy through an existing Range42 context. See
+  [ready-made scenario deployment](docs/native-scenarios.md).
+- **Git authoring:** save working branches, publish revisions, and reopen projects
+  with their repository files. See the [Git workflow](docs/git-authoring-workflow.md).
+- **Deployment monitoring:** inspect preflight checks, attempts, logs, and live
+  events; request cancellation through the backend. Available lifecycle actions
+  depend on the scenario and target capabilities.
+- **Infrastructure inspection:** browse registered hosts, import existing guests,
+  and review supported runtime changes and snapshot operations. See the
+  [UI/backend capability matrix](docs/ui-backend-capability-matrix.md).
+- **Project dashboard:** search, duplicate, and manage projects with a persistent
+  local editing state and Git-backed saved revisions.
 
 ## Tech stack
 
@@ -80,28 +52,89 @@ Grid/list view toggle, project search and filter, per-project node stats (total,
 | Router | Vue Router |
 | i18n | vue-i18n |
 | Build | Vite |
-| Unit tests | Vitest + @vue/test-utils |
-| E2E tests | Playwright |
-| Storage (WIP) | @sqlite.org/sqlite-wasm (OPFS) |
-
----
+| Unit tests | Vitest + Vue Test Utils |
+| Browser tests | Playwright |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js `^20.19.0` or `>=22.12.0`
-- A running [range42-backend-api](https://github.com/range42/range42-backend-api) instance reachable from the browser
-- A Proxmox node registered in the backend API
+- Node.js `^20.19.0`, `^22.12.0`, or `^24.0.0` for local development; CI and the
+  Docker builder use Node 24.
+- A reachable Range42 backend API with the target Proxmox hosts registered.
+- For ready-made scenario execution, existing Range42 contexts exposed by the
+  backend. See [scenario deployment prerequisites](docs/native-scenarios.md).
 
-### Install and run
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+The UI is available at `http://localhost:3000` (configurable via `UI_PORT` in `.env`).
+
+Configure and select the backend API URL in **Settings → Backend API hosts**,
+then open **Git Sources** to connect the recommended public Range42 catalog.
+No Git token is required for the default repository. See
+[catalog onboarding](docs/catalog-onboarding.md) for custom repositories,
+credentials, and deployment prerequisites.
+
+Git-bound projects save edits to a dedicated working branch. See the
+[Git authoring workflow](docs/git-authoring-workflow.md) for publishing the same
+snapshot to public and private repositories, creating Ansible roles, and the
+[concrete scenario authoring workflow](docs/concrete-scenario-authoring.md) for
+SDN, VM bootstrap, guest content updates and deployment VM teardown.
+
+### Docker: Build & Push
+
+The multi-stage `Dockerfile` uses **Debian bookworm** for both the builder and runtime stages.
+Stage 1 runs `npm ci` + `npm run build` to produce the production bundle.
+Stage 2 serves the compiled SPA with nginx.
+
+**Build locally and validate:**
+
+```bash
+# Build and start (image tested via the /health endpoint)
+docker compose up --build
+
+# Confirm the container is healthy
+docker compose ps
+```
+
+**Build and tag for a registry:**
+
+```bash
+IMAGE=ghcr.io/range42/range42-deployer-ui
+TAG=$(git rev-parse --short HEAD)
+
+docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+```
+
+**Push to the registry:**
+
+```bash
+docker push "${IMAGE}:${TAG}"
+docker push "${IMAGE}:latest"
+```
+
+### Development
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
-# Start development server (default: http://localhost:5173)
+# Start development server
 npm run dev
+
+# Check application Vue/TypeScript before building
+npm run typecheck
+
+# Check explicitly migrated JavaScript modules and Vue scripts
+npm run typecheck:migrated
+
+# Verify checker coverage and its JavaScript boundary
+npm run test:typecheck
 
 # Build for production
 npm run build
@@ -110,87 +143,97 @@ npm run build
 npm run preview
 ```
 
-### Connect to the backend
+The application checker includes every implementation `.ts`, `.tsx` and `.vue`
+file under `src`, with strict TypeScript and template checks for TypeScript SFCs.
+Existing JavaScript is included for module inference (`allowJs: true`) but is not
+checked by default (`checkJs: false`), including JavaScript-script Vue components.
+The explicit `typecheck-migrated.json` list opts reviewed files into `@ts-check`. Tests and
+tooling are outside this application configuration. See [typecheck coverage](docs/typechecking.md)
+for the exact boundary; a successful Vite build is not a typecheck.
 
-On first launch, open **Settings → Proxmox** (or the settings icon in the sidebar) and enter the backend API URL and Proxmox node name. These settings are stored per-project as browser cookies (`range42.settings.<projectId>`, 30-day TTL).
+## Navigation and appearance
 
----
+The sidebar groups Projects, Catalog and Deployments under Workspace, with
+Sources and Settings under Manage. Collapse it explicitly to keep more canvas
+space; the preference survives navigation and reload. Smaller screens use
+separate navigation and project-tools drawers.
+
+Project components can be clicked or dragged onto the canvas. Search project,
+Undo, Redo and Save are visible controls; app-specific keyboard shortcuts and
+their badges have been removed. Standard keyboard navigation and editor text
+editing remain available. Settings → Appearance selects System, Light or Dark
+and remembers the choice.
+
+See [navigation design and acceptance](docs/navigation-design.md) for interaction
+details, screenshots and the limits of the browser checks.
 
 ## Project structure
 
-```
+```text
 src/
-├── components/
-│   ├── nodes/              # VueFlow custom node types
-│   ├── ConfigPanel.vue     # Per-node configuration panel
-│   ├── DeploymentPanel.vue # Step-by-step deployment UI
-│   ├── InfrastructureImportModal.vue
-│   ├── TemplateBrowser.vue
-│   ├── InventoryBrowser.vue
-│   └── ...
-├── composables/
-│   ├── useDeployment.ts    # Deployment engine (pause/cancel/resume/retry/skip)
-│   ├── useProxmoxStatus.ts # Real-time Proxmox polling
-│   ├── useProxmoxStorage.ts
-│   ├── useInfrastructureImport.ts
-│   ├── useTopologyResolver.ts
-│   └── runnerCalls/        # Typed step executors per node category
+├── components/             # Canvas, catalog, and deployment controls
+│   ├── nodes/              # VueFlow node components
+│   └── deployment/         # Runtime controls, allocations, snapshots
+├── composables/            # Editor, Git, catalog, and infrastructure workflows
 ├── services/
-│   ├── proxmox/api.ts      # Full Proxmox API client (VM/LXC/network/firewall/storage/snapshots)
-│   └── git/                # GitHub provider for inventory read/write
-├── stores/
-│   ├── deploymentStore.ts
-│   ├── inventoryStore.ts   # Git-backed multi-repo catalog
-│   └── proxmoxSettingsStore.ts
-├── views/
-│   ├── Dashboard.vue       # Project management hub
-│   ├── ProjectEditor.vue   # Canvas + topology editor
-│   └── Settings.vue        # App settings (theme, grid, storage)
-├── i18n/                   # vue-i18n setup and locale loader
-└── locales/                # en / fr / jp translation files
+│   ├── git/                # GitHub, GitLab, and Gitea providers
+│   ├── projectRepo/        # Project files and revision persistence
+│   └── proxmox/            # Backend-mediated infrastructure operations
+├── stores/                 # Projects, backend hosts, sources, and preferences
+├── views/                  # Dashboard, editor, catalog, settings, deployments
+├── i18n/                   # Locale setup and loading
+└── locales/                # English, French, and Japanese translations
 ```
-
----
 
 ## Data and storage
 
 | Data | Storage |
 |---|---|
-| Project topology (nodes + edges) | `localStorage` |
-| Per-project backend settings | Browser cookie (`range42.settings.<projectId>`, 30-day TTL) |
-| Inventory repo list | `localStorage` |
-| SQLite WASM (OPFS) | Dependency installed, browser-local DB integration in progress |
+| Local projects and editing preferences | Browser storage |
+| Saved scenario files and project revisions | Connected Git repositories |
+| Backend connections and Git source preferences | Browser storage scoped by the relevant connection |
+| Deployment attempts, logs, allocations, and runtime state | Backend API |
 
----
+See [Git project reopening](docs/git-project-reopening.md) for how saved
+repositories and local drafts are restored.
 
-## Internationalization
+## Internationalization (i18n)
 
-Supported locales: **English** (`en`), **Français** (`fr`), **日本語** (`jp`).
+- The app uses `vue-i18n` with per-page/component JSON files under `src/locales/<lang>/...`.
+- Default and fallback locale is English (`en`). French (`fr`) is provided as a proof of concept.
+- Language can be switched at runtime from the project sidebar language selector
+  (inside Project tools on smaller screens). The redesigned navigation and
+  component palette have English, French and Japanese strings.
 
-Language can be switched at runtime from the sidebar. Translations live in `src/locales/<locale>/<namespace>.json` and are lazy-loaded per view/component.
+Development notes:
+- i18n runtime is initialized in `src/i18n/index.js` with secure lazy-loading via `import.meta.glob`.
+- Supported locales are defined in `src/i18n/supported.js`.
+- When adding a new page/component, create a JSON file under each locale using the same filename.
+- Avoid using `v-html` for translated strings; keep translations as plain text.
 
-See [docs/i18n-guide.md](docs/i18n-guide.md) for conventions, namespace structure, and how to add a new language.
-
----
+Docs: see `docs/i18n-guide.md` for structure, conventions, and acceptance tests.
 
 ## Testing
 
 ```bash
-# Unit tests (Vitest)
-npm run test:unit
+# Unit tests
+npm run test:unit -- --run
 
-# End-to-end tests (Playwright)
+# Lint without changing source files
+npx eslint .
+
+# Check application and migrated modules
+npm run typecheck:migrated
+npm run test:typecheck
+
+# Browser tests
 npm run test:e2e
-
-# Lint
-npm run lint
 ```
-
----
 
 ## Contributing
 
-Work in progress. See the [range42](https://github.com/range42/range42) root repo for platform-wide contribution context.
+See the [Range42](https://github.com/range42/range42) root repository for
+platform-wide contribution context.
 
 ## License
 

@@ -1,0 +1,139 @@
+name: schema-and-operators
+
+on:
+  push:
+    branches: [main, dev, 'feat/**', 'fix/**']
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  schema-and-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout deployer-ui
+        uses: actions/checkout@v6
+        with:
+          path: range42-deployer-ui
+
+      - name: Checkout matching backend-api branch
+        id: checkout_backend
+        uses: actions/checkout@v6
+        with:
+          repository: range42/range42-backend-api
+          path: range42-backend-api
+          ref: ${{ github.head_ref || github.ref_name }}
+        continue-on-error: true
+
+      - name: Checkout backend-api (dev fallback)
+        if: steps.checkout_backend.outcome == 'failure'
+        uses: actions/checkout@v6
+        with:
+          repository: range42/range42-backend-api
+          path: range42-backend-api
+          ref: dev
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: range42-deployer-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: range42-deployer-ui
+        run: npm ci
+
+      - name: Bundle schema
+        working-directory: range42-deployer-ui
+        run: npm run bundle-schema
+
+      - name: Schema bundle drift check
+        working-directory: range42-deployer-ui
+        run: |
+          git diff --exit-code -- schema/bundled.json \
+            || { echo "::error::schema/bundled.json is out of date — run npm run bundle-schema and commit"; exit 1; }
+
+      - name: Vitest (TS operators + schema types)
+        working-directory: range42-deployer-ui
+        run: npm run test:unit -- --run
+
+      - name: Lint (ESLint, non-mutating)
+        working-directory: range42-deployer-ui
+        # npm "lint" script is `eslint . --fix` (mutating); invoke eslint directly
+        # so CI fails on lint errors instead of auto-fixing them.
+        run: npx eslint .
+
+      - name: Typecheck all application Vue and TypeScript sources
+        working-directory: range42-deployer-ui
+        run: npm run typecheck:migrated && npm run test:typecheck
+
+      - name: Build (Vite production build)
+        working-directory: range42-deployer-ui
+        run: npm run build
+
+      - name: Install Chromium for the Git HTTP cache regression
+        working-directory: range42-deployer-ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify Git branch and lease reads with the real browser cache
+        working-directory: range42-deployer-ui
+        run: npx playwright test e2e/github-cache.spec.ts --workers=1
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dev deps + pydantic codegen
+        working-directory: range42-backend-api
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -U pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Regenerate Pydantic + drift check
+        working-directory: range42-backend-api
+        run: |
+          . .venv/bin/activate
+          bash ../range42-deployer-ui/tools/generate-pydantic.sh
+          git diff --exit-code -- app/schemas/generated.py \
+            || { echo "::error::app/schemas/generated.py is out of date — regenerate and commit"; exit 1; }
+
+      - name: Pytest (Python operators on shared vectors)
+        working-directory: range42-backend-api
+        run: |
+          . .venv/bin/activate
+          pytest tests/overlay/ -v
+
+      - name: Concrete replication UI-to-backend contract
+        working-directory: range42-deployer-ui
+        run: node tools/verify-concrete-replication.mjs ../range42-backend-api
+
+      - name: Cross-compare TypeScript and Python compose
+        run: |
+          set -euo pipefail
+          VECTOR=range42-deployer-ui/schema/test-vectors/compose/01_identity.json
+          range42-deployer-ui/node_modules/.bin/esbuild \
+            range42-deployer-ui/src/overlay/compose.ts --bundle --platform=node \
+            --format=cjs --outfile=/tmp/range42-compose.cjs
+          TS_OUT=$(node -e "
+            const { compose } = require('/tmp/range42-compose.cjs');
+            const { readFileSync } = require('node:fs');
+            const v = JSON.parse(readFileSync('$VECTOR','utf8'));
+            process.stdout.write(JSON.stringify(compose(v.input.base, v.input.overlay)));
+          ")
+          PY_OUT=$(range42-backend-api/.venv/bin/python -c "
+          import json, sys
+          sys.path.insert(0, 'range42-backend-api')
+          from app.overlay import compose
+          v = json.load(open('$VECTOR'))
+          sys.stdout.write(json.dumps(compose(v['input']['base'], v['input']['overlay'])))
+          ")
+          if [[ "$(echo "$TS_OUT" | jq -Sc .)" != "$(echo "$PY_OUT" | jq -Sc .)" ]]; then
+            echo "::error::TS vs Python divergence on compose/01_identity.json"
+            diff <(echo "$TS_OUT") <(echo "$PY_OUT") || true
+            exit 1
+          fi
+          echo "cross-compare: ok"

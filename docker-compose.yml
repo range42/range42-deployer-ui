@@ -1,0 +1,7 @@
+services:
+  ui:
+    build: .
+    ports:
+      - "${UI_PORT:-3000}:80"
+    restart: unless-stopped
+    # Inherit the image healthcheck, which uses its installed curl client.

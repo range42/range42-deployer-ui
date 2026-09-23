@@ -1,0 +1,38 @@
+{
+  "name": "bridge_base override is honoured (not just the 140 default) — integer form",
+  "operator": "expand_replication",
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "bridge_base override fixture",
+      "bridge_base": 200,
+      "nodes": [
+        { "id": "net", "kind": "network",
+          "replication": { "scope": "per_team" },
+          "cidr_template": "192.168.{{ bridge_base + team_id }}.0/24",
+          "bridge_template": "vmbr{{ bridge_base + team_id }}",
+          "gateway_template": "192.168.{{ bridge_base + team_id }}.1" }
+      ]
+    },
+    "team_count": 2
+  },
+  "expected": {
+    "plays_per_team": 2,
+    "handler_namespaces": [],
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "bridge_base override fixture",
+      "bridge_base": 200,
+      "nodes": [
+        { "id": "net__team_1", "kind": "network",
+          "replication": { "scope": "per_team" }, "config": {},
+          "cidr": "192.168.201.0/24", "bridge": "vmbr201", "gateway": "192.168.201.1" },
+        { "id": "net__team_2", "kind": "network",
+          "replication": { "scope": "per_team" }, "config": {},
+          "cidr": "192.168.202.0/24", "bridge": "vmbr202", "gateway": "192.168.202.1" }
+      ]
+    }
+  }
+}

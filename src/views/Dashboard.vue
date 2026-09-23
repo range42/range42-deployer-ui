@@ -1,25 +1,57 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+defineOptions({ name: 'DashboardView' })
+
+import { ref, computed, onMounted, defineAsyncComponent, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ensureNamespaces } from '@/i18n'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projectStore'
+import AppIcon from '@/components/icons/AppIcon.vue'
+import { FocusTrap } from 'focus-trap-vue'
 
 const router = useRouter()
 const projectStore = useProjectStore()
+const { t } = useI18n()
+const OpenProjectFromGitModal = defineAsyncComponent(() => import('@/components/OpenProjectFromGitModal.vue'))
+const showOpenGit = ref(false)
 
 const showCreateModal = ref(false)
+let createOpener = null
 const newProjectName = ref('')
 const newProjectDescription = ref('')
 const searchQuery = ref('')
 const viewMode = ref('grid') // 'grid' | 'list'
+const importFileInput = ref(null)
+const importError = ref('')
+
+function openQuickDeploy(project, event) {
+  event?.stopPropagation()
+  event?.preventDefault()
+  router.push({ name: 'project-editor', params: { id: project.id }, query: { action: 'deploy' } })
+}
+
+function openCreate(event) {
+  createOpener = event.currentTarget
+  showCreateModal.value = true
+}
+
+async function closeCreate() {
+  showCreateModal.value = false
+  newProjectName.value = ''
+  newProjectDescription.value = ''
+  await nextTick()
+  createOpener?.focus()
+}
 
 onMounted(() => {
+  void ensureNamespaces(['reopening'])
   projectStore.loadProjects()
 })
 
 const filteredProjects = computed(() => {
   if (!searchQuery.value) return projectStore.projects
   const query = searchQuery.value.toLowerCase()
-  return projectStore.projects.filter(p => 
+  return projectStore.projects.filter(p =>
     p.name.toLowerCase().includes(query)
   )
 })
@@ -38,8 +70,10 @@ const openProject = (projectId) => {
 const pendingDeleteId = ref(null)
 
 const deleteProject = (projectId, event) => {
-  event.stopPropagation()
-  event.preventDefault()
+  if (event) {
+    event.stopPropagation()
+    event.preventDefault()
+  }
   pendingDeleteId.value = projectId
 }
 
@@ -54,13 +88,33 @@ const cancelDelete = () => {
   pendingDeleteId.value = null
 }
 
-const duplicateProject = (project, event) => {
-  event.stopPropagation()
+const duplicateProject = (project) => {
   const newProject = projectStore.createProject(`${project.name} (Copy)`)
   projectStore.updateProject(newProject.id, {
-    nodes: project.nodes || [],
-    edges: project.edges || []
+    nodes: JSON.parse(JSON.stringify(project.nodes || [])),
+    edges: JSON.parse(JSON.stringify(project.edges || []))
   })
+}
+
+const triggerImport = () => {
+  importFileInput.value?.click()
+}
+
+const handleImportFile = async (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  try {
+    importError.value = ''
+    const project = await projectStore.importProjectFromFile(file)
+    router.push(`/project/${project.id}`)
+  } catch (error) {
+    importError.value = error.message
+    console.error('Import failed:', error)
+  } finally {
+    // Reset file input
+    event.target.value = ''
+  }
 }
 
 const getProjectStats = (project) => {
@@ -77,7 +131,7 @@ const formatDate = (date) => {
   const d = new Date(date)
   const now = new Date()
   const diff = now - d
-  
+
   if (diff < 60000) return 'Just now'
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
@@ -91,11 +145,11 @@ const formatDate = (date) => {
     <!-- Header -->
     <header class="sticky top-0 z-40 glass border-b border-base-300">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
+        <div class="flex flex-wrap items-center justify-between gap-3 py-3 min-h-16">
           <!-- Logo -->
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <span class="text-xl">🚀</span>
+              <AppIcon name="rocket" class="w-5 h-5" />
             </div>
             <div>
               <h1 class="text-lg font-bold">Range42</h1>
@@ -105,13 +159,26 @@ const formatDate = (date) => {
 
           <!-- Actions -->
           <div class="flex items-center gap-3">
-            <button class="btn btn-ghost btn-sm gap-2" title="Settings">
+            <button class="btn btn-ghost btn-sm gap-2" title="Settings" @click="router.push('/settings')">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
               </svg>
             </button>
-            <button class="btn btn-primary btn-sm gap-2" @click="showCreateModal = true">
+            <button class="btn btn-ghost btn-sm gap-2" @click="triggerImport" title="Import Project">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+              </svg>
+              Import
+            </button>
+            <input
+              ref="importFileInput"
+              type="file"
+              accept=".json"
+              class="hidden"
+              @change="handleImportFile"
+            />
+            <button class="btn btn-primary btn-sm gap-2" @click="openCreate">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
               </svg>
@@ -136,7 +203,8 @@ const formatDate = (date) => {
               Design, configure, and deploy Proxmox-based infrastructure using an intuitive drag-and-drop visual editor.
             </p>
             <div class="flex flex-wrap gap-3">
-              <button class="btn btn-primary gap-2" @click="showCreateModal = true">
+              <button class="btn btn-outline gap-2" data-testid="open-project-from-git" @click="showOpenGit = true">{{ t('reopening.title') }}</button>
+              <button class="btn btn-primary gap-2" @click="openCreate">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
@@ -150,7 +218,7 @@ const formatDate = (date) => {
               </button>
             </div>
           </div>
-          
+
           <!-- Decorative elements -->
           <div class="absolute right-8 top-1/2 -translate-y-1/2 hidden lg:block opacity-20">
             <div class="grid grid-cols-3 gap-3">
@@ -173,7 +241,7 @@ const formatDate = (date) => {
             <h3 class="text-xl font-semibold">Your Projects</h3>
             <p class="text-sm text-base-content/60">{{ projectStore.projects.length }} project{{ projectStore.projects.length !== 1 ? 's' : '' }}</p>
           </div>
-          
+
           <div class="flex items-center gap-3">
             <!-- Search -->
             <div class="relative">
@@ -187,11 +255,11 @@ const formatDate = (date) => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
               </svg>
             </div>
-            
+
             <!-- View Toggle -->
             <div class="join">
-              <button 
-                class="btn btn-sm join-item" 
+              <button
+                class="btn btn-sm join-item"
                 :class="{ 'btn-active': viewMode === 'grid' }"
                 @click="viewMode = 'grid'"
               >
@@ -199,8 +267,8 @@ const formatDate = (date) => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
                 </svg>
               </button>
-              <button 
-                class="btn btn-sm join-item" 
+              <button
+                class="btn btn-sm join-item"
                 :class="{ 'btn-active': viewMode === 'list' }"
                 @click="viewMode = 'list'"
               >
@@ -215,9 +283,11 @@ const formatDate = (date) => {
         <!-- Grid View -->
         <div v-if="viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           <!-- Create New Card -->
-          <div
-            class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px]"
-            @click="showCreateModal = true"
+          <button
+            type="button"
+            class="group border-2 border-dashed border-base-300 rounded-2xl p-6 flex flex-col items-center justify-center text-center hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition-all min-h-[200px] bg-transparent w-full"
+            aria-label="New project"
+            @click="openCreate"
           >
             <div class="w-14 h-14 rounded-2xl bg-base-200 group-hover:bg-primary/20 flex items-center justify-center mb-4 transition-colors">
               <svg class="w-7 h-7 text-base-content/40 group-hover:text-primary transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,36 +296,73 @@ const formatDate = (date) => {
             </div>
             <h4 class="font-semibold mb-1">New Project</h4>
             <p class="text-sm text-base-content/50">Start from scratch</p>
-          </div>
+          </button>
 
           <!-- Project Cards -->
           <div
             v-for="project in filteredProjects"
             :key="project.id"
             class="card bg-base-100 border border-base-300 card-hover cursor-pointer group"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open project ${project.name}`"
             @click="openProject(project.id)"
+            @keydown.enter.prevent="openProject(project.id)"
+            @keydown.space.prevent="openProject(project.id)"
           >
             <div class="card-body p-5">
               <!-- Header -->
               <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center gap-3">
                   <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <span class="text-lg">📐</span>
+                    <AppIcon name="ruler" class="w-5 h-5" />
                   </div>
                   <div>
                     <h4 class="font-semibold line-clamp-1">{{ project.name }}</h4>
                     <p class="text-xs text-base-content/50">{{ formatDate(project.modified) }}</p>
                   </div>
                 </div>
-                
+
                 <!-- Actions Dropdown -->
-                <button
-                  class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity text-error"
-                  @click.stop="deleteProject(project.id, $event)"
-                  title="Delete project"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                </button>
+                <div class="dropdown dropdown-end" @click.stop @mousedown.stop>
+                  <label tabindex="0" class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+                    </svg>
+                  </label>
+                  <ul class="dropdown-content menu p-2 shadow-lg bg-base-100 rounded-xl w-44 border border-base-300 z-50" @click.stop>
+                    <li>
+                      <button type="button" class="gap-2 w-full text-left" @click.stop="openProject(project.id)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        Edit
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" class="gap-2 w-full text-left" @click.stop="duplicateProject(project)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        Duplicate
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        class="gap-2 w-full text-left"
+                        data-testid="dashboard-quick-deploy"
+                        @click.stop="openQuickDeploy(project, $event)"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                        Deploy…
+                      </button>
+                    </li>
+                    <div class="divider my-1"></div>
+                    <li>
+                      <button type="button" class="gap-2 w-full text-left text-error" @click.stop="deleteProject(project.id, $event)">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        Delete
+                      </button>
+                    </li>
+                  </ul>
+                </div>
               </div>
 
               <!-- Stats -->
@@ -296,12 +403,17 @@ const formatDate = (date) => {
             v-for="project in filteredProjects"
             :key="project.id"
             class="flex items-center gap-4 p-4 rounded-xl border border-base-300 hover:border-primary/30 hover:bg-base-200/50 cursor-pointer transition-all group"
+            role="button"
+            tabindex="0"
+            :aria-label="`Open project ${project.name}`"
             @click="openProject(project.id)"
+            @keydown.enter.prevent="openProject(project.id)"
+            @keydown.space.prevent="openProject(project.id)"
           >
             <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <span class="text-lg">📐</span>
+              <AppIcon name="ruler" class="w-5 h-5" />
             </div>
-            
+
             <div class="flex-1 min-w-0">
               <h4 class="font-semibold truncate">{{ project.name }}</h4>
               <p class="text-sm text-base-content/50">{{ getProjectStats(project).total }} nodes · Modified {{ formatDate(project.modified) }}</p>
@@ -312,8 +424,8 @@ const formatDate = (date) => {
               <div v-if="getProjectStats(project).ready > 0" class="badge badge-warning badge-sm">{{ getProjectStats(project).ready }}</div>
               <div v-if="getProjectStats(project).error > 0" class="badge badge-error badge-sm">{{ getProjectStats(project).error }}</div>
             </div>
-            
-            <button 
+
+            <button
               class="btn btn-ghost btn-sm opacity-0 group-hover:opacity-100 transition-opacity"
               @click.stop="deleteProject(project.id, $event)"
             >
@@ -337,13 +449,13 @@ const formatDate = (date) => {
 
         <div v-if="projectStore.projects.length === 0 && !searchQuery" class="text-center py-16">
           <div class="w-20 h-20 rounded-2xl bg-base-200 flex items-center justify-center mx-auto mb-6">
-            <span class="text-4xl">🏗️</span>
+            <AppIcon name="construction" class="w-10 h-10" />
           </div>
           <h3 class="text-xl font-semibold mb-2">No projects yet</h3>
           <p class="text-base-content/60 mb-6 max-w-md mx-auto">
             Create your first infrastructure project to start designing and deploying.
           </p>
-          <button class="btn btn-primary gap-2" @click="showCreateModal = true">
+          <button class="btn btn-primary gap-2" @click="openCreate">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -354,58 +466,63 @@ const formatDate = (date) => {
     </main>
 
     <!-- Create Project Modal -->
-    <div v-if="showCreateModal" class="modal modal-open">
-      <div class="modal-box max-w-md">
-        <button 
-          class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
-          @click="showCreateModal = false; newProjectName = ''"
-        >✕</button>
-        
-        <h3 class="text-xl font-bold mb-6">Create New Project</h3>
-
-        <div class="space-y-4">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Project Name</span>
-            </label>
-            <input
-              v-model="newProjectName"
-              type="text"
-              class="input input-bordered"
-              placeholder="My Infrastructure Project"
-              @keyup.enter="createProject"
-              autofocus
-            />
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-medium">Description</span>
-              <span class="label-text-alt text-base-content/50">Optional</span>
-            </label>
-            <textarea
-              v-model="newProjectDescription"
-              class="textarea textarea-bordered h-20"
-              placeholder="What will you build?"
-            ></textarea>
-          </div>
-        </div>
-
-        <div class="modal-action">
-          <button class="btn btn-ghost" @click="showCreateModal = false; newProjectName = ''">
-            Cancel
-          </button>
+    <FocusTrap v-if="showCreateModal" :active="true" :escape-deactivates="false" :return-focus-on-deactivate="false" :initial-focus="'#new-project-name'">
+      <div class="modal modal-open create-project-dialog" role="dialog" aria-modal="true" aria-labelledby="create-project-heading" @keydown.esc.prevent="closeCreate">
+        <div class="modal-box max-w-md">
           <button
-            class="btn btn-primary"
-            :disabled="!newProjectName.trim()"
-            @click="createProject"
-          >
-            Create Project
-          </button>
+            class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4"
+            aria-label="Close create project"
+            @click="closeCreate"
+          >✕</button>
+
+          <h3 id="create-project-heading" class="text-xl font-bold mb-6">Create New Project</h3>
+
+          <div class="space-y-4">
+            <div class="form-control">
+              <label class="label" for="new-project-name">
+                <span class="label-text font-medium">Project Name</span>
+              </label>
+              <input
+                id="new-project-name"
+                v-model="newProjectName"
+                type="text"
+                autocomplete="off"
+                class="input input-bordered"
+                placeholder="My Infrastructure Project"
+                @keyup.enter="createProject"
+              />
+            </div>
+
+            <div class="form-control">
+              <label class="label" for="new-project-description">
+                <span class="label-text font-medium">Description</span>
+                <span class="label-text-alt text-base-content/50">Optional</span>
+              </label>
+              <textarea
+                id="new-project-description"
+                v-model="newProjectDescription"
+                class="textarea textarea-bordered h-20"
+                placeholder="What will you build?"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <button class="btn btn-ghost" @click="closeCreate">
+              Cancel
+            </button>
+            <button
+              class="btn btn-primary"
+              :disabled="!newProjectName.trim()"
+              @click="createProject"
+            >
+              Create Project
+            </button>
+          </div>
         </div>
+        <div class="modal-backdrop" @click="closeCreate"></div>
       </div>
-      <div class="modal-backdrop" @click="showCreateModal = false"></div>
-    </div>
+    </FocusTrap>
   </div>
 
   <!-- Delete Confirmation Modal -->
@@ -420,11 +537,20 @@ const formatDate = (date) => {
     </div>
     <div class="modal-backdrop" @click="cancelDelete"></div>
   </div>
+
+  <!-- Open an immutable saved Git project before editing. -->
+  <OpenProjectFromGitModal v-if="showOpenGit" :open="showOpenGit" @close="showOpenGit = false" @opened="project => { showOpenGit = false; openProject(project.id) }" />
+
 </template>
 
 <style scoped>
+/* FocusTrap activates on mount; visibility must be immediate for its inputs. */
+.create-project-dialog {
+  transition-property: opacity, background-color;
+}
+
 .bg-grid-pattern {
-  background-image: 
+  background-image:
     linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
   background-size: 20px 20px;

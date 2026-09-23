@@ -1,0 +1,4 @@
+{"event_type":"task_start","event_seq":1203,"attempt_id":"a-1","ts":"2026-04-14T10:00:03Z","payload":{"team_id":"team-1","task_name":"clone_template"}}
+{"event_type":"task_end","event_seq":1204,"attempt_id":"a-1","ts":"2026-04-14T10:00:04Z","payload":{"team_id":"team-1","result":"ok"}}
+{"event_type":"state_transition","event_seq":1205,"attempt_id":"a-1","ts":"2026-04-14T10:00:05Z","payload":{"from":"deploying","to":"deployed"}}
+{"event_type":"attempt_end","event_seq":1206,"attempt_id":"a-1","ts":"2026-04-14T10:00:06Z","payload":{"attempt_id":"a-1","terminal_state":"deployed"}}

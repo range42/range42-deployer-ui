@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useProxmoxStorage } from '@/composables/useProxmoxStorage'
+import { setBaseUrl } from '@/services/proxmox/api'
 import type { TemplateInfo, IsoInfo } from '@/services/proxmox'
+import AppIcon from '@/components/icons/AppIcon.vue'
 
 // Props
 const props = defineProps<{
   mode?: 'template' | 'iso' | 'both'
   showDownload?: boolean
+  apiUrl?: string
+  proxmoxNode?: string
 }>()
 
 // Emits
@@ -16,7 +20,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-// Composable
+// Composable — pass per-project settings if available
 const {
   templates,
   isos,
@@ -25,13 +29,25 @@ const {
   error,
   selectedStorage,
   groupedTemplates,
-  templateStorages,
-  isoStorages,
+  templateStorages: _templateStorages,
+  isoStorages: _isoStorages,
+  isConfigured,
   loadAll,
   refresh,
   downloadIso,
   formatSize,
+  setConfig,
 } = useProxmoxStorage()
+
+onMounted(() => {
+  if (props.apiUrl && props.proxmoxNode) {
+    setBaseUrl(props.apiUrl)
+    setConfig(props.apiUrl, props.proxmoxNode)
+  }
+  if (isConfigured.value) {
+    loadAll()
+  }
+})
 
 // Local state
 const activeTab = ref<'templates' | 'isos'>(props.mode === 'iso' ? 'isos' : 'templates')
@@ -108,11 +124,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="template-browser bg-base-100 rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+  <div class="modal modal-open">
+  <div class="template-browser modal-box max-w-4xl w-full max-h-[80vh] flex flex-col p-0">
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-base-300">
       <h2 class="text-lg font-semibold flex items-center gap-2">
-        <span>📦</span>
+        <AppIcon name="cube" class="w-5 h-5" />
         Template & ISO Browser
       </h2>
       <button class="btn btn-sm btn-circle btn-ghost" @click="close">✕</button>
@@ -130,7 +147,7 @@ onMounted(() => {
         </div>
         <button class="btn btn-sm btn-ghost" @click="refresh" :disabled="isLoading">
           <span v-if="isLoading" class="loading loading-spinner loading-xs"></span>
-          <span v-else>🔄</span>
+          <AppIcon v-else name="refresh" class="w-4 h-4" />
         </button>
       </div>
       
@@ -150,7 +167,7 @@ onMounted(() => {
         :class="{ 'tab-active': activeTab === 'templates' }"
         @click="activeTab = 'templates'"
       >
-        📀 Templates ({{ templates.length }})
+        <AppIcon name="disc" class="w-4 h-4" /> Templates ({{ templates.length }})
       </a>
       <a 
         v-if="showIsosTab"
@@ -158,7 +175,7 @@ onMounted(() => {
         :class="{ 'tab-active': activeTab === 'isos' }"
         @click="activeTab = 'isos'"
       >
-        💿 ISOs ({{ isos.length }})
+        <AppIcon name="disc" class="w-4 h-4" /> ISOs ({{ isos.length }})
       </a>
     </div>
 
@@ -261,8 +278,10 @@ onMounted(() => {
 
     <!-- Footer -->
     <div class="p-4 border-t border-base-300 flex justify-end gap-2">
-      <button class="btn btn-sm btn-ghost" @click="close">Cancel</button>
+      <button class="btn btn-sm btn-ghost" @click="close">Close</button>
     </div>
+  </div>
+  <div class="modal-backdrop bg-black/50" @click="close"></div>
   </div>
 </template>
 

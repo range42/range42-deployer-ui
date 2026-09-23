@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# range42 pre-commit hook — guards schema / codegen drift.
+# Enable per clone with:  git config core.hooksPath .githooks
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Only run if the schema or tools changed in the staged set.
+CHANGED="$(git diff --cached --name-only)"
+if ! grep -qE '^(schema/|tools/|src/types/range42-schema\.ts$|src/overlay/)' <<< "$CHANGED"; then
+  exit 0
+fi
+
+echo "pre-commit: schema touch detected — regenerating bundle + pydantic"
+
+# 1. Regenerate bundled.json.
+if ! npm run --silent bundle-schema; then
+  echo "pre-commit: bundle-refs.sh failed" >&2
+  exit 1
+fi
+
+# 2. Regenerate Pydantic in sibling repo if it's present.
+BACKEND_ROOT="$REPO_ROOT/../range42-backend-api"
+if [[ -d "$BACKEND_ROOT" && -x "$BACKEND_ROOT/_virtenv.enable.sh" ]]; then
+  (
+    cd "$BACKEND_ROOT"
+    # shellcheck disable=SC1091
+    source _virtenv.enable.sh
+    bash "$REPO_ROOT/tools/generate-pydantic.sh"
+  )
+fi
+
+# 3. Fail if regeneration produced uncommitted drift.
+if ! git diff --quiet -- schema/bundled.json; then
+  echo "pre-commit: schema/bundled.json is stale — stage the regenerated file and retry" >&2
+  exit 1
+fi
+
+if [[ -d "$BACKEND_ROOT" ]]; then
+  if ! (cd "$BACKEND_ROOT" && git diff --quiet -- app/schemas/generated.py); then
+    echo "pre-commit: range42-backend-api/app/schemas/generated.py is stale — stage it in the backend repo and retry" >&2
+    exit 1
+  fi
+fi
+
+exit 0

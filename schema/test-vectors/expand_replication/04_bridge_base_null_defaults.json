@@ -1,0 +1,31 @@
+{
+  "name": "bridge_base null/absent defaults to 140 — TS/Python parity (Python must not crash)",
+  "operator": "expand_replication",
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "bridge_base": null,
+      "nodes": [
+        { "id": "net", "kind": "network",
+          "replication": { "scope": "per_team" },
+          "cidr_template": "192.168.{{ bridge_base + team_id }}.0/24" }
+      ]
+    },
+    "team_count": 1
+  },
+  "expected": {
+    "plays_per_team": 1,
+    "handler_namespaces": [],
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "bridge_base": null,
+      "nodes": [
+        { "id": "net__team_1", "kind": "network",
+          "replication": { "scope": "per_team" }, "config": {},
+          "cidr": "192.168.141.0/24" }
+      ]
+    }
+  }
+}

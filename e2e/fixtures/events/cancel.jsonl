@@ -1,0 +1,7 @@
+{"event_type":"attempt_start","event_seq":1,"attempt_id":"a-1","ts":"2026-04-14T10:00:00Z","payload":{"attempt_id":"a-1"}}
+{"event_type":"state_transition","event_seq":2,"attempt_id":"a-1","ts":"2026-04-14T10:00:01Z","payload":{"from":"draft","to":"preflight"}}
+{"event_type":"preflight_check","event_seq":3,"attempt_id":"a-1","ts":"2026-04-14T10:00:02Z","payload":{"check":"ssh_reachable","result":"pass"}}
+{"event_type":"state_transition","event_seq":4,"attempt_id":"a-1","ts":"2026-04-14T10:00:03Z","payload":{"from":"preflight","to":"deploying"}}
+{"event_type":"phase_transition","event_seq":5,"attempt_id":"a-1","ts":"2026-04-14T10:00:04Z","payload":{"to":"network"}}
+{"event_type":"task_start","event_seq":6,"attempt_id":"a-1","ts":"2026-04-14T10:00:05Z","payload":{"team_id":"team-1","task_name":"create_bridge"}}
+{"event_type":"log_line","event_seq":7,"attempt_id":"a-1","ts":"2026-04-14T10:00:06Z","payload":{"team_id":"team-1","stream":"stdout","text":"creating vmbr100"}}

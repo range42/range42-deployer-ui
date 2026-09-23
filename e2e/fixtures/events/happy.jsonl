@@ -1,0 +1,22 @@
+{"event_type":"attempt_start","event_seq":1,"attempt_id":"a-1","ts":"2026-04-14T10:00:00Z","payload":{"attempt_id":"a-1"}}
+{"event_type":"state_transition","event_seq":2,"attempt_id":"a-1","ts":"2026-04-14T10:00:01Z","payload":{"from":"draft","to":"preflight"}}
+{"event_type":"preflight_check","event_seq":3,"attempt_id":"a-1","ts":"2026-04-14T10:00:02Z","payload":{"check":"ssh_reachable","result":"pass"}}
+{"event_type":"preflight_check","event_seq":4,"attempt_id":"a-1","ts":"2026-04-14T10:00:03Z","payload":{"check":"vault_pass_present","result":"pass"}}
+{"event_type":"state_transition","event_seq":5,"attempt_id":"a-1","ts":"2026-04-14T10:00:04Z","payload":{"from":"preflight","to":"deploying"}}
+{"event_type":"phase_transition","event_seq":6,"attempt_id":"a-1","ts":"2026-04-14T10:00:05Z","payload":{"to":"network"}}
+{"event_type":"task_start","event_seq":7,"attempt_id":"a-1","ts":"2026-04-14T10:00:06Z","payload":{"team_id":"team-1","task_name":"create_bridge"}}
+{"event_type":"task_start","event_seq":8,"attempt_id":"a-1","ts":"2026-04-14T10:00:06Z","payload":{"team_id":"team-2","task_name":"create_bridge"}}
+{"event_type":"task_start","event_seq":9,"attempt_id":"a-1","ts":"2026-04-14T10:00:06Z","payload":{"team_id":"team-3","task_name":"create_bridge"}}
+{"event_type":"log_line","event_seq":10,"attempt_id":"a-1","ts":"2026-04-14T10:00:07Z","payload":{"team_id":"team-1","stream":"stdout","text":"creating vmbr100"}}
+{"event_type":"task_end","event_seq":11,"attempt_id":"a-1","ts":"2026-04-14T10:00:08Z","payload":{"team_id":"team-1","result":"ok"}}
+{"event_type":"task_end","event_seq":12,"attempt_id":"a-1","ts":"2026-04-14T10:00:08Z","payload":{"team_id":"team-2","result":"ok"}}
+{"event_type":"task_end","event_seq":13,"attempt_id":"a-1","ts":"2026-04-14T10:00:08Z","payload":{"team_id":"team-3","result":"ok"}}
+{"event_type":"phase_transition","event_seq":14,"attempt_id":"a-1","ts":"2026-04-14T10:00:09Z","payload":{"to":"vm"}}
+{"event_type":"task_start","event_seq":15,"attempt_id":"a-1","ts":"2026-04-14T10:00:10Z","payload":{"team_id":"team-1","task_name":"clone_template"}}
+{"event_type":"task_end","event_seq":16,"attempt_id":"a-1","ts":"2026-04-14T10:00:11Z","payload":{"team_id":"team-1","result":"ok"}}
+{"event_type":"task_start","event_seq":17,"attempt_id":"a-1","ts":"2026-04-14T10:00:12Z","payload":{"team_id":"team-2","task_name":"clone_template"}}
+{"event_type":"task_end","event_seq":18,"attempt_id":"a-1","ts":"2026-04-14T10:00:13Z","payload":{"team_id":"team-2","result":"ok"}}
+{"event_type":"task_start","event_seq":19,"attempt_id":"a-1","ts":"2026-04-14T10:00:14Z","payload":{"team_id":"team-3","task_name":"clone_template"}}
+{"event_type":"task_end","event_seq":20,"attempt_id":"a-1","ts":"2026-04-14T10:00:15Z","payload":{"team_id":"team-3","result":"ok"}}
+{"event_type":"state_transition","event_seq":21,"attempt_id":"a-1","ts":"2026-04-14T10:00:16Z","payload":{"from":"deploying","to":"deployed"}}
+{"event_type":"attempt_end","event_seq":22,"attempt_id":"a-1","ts":"2026-04-14T10:00:17Z","payload":{"attempt_id":"a-1","terminal_state":"deployed"}}

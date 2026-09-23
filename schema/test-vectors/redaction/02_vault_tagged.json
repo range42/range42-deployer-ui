@@ -1,0 +1,40 @@
+{
+  "name": "vault-tagged admin_password field redacted with vault_tagged layer",
+  "operator": "redaction",
+  "edge": true,
+  "input": {
+    "event": {
+      "event_seq": 42,
+      "attempt_id": "att-7",
+      "ts": "2026-04-14T13:47:00Z",
+      "event_type": "task_start",
+      "payload": {
+        "task_name": "ad_dc | set admin password",
+        "host": "t3-dc01",
+        "vars": {
+          "admin_password": { "__vault_tagged__": true, "value": "hunter2-not-logged" }
+        }
+      }
+    },
+    "layers": ["config_denylist", "vault_tagged"]
+  },
+  "expected": {
+    "event": {
+      "event_seq": 42,
+      "attempt_id": "att-7",
+      "ts": "2026-04-14T13:47:00Z",
+      "event_type": "task_start",
+      "payload": {
+        "task_name": "ad_dc | set admin password",
+        "host": "t3-dc01",
+        "vars": {
+          "admin_password": "***REDACTED***"
+        }
+      }
+    },
+    "redactions": [
+      { "layer": "vault_tagged", "rule_id": "vault:tagged-value",
+        "field_path": "payload.vars.admin_password" }
+    ]
+  }
+}

@@ -1,0 +1,303 @@
+{
+  "list": {
+    "title": "デプロイメント",
+    "subtitle": "進行中と過去のデプロイメント（プロジェクト別）。",
+    "active": "進行中",
+    "past": "過去",
+    "activeHeading": "進行中",
+    "pastHeading": "過去",
+    "noActive": "進行中のデプロイはありません。",
+    "noPast": "過去のデプロイはまだありません。",
+    "emptyAll": "まだデプロイはありません。プロジェクトから開始してください。",
+    "filters": {
+      "failedOnly": "失敗のみ",
+      "inProgressOnly": "進行中のみ",
+      "clear": "フィルタを解除"
+    },
+    "row": {
+      "codename": "コードネーム",
+      "scenario": "シナリオ",
+      "state": "状態",
+      "started": "開始",
+      "attempts": "試行",
+      "open": "開く",
+      "attemptCount": "{n} 回の試行",
+      "noProject": "（プロジェクトなし）"
+    },
+    "loading": "デプロイを読み込み中…"
+  },
+  "maintenance": {
+    "title": "コンテンツ更新またはデプロイVMの削除",
+    "description": "構成では既存VMでconfigureプレイブックを実行します。削除ではデプロイの所有情報を確認し、共有ネットワークを保持します。",
+    "action": "操作",
+    "configure": "保存済みコンテンツと構成を適用",
+    "teardown": "デプロイVMを削除",
+    "revision": "保存済みプロジェクトコミット",
+    "revisionHint": "このブラウザー内で関連プロジェクトの最新保存コミットを初期値に使用します。VM、インベントリー、ネットワークは元のデプロイと一致する必要があります。",
+    "invalidSha": "保存済みコミットの完全な40文字または64文字のSHAを入力してください。",
+    "confirm": "VM削除の確認として{codename}を入力",
+    "preflight": "選択した操作を確認",
+    "start": "確認済み操作を実行"
+  },
+  "detail": {
+    "prepareDescription": "ネットワークとリソースを確認してからデプロイを開始してください。",
+    "runPreflight": "デプロイの事前チェック",
+    "start": "デプロイを開始",
+    "startFailed": "デプロイの準備に失敗しました: {reason}。バックエンド設定を確認してから再試行してください。",
+    "back": "デプロイ一覧へ戻る",
+    "cancel": "デプロイをキャンセル",
+    "pause": "一時停止",
+    "teardown": "撤去…",
+    "overview": {
+      "stateChainHeading": "ステートマシン",
+      "phaseHeading": "現在のフェーズ",
+      "attemptHeading": "現在の試行",
+      "lastHeartbeat": "最新ハートビート",
+      "noAttempts": "試行の記録はまだありません。",
+      "connection": {
+        "label": "ストリーム",
+        "idle": "待機",
+        "connecting": "接続中",
+        "open": "ライブ",
+        "retrying": "再接続中",
+        "closed": "終了",
+        "exhausted": "切断"
+      }
+    },
+    "teams": {
+      "heading": "チーム",
+      "empty": "チームはまだ作成されていません。"
+    },
+    "logs": {
+      "heading": "ログ",
+      "filterPlaceholder": "フィルタ…",
+      "download": "events.jsonl をダウンロード",
+      "empty": "ログはまだ受信されていません。",
+      "teamFilter": "チーム {id} のログを表示中",
+      "clearTeamFilter": "チームフィルタを解除",
+      "showRoutine": "スキップ・インクルードされたタスクを表示"
+    },
+    "preflight": "事前チェック",
+    "preflightLink": "事前チェックを表示",
+    "tabs": {
+      "overview": "概要",
+      "teams": "チーム",
+      "logs": "ログ"
+    },
+    "notFound": "デプロイが見つかりません。",
+    "retired": {
+      "title": "廃止されたシナリオ",
+      "description": "_universal は廃止されています。この過去のシナリオでは、開始、再構成、リセット、スナップショット、ロールバック、破棄を実行できません。試行、チーム、ログは引き続き確認できます。",
+      "replacement": "プロジェクトを開くか再度読み込み、実行内容を明示したシナリオを設定して保存し、その Git コミットから新しいデプロイを作成してください。この記録は元のデプロイ履歴として保持してください。"
+    }
+  },
+  "team": {
+    "ariaLabel": "チーム {id}",
+    "menuLabel": "チームの操作",
+    "openLogs": "このチームのログを開く",
+    "noLogsYet": "ログはまだありません。",
+    "queued": "待機",
+    "reset": "チームをリセット",
+    "snapshot": "スナップショット",
+    "rollback": "ロールバック",
+    "copy_ssh": "SSHコマンドをコピー",
+    "open_terminal": "ターミナルを開く",
+    "snapshotCount": "スナップショット {n} 件",
+    "status": {
+      "pending": "待機",
+      "deploying": "デプロイ中",
+      "deployed": "デプロイ済",
+      "failed": "失敗",
+      "partial": "一部",
+      "unknown": "不明"
+    },
+    "actions": {
+      "reset": "チームをリセット",
+      "snapshot": "スナップショット",
+      "rollback": "ロールバック",
+      "copySsh": "SSHコマンドをコピー",
+      "openTerminal": "ターミナルを開く"
+    }
+  },
+  "deploy": {
+    "pinnedPreflight": "デプロイを作成すると、開始前に固定リビジョンのシナリオ、ネットワーク、リソースを確認できます。",
+    "backend": "バックエンド: {backend}",
+    "backendSameOrigin": "現在のサイト",
+    "hostsLoading": "Proxmox ホストを読み込み中…",
+    "hostsEmpty": "このバックエンドに Proxmox ホストが登録されていません。",
+    "title": "デプロイ",
+    "submit": "デプロイ",
+    "submitting": "デプロイ中…",
+    "fields": {
+      "codename": "コードネーム",
+      "codenamePlaceholder": "短い一意な名前",
+      "scenario": "シナリオ名",
+      "scenarioPlaceholder": "例: demo_lab",
+      "host": "対象 Proxmox ホスト",
+      "hostPlaceholder": "ホストを選択",
+      "teamCount": "チーム数",
+      "vault": "Vault パスワード",
+      "backendCredentials": "バックエンドに設定された認証情報を使用します。ここで Vault パスワードを入力する必要はありません。",
+      "vaultOverride": "このデプロイにカスタム Vault パスワードを使用する",
+      "vaultOverrideHint": "保存された SSH と Proxmox の認証情報を含む、バックエンドの認証情報テンプレートを置き換えます。シナリオには対応する暗号化済み認証情報が必要です。"
+    },
+    "err": {
+      "teamCountRange": "チーム数は1から64までの整数で指定してください。",
+      "codenameRequired": "コードネームは必須です。",
+      "codenameShape": "英字で始まる2～32文字の英数字、ハイフン、アンダースコア。大文字に変換されます。",
+      "codenameTaken": "このコードネームは既に使用されています。",
+      "scenarioRequired": "シナリオ名は必須です。",
+      "hostRequired": "Proxmox ホストを選択してください。",
+      "teamCountNaN": "チーム数は数値である必要があります。",
+      "teamCountMin": "チーム数は1以上である必要があります。",
+      "vaultRequired": "Vault パスワードは必須です。"
+    },
+    "shaPin": {
+      "heading": "SHA ピン",
+      "catalog": "カタログ SHA",
+      "project": "プロジェクト SHA",
+      "ack": "これらの正確なリビジョンでデプロイすることを確認します。"
+    },
+    "preflight": {
+      "heading": "プロジェクト検証",
+      "run": "プロジェクトを検証",
+      "running": "実行中…",
+      "blocking": "プロジェクト検証で問題が見つかりました。デプロイ前に修正してください。",
+      "acknowledge": "警告を了承する。",
+      "description": "保存済みのプロジェクト文書を検証します。ネットワーク、VM、リソースはデプロイの事前チェックで検証されます。"
+    },
+    "allocationPinRequired": "予約を引き継ぐ前に、このシナリオを Git の確定したコミットとして保存してください。",
+    "allocationTargetChanged": "これらの値は別のターゲットまたはバックエンド用に予約されています。シナリオ設定に戻り、この環境で使用する前に再予約してください。",
+    "reviewFromHome": "プロジェクトを確認してから Deploy を選択してください。デプロイを作成する前に、通常の保存とバックエンド登録の確認が実行されます。"
+  },
+  "teardown": {
+    "title": "デプロイを撤去",
+    "confirmLabel": "確認のためコードネームを入力: {codename}",
+    "inputPlaceholder": "ここにコードネームを入力",
+    "mismatch": "入力された値がコードネームと一致しません。",
+    "cancel": "キャンセル",
+    "destroy": "デプロイを破棄",
+    "destroying": "破棄中…",
+    "error": "撤去に失敗しました。"
+  },
+  "reset": {
+    "title": "チーム {id} をリセット",
+    "body": "チーム {id} のプロビジョニングを再実行します。",
+    "queuedNotice": "デプロイが進行中のため、このリセットは待機されます。",
+    "cancel": "キャンセル",
+    "confirm": "リセット",
+    "confirmQueue": "待機させる",
+    "queuedToast": "チーム {id} のリセットを待機しました。",
+    "runNowToast": "チーム {id} のリセットが待機中 — 今すぐ実行しますか？",
+    "runNow": "今すぐ実行",
+    "dismiss": "閉じる"
+  },
+  "snapshot": {
+    "title": "スナップショット作成 — チーム {id}",
+    "name": "スナップショット名",
+    "namePlaceholder": "pre-rollback-001",
+    "cancel": "キャンセル",
+    "create": "作成",
+    "error": "スナップショット作成に失敗しました。"
+  },
+  "rollback": {
+    "title": "チーム {id} をロールバック",
+    "chooseSnapshot": "スナップショットを選択",
+    "noSnapshots": "このチームにはまだスナップショットがありません。",
+    "cancel": "キャンセル",
+    "confirm": "ロールバック",
+    "missingHeader": "一部の VM で必要なスナップショットが存在しません:",
+    "partial": "有効なスナップショットのある VM のみロールバック",
+    "error": "ロールバックに失敗しました。"
+  },
+  "preflight": {
+    "title": "事前チェック記録",
+    "subtitle": "このデプロイに対する実施済みチェックの固定スナップショット。",
+    "copyLink": "共有リンクをコピー",
+    "linkCopied": "リンクをコピーしました",
+    "empty": "このレコードにはチェックがありません。",
+    "generatedAt": "生成",
+    "attempt": "試行",
+    "summary": {
+      "ok": "すべてのチェックに合格",
+      "warn": "非ブロッキングの警告",
+      "block": "ブロッキングの問題あり"
+    },
+    "result": {
+      "pass": "合格",
+      "warn": "警告",
+      "block": "ブロック"
+    },
+    "category": {
+      "resources": "リソース",
+      "vmids": "VMID",
+      "ips": "IP",
+      "sdn": "SDN",
+      "git": "Git ソース",
+      "secrets": "シークレット"
+    },
+    "loadFailed": "事前チェック記録の読み込みに失敗しました。",
+    "notFound": "事前チェック記録が見つかりません。",
+    "loading": "事前チェック記録を読み込み中…"
+  },
+  "states": {
+    "pending": "待機",
+    "preflight_running": "事前チェック実行中",
+    "preflight_review": "事前チェック確認",
+    "deploying": "デプロイ中",
+    "completed": "完了",
+    "partial": "一部",
+    "failed": "失敗",
+    "cancelled": "キャンセル",
+    "unknown": "不明"
+  },
+  "phases": {
+    "network": "ネットワーク",
+    "router": "ルーター",
+    "vm": "VM",
+    "install": "インストール",
+    "configure": "構成",
+    "validate": "検証"
+  },
+  "allocations": {
+    "title": "デプロイの割り当て",
+    "description": "これらのVM IDとアドレスには有効期限がありません。明示的に解放するまで予約されます。",
+    "loading": "割り当てを読み込み中…",
+    "refresh": "割り当てを更新",
+    "absent": "このデプロイに確定済みの割り当てはありません。",
+    "released": "割り当てを解放しました。確定済みの割り当てがないことをバックエンドで確認しました。",
+    "target": "対象",
+    "revision": "保存済みプロジェクトのリビジョン",
+    "created": "予約日時",
+    "unnamed": "VM",
+    "noAddresses": "記録されたアドレスはありません。",
+    "busy": "操作の実行中またはデプロイの状態が不明な間は解放できません。操作の完了後に更新してください。",
+    "review": "割り当ての解放を確認",
+    "confirmTitle": "これらの割り当てを解放しますか？",
+    "confirmDescription": "IDとアドレスを再利用可能にする前に、バックエンドが対象VMと実行中の操作がないことを確認します。履歴は保持され、VMやネットワークは削除されません。",
+    "confirm": "解放を確定",
+    "releasing": "確認して解放中…",
+    "cancel": "キャンセル"
+  },
+  "native": {
+    "workflow": "テンプレート、ネットワーク、カスタム処理を含むネイティブシナリオ全体をデプロイします。",
+    "loading": "シナリオの設定とデプロイ環境を読み込み中…",
+    "empty": "デプロイ環境が接続されていません。管理者にdeployer-cliのRange42コンテキストの接続を依頼してください。",
+    "environment": "デプロイ環境",
+    "choose": "準備済みのデプロイ環境を選択してください。",
+    "features": "オプションのコンポーネント",
+    "parameters": "シナリオの詳細パラメーター",
+    "parametersHint": "シナリオ固有の設定をJSONで入力します。認証情報は環境のVaultに保存してください。",
+    "invalidParameters": "単純な値を持つJSONオブジェクトを入力してください。環境変数と機能設定は別途管理されます。",
+    "credentials": "インベントリ、認証情報、SSH接続には選択したRange42コンテキストを使用します。",
+    "full": "シナリオ全体をデプロイ",
+    "configure": "構成を適用",
+    "deploy_vms": "VMのみデプロイ",
+    "teardown": "シナリオのVMとテンプレートを削除",
+    "delete_vms": "VMのみ削除",
+    "reset": "シナリオをリセット",
+    "deploy_networks": "シナリオのネットワークを作成",
+    "delete_networks": "シナリオのネットワークを削除",
+    "pinned": "ライフサイクル操作には、このデプロイで保存したリポジトリのリビジョンを使用します。"
+  }
+}

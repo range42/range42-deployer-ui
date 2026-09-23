@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.vscode
+.idea
+*.log
+e2e
+test-results
+playwright-report

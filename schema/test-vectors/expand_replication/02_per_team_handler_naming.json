@@ -1,0 +1,31 @@
+{
+  "name": "per_team group with play-level notify handler — handlers rewritten by team id",
+  "operator": "expand_replication",
+  "edge": true,
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "handler-rename fixture",
+      "nodes": [
+        { "id": "team", "kind": "group",
+          "replication": { "scope": "per_team", "id_offset": { "vmid": 4, "ip": 10 } },
+          "children": [
+            { "id": "dc", "kind": "vm",
+              "config": { "name_template": "t{team_id}-dc01" },
+              "attachments": [
+                { "source": { "kind": "catalog_role", "ref": "software.install.ad_dc" },
+                  "stage": "install", "order_in_stage": 0,
+                  "ansible_primitive": "handler",
+                  "handler_namespace": "apt-update" }
+              ] }
+          ] }
+      ]
+    },
+    "team_count": 3
+  },
+  "expected": {
+    "plays_per_team": 3,
+    "handler_namespaces": ["apt-update__team_1", "apt-update__team_2", "apt-update__team_3"]
+  }
+}

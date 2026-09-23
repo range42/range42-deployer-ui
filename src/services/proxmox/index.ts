@@ -10,10 +10,11 @@
 export * from './types'
 
 // Re-export API client
-export { 
+export {
   proxmoxApi,
   setBaseUrl,
   getBaseUrl,
+  getTaskStatus,
   vm,
   snapshot,
   lxc,
@@ -21,6 +22,9 @@ export {
   firewall,
   storage,
 } from './api'
+
+// Cache
+export { proxmoxCache } from './cache'
 
 // Default export
 export { default } from './api'

@@ -1,24 +1,204 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue'
+import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n/index.js'
-const { t } = useI18n({ useScope: 'global' })
+import FormField from '@/components/ui/FormField.vue'
+import AppIcon from '@/components/icons/AppIcon.vue'
+import FormSection from '@/components/ui/FormSection.vue'
+import NetworkFields from '@/components/ConfigPanel/NetworkFields.vue'
+import RouterFields from '@/components/ConfigPanel/RouterFields.vue'
+import SwitchFields from '@/components/ConfigPanel/SwitchFields.vue'
+import FirewallFields from '@/components/ConfigPanel/FirewallFields.vue'
+import LoadBalancerFields from '@/components/ConfigPanel/LoadBalancerFields.vue'
+import DnsFields from '@/components/ConfigPanel/DnsFields.vue'
+import DhcpFields from '@/components/ConfigPanel/DhcpFields.vue'
+import DockerFields from '@/components/ConfigPanel/DockerFields.vue'
+import GroupFields from '@/components/ConfigPanel/GroupFields.vue'
+import NoteFields from '@/components/ConfigPanel/NoteFields.vue'
+import SimulatedInternetFields from '@/components/ConfigPanel/SimulatedInternetFields.vue'
+import EdgeFirewallFields from '@/components/ConfigPanel/EdgeFirewallFields.vue'
+import LxcFields from '@/components/ConfigPanel/LxcFields.vue'
+import VulnerableTargetFields from '@/components/ConfigPanel/VulnerableTargetFields.vue'
+import SharedServiceFields from '@/components/ConfigPanel/SharedServiceFields.vue'
+import { vmMemoryMb, setVmMemoryMb } from '@/services/vmResources'
+import VmFields from '@/components/ConfigPanel/VmFields.vue'
+import NodeContextNotice from '@/components/ConfigPanel/NodeContextNotice.vue'
+import DeployedVmFields from '@/components/ConfigPanel/DeployedVmFields.vue'
+import { getBaseUrl } from '@/services/proxmox/api'
+import { proxmoxApi } from '@/services/proxmox'
+import { proxmoxCache } from '@/services/proxmox/cache'
+import { PREDEFINED_TAGS, getTagColor } from '@/constants/tags'
+import { usePendingChanges } from '@/composables/usePendingChanges'
+import ApplyChangesDialog from '@/components/ApplyChangesDialog.vue'
+import VmHardwareDialog from '@/components/VmHardwareDialog.vue'
+import DeleteNodeModal from '@/components/DeleteNodeModal.vue'
+import { useProxmoxTasks } from '@/composables/useProxmoxTasks'
+import NodeAttachmentsSection from '@/components/project/attachments/NodeAttachmentsSection.vue'
+import { resolveNodeStatus } from '@/composables/useNodeStatus'
+import { canvasDescendants } from '@/services/canvasDeletion'
 
-const props = defineProps(['node'])
-const emit = defineEmits(['close', 'update', 'delete'])
+const { t } = useI18n({ useScope: 'global' })
+const tasks = useProxmoxTasks()
+const showDeleteModal = ref(false)
+const showHardwareDialog = ref(false)
+const hardwareTarget = computed(() => {
+  const data = props.node?.data, config = data?.config
+  return props.node?.type === 'vm' && data?.deployed && Number.isSafeInteger(Number(data.vmId))
+    && typeof config?.proxmoxNode === 'string' && config.proxmoxNode && typeof config?.proxmoxHostId === 'string' && config.proxmoxHostId
+    ? { vmid: Number(data.vmId), node: config.proxmoxNode, hostId: config.proxmoxHostId } : null
+})
+
+// Modal shell refs — focus is moved into the panel on open (mirrors
+// ConfirmDialog's pattern) and Escape closes via the root keydown handler.
+const modalBox = ref(null)
+const focusReady = ref(false)
+const opener = typeof document !== 'undefined' ? document.activeElement : null
+onUnmounted(async () => {
+  await nextTick()
+  if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true })
+})
+const titleId = 'config-panel-title'
+
+const props = defineProps({
+  node: {
+    type: Object,
+    default: null,
+  },
+  attachments: {
+    type: Array,
+    default: () => [],
+  },
+  nodes: {
+    type: Array,
+    default: () => [],
+  },
+})
+const emit = defineEmits(['close', 'update', 'delete', 'update:attachments', 'open-content'])
+
+const statusView = computed(() =>
+  resolveNodeStatus(props.node?.data?.status, props.node?.data?.pendingAction),
+)
+
+// Maps the status dot color to its badge/dot Tailwind utility so the header
+// pill and live-status dot stay visually in sync with the canvas legend.
+const STATUS_DOT_CLASS = {
+  green: 'bg-success',
+  red: 'bg-error',
+  orange: 'bg-warning',
+  blue: 'bg-info',
+  gray: 'bg-base-content/30',
+}
+const STATUS_BADGE_CLASS = {
+  green: 'badge-success',
+  red: 'badge-error',
+  orange: 'badge-warning',
+  blue: 'badge-info',
+  gray: 'badge-ghost',
+}
+const statusDotClass = computed(() => STATUS_DOT_CLASS[statusView.value.dotColor] || STATUS_DOT_CLASS.gray)
+const statusBadgeClass = computed(() => STATUS_BADGE_CLASS[statusView.value.dotColor] || STATUS_BADGE_CLASS.gray)
+
+// Header type icon — kept identical to the prior inline ternary, just hoisted.
+const typeIcon = computed(() => {
+  switch (props.node?.type) {
+    case 'vm': return 'monitor'
+    case 'lxc': return 'cube'
+    case 'network-segment': return 'link'
+    case 'router': return 'router'
+    case 'note': return 'document'
+    default: return 'gear'
+  }
+})
+
+const typeLabel = computed(() => props.node?.type === 'note'
+  ? t('sidebar.items.note.label') : (props.node?.type || '').replace('-', ' '))
+const subtitleState = computed(() =>
+  props.node?.data?.deployed ? t('configPanel.subtitle.deployed') : t('configPanel.subtitle.design'),
+)
 
 
 const errors = ref([])
-const isLoading = ref(false)
+const loadingTemplates = ref(false)
+const availableTemplates = ref([])
+const availableStorages = ref([])
 
 const config = ref({})
 
-onMounted(() => {
-  if (props.node?.data?.config) {
-    config.value = { ...props.node.data.config }
+// Injected from ProjectEditor — per-project API config
+const apiConfig = inject('apiConfig', null)
+
+function getProxmoxNode() {
+  if (props.node?.data?.deployed && props.node.data.config?.proxmoxNode) return props.node.data.config.proxmoxNode
+  // Use per-project settings from injected apiConfig
+  if (apiConfig?.node?.value) return apiConfig.node.value
+  // Fallback to global settings
+  const stored = JSON.parse(localStorage.getItem('range42_proxmox_settings') || '{}')
+  return stored.defaultNode || 'pve01'
+}
+
+function getGuestTarget() {
+  const hostId = props.node?.data?.config?.proxmoxHostId
+  return { node: getProxmoxNode(), ...(hostId ? { hostId } : {}) }
+}
+
+async function loadTemplates(force = false) {
+  if (!getBaseUrl()) return
+  loadingTemplates.value = true
+  try {
+    await proxmoxCache.fetchVms(getProxmoxNode(), force)
+    availableTemplates.value = proxmoxCache.getTemplateOptions()
+
+    // Also fetch storages
+    try {
+      const storages = await proxmoxApi.storage.list(getProxmoxNode())
+      if (Array.isArray(storages)) {
+        const items = Array.isArray(storages[0]) ? storages[0] : storages
+        availableStorages.value = items
+          .filter((s) => s.storage_active || s.active)
+          .map((s) => ({
+            value: s.storage_name || s.storage || s.name,
+            label: `${s.storage_name || s.storage || s.name} (${s.storage_type || s.type || '?'})`,
+          }))
+      }
+    } catch { /* storage listing optional */ }
+  } catch (e) {
+    console.warn('[ConfigPanel] Failed to fetch templates:', e)
+  } finally {
+    loadingTemplates.value = false
   }
-  // Load i18n namespaces used by this panel
-  ensureNamespaces(['configPanel', 'common'])
+}
+
+// Hydration must preserve saved resources; only a deliberate selection fills defaults.
+function selectTemplate(newTemplate) {
+  if (!newTemplate) return
+  const templateVm = proxmoxCache.templates.value.find(t => String(t.vmid) === String(newTemplate))
+  if (templateVm) {
+    config.value.cores = templateVm.maxcpu || config.value.cores
+    if (templateVm.maxmem) setVmMemoryMb(config.value, Math.floor(templateVm.maxmem / 1024 / 1024))
+  }
+}
+
+onMounted(async () => {
+  if (props.node?.data?.config) {
+    config.value = JSON.parse(JSON.stringify(props.node.data.config))
+  }
+  // For group nodes, hydrate kind/team_count from data (spec §6)
+  if (props.node?.type === 'group') {
+    config.value.kind = props.node.data?.kind || 'topology_group'
+    config.value.team_count = Number(props.node.data?.team_count ?? config.value.team_count ?? 1)
+  }
+  config.value.role = config.value.role ?? ''
+
+  // Keyboard controls must work while optional backend reads are still pending.
+  await nextTick()
+  modalBox.value?.focus()
+  focusReady.value = true
+  ensureNamespaces(['configPanel', 'project', 'common'])
+
+  if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
+    await loadTemplates()
+  }
 })
 
 // Add validation
@@ -32,10 +212,10 @@ const validateConfig = () => {
   // Add type-specific validations
   switch (props.node?.type) {
     case 'vm':
-      if (!config.value.cpu || config.value.cpu < 1) {
+      if (!Number.isInteger(Number(config.value.cores ?? config.value.cpu)) || Number(config.value.cores ?? config.value.cpu) < 1) {
         errors.value.push(t('configPanel.validation.cpuMin'))
       }
-      if (!String(config.value.memory || '').trim()) {
+      if (!String(vmMemoryMb(config.value) || '').trim()) {
         errors.value.push(t('configPanel.validation.memoryRequired'))
       }
       break
@@ -50,94 +230,150 @@ const isValid = computed(() => {
 })
 
 
-// Add network interface management for routers
-const addInterface = () => {
-  if (!config.value.interfaces) config.value.interfaces = []
-  config.value.interfaces.push({
-    name: `eth${config.value.interfaces.length}`,
-    ip: '',
-    subnet: '',
-    description: ''
+// Tag editor state
+const tagInput = ref('')
+const showTagDropdown = ref(false)
+const displayedTags = computed(() => props.node?.data?.deployed && props.node?.data?.desiredConfig
+  ? props.node.data.desiredConfig.tags || [] : props.node?.data?.tags || [])
+
+const filteredPredefinedTags = computed(() => {
+  const currentTags = displayedTags.value
+  const search = tagInput.value.toLowerCase()
+  return PREDEFINED_TAGS.filter(t =>
+    !currentTags.includes(t.name) &&
+    (search === '' || t.name.includes(search))
+  )
+})
+
+function addTag() {
+  const tag = tagInput.value.trim().toLowerCase()
+  if (!tag || !props.node) return
+
+  if (props.node.data.deployed && props.node.data.desiredConfig) {
+    const currentTags = props.node.data.desiredConfig.tags || []
+    if (currentTags.includes(tag)) return
+    props.node.data.desiredConfig.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
+  } else {
+    const currentTags = props.node.data.tags || []
+    if (currentTags.includes(tag)) return
+    props.node.data.tags = [...currentTags, tag] // eslint-disable-line vue/no-mutating-props
+  }
+  tagInput.value = ''
+  showTagDropdown.value = false
+}
+
+function addPredefinedTag(tagName) {
+  if (!props.node) return
+  if (props.node.data.deployed && props.node.data.desiredConfig) {
+    const currentTags = props.node.data.desiredConfig.tags || []
+    if (currentTags.includes(tagName)) return
+    props.node.data.desiredConfig.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
+  } else {
+    const currentTags = props.node.data.tags || []
+    if (currentTags.includes(tagName)) return
+    props.node.data.tags = [...currentTags, tagName] // eslint-disable-line vue/no-mutating-props
+  }
+  showTagDropdown.value = false
+}
+
+function removeTag(tagToRemove) {
+  if (!props.node) return
+  if (props.node.data.deployed && props.node.data.desiredConfig) {
+    props.node.data.desiredConfig.tags = (props.node.data.desiredConfig.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props -- VueFlow nodes are reactive
+  } else {
+    props.node.data.tags = (props.node.data.tags || []).filter(t => t !== tagToRemove) // eslint-disable-line vue/no-mutating-props
+  }
+}
+
+
+// VM lifecycle actions for deployed nodes. These no longer flip status
+// optimistically — they route through the task core, which marks the node
+// transitional (data.pendingAction), polls the Proxmox task, then confirms or
+// reverts the status on real completion.
+const VM_ACTION_API = {
+  start: 'start',
+  stop: 'stop',
+  pause: 'pause',
+  resume: 'resume',
+}
+
+async function handleVmAction(action) {
+  const vmId = props.node?.data?.vmId || config.value.vmid
+  if (!vmId) return
+
+  const method = VM_ACTION_API[action]
+  if (!method) return
+
+  const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
+  const target = getGuestTarget()
+  const request = { proxmox_node: target.node, ...(target.hostId ? { proxmox_host_id: target.hostId } : {}), vm_id: vmId, vmtype }
+  await tasks.launch(action, {
+    node: props.node,
+    vmId,
+    vmtype,
+    target,
+    apiCall: () => proxmoxApi.vm[method](request),
+    onSuccess: () => {},
   })
 }
 
-const removeInterface = (index) => {
-  config.value.interfaces.splice(index, 1)
-}
-
-// Add VLAN management for switches
-const addVlan = () => {
-  if (!config.value.vlans) config.value.vlans = []
-  config.value.vlans.push({
-    id: config.value.vlans.length + 1,
-    name: `VLAN_${config.value.vlans.length + 1}`,
-    description: ''
-  })
-}
-
-const removeVlan = (index) => {
-  config.value.vlans.splice(index, 1)
-}
-
-// Add firewall rule management (Proxmox-compatible format)
-const addFirewallRule = () => {
-  if (!config.value.rules) config.value.rules = []
-  config.value.rules.push({
-    action: 'ACCEPT',
-    direction: 'in',
-    source: '',
-    dest: '',
-    dport: '',
-    proto: 'tcp',
-    comment: '',
-    enabled: true
-  })
-}
-
-const removeFirewallRule = (index) => {
-  config.value.rules.splice(index, 1)
-}
-
-// Add server management for load balancer
-const addServer = () => {
-  if (!config.value.servers) config.value.servers = []
-  config.value.servers.push({
-    ip: '',
-    port: '',
-    weight: 1,
-    status: 'active'
-  })
-}
-
-const removeServer = (index) => {
-  config.value.servers.splice(index, 1)
-}
-
-// Add DNS zone management
-const addDnsZone = () => {
-  if (!config.value.zones) config.value.zones = []
-  config.value.zones.push({
-    name: '',
-    type: 'forward',
-    description: ''
-  })
-}
-
-const removeDnsZone = (index) => {
-  config.value.zones.splice(index, 1)
-}
-
+const saving = ref(false)
 const handleSave = () => {
+  if (saving.value) return
+  saving.value = true
   const newStatus = isValid.value ? 'orange' : 'gray'
-  emit('update', props.node.id, { config: config.value, status: newStatus })
+  const payload = {
+    config: config.value,
+    status: newStatus,
+    label: config.value.name || props.node.data?.label,
+  }
+  // Lift group kind/team_count out of config onto data so GroupNode.vue reads them
+  if (props.node?.type === 'group') {
+    if (config.value.kind) payload.kind = config.value.kind
+    if (config.value.team_count !== undefined && config.value.team_count !== null) {
+      payload.team_count = Number(config.value.team_count) || 1
+    }
+  }
+  emit('update', props.node.id, payload)
   emit('close')
+  // Reset defensively — the panel normally unmounts on close, but don't leave
+  // Save permanently disabled if the parent keeps it alive.
+  saving.value = false
 }
 
 const handleDelete = () => {
-  if (confirm(`Are you sure you want to delete "${config.value.name || props.node.type}"?`)) {
-    emit('delete', props.node.id)
-    emit('close')
-  }
+  showDeleteModal.value = true
+}
+
+const onDeleteProxmox = async () => {
+  showDeleteModal.value = false
+  const vmId = props.node.data?.vmId
+  if (!vmId) return
+  const vmtype = props.node.type === 'lxc' ? 'lxc' : 'qemu'
+  const target = getGuestTarget()
+  await tasks.launch('delete', {
+    node: props.node,
+    vmId,
+    vmtype,
+    target,
+    apiCall: () => props.node.type === 'lxc'
+      ? proxmoxApi.lxc.delete(vmId, target)
+      : proxmoxApi.vm.delete(vmId, target),
+    onSuccess: () => {
+      emit('delete', props.node.id)
+      emit('close')
+    },
+  })
+}
+
+const onRemoveCanvas = (options = {}) => {
+  showDeleteModal.value = false
+  emit('delete', props.node.id, options)
+  emit('close')
+}
+
+const onDeleteCancel = () => {
+  showDeleteModal.value = false
 }
 
 const handleBackdropClick = (event) => {
@@ -146,1153 +382,337 @@ const handleBackdropClick = (event) => {
   }
 }
 
+const onEscape = () => {
+  // Defer to nested dialogs: only close the panel when no overlay is open.
+  if (showDeleteModal.value || showApplyDialog.value || showHardwareDialog.value) return
+  emit('close')
+}
+
 watch(() => props.node, (newNode) => {
   if (newNode) {
-    config.value = { ...newNode.data.config }
+    config.value = JSON.parse(JSON.stringify(newNode.data.config || {}))
+    if (newNode.type === 'group') {
+      config.value.kind = newNode.data?.kind || 'topology_group'
+      config.value.team_count = Number(newNode.data?.team_count ?? config.value.team_count ?? 1)
+    }
+    config.value.role = config.value.role ?? ''
   }
 }, { immediate: true })
+
+const isHostNode = computed(() => ['vm', 'lxc', 'docker'].includes(props.node?.type))
+
+const nodeDataRef = computed(() => props.node?.data || {})
+const {
+  pendingChanges,
+  hasPendingChanges,
+  pendingCount,
+  revertField,
+  revertAll,
+  updateDesired,
+} = usePendingChanges(nodeDataRef)
+
+const showApplyDialog = ref(false)
+// Let the parent (node-card "Apply" strip) open the apply dialog directly.
+defineExpose({ openApplyDialog: () => { showApplyDialog.value = true }, openDeleteDialog: handleDelete })
 </script>
 
 <template>
+  <FocusTrap :active="focusReady && !showDeleteModal && !showApplyDialog && !showHardwareDialog"
+    :initial-focus="() => modalBox" :fallback-focus="() => modalBox"
+    :escape-deactivates="false" :return-focus-on-deactivate="false">
   <div class="modal modal-open" @click="handleBackdropClick">
-    <div class="modal-box w-full max-w-4xl max-h-[90vh] overflow-y-auto" @click.stop>
-      <!-- Header -->
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="node.data?.deployed ? 'bg-primary/10' : 'bg-base-200'">
-            <span class="text-xl">{{ node.type === 'vm' ? '🖥️' : node.type === 'lxc' ? '📦' : node.type === 'network-segment' ? '🔗' : node.type === 'router' ? '🔀' : '⚙️' }}</span>
-          </div>
-          <div>
-            <h3 class="text-xl font-bold">{{ config.name || node.type.replace('-', ' ') }}</h3>
-            <p class="text-xs text-base-content/50 uppercase tracking-wider">{{ node.data?.deployed ? 'Deployed' : 'Design' }} · {{ node.type.replace('-', ' ') }}</p>
-          </div>
+    <div
+      ref="modalBox"
+      class="modal-box flex max-h-[90vh] w-11/12 max-w-3xl flex-col gap-0 overflow-hidden p-0"
+      role="dialog"
+      aria-modal="true"
+      :aria-labelledby="titleId"
+      tabindex="-1"
+      @click.stop
+      @keydown.esc.stop.prevent="onEscape"
+    >
+      <!-- Header (sticky) -->
+      <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-base-300 bg-base-100 px-6 py-4">
+        <div
+          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+          :class="node.data?.deployed ? 'bg-primary/10 text-primary' : 'bg-base-200'"
+        >
+          <AppIcon :name="typeIcon" class="h-6 w-6" />
         </div>
-        <button class="btn btn-sm btn-circle btn-ghost" @click="emit('close')">✕</button>
-      </div>
+        <div class="min-w-0 flex-1">
+          <h3 :id="titleId" class="truncate text-lg font-semibold leading-tight">
+            {{ config.name || typeLabel }}
+          </h3>
+          <p class="text-xs uppercase tracking-wide opacity-60">
+            {{ subtitleState }} · {{ typeLabel }}
+          </p>
+        </div>
 
-      <!-- Content -->
-      <div class="space-y-6">
+        <!-- Deployed-node status pill + VMID chip -->
+        <template v-if="node.data?.deployed">
+          <span
+            class="badge gap-1.5 border-0 font-medium capitalize"
+            :class="statusBadgeClass"
+          >
+            <span
+              class="h-2 w-2 rounded-full bg-current/80"
+              :class="{ 'animate-pulse': statusView.pulse }"
+            ></span>
+            {{ statusView.label }}
+          </span>
+          <span v-if="node.data.vmId" class="badge badge-ghost shrink-0 font-mono text-xs">
+            {{ t('configPanel.vmid', { id: node.data.vmId }) }}
+          </span>
+        </template>
+
+        <button
+          class="btn btn-circle btn-ghost btn-sm shrink-0"
+          :aria-label="t('configPanel.a11y.close')"
+          @click="emit('close')"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </header>
+      <p v-if="node.data?.statusError" role="status" class="mx-4 mt-2 text-sm text-base-content/80">
+        {{ node.data.statusError }}
+      </p>
+
+      <!-- Content (scrolls between sticky header/footer) -->
+      <div class="flex-1 space-y-5 overflow-y-auto overscroll-contain px-6 py-5">
+        <NodeContextNotice :type="node.type" />
+
         <!-- Common Fields -->
-        <div class="form-control">
-          <label class="label">
-            <span class="label-text font-semibold">{{ t('configPanel.fields.name') }} *</span>
-          </label>
-          <input
+        <FormSection icon="" title="" :columns="1">
+          <FormField
             v-model="config.name"
+            :label="t('configPanel.fields.name')"
             type="text"
-            class="input input-bordered w-full"
             :placeholder="t('configPanel.placeholders.name', { type: node.type.replace('-', ' ') })"
+            :required="true"
+            icon=""
           />
+        </FormSection>
+
+        <p v-if="node.data.deployed" class="text-sm text-base-content/70 mb-3">Desired edits stay local until you review fresh configuration and apply to the selected host.</p>
+        <!-- Tag Editor (VM and LXC) -->
+        <div v-if="node.type === 'vm' || node.type === 'lxc'" class="space-y-2">
+          <label class="text-xs font-medium uppercase tracking-wide opacity-60">
+            {{ t('configPanel.tags.label') }}
+          </label>
+          <div v-if="displayedTags.length" class="flex min-h-[24px] flex-wrap gap-1.5">
+            <span
+              v-for="tag in displayedTags"
+              :key="tag"
+              class="node-tag inline-flex items-center gap-1"
+              :style="{ '--tag-accent': getTagColor(tag).hex }"
+            >
+              <span class="min-w-0 truncate" :title="tag">{{ tag }}</span>
+              <button
+                class="ml-0.5 shrink-0 leading-none opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                :aria-label="t('configPanel.a11y.removeTag', { tag })"
+                @click="removeTag(tag)"
+              >&times;</button>
+            </span>
+          </div>
+          <div class="relative">
+            <input
+              v-model="tagInput"
+              :aria-label="t('configPanel.tags.add')"
+              :placeholder="t('configPanel.tags.add')"
+              class="input input-bordered input-sm w-full rounded-lg"
+              @keydown.enter.prevent="addTag"
+              @focus="showTagDropdown = true"
+              @blur="setTimeout(() => showTagDropdown = false, 200)"
+            />
+            <div
+              v-if="showTagDropdown && filteredPredefinedTags.length"
+              class="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-base-300 bg-base-100 shadow-lg"
+            >
+              <button
+                v-for="tag in filteredPredefinedTags"
+                :key="tag.name"
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-base-200"
+                @mousedown.prevent="addPredefinedTag(tag.name)"
+              >
+                <span class="h-2 w-2 rounded-full" :style="{ backgroundColor: tag.hex }"></span>
+                {{ tag.name }}
+              </button>
+            </div>
+          </div>
         </div>
+
+        <!-- Role selector (vm / lxc / docker) -->
+        <FormSection
+          v-if="isHostNode"
+          variant="bordered"
+          :columns="1"
+        >
+          <FormField
+            v-model="config.role"
+            :label="t('configPanel.fields.role')"
+            type="select"
+            :options="[
+              { value: '', label: t('configPanel.fields.roleAuto') },
+              { value: 'admin', label: 'admin' },
+              { value: 'team', label: 'team' },
+              { value: 'trainee', label: 'trainee' },
+              { value: 'shared', label: 'shared' },
+            ]"
+            hint=""
+            icon=""
+          />
+        </FormSection>
 
         <!-- Deployed VM Status View -->
-        <template v-if="node.type === 'vm' && node.data?.deployed">
-          <!-- Status Banner -->
-          <div class="flex items-center gap-3 px-4 py-3 rounded-lg border"
-            :class="node.data.status === 'running'
-              ? 'bg-success/5 border-success/20 text-success'
-              : node.data.status === 'stopped'
-                ? 'bg-base-200 border-base-300 text-base-content/50'
-                : 'bg-warning/5 border-warning/20 text-warning'"
-          >
-            <div class="w-2.5 h-2.5 rounded-full shrink-0"
-              :class="node.data.status === 'running'
-                ? 'bg-success shadow-[0_0_8px_theme(colors.success)]'
-                : node.data.status === 'stopped'
-                  ? 'bg-base-content/20'
-                  : 'bg-warning animate-pulse'"
-            ></div>
-            <span class="font-semibold text-sm uppercase tracking-wider">{{ node.data.status }}</span>
-            <div class="ml-auto flex items-center gap-2">
-              <span class="badge badge-sm badge-outline">VMID {{ config.vmid }}</span>
-              <span v-if="config.proxmoxNode" class="badge badge-sm badge-ghost">{{ config.proxmoxNode }}</span>
-            </div>
-          </div>
+        <DeployedVmFields v-if="node.type === 'vm' && node.data?.deployed"
+          :node="node" :status-view="statusView" :status-dot-class="statusDotClass"
+          @action="handleVmAction" @revert-field="revertField" @update-desired="updateDesired" />
 
-          <!-- Info Table -->
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <tbody>
-                <tr>
-                  <td class="text-base-content/50 w-32">Hostname</td>
-                  <td class="font-medium">{{ config.name }}</td>
-                </tr>
-                <tr>
-                  <td class="text-base-content/50">VMID</td>
-                  <td class="font-mono">{{ config.vmid }}</td>
-                </tr>
-                <tr>
-                  <td class="text-base-content/50">Node</td>
-                  <td>{{ config.proxmoxNode || '—' }}</td>
-                </tr>
-                <tr>
-                  <td class="text-base-content/50">Uptime</td>
-                  <td>{{ config.uptime ? Math.floor(config.uptime / 3600) + 'h ' + Math.floor((config.uptime % 3600) / 60) + 'm' : '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <div v-if="node.type === 'vm' && node.data?.deployed" class="space-y-2 my-4">
+          <button class="btn btn-outline btn-sm" :disabled="!hardwareTarget || !!node.data.pendingAction" @click="showHardwareDialog = true">Review NICs and disks</button>
+          <p v-if="!hardwareTarget" class="text-sm">Import this guest from its explicit registered host before reviewing hardware edits.</p>
+        </div>
 
-          <!-- Resource Cards -->
-          <div class="grid grid-cols-3 gap-3">
-            <!-- CPU -->
-            <div class="rounded-lg border border-base-300 p-3">
-              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">CPU</div>
-              <div class="text-xl font-bold">{{ config.cores }}<span class="text-sm font-normal text-base-content/40 ml-1">cores</span></div>
-              <progress class="progress progress-primary w-full mt-2 h-1.5" :value="Math.round((config.cpuUsage || 0) * 100)" max="100"></progress>
-              <div class="text-[10px] text-base-content/50 mt-0.5">{{ Math.round((config.cpuUsage || 0) * 100) }}% utilization</div>
-            </div>
 
-            <!-- RAM -->
-            <div class="rounded-lg border border-base-300 p-3">
-              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">Memory</div>
-              <div class="text-xl font-bold">
-                {{ parseInt(config.memory) >= 1024 ? (parseInt(config.memory) / 1024).toFixed(1) : config.memory }}
-                <span class="text-sm font-normal text-base-content/40 ml-1">{{ parseInt(config.memory) >= 1024 ? 'GB' : 'MB' }}</span>
-              </div>
-              <progress class="progress progress-secondary w-full mt-2 h-1.5" :value="config.memUsed || 0" :max="parseInt(config.memory) || 1"></progress>
-              <div class="text-[10px] text-base-content/50 mt-0.5">
-                {{ config.memUsed ? (config.memUsed >= 1024 ? (config.memUsed / 1024).toFixed(1) + ' GB' : config.memUsed + ' MB') : '0' }} used
-              </div>
-            </div>
-
-            <!-- Disk -->
-            <div class="rounded-lg border border-base-300 p-3">
-              <div class="text-[11px] text-base-content/50 uppercase tracking-wider mb-1">Disk</div>
-              <div class="text-xl font-bold">
-                {{ config.diskMax ? (config.diskMax / 1024 / 1024 / 1024).toFixed(0) : '—' }}
-                <span class="text-sm font-normal text-base-content/40 ml-1">GB</span>
-              </div>
-              <div class="text-[10px] text-base-content/50 mt-2">Provisioned</div>
-            </div>
-          </div>
-        </template>
-
-        <!-- VM Design Fields (non-deployed) -->
-        <template v-else-if="node.type === 'vm'">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea
-              v-model="config.description"
-              class="textarea textarea-bordered"
-              placeholder="VM description..."
-              rows="2"
-            ></textarea>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">IP Address</span>
-            </label>
-            <input
-              v-model="config.ipAddress"
-              type="text"
-              class="input input-bordered"
-              placeholder="e.g., 192.168.1.10"
-            />
-            <label class="label">
-              <span class="label-text-alt">Static IP for this VM (used during deployment)</span>
-            </label>
-          </div>
-        </template>
+        <!-- VM Specific Fields (non-deployed) -->
+        <VmFields v-if="node.type === 'vm' && !node.data?.deployed" v-model="config" :available-templates="availableTemplates" :available-storages="availableStorages" :loading-templates="loadingTemplates" @refresh-templates="loadTemplates(true)" @select-template="selectTemplate" />
 
         <!-- Network Segment Specific Fields -->
-        <template v-if="node.type === 'network-segment'">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea
-              v-model="config.description"
-              class="textarea textarea-bordered"
-              placeholder="Network segment description..."
-              rows="2"
-            ></textarea>
-          </div>
-
-          <div class="divider">Bridge Configuration</div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text font-semibold">🔌 Proxmox Bridge *</span>
-              </label>
-              <select v-model="config.bridge" class="select select-bordered">
-                <option value="vmbr0">vmbr0 (Default)</option>
-                <option value="vmbr1">vmbr1</option>
-                <option value="vmbr2">vmbr2</option>
-                <option value="vmbr3">vmbr3</option>
-                <option value="vmbr4">vmbr4</option>
-                <option value="vmbr5">vmbr5</option>
-              </select>
-              <label class="label">
-                <span class="label-text-alt">Bridge must exist on Proxmox node</span>
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">🏷️ VLAN Tag</span>
-              </label>
-              <input
-                v-model.number="config.vlan"
-                type="number"
-                class="input input-bordered"
-                placeholder="Optional (1-4094)"
-                min="1"
-                max="4094"
-              />
-              <label class="label">
-                <span class="label-text-alt">802.1Q VLAN ID (optional)</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="divider">Network Addressing</div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.cidr') }}</span>
-              </label>
-              <input
-                v-model="config.cidr"
-                type="text"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.cidr')"
-              />
-              <label class="label">
-                <span class="label-text-alt">For documentation/planning</span>
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">{{ t('configPanel.fields.gateway') }}</span>
-              </label>
-              <input
-                v-model="config.gateway"
-                type="text"
-                class="input input-bordered"
-                :placeholder="t('configPanel.placeholders.gateway')"
-              />
-              <label class="label">
-                <span class="label-text-alt">For documentation/planning</span>
-              </label>
-            </div>
-          </div>
-        </template>
+        <NetworkFields v-if="node.type === 'network-segment'" v-model="config" />
 
         <!-- Router Specific Fields -->
-        <template v-if="node.type === 'router'">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea
-              v-model="config.description"
-              class="textarea textarea-bordered"
-              placeholder="Router description..."
-              rows="2"
-            ></textarea>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Appliance Type</span>
-            </label>
-            <select v-model="config.applianceType" class="select select-bordered">
-              <option value="vyos">VyOS</option>
-              <option value="opnsense">OPNsense</option>
-              <option value="pfsense">pfSense</option>
-            </select>
-            <label class="label">
-              <span class="label-text-alt">Virtual router appliance type</span>
-            </label>
-          </div>
-        </template>
+        <RouterFields v-if="node.type === 'router'" v-model="config" />
 
         <!-- Switch Specific Fields -->
-        <template v-if="node.type === 'switch'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">🔌 Backing Proxmox Bridge</span>
-              </label>
-              <select v-model="config.bridge" class="select select-bordered">
-                <option value="">None (Logical only)</option>
-                <option value="vmbr0">vmbr0</option>
-                <option value="vmbr1">vmbr1</option>
-                <option value="vmbr2">vmbr2</option>
-                <option value="vmbr3">vmbr3</option>
-              </select>
-              <label class="label">
-                <span class="label-text-alt">Optional bridge for VLAN trunking</span>
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Port Count *</span>
-              </label>
-              <select v-model.number="config.portCount" class="select select-bordered">
-                <option :value="8">8 ports</option>
-                <option :value="16">16 ports</option>
-                <option :value="24">24 ports</option>
-                <option :value="48">48 ports</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Management VLAN</span>
-              </label>
-              <input
-                v-model.number="config.managementVlan"
-                type="number"
-                class="input input-bordered"
-                placeholder="e.g., 1"
-                min="1"
-                max="4094"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Trunk Ports (comma-separated)</span>
-              </label>
-              <input
-                v-model="config.trunkPortsInput"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 1,2,24"
-              />
-              <label class="label">
-                <span class="label-text-alt">Ports carrying multiple VLANs</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- VLAN Management -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-semibold">🏷️ VLAN Configuration</span>
-              <button type="button" @click="addVlan" class="btn btn-sm btn-primary">
-                Add VLAN
-              </button>
-            </label>
-            <div v-if="config.vlans?.length" class="space-y-2">
-              <div
-                v-for="(vlan, index) in config.vlans"
-                :key="index"
-                class="border border-base-300 rounded p-3"
-              >
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <input
-                    v-model.number="vlan.id"
-                    type="number"
-                    class="input input-bordered input-sm"
-                    placeholder="VLAN ID"
-                    min="1"
-                    max="4094"
-                  />
-                  <input
-                    v-model="vlan.name"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="VLAN Name"
-                  />
-                  <input
-                    v-model="vlan.subnet"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Subnet (e.g., 10.0.10.0/24)"
-                  />
-                  <input
-                    v-model="vlan.gateway"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Gateway (e.g., 10.0.10.1)"
-                  />
-                  <button
-                    type="button"
-                    @click="removeVlan(index)"
-                    class="btn btn-sm btn-error"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div v-else class="text-sm text-base-content/60 p-2">
-              No VLANs configured. Click "Add VLAN" to create one.
-            </div>
-          </div>
-        </template>
+        <SwitchFields v-if="node.type === 'switch'" v-model="config" />
 
         <!-- Firewall Specific Fields -->
-        <template v-if="node.type === 'firewall'">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <span class="label-text">Enable NAT</span>
-                <input v-model="config.natEnabled" type="checkbox" class="toggle toggle-primary" />
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <span class="label-text">VPN Support</span>
-                <input v-model="config.vpnSupport" type="checkbox" class="toggle toggle-primary" />
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <span class="label-text">Intrusion Detection</span>
-                <input v-model="config.intrusionDetection" type="checkbox" class="toggle toggle-primary" />
-              </label>
-            </div>
-          </div>
-
-          <!-- Enhanced Firewall Rules Builder -->
-          <div class="form-control mt-4">
-            <label class="label">
-              <span class="label-text font-semibold">🛡️ Firewall Rules</span>
-              <button type="button" @click="addFirewallRule" class="btn btn-sm btn-primary">
-                + Add Rule
-              </button>
-            </label>
-            
-            <!-- Rules Header -->
-            <div v-if="config.rules?.length" class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 bg-base-200 rounded-t-lg text-xs font-semibold text-base-content/70">
-              <div class="col-span-1">#</div>
-              <div class="col-span-1">Action</div>
-              <div class="col-span-1">Dir</div>
-              <div class="col-span-2">Source</div>
-              <div class="col-span-2">Destination</div>
-              <div class="col-span-1">Port</div>
-              <div class="col-span-1">Proto</div>
-              <div class="col-span-2">Comment</div>
-              <div class="col-span-1"></div>
-            </div>
-
-            <div v-if="config.rules?.length" class="space-y-2">
-              <div
-                v-for="(rule, index) in config.rules"
-                :key="index"
-                class="border border-base-300 rounded-lg p-3 hover:border-base-content/30 transition-colors"
-                :class="{ 'opacity-50': rule.enabled === false }"
-              >
-                <!-- Rule Row -->
-                <div class="grid grid-cols-2 md:grid-cols-12 gap-2 items-center">
-                  <!-- Position -->
-                  <div class="hidden md:flex col-span-1 text-sm font-mono text-base-content/50">
-                    {{ index + 1 }}
-                  </div>
-                  
-                  <!-- Action -->
-                  <select 
-                    v-model="rule.action" 
-                    class="select select-bordered select-sm col-span-1"
-                    :class="{
-                      'select-success': rule.action === 'ACCEPT',
-                      'select-error': rule.action === 'DROP' || rule.action === 'REJECT'
-                    }"
-                  >
-                    <option value="ACCEPT">Allow</option>
-                    <option value="DROP">Drop</option>
-                    <option value="REJECT">Reject</option>
-                  </select>
-                  
-                  <!-- Direction -->
-                  <select v-model="rule.direction" class="select select-bordered select-sm col-span-1">
-                    <option value="in">In</option>
-                    <option value="out">Out</option>
-                  </select>
-                  
-                  <!-- Source -->
-                  <input
-                    v-model="rule.source"
-                    type="text"
-                    class="input input-bordered input-sm col-span-2"
-                    placeholder="any / CIDR"
-                  />
-                  
-                  <!-- Destination -->
-                  <input
-                    v-model="rule.dest"
-                    type="text"
-                    class="input input-bordered input-sm col-span-2"
-                    placeholder="any / CIDR"
-                  />
-                  
-                  <!-- Port -->
-                  <input
-                    v-model="rule.dport"
-                    type="text"
-                    class="input input-bordered input-sm col-span-1"
-                    placeholder="80,443"
-                  />
-                  
-                  <!-- Protocol -->
-                  <select v-model="rule.proto" class="select select-bordered select-sm col-span-1">
-                    <option value="tcp">TCP</option>
-                    <option value="udp">UDP</option>
-                    <option value="icmp">ICMP</option>
-                    <option value="">Any</option>
-                  </select>
-                  
-                  <!-- Comment -->
-                  <input
-                    v-model="rule.comment"
-                    type="text"
-                    class="input input-bordered input-sm col-span-2"
-                    placeholder="Description"
-                  />
-                  
-                  <!-- Actions -->
-                  <div class="col-span-1 flex gap-1">
-                    <label class="swap">
-                      <input type="checkbox" v-model="rule.enabled" />
-                      <span class="swap-on text-success">✓</span>
-                      <span class="swap-off text-error">✗</span>
-                    </label>
-                    <button
-                      type="button"
-                      @click="removeFirewallRule(index)"
-                      class="btn btn-xs btn-ghost text-error"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Empty State -->
-            <div v-else class="text-center py-6 text-base-content/50 border border-dashed border-base-300 rounded-lg">
-              <p>No firewall rules configured</p>
-              <p class="text-sm">Click "Add Rule" to create your first rule</p>
-            </div>
-          </div>
-        </template>
+        <FirewallFields v-if="node.type === 'firewall'" v-model="config" />
 
         <!-- Load Balancer Specific Fields -->
-        <template v-if="node.type === 'loadbalancer'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Load Balancing Algorithm *</span>
-              </label>
-              <select v-model="config.algorithm" class="select select-bordered">
-                <option value="round-robin">Round Robin</option>
-                <option value="least-connections">Least Connections</option>
-                <option value="ip-hash">IP Hash</option>
-                <option value="weighted-round-robin">Weighted Round Robin</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <span class="label-text">Health Check</span>
-                <input v-model="config.healthCheck" type="checkbox" class="toggle toggle-primary" />
-              </label>
-            </div>
-          </div>
-
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">SSL Termination</span>
-              <input v-model="config.sslTermination" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
-
-          <!-- Server Pool Management -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-semibold">Server Pool</span>
-              <button type="button" @click="addServer" class="btn btn-sm btn-primary">
-                Add Server
-              </button>
-            </label>
-            <div v-if="config.servers?.length" class="space-y-2">
-              <div
-                v-for="(server, index) in config.servers"
-                :key="index"
-                class="border border-base-300 rounded p-3"
-              >
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-                  <input
-                    v-model="server.ip"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Server IP"
-                  />
-                  <input
-                    v-model="server.port"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Port"
-                  />
-                  <input
-                    v-model.number="server.weight"
-                    type="number"
-                    class="input input-bordered input-sm"
-                    placeholder="Weight"
-                    min="1"
-                  />
-                  <select v-model="server.status" class="select select-bordered select-sm">
-                    <option value="active">Active</option>
-                    <option value="backup">Backup</option>
-                    <option value="disabled">Disabled</option>
-                  </select>
-                  <button
-                    type="button"
-                    @click="removeServer(index)"
-                    class="btn btn-sm btn-error"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
+        <LoadBalancerFields v-if="node.type === 'loadbalancer'" v-model="config" />
 
         <!-- DNS Server Specific Fields -->
-        <template v-if="node.type === 'dns'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <span class="label-text">Enable Recursion</span>
-                <input v-model="config.recursion" type="checkbox" class="toggle toggle-primary" />
-              </label>
-            </div>
-
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <span class="label-text">DNSSEC</span>
-                <input v-model="config.dnssec" type="checkbox" class="toggle toggle-primary" />
-              </label>
-            </div>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Forwarders (comma-separated)</span>
-            </label>
-            <input
-              v-model="config.forwarders"
-              type="text"
-              class="input input-bordered"
-              placeholder="8.8.8.8,1.1.1.1"
-            />
-          </div>
-
-          <!-- DNS Zone Management -->
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text font-semibold">DNS Zones *</span>
-              <button type="button" @click="addDnsZone" class="btn btn-sm btn-primary">
-                Add Zone
-              </button>
-            </label>
-            <div v-if="config.zones?.length" class="space-y-2">
-              <div
-                v-for="(zone, index) in config.zones"
-                :key="index"
-                class="border border-base-300 rounded p-3"
-              >
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <input
-                    v-model="zone.name"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Zone name"
-                  />
-                  <select v-model="zone.type" class="select select-bordered select-sm">
-                    <option value="forward">Forward</option>
-                    <option value="reverse">Reverse</option>
-                  </select>
-                  <input
-                    v-model="zone.description"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    placeholder="Description"
-                  />
-                  <button
-                    type="button"
-                    @click="removeDnsZone(index)"
-                    class="btn btn-sm btn-error"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
+        <DnsFields v-if="node.type === 'dns'" v-model="config" />
 
         <!-- DHCP Server Specific Fields -->
-        <template v-if="node.type === 'dhcp'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">IP Range/Scope *</span>
-              </label>
-              <input
-                v-model="config.scope"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 192.168.1.100-200"
-              />
-            </div>
+        <DhcpFields v-if="node.type === 'dhcp'" v-model="config" />
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Lease Time</span>
-              </label>
-              <input
-                v-model="config.leaseTime"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 24h, 7d"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Default Gateway *</span>
-              </label>
-              <input
-                v-model="config.gateway"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 192.168.1.1"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">DNS Servers (comma-separated)</span>
-              </label>
-              <input
-                v-model="config.dnsServers"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 192.168.1.1,8.8.8.8"
-              />
-            </div>
-          </div>
-        </template>
-
-  
-        <template v-if="node.type === 'docker'">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Docker Image *</span>
-              </label>
-              <input
-                v-model="config.image"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., nginx:latest"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Port Mapping *</span>
-              </label>
-              <input
-                v-model="config.ports"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 80:80,443:443"
-              />
-            </div>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Environment Variables</span>
-            </label>
-            <textarea
-              v-model="config.env"
-              class="textarea textarea-bordered"
-              placeholder="KEY=value (one per line)"
-              rows="4"
-            ></textarea>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Container Network</span>
-            </label>
-            <select v-model="config.network" class="select select-bordered">
-              <option value="bridge">Bridge (Default)</option>
-              <option value="host">Host Network</option>
-              <option value="none">No Network</option>
-              <option value="custom">Custom Network</option>
-            </select>
-          </div>
-        </template>
+        <!-- Docker Container Specific Fields -->
+        <DockerFields v-if="node.type === 'docker'" v-model="config" />
 
         <!-- Group/Container Specific Fields -->
-        <template v-if="node.type === 'group'">
-          <div class="alert alert-info mb-4">
-            <span>📁 Groups organize related infrastructure components together.</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Prefix</span>
-              </label>
-              <input
-                v-model="config.prefix"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., lab1, prod, dev"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Resource Pool</span>
-              </label>
-              <input
-                v-model="config.resourcePool"
-                type="text"
-                class="input input-bordered"
-                placeholder="Proxmox resource pool name"
-              />
-            </div>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea
-              v-model="config.description"
-              class="textarea textarea-bordered"
-              placeholder="Describe this group..."
-              rows="2"
-            ></textarea>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Tags (comma-separated)</span>
-            </label>
-            <input
-              v-model="config.tagsString"
-              type="text"
-              class="input input-bordered"
-              placeholder="e.g., production, web-tier, database"
-            />
-          </div>
-        </template>
+        <GroupFields v-if="node.type === 'group'" v-model="config" />
+        <NoteFields v-if="node.type === 'note'" v-model="config" />
 
         <!-- Simulated Internet Specific Fields -->
-        <template v-if="node.type === 'simulated-internet'">
-          <div class="alert alert-warning mb-4">
-            <span>🌍 Simulated Internet provides fake public IPs and services for isolated training.</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Bridge Name *</span>
-              </label>
-              <input
-                v-model="config.bridge"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., vmbr100"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Public CIDR *</span>
-              </label>
-              <input
-                v-model="config.publicCidr"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 203.0.113.0/24"
-              />
-            </div>
-          </div>
-
-          <div class="form-control">
-            <label class="cursor-pointer label">
-              <span class="label-text">Include Fake DNS (8.8.8.8, 1.1.1.1)</span>
-              <input v-model="config.fakeDns" type="checkbox" class="toggle toggle-primary" />
-            </label>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Fake Services (comma-separated)</span>
-            </label>
-            <input
-              v-model="config.fakeServices"
-              type="text"
-              class="input input-bordered"
-              placeholder="e.g., cdn, updates, cloud"
-            />
-          </div>
-        </template>
+        <SimulatedInternetFields v-if="node.type === 'simulated-internet'" v-model="config" />
 
         <!-- Edge Firewall Specific Fields -->
-        <template v-if="node.type === 'edge-firewall'">
-          <div class="alert alert-success mb-4">
-            <span>🛡️ Edge Firewall connects your network segments.</span>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea
-              v-model="config.description"
-              class="textarea textarea-bordered"
-              placeholder="Edge firewall description..."
-              rows="2"
-            ></textarea>
-          </div>
-
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Appliance Type</span>
-            </label>
-            <select v-model="config.applianceType" class="select select-bordered">
-              <option value="pfsense">pfSense</option>
-              <option value="opnsense">OPNsense</option>
-            </select>
-            <label class="label">
-              <span class="label-text-alt">Firewall appliance type</span>
-            </label>
-          </div>
-        </template>
+        <EdgeFirewallFields v-if="node.type === 'edge-firewall'" v-model="config" />
 
         <!-- LXC Container Specific Fields -->
-        <template v-if="node.type === 'lxc'">
-          <div class="form-control">
-            <label class="label">
-              <span class="label-text">Description</span>
-            </label>
-            <textarea
-              v-model="config.description"
-              class="textarea textarea-bordered"
-              placeholder="Container description..."
-              rows="2"
-            ></textarea>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Hostname</span>
-              </label>
-              <input
-                v-model="config.hostname"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., web-server-01"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">IP Address</span>
-              </label>
-              <input
-                v-model="config.ipAddress"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 192.168.1.10"
-              />
-              <label class="label">
-                <span class="label-text-alt">Static IP for this container</span>
-              </label>
-            </div>
-          </div>
-        </template>
+        <LxcFields v-if="node.type === 'lxc'" v-model="config" />
 
         <!-- Vulnerable Target Specific Fields -->
-        <template v-if="node.type === 'vuln-target'">
-          <div class="alert alert-error mb-4">
-            <span>🎯 Vulnerable targets are intentionally insecure systems for training purposes.</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Target Type *</span>
-              </label>
-              <select v-model="config.targetType" class="select select-bordered">
-                <option value="">Select target...</option>
-                <option value="dvwa">DVWA (Web Vulnerabilities)</option>
-                <option value="juiceshop">OWASP Juice Shop</option>
-                <option value="metasploitable">Metasploitable 2/3</option>
-                <option value="dvl">Damn Vulnerable Linux</option>
-                <option value="dvcp">Damn Vulnerable Cloud Platform</option>
-                <option value="dvad">Damn Vulnerable AD</option>
-                <option value="custom">Custom Template</option>
-              </select>
-            </div>
+        <VulnerableTargetFields v-if="node.type === 'vuln-target'" v-model="config" />
 
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Template Name</span>
-              </label>
-              <input
-                v-model="config.template"
-                type="text"
-                class="input input-bordered"
-                placeholder="Template to clone from"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">CPU Cores</span>
-              </label>
-              <input
-                v-model.number="config.cores"
-                type="number"
-                class="input input-bordered"
-                placeholder="2"
-                min="1"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Memory (MB)</span>
-              </label>
-              <input
-                v-model.number="config.memory"
-                type="number"
-                class="input input-bordered"
-                placeholder="2048"
-                min="512"
-              />
-            </div>
-          </div>
-        </template>
+        <!-- Per-node Attachments -->
+        <NodeAttachmentsSection
+          v-if="node.type !== 'note'"
+          :node="node"
+          :attachments="attachments"
+          :nodes="nodes"
+          @update:attachments="$emit('update:attachments', $event)"
+          @open-content="emit('open-content', $event)"
+        />
 
         <!-- Shared Service Specific Fields -->
-        <template v-if="node.type === 'shared-service'">
-          <div class="alert alert-info mb-4">
-            <span>🔧 Shared services are accessible from all Gamenets (Git, Chat, Wiki, Auth).</span>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Service Type *</span>
-              </label>
-              <select v-model="config.serviceType" class="select select-bordered">
-                <option value="">Select service...</option>
-                <option value="gitea">Gitea (Git Server)</option>
-                <option value="gitlab">GitLab</option>
-                <option value="mattermost">Mattermost (Chat)</option>
-                <option value="wiki">Wiki.js</option>
-                <option value="keycloak">Keycloak (SSO)</option>
-                <option value="registry">Docker Registry</option>
-                <option value="vault">HashiCorp Vault</option>
-                <option value="custom">Custom Service</option>
-              </select>
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Template Name</span>
-              </label>
-              <input
-                v-model="config.template"
-                type="text"
-                class="input input-bordered"
-                placeholder="Template to clone from"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">CPU Cores</span>
-              </label>
-              <input
-                v-model.number="config.cores"
-                type="number"
-                class="input input-bordered"
-                placeholder="2"
-                min="1"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Memory (MB)</span>
-              </label>
-              <input
-                v-model.number="config.memory"
-                type="number"
-                class="input input-bordered"
-                placeholder="2048"
-                min="512"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">Network Bridge</span>
-              </label>
-              <input
-                v-model="config.bridge"
-                type="text"
-                class="input input-bordered"
-                placeholder="vmbr0 (management network)"
-              />
-            </div>
-
-            <div class="form-control">
-              <label class="label">
-                <span class="label-text">IP Address</span>
-              </label>
-              <input
-                v-model="config.ipAddress"
-                type="text"
-                class="input input-bordered"
-                placeholder="e.g., 10.0.0.10"
-              />
-            </div>
-          </div>
-        </template>
+        <SharedServiceFields v-if="node.type === 'shared-service'" v-model="config" />
       </div>
 
-      <!-- Actions -->
-      <div class="modal-action">
-        <div class="flex justify-between items-center w-full">
-          <button class="btn btn-error btn-outline btn-sm" @click="handleDelete">
-            🗑️ Remove from canvas
-          </button>
-          <div class="space-x-2" v-if="!node.data?.deployed">
-            <span class="text-sm mr-2" :class="isValid ? 'text-success' : 'text-warning'">
-              {{ isValid ? t('configPanel.status.valid') : t('configPanel.status.missing') }}
-            </span>
-            <button class="btn btn-ghost" @click="emit('close')">{{ t('common.cancel') }}</button>
-            <button class="btn btn-primary" @click="handleSave">{{ t('configPanel.save') }}</button>
+      <!-- Footer (sticky) -->
+      <footer class="sticky bottom-0 z-10 border-t border-base-300 bg-base-100 shadow-[0_-1px_3px_rgba(0,0,0,0.06)]">
+        <!-- Pending-changes strip (deployed nodes with unsaved diffs) -->
+        <div
+          v-if="hasPendingChanges"
+          class="mx-4 mt-4 flex items-center gap-3 rounded-box border border-warning/30 bg-warning/10 px-3 py-2"
+        >
+          <svg class="h-4 w-4 shrink-0 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="text-sm font-medium">{{ t('configPanel.pending.title') }}</span>
+          <span class="text-xs opacity-60">{{ t('configPanel.pending.count', { n: pendingCount }, pendingCount) }}</span>
+          <div class="ml-auto flex items-center gap-2">
+            <button class="btn btn-ghost btn-xs" @click="revertAll">{{ t('configPanel.pending.discardAll') }}</button>
+            <button class="btn btn-warning btn-xs" @click="showApplyDialog = true">{{ t('configPanel.pending.apply') }}</button>
           </div>
-          <button v-else class="btn btn-ghost" @click="emit('close')">Close</button>
         </div>
-      </div>
+
+        <!-- Action bar -->
+        <div class="flex items-center justify-between gap-3 px-6 py-4">
+          <div class="flex items-center gap-3">
+            <button
+              class="btn btn-error btn-outline btn-sm gap-1.5"
+              :aria-label="t('configPanel.a11y.delete')"
+              @click="handleDelete"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              {{ t('configPanel.delete') }}
+            </button>
+            <div
+              v-if="!node.data?.deployed"
+              class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5"
+              :class="isValid ? 'bg-success/10 text-base-content' : 'bg-warning/10 text-base-content'"
+            >
+              <svg v-if="isValid" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span class="text-sm font-medium">
+                {{ isValid ? t('configPanel.status.valid') : t('configPanel.status.missing') }}
+              </span>
+            </div>
+          </div>
+          <div v-if="!node.data?.deployed" class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('common.cancel') }}</button>
+            <button class="btn btn-primary btn-sm gap-1.5" :disabled="saving" @click="handleSave">
+              <span v-if="saving" class="loading loading-xs"></span>
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              {{ saving ? t('configPanel.saving') : t('configPanel.save') }}
+            </button>
+          </div>
+          <button v-else class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('configPanel.close') }}</button>
+        </div>
+      </footer>
     </div>
   </div>
+  </FocusTrap>
+
+  <ApplyChangesDialog
+    v-if="showApplyDialog"
+    :node="node"
+    :pending-changes="pendingChanges"
+    @close="showApplyDialog = false"
+    @applied="showApplyDialog = false"
+  />
+
+  <VmHardwareDialog v-if="showHardwareDialog && hardwareTarget" :target="hardwareTarget" @close="showHardwareDialog = false" />
+
+  <DeleteNodeModal
+    :open="showDeleteModal"
+    :node="node"
+    :descendant-count="node.type === 'group' ? canvasDescendants(nodes, node.id).size : 0"
+    @deleteProxmox="onDeleteProxmox"
+    @removeCanvas="onRemoveCanvas"
+    @cancel="onDeleteCancel"
+  />
 </template>

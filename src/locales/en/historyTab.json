@@ -1,0 +1,12 @@
+{
+  "title": "History",
+  "refresh": "Refresh",
+  "sha": "SHA",
+  "message": "Message",
+  "author": "Author",
+  "date": "Date",
+  "empty": "No commits found for this path.",
+  "noSource": "Link this project to a git source to see its history.",
+  "before": "Before",
+  "after": "After"
+}

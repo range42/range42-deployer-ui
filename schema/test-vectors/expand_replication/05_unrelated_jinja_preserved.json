@@ -1,0 +1,39 @@
+{
+  "name": "unrelated Jinja expressions pass through untouched — only team_id/bridge_base arithmetic is rendered",
+  "operator": "expand_replication",
+  "input": {
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "unrelated jinja fixture",
+      "bridge_base": 140,
+      "nodes": [
+        { "id": "web", "kind": "vm",
+          "replication": { "scope": "per_team" },
+          "config": { "name_template": "{{ inventory_hostname }}-t{{ team_id }}" },
+          "networks": [
+            { "ip_template": "192.168.{{ bridge_base + team_id }}.{{ host_octet + 1 }}" }
+          ] }
+      ]
+    },
+    "team_count": 1
+  },
+  "expected": {
+    "plays_per_team": 1,
+    "handler_namespaces": [],
+    "document": {
+      "schema_version": "1.0",
+      "kind": "gamenet",
+      "name": "unrelated jinja fixture",
+      "bridge_base": 140,
+      "nodes": [
+        { "id": "web__team_1", "kind": "vm",
+          "replication": { "scope": "per_team" },
+          "config": { "name": "{{ inventory_hostname }}-t1" },
+          "networks": [
+            { "ip": "192.168.141.{{ host_octet + 1 }}" }
+          ] }
+      ]
+    }
+  }
+}

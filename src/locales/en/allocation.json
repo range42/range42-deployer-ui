@@ -1,0 +1,27 @@
+{
+  "title": "Reserve VM IDs and addresses",
+  "description": "Keep your entered IDs and addresses, and reserve values for empty fields. Review the mapping before applying it. Reservations check the selected target and expire after one hour unless renewed.",
+  "target": "Target node", "chooseTarget": "Choose a target", "rangeStart": "First automatic VM ID", "rangeEnd": "Last automatic VM ID",
+  "rangeHint": "The range applies to empty VM IDs. Entered IDs remain unchanged. Addresses come from your declared IPv4 /16–/30 subnets; gateways, reserved and visible occupied addresses are skipped.",
+  "noHosts": "Register a Proxmox host on this backend before reserving resources.",
+  "targetMissing": "The saved target is unavailable on this backend. Choose a current target and reserve again.",
+  "hostPageError": "The backend repeated a host page. Reload before choosing a target.",
+  "loading": "Checking reservations and target resources…", "reserve": "Reserve and review", "renew": "Check and renew reservation",
+  "expiry": "Reserved until {time}. Occupancy checked {checked}.",
+  "expired": "This reservation has expired. Reserve again to check whether these values are still available.",
+  "changed": "The draft changed after this reservation was checked. Reserve again before applying it.",
+  "applied": "Reserved values applied. Save the scenario to keep the mapping.",
+  "mapping": "Reserved VM ID and address mapping", "vm": "Virtual machine", "vmId": "VM ID", "addresses": "Interfaces and IPv4 addresses",
+  "ownershipHint": "Reservation ownership stays in this browser and is never saved to Git. Releasing a reservation keeps your entered scenario values. Deployment still runs its own preflight.",
+  "apply": "Apply reserved values", "release": "Release reservation",
+  "errors": {
+    "ALLOCATION_BUSY": "Another reservation changed while this request was checked. Retry with the same draft; this browser will reuse its reservation ownership.",
+    "ALLOCATION_OWNERSHIP": "This project has an active reservation owned by another browser. Use the original browser or wait for its lease to expire.",
+    "ALLOCATION_OCCUPIED": "An entered ID or address is occupied. Change that value explicitly, then reserve again.",
+    "ALLOCATION_PROTECTED": "An entered VM ID is protected. Choose another ID; protected IDs are never reassigned automatically.",
+    "ALLOCATION_POOL_EXHAUSTED": "The available pool cannot fit this request within the scan limit. Adjust the ID range or declared subnet, or release unused reservations.",
+    "ALLOCATION_OCCUPANCY_UNAVAILABLE": "Target occupancy could not be checked. Restore the backend connection before reserving.",
+    "ALLOCATION_INVALID": "Check VM IDs, connected networks and canonical IPv4 subnets in the scenario.",
+    "ALLOCATION_EXPIRED": "The reservation expired. Reserve again to recheck availability."
+  }
+}

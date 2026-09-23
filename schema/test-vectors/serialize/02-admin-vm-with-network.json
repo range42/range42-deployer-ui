@@ -1,0 +1,60 @@
+{
+  "name": "admin vm wired to a management network with a wazuh attachment",
+  "input": {
+    "canvas": {
+      "nodes": [
+        { "id": "mgmt", "type": "network-segment", "data": { "config": { "bridge": "vmbr142", "cidr": "192.168.142.0/24" } } },
+        { "id": "wazuh", "type": "vm", "data": { "config": { "role": "admin", "template": "9001", "name": "wazuh" } } }
+      ],
+      "edges": [
+        { "id": "e1", "source": "wazuh", "target": "mgmt", "data": { "useDhcp": true, "connection": { "ipAddress": "" } } }
+      ],
+      "attachments": [
+        { "id": "a1", "target_node": "wazuh", "stage": "configure", "source": { "kind": "catalog_role", "ref": "software.install.wazuh" } }
+      ]
+    },
+    "meta": { "name": "Admin Lab" }
+  },
+  "expected": {
+    "schema_version": "1.0",
+    "kind": "lab",
+    "name": "Admin Lab",
+    "naming_prefix": "admin-lab",
+    "bridge_base": 140,
+    "nodes": [
+      {
+        "id": "mgmt",
+        "kind": "network",
+        "config": {
+          "bridge": "vmbr142",
+          "cidr": "192.168.142.0/24"
+        }
+      },
+      {
+        "id": "wazuh",
+        "kind": "vm",
+        "config": {
+          "name": "wazuh"
+        },
+        "role": "admin",
+        "template_vmid": 9001,
+        "networks": [
+          {
+            "node_ref": "mgmt",
+            "dhcp": true
+          }
+        ],
+        "attachments": [
+          {
+            "id": "a1",
+            "stage": "configure",
+            "source": {
+              "kind": "catalog_role",
+              "ref": "software.install.wazuh"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

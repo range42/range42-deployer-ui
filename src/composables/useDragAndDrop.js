@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
+import { findNearestDockerHost } from './useInfraBuilder'
 
 const state = {
   draggedType: ref(null),
@@ -15,7 +16,8 @@ function getId() {
 export function useDragAndDrop() {
   const { draggedType, isDragOver, isDragging } = state
   const { 
-    addNodes, 
+    addNodes,
+    vueFlowRef,
     screenToFlowCoordinate, 
     onNodesInitialized, 
     updateNode,
@@ -59,7 +61,7 @@ export function useDragAndDrop() {
   }
 
   // Container node types that can hold child nodes
-  const containerTypes = ['network-segment', 'group']
+  const containerTypes = ['group']
 
   // Find potential parent node at drop position
   const findParentNodeAtPosition = (position) => {
@@ -95,34 +97,37 @@ export function useDragAndDrop() {
     return null
   }
 
-  const onDrop = (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-
-    if (!draggedType.value) return
-
-    const position = screenToFlowCoordinate({
-      x: event.clientX,
-      y: event.clientY,
-    })
-
+  // Dragging and button activation share exactly the same node defaults,
+  // nesting rules and Docker host selection.
+  function addNode(type, position, onPlaced) {
     const parentInfo = findParentNodeAtPosition(position)
-    const nodeConfig = getNodeConfig(draggedType.value)
-    const nodeId = getId()
+    const nodeConfig = getNodeConfig(type)
+    let nodeId = getId()
+    while (getNodes.value.some(node => node.id === nodeId)) nodeId = getId()
 
     const baseNode = {
       id: nodeId,
-      type: draggedType.value,
+      type: type,
       data: {
-        type: draggedType.value,
+        type: type,
         label: nodeConfig.label,
         status: 'gray',
         config: nodeConfig.defaultConfig,
       },
     }
 
+    // Docker node: auto-assign the nearest vm|lxc as host_ref on drop.
+    // If none exists, leave host_ref empty — the Problems panel will surface it
+    // and the GroupNode/DockerNode red dot makes the issue visible.
+    if (type === 'docker') {
+      const nearestHost = findNearestDockerHost(getNodes.value || [], position)
+      if (nearestHost) {
+        baseNode.data.host_ref = nearestHost.id
+      }
+    }
+
     let newNode
-    const isContainerType = containerTypes.includes(draggedType.value)
+    const isContainerType = containerTypes.includes(type)
     
     if (parentInfo && !isContainerType) {
       newNode = {
@@ -142,11 +147,11 @@ export function useDragAndDrop() {
 
       // Set default size for container types
       if (isContainerType) {
-        newNode.style = draggedType.value === 'group' 
-          ? { width: '450px', height: '350px' }
-          : { width: '300px', height: '200px' }
+        newNode.style = { width: '450px', height: '350px' }
       }
     }
+
+    if (type === 'note') newNode.style = { width: '320px', height: '200px' }
 
     const { off } = onNodesInitialized(() => {
       updateNode(nodeId, (node) => {
@@ -161,24 +166,44 @@ export function useDragAndDrop() {
         return node
       })
       off()
+      onPlaced?.()
     })
 
     addNodes([newNode])
     
-    isDragOver.value = false
-    isDragging.value = false
-    draggedType.value = null
+    return nodeId
+  }
+
+  function addComponent(type, onPlaced) {
+    const bounds = vueFlowRef.value?.getBoundingClientRect()
+    if (!bounds?.width || !bounds.height) return null
+    return addNode(type, screenToFlowCoordinate({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }), onPlaced)
+  }
+
+  const onDrop = (event, onPlaced) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!draggedType.value) return
+    const nodeId = addNode(draggedType.value, screenToFlowCoordinate({ x: event.clientX, y: event.clientY }), onPlaced)
+    onDragEnd()
+    return nodeId
   }
 
   const getNodeConfig = (type) => {
     const configs = {
+      note: {
+        label: 'Note',
+        defaultConfig: { name: '', text: '', color: 'yellow' },
+      },
       vm: {
         label: 'Virtual Machine',
         defaultConfig: {
           name: '',
           description: '',
-          // These are used by topology resolver for deployment planning
-          // Backend API routes for custom VM creation are planned
+          template: '',            // Proxmox template VMID to clone from
+          cores: 2,                // CPU cores
+          memory: 2048,            // RAM in MB
+          diskSize: '32G',         // Disk size
           vmId: null,              // Auto-assigned during deployment
           ipAddress: '',           // Static IP for the VM
         },
@@ -188,12 +213,13 @@ export function useDragAndDrop() {
         defaultConfig: {
           name: '',
           description: '',
+          segmentType: 'lan',     // wan, dmz, lan, management, custom
           // Proxmox bridge - must exist on the target node
-          bridge: 'vmbr0',
+          bridge: 'vmbr142',
           vlan: null,             // Optional VLAN tag (1-4094)
           // Network addressing (for documentation/planning)
-          cidr: '192.168.1.0/24',
-          gateway: '192.168.1.1',
+          cidr: '192.168.42.0/24',
+          gateway: '192.168.42.1',
         },
       },
       router: {
@@ -234,6 +260,18 @@ export function useDragAndDrop() {
           applianceType: 'pfsense',  // pfsense, opnsense
         },
       },
+      // Docker container (must tether to a vm|lxc host via host_ref)
+      docker: {
+        label: 'Docker Container',
+        defaultConfig: {
+          name: '',
+          description: '',
+          image: '',
+          ports: [],
+          env: {},
+          host_ref: '',      // authoritative host id — mirrored to data.host_ref
+        },
+      },
       // VLAN-aware switch for network segmentation
       switch: {
         label: 'Switch',
@@ -260,5 +298,6 @@ export function useDragAndDrop() {
     onDragLeave,
     onDragOver,
     onDrop,
+    addComponent,
   }
 }

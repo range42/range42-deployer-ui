@@ -1,10 +1,57 @@
 {
+  "templateRequirement": "Système d’exploitation requis : {os}. Choisissez un template compatible sur l’hôte sélectionné.",
   "header": "Configurer {type}",
   "status": {
     "valid": "✓ Configuration valide",
     "missing": "⚠ Champs requis manquants"
   },
   "save": "Enregistrer la configuration",
+  "saving": "Enregistrement…",
+  "close": "Fermer",
+  "delete": "Supprimer",
+  "subtitle": {
+    "deployed": "Déployé",
+    "design": "Conception"
+  },
+  "a11y": {
+    "dialog": "Configuration du nœud",
+    "close": "Fermer le panneau de configuration",
+    "delete": "Supprimer le nœud",
+    "removeTag": "Retirer l'étiquette {tag}",
+    "revertField": "Rétablir {field} à la valeur déployée",
+    "refreshTemplates": "Actualiser les modèles depuis Proxmox"
+  },
+  "tags": {
+    "label": "Étiquettes",
+    "add": "Ajouter une étiquette…"
+  },
+  "vmid": "VMID {id}",
+  "liveStatus": "État en direct",
+  "metrics": {
+    "cpu": "CPU",
+    "ram": "RAM"
+  },
+  "power": {
+    "label": "Alimentation"
+  },
+  "deployedFields": {
+    "name": "Nom",
+    "cores": "Cœurs CPU",
+    "memory": "Mémoire (Mo)",
+    "description": "Description"
+  },
+  "lifecycle": {
+    "start": "Démarrer",
+    "resume": "Reprendre",
+    "pause": "Suspendre",
+    "stop": "Arrêter"
+  },
+  "pending": {
+    "title": "Modifications non enregistrées",
+    "count": "{n} modification | {n} modifications",
+    "discardAll": "Tout annuler",
+    "apply": "Appliquer"
+  },
   "fields": {
     "name": "Nom",
     "cpu": "Cœurs CPU",
@@ -19,7 +66,9 @@
     "dnsServer": "Serveur DNS",
     "enableDhcp": "Activer DHCP",
     "routingProtocol": "Protocole de routage",
-    "routerId": "ID Routeur"
+    "routerId": "ID Routeur",
+    "role": "Rôle",
+    "roleAuto": "Auto (déduit du périmètre d'équipe)"
   },
   "placeholders": {
     "name": "Saisir le nom {type}",
@@ -64,5 +113,45 @@
     "nameRequired": "Le nom est requis",
     "cpuMin": "Les cœurs CPU doivent être au moins 1",
     "memoryRequired": "La mémoire est requise"
+  },
+  "context": {
+    "group": "Les groupes organisent les composants d’infrastructure associés.",
+    "simulated-internet": "Internet simulé fournit des adresses IP et des services publics fictifs pour des exercices isolés.",
+    "edge-firewall": "Le pare-feu périphérique relie vos segments réseau.",
+    "vuln-target": "Les cibles vulnérables sont des systèmes volontairement non sécurisés destinés aux exercices.",
+    "shared-service": "Les services partagés sont accessibles depuis tous les Gamenets (Git, chat, wiki, authentification)."
+  },
+  "note": {
+    "text": "Texte de la note",
+    "color": "Couleur de la note",
+    "empty": "Ajoutez du texte dans les paramètres de la note.",
+    "hint": "Les notes et leurs connexions sont des annotations et ne créent pas d’infrastructure.",
+    "colors": {
+      "yellow": "Jaune",
+      "blue": "Bleu",
+      "green": "Vert",
+      "neutral": "Neutre"
+    }
+  },
+  "connection": {
+    "title": "Connexion",
+    "networkTitle": "Connexion réseau",
+    "text": "Texte de la connexion",
+    "hint": "Affiché au centre de la ligne.",
+    "close": "Fermer les paramètres de connexion",
+    "edit": "Modifier la connexion"
+  },
+  "network": {
+    "title": "Réseau",
+    "noAddress": "Plage réseau non définie",
+    "bridge": "Pont",
+    "devices": "Aucun appareil connecté | 1 appareil connecté | {count} appareils connectés",
+    "types": {
+      "wan": "WAN",
+      "lan": "LAN",
+      "dmz": "DMZ",
+      "management": "Administration",
+      "custom": "Réseau"
+    }
   }
 }
