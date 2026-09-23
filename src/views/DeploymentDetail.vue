@@ -74,11 +74,12 @@ const teamCount = computed(() => {
   return meta.value?.team_count ?? 0
 })
 
-// Prefer live state only once the SSE has surfaced anything meaningful;
-// otherwise fall back to the record from the REST endpoint.
+// Historical replay must catch up with the current REST attempt before its
+// state can replace that snapshot. Log progress alone is not a state update.
 const effectiveState = computed(() => {
   const liveState = live.value?.state
-  if (liveState && liveState !== 'unknown') return liveState
+  const snapshotCursor = attempts.value.find(attempt => attempt.id === meta.value?.current_attempt_id)?.event_cursor_tip || 0
+  if (liveState && liveState !== 'unknown' && (live.value?.state_event_seq || 0) >= snapshotCursor) return liveState
   return meta.value?.state || 'unknown'
 })
 

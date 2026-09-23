@@ -62,6 +62,32 @@ describe('<DeploymentDetail>', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('keeps current REST state while replaying older attempts, then accepts newer live state', async () => {
+    globalThis.fetch = vi.fn(async input => ({ ok: true, status: 200, json: async () => String(input).endsWith('/attempts')
+      ? { items: [{ id: 'current', state: 'succeeded', event_cursor_tip: 100 }] }
+      : { id: 'd-replay', state: 'succeeded', current_attempt_id: 'current' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-replay?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    const live = useDeploymentStore().deployments['d-replay']
+    applySseEvent(live, { event_type: 'attempt_end', event_seq: 20, attempt_id: 'old-failed', payload: { terminal_state: 'failed' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('succeeded')
+    // Logs reaching the snapshot cursor do not make an older state current.
+    applySseEvent(live, { event_type: 'log_line', event_seq: 100, attempt_id: 'current', payload: { text: 'history retained' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('succeeded')
+    expect(live.logs.at(-1).text).toBe('history retained')
+    applySseEvent(live, { event_type: 'state_transition', event_seq: 101, attempt_id: 'next', payload: { to: 'deploying' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('deploying')
+    applySseEvent(live, { event_type: 'attempt_end', event_seq: 102, attempt_id: 'next', payload: { terminal_state: 'succeeded' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('succeeded')
+  })
+
   it('offers a quiet log view and a protected finite download', async () => {
     globalThis.fetch = fetchMock({ id: 'd-logs', codename: 'LOGS', state: 'succeeded' })
     const router = makeRouter()

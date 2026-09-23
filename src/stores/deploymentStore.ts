@@ -71,6 +71,7 @@ export interface DeploymentRecord {
   phase?: string
   attempt_id?: string
   last_event_seq: number
+  state_event_seq?: number
   logs: LogLine[] // shared (non-team) ring buffer, max 200
   teams: Record<string, TeamSlice>
   redaction_counters: Record<string, number> // by rule_id
@@ -140,7 +141,10 @@ export function applySseEvent(record: DeploymentRecord, event: SseEvent): void {
   switch (event.event_type) {
     case 'state_transition': {
       const to = payload.to
-      if (typeof to === 'string') record.state = to
+      if (typeof to === 'string') {
+        record.state = to
+        record.state_event_seq = event.event_seq
+      }
       break
     }
     case 'phase_transition': {
@@ -212,7 +216,10 @@ export function applySseEvent(record: DeploymentRecord, event: SseEvent): void {
     }
     case 'attempt_end': {
       const terminal = payload.terminal_state as string | undefined
-      if (typeof terminal === 'string') record.state = terminal
+      if (typeof terminal === 'string') {
+        record.state = terminal
+        record.state_event_seq = event.event_seq
+      }
       break
     }
     case 'proxmox_task': {
