@@ -38,6 +38,8 @@ unverified attempts retain readback/recovery guidance in deployment history.
 The [backend contract](https://github.com/range42/range42-backend-api/blob/feat/sdn-scoped-operations-20260922/docs/scoped-runtime-operations.md)
 describes the exact eight operation kinds, permissions and safety boundaries.
 `e2e/runtime-scopes.spec.ts` checks review/refusal, preserved drafts, accessibility
-and layout at 1280px and 390px with intercepted API responses. Shared live guest
-and traffic acceptance remains tracked in backend #74, pending installation of
-the paired branches and working backend SSH access.
+and layout at 1280px and 390px with intercepted API responses. The
+[shared acceptance record](shared-sdn-acceptance-20260923.md) covers the installed
+paired applications, actual UI authoring/alias/Git actions and API-owned guest,
+traffic, content and cleanup checks. Backend #74 tracks this qualification;
+review, branch integration and release promotion remain separate.
