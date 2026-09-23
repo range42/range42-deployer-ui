@@ -201,7 +201,7 @@ function customizeEntry(item) {
 }
 function openCreatedProject(project) {
   handoff.value = null
-  router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
+  router.push(`/project/${project.id}?tab=${project.native_scenario || project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
 }
 
 function openFork(entry) {

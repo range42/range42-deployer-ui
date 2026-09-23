@@ -75,6 +75,7 @@ export function buildPushArgs(
     catalogRef?: unknown
     catalogImports?: unknown
     scenario?: unknown
+    native_scenario?: unknown
     scenario_generated_paths?: unknown
     baseDoc?: { env?: unknown }
   },
@@ -102,7 +103,8 @@ export function buildPushArgs(
     message: message ?? `Save ${project.name}`,
     files: project.files,
     overlay: project.overlay,
-    authoring: { scenario: project.scenario, generated_paths: project.scenario_generated_paths, variables: project.baseDoc?.env },
+    authoring: { scenario: project.scenario, native_scenario: project.native_scenario,
+      generated_paths: project.scenario_generated_paths, variables: project.baseDoc?.env },
   }
 }
 

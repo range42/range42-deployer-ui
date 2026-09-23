@@ -7,7 +7,7 @@ import { useDragAndDrop } from '@/composables/useDragAndDrop'
 import AppIcon from '@/components/icons/AppIcon.vue'
 
 defineOptions({ name: 'ProjectSidebar' })
-const props = defineProps<{ project?: { name?: string; nodes?: unknown[]; edges?: unknown[] } }>()
+const props = defineProps<{ project?: { name?: string; nodes?: unknown[]; edges?: unknown[]; native_scenario?: { version: number; path: string } } }>()
 const emit = defineEmits<{
   addComponent: [type: string]; openExport: []; openDeploy: []; openValidate: [];
   openInventory: []; openTemplates: []; openImport: [];
@@ -39,17 +39,18 @@ const statuses = ['gray', 'orange', 'green', 'red', 'blue']
     <header class="border-b border-base-300 px-4 py-4">
       <p class="section-eyebrow mb-2">{{ t('sidebar.currentProject') }}</p>
       <h2 class="truncate text-sm font-semibold" :title="project?.name">{{ project?.name || t('sidebar.untitledProject') }}</h2>
-      <p class="mt-1 text-xs text-base-content/70 tabular-nums">{{ t('sidebar.nodeCount', counts.nodes) }} · {{ t('sidebar.edgeCount', counts.edges) }}</p>
+      <p v-if="project?.native_scenario" class="mt-1 text-xs text-base-content/70 break-all">{{ project.native_scenario.path }}</p>
+      <p v-else class="mt-1 text-xs text-base-content/70 tabular-nums">{{ t('sidebar.nodeCount', counts.nodes) }} · {{ t('sidebar.edgeCount', counts.edges) }}</p>
     </header>
     <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       <div class="p-3">
         <button type="button" class="catalog-action" @click="emit('openInventory')">
           <span aria-hidden="true"><AppIcon name="books" class="size-5 shrink-0" /></span>
-          <span class="min-w-0"><span class="block text-sm font-semibold">{{ t('sidebar.catalog.title') }}</span><span class="mt-0.5 block text-xs text-base-content/70">{{ t('sidebar.catalog.description') }}</span></span>
-          <span class="ml-auto text-lg" aria-hidden="true">+</span>
+          <span class="min-w-0"><span class="block text-sm font-semibold">{{ t('sidebar.catalog.title') }}</span><span v-if="!project?.native_scenario" class="mt-0.5 block text-xs text-base-content/70">{{ t('sidebar.catalog.description') }}</span></span>
+          <span v-if="!project?.native_scenario" class="ml-auto text-lg" aria-hidden="true">+</span>
         </button>
       </div>
-      <section class="border-b border-base-300">
+      <section v-if="!project?.native_scenario" class="border-b border-base-300">
         <h3><button type="button" class="section-toggle" :aria-expanded="expanded.components" :aria-controls="`${id}-components`" @click="expanded.components = !expanded.components">
           <span>{{ t('sidebar.components') }}</span><span aria-hidden="true">{{ expanded.components ? '−' : '+' }}</span>
         </button></h3>
@@ -68,7 +69,7 @@ const statuses = ['gray', 'orange', 'green', 'red', 'blue']
           </div>
         </div>
       </section>
-      <section class="border-b border-base-300">
+      <section v-if="!project?.native_scenario" class="border-b border-base-300">
         <h3><button type="button" class="section-toggle" :aria-expanded="expanded.resources" :aria-controls="`${id}-resources`" @click="expanded.resources = !expanded.resources">
           <span>{{ t('sidebar.resources') }}</span><span aria-hidden="true">{{ expanded.resources ? '−' : '+' }}</span>
         </button></h3>
@@ -79,7 +80,7 @@ const statuses = ['gray', 'orange', 'green', 'red', 'blue']
           </button>
         </div>
       </section>
-      <section>
+      <section v-if="!project?.native_scenario">
         <h3><button type="button" class="section-toggle" :aria-expanded="expanded.status" :aria-controls="`${id}-status`" @click="expanded.status = !expanded.status">
           <span>{{ t('sidebar.statusTitle') }}</span><span aria-hidden="true">{{ expanded.status ? '−' : '+' }}</span>
         </button></h3>
@@ -89,8 +90,8 @@ const statuses = ['gray', 'orange', 'green', 'red', 'blue']
       </section>
     </div>
     <footer class="shrink-0 space-y-3 border-t border-base-300 bg-base-100 p-3">
-      <div class="grid grid-cols-2 gap-2">
-        <button type="button" class="btn btn-outline min-h-11 h-auto py-2" @click="emit('openValidate')">{{ t('sidebar.validate') }}</button>
+      <div class="grid gap-2" :class="{ 'grid-cols-2': !project?.native_scenario }">
+        <button v-if="!project?.native_scenario" type="button" class="btn btn-outline min-h-11 h-auto py-2" @click="emit('openValidate')">{{ t('sidebar.validate') }}</button>
         <button type="button" class="btn btn-primary min-h-11 h-auto py-2" @click="emit('openDeploy')">{{ t('sidebar.deploy') }}</button>
       </div>
       <select class="select select-sm w-full bg-base-100 text-base-content" :value="locale" :aria-label="t('sidebar.language.label')" @change="changeLocale">

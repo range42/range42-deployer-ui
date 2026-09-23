@@ -154,7 +154,8 @@
     "component": "マシンとコンポーネント",
     "container": "Compose ワークロード",
     "ansible_role": "Ansible ロール",
-    "unknown": "その他の形式"
+    "unknown": "その他の形式",
+    "scenario": "シナリオ"
   },
   "card_hints": {
     "container": "Docker と Compose を備えた既存の VM が必要です。",

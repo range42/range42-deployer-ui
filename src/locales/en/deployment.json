@@ -278,5 +278,26 @@
     "confirm": "Confirm release",
     "releasing": "Checking and releasing…",
     "cancel": "Cancel"
+  },
+  "native": {
+    "workflow": "Deploy the complete native scenario, including templates, networks and custom stages.",
+    "loading": "Loading scenario options and deployment environments…",
+    "empty": "No deployment environment is connected. Ask an administrator to connect the deployer-cli’s Range42 contexts.",
+    "environment": "Deployment environment",
+    "choose": "Choose a ready deployment environment.",
+    "features": "Optional components",
+    "parameters": "Advanced scenario parameters",
+    "parametersHint": "JSON values for scenario-specific settings. Keep credentials in the environment’s vault.",
+    "invalidParameters": "Use a JSON object with simple values. Environment and feature variables are managed separately.",
+    "credentials": "Inventory, credentials and SSH access come from the selected Range42 context.",
+    "full": "Deploy complete scenario",
+    "configure": "Configure",
+    "deploy_vms": "Deploy VMs only",
+    "teardown": "Delete scenario VMs and templates",
+    "delete_vms": "Delete VMs only",
+    "reset": "Reset scenario",
+    "deploy_networks": "Create scenario networks",
+    "delete_networks": "Delete scenario networks",
+    "pinned": "Lifecycle actions use this deployment’s saved repository revision."
   }
 }
