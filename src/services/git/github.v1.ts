@@ -71,7 +71,10 @@ export class GitHubV1Provider implements GitProviderV1 {
   }
 
   private async json<T>(url: string, init?: RequestInit): Promise<T> {
-    const res = await this.fetchImpl(url, init)
+    // GitHub may cache authenticated GETs for 60 seconds. Branch heads, editor
+    // leases and review state must be reread after writes or another editor's
+    // changes; a fresh cached response can hide our own newly acquired lease.
+    const res = await this.fetchImpl(url, { ...init, cache: 'no-store' })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
       throw Object.assign(new Error(`GitHub ${init?.method ?? 'GET'} ${url} -> ${res.status} ${body}`), { status: res.status })

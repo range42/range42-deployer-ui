@@ -41,6 +41,26 @@ beforeEach(async () => {
 })
 
 describe('runtime change records in project Git', () => {
+  it.each([
+    { kind: 'firewall_alias', scope: 'vm', vm_id: 3191, action: 'rename', name: 'clients', new_name: 'students' },
+    { kind: 'firewall_rule', scope: 'node', action: 'move', position: 3, move_to: 1 },
+    { kind: 'firewall_rule', scope: 'vm', vm_id: 3191, action: 'create', name: 'web',
+      rule: { direction: 'in', action: 'ACCEPT', protocol: 'tcp', destination_port: '443', source: '10.42.0.0/24', destination: null, enabled: true } },
+  ])('records reviewed $kind without copying arbitrary metadata', input => {
+    const current = attempt()
+    current.operation.request = { ...input, acknowledge_shared_scope: true, review_fingerprint: 'a'.repeat(64), private_context: 'do not save' }
+    const record = buildRuntimeRecord(deployment(), current, state.scope)
+    expect(JSON.parse(record.content).request).toEqual({ ...input, acknowledge_shared_scope: true })
+    expect(record.content).not.toMatch(/private_context|do not save|review_fingerprint/)
+  })
+  it.each([{ kind: 'runtime_observe' }, { kind: 'host_firewall', enabled: true, acknowledge_shared_scope: true, review_fingerprint: 'a'.repeat(64) },
+    { kind: 'sdn_network', action: 'delete', vnet: 'r42blue', acknowledge_shared_scope: true, review_fingerprint: 'a'.repeat(64) }])('records scoped native request $kind without private review data', request => {
+    const current = attempt()
+    current.operation.request = request
+    const record = buildRuntimeRecord(deployment(), current, state.scope)
+    expect(JSON.parse(record.content).request.kind).toBe(request.kind)
+    expect(record.content).not.toContain('review_fingerprint')
+  })
   it('records exact accepted intent without private runtime details or log messages', () => {
     const record = buildRuntimeRecord(deployment(), attempt(), state.scope)
     expect(record.path).toBe('scenarios/demo/runtime/deployment-1/attempt-1/request.json')

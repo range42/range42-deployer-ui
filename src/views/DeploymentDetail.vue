@@ -74,11 +74,12 @@ const teamCount = computed(() => {
   return meta.value?.team_count ?? 0
 })
 
-// Prefer live state only once the SSE has surfaced anything meaningful;
-// otherwise fall back to the record from the REST endpoint.
+// Historical replay must catch up with the current REST attempt before its
+// state can replace that snapshot. Log progress alone is not a state update.
 const effectiveState = computed(() => {
   const liveState = live.value?.state
-  if (liveState && liveState !== 'unknown') return liveState
+  const snapshotCursor = attempts.value.find(attempt => attempt.id === meta.value?.current_attempt_id)?.event_cursor_tip || 0
+  if (liveState && liveState !== 'unknown' && (live.value?.state_event_seq || 0) >= snapshotCursor) return liveState
   return meta.value?.state || 'unknown'
 })
 
@@ -688,13 +689,18 @@ onBeforeUnmount(() => {
               <code v-if="att.project_sha" class="ml-2 text-xs break-all">{{ att.project_sha }}</code>
               <span v-if="att.started_at" class="ml-2 text-xs text-base-content/50">{{ att.started_at }}</span>
               <details v-if="att.operation?.request" class="mt-1">
-                <summary class="cursor-pointer">{{ t('runtime.historyOperation') }} · {{ t(`runtime.operations.${att.operation.request.kind}`) }} · {{ t(att.operation.request.enabled ? 'runtime.enabled' : 'runtime.disabled') }} <span>{{ att.operation.request.vm_id || att.operation.request.vnet || '' }}</span></summary>
+                <summary class="cursor-pointer">{{ t('runtime.historyOperation') }} · {{ t(`runtime.operations.${att.operation.request.kind}`) }}
+                  <span v-if="typeof att.operation.request.enabled === 'boolean'"> · {{ t(att.operation.request.enabled ? 'runtime.enabled' : 'runtime.disabled') }}</span>
+                  <span v-else-if="att.operation.request.action"> · {{ t(`runtime.policy.actions.${att.operation.request.action}`) }}</span>
+                  <span> {{ att.operation.request.vm_id || att.operation.request.vnet || att.operation.request.scope || '' }}</span>
+                </summary>
                 <div v-if="att.operation_result" class="space-y-1 py-2 text-xs" data-testid="runtime-result">
                   <p>{{ t(att.operation_result.desired_reached ? 'runtime.desiredConfirmed' : 'runtime.desiredUnconfirmed') }}</p>
                   <p v-if="att.operation_result.partial" class="text-base-content border-l-2 border-warning pl-2">{{ t('runtime.partialResult') }}</p>
                   <p v-if="att.operation_result.missing_vmids?.length">{{ t('runtime.missingGuests', { ids: att.operation_result.missing_vmids.join(', ') }) }}</p>
                   <p v-if="att.operation_result.mismatched_vmids?.length">{{ t('runtime.mismatchedGuests', { ids: att.operation_result.mismatched_vmids.join(', ') }) }}</p>
                   <p v-if="att.operation_result.error" class="text-error break-words">{{ att.operation_result.error }}</p>
+                  <p v-if="!att.operation_result.desired_reached && att.operation_result.recovery" class="break-words">{{ att.operation_result.recovery }}</p>
                   <p v-if="att.operation_result.live_forwarding_verified === false">{{ t('runtime.forwardingUnknown') }}</p>
                 </div>
               </details>

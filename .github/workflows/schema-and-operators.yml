@@ -71,6 +71,14 @@ jobs:
         working-directory: range42-deployer-ui
         run: npm run build
 
+      - name: Install Chromium for the Git HTTP cache regression
+        working-directory: range42-deployer-ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify Git branch and lease reads with the real browser cache
+        working-directory: range42-deployer-ui
+        run: npx playwright test e2e/github-cache.spec.ts --workers=1
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
         with:

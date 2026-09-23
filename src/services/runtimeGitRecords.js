@@ -5,6 +5,44 @@ const terminal = new Set(['succeeded', 'completed', 'partial', 'failed', 'cancel
 const shaPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value)
 const vmid = value => Number.isInteger(value) && value >= 100 && value <= 999999999
+const policyKinds = ['firewall_alias', 'firewall_rule']
+const namePattern = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/
+const position = value => Number.isInteger(value) && value >= 0 && value <= 4095
+
+function policyRequest(input) {
+  requireValue(['vm', 'node', 'datacenter'].includes(input.scope) && input.acknowledge_shared_scope === true
+    && /^[a-f0-9]{64}$/.test(input.review_fingerprint) && (input.scope === 'vm' ? vmid(input.vm_id) : input.vm_id == null), 'Invalid firewall scope review')
+  const result = { scope: input.scope, action: input.action }
+  if (input.scope === 'vm') result.vm_id = input.vm_id
+  if (input.kind === 'firewall_alias') {
+    requireValue(input.scope !== 'node' && ['create', 'rename', 'delete'].includes(input.action) && namePattern.test(input.name), 'Invalid firewall alias')
+    result.name = input.name
+    if (input.action === 'create') {
+      requireValue(typeof input.cidr === 'string' && input.cidr.length <= 128 && /^[0-9a-fA-F:.]+\/[0-9]{1,3}$/.test(input.cidr), 'Invalid alias CIDR')
+      result.cidr = input.cidr
+    } else if (input.action === 'rename') {
+      requireValue(namePattern.test(input.new_name), 'Invalid alias name')
+      result.new_name = input.new_name
+    }
+  } else {
+    requireValue(['create', 'update', 'delete', 'move'].includes(input.action), 'Invalid firewall rule action')
+    if (input.action === 'create') { requireValue(namePattern.test(input.name), 'Invalid rule name'); result.name = input.name }
+    else { requireValue(position(input.position), 'Invalid rule position'); result.position = input.position }
+    if (input.action === 'move') { requireValue(position(input.move_to), 'Invalid rule destination'); result.move_to = input.move_to }
+    if (['create', 'update'].includes(input.action)) {
+      const rule = input.rule
+      requireValue(rule && ['in', 'out'].includes(rule.direction) && ['ACCEPT', 'DROP', 'REJECT'].includes(rule.action)
+        && ['tcp', 'udp'].includes(rule.protocol) && typeof rule.enabled === 'boolean'
+        && /^[0-9:,]{1,80}$/.test(rule.destination_port), 'Invalid firewall rule')
+      result.rule = { direction: rule.direction, action: rule.action, protocol: rule.protocol, destination_port: rule.destination_port, enabled: rule.enabled }
+      for (const key of ['source', 'destination']) {
+        requireValue(rule[key] == null || (typeof rule[key] === 'string' && /^[A-Za-z0-9_:./-]{1,128}$/.test(rule[key])), 'Invalid rule address')
+        result.rule[key] = rule[key] ?? null
+      }
+    }
+  }
+  return result
+}
 
 function requireValue(condition, message) { if (!condition) throw new Error(message) }
 function safePath(path) {
@@ -29,17 +67,26 @@ export function buildRuntimeRecord(deployment, attempt, scope) {
     && shaPattern.test(operation?.project_sha) && (!attempt.project_sha || attempt.project_sha === operation.project_sha),
   'The runtime attempt has a different target or project revision')
   const input = operation.request
-  requireValue(typeof input?.enabled === 'boolean', 'The runtime request must contain an explicit desired state')
+  requireValue(['runtime_observe', 'sdn_network', ...policyKinds].includes(input?.kind) || typeof input?.enabled === 'boolean', 'The runtime request must contain an explicit desired state')
   const request = { kind: input.kind }
-  if (input.kind === 'vm_firewall') {
+  if (policyKinds.includes(input.kind)) {
+    Object.assign(request, policyRequest(input))
+  } else if (input.kind === 'vm_firewall') {
     requireValue(vmid(input.vm_id), 'Invalid runtime VM identifier')
     request.vm_id = input.vm_id
   } else if (input.kind === 'sdn_snat') {
     requireValue(/^[a-z][a-z0-9]{0,7}$/.test(input.vnet) && input.acknowledge_shared_scope === true, 'Invalid shared SDN request')
     request.vnet = input.vnet
-  } else requireValue(input.kind === 'scenario_firewall', 'Unsupported runtime operation')
-  request.enabled = input.enabled
-  if (input.kind === 'sdn_snat') request.acknowledge_shared_scope = true
+  } else if (input.kind === 'sdn_network') {
+    requireValue(/^[A-Za-z][A-Za-z0-9]{0,7}$/.test(input.vnet) && ['create', 'delete'].includes(input.action)
+      && input.acknowledge_shared_scope === true && /^[a-f0-9]{64}$/.test(input.review_fingerprint), 'Invalid network lifecycle review')
+    request.vnet = input.vnet
+    request.action = input.action
+  } else if (input.kind === 'host_firewall') {
+    requireValue(input.acknowledge_shared_scope === true && /^[a-f0-9]{64}$/.test(input.review_fingerprint), 'Invalid host firewall review')
+  } else requireValue(['scenario_firewall', 'runtime_observe'].includes(input.kind), 'Unsupported runtime operation')
+  if (!['runtime_observe', 'sdn_network', ...policyKinds].includes(input.kind)) request.enabled = input.enabled
+  if (['sdn_snat', 'host_firewall', 'sdn_network', ...policyKinds].includes(input.kind)) request.acknowledge_shared_scope = true
   requireValue(terminal.has(attempt.state) || ['pending', 'deploying', 'running'].includes(attempt.state), 'Unknown runtime attempt state')
   const phase = terminal.has(attempt.state) ? 'result' : 'request'
   const record = { version: 1, phase, backend_url: scope, deployment_id: deployment.id, attempt_id: attempt.id,

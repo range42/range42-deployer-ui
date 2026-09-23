@@ -49,7 +49,12 @@
   "operations": {
     "vm_firewall": "Pare-feu de la VM",
     "scenario_firewall": "Pare-feu du scénario",
-    "sdn_snat": "NAT sortant"
+    "sdn_snat": "NAT sortant",
+    "host_firewall": "Activer les pare-feu du datacenter et du nœud",
+    "runtime_observe": "Lire les règles NAT actives",
+    "sdn_network": "Cycle de vie réseau",
+    "firewall_rule": "Modifier la règle",
+    "firewall_alias": "Créer un alias"
   },
   "git": {
     "title": "Changements en cours dans Git",
@@ -66,5 +71,85 @@
     "unsaved": "Pas encore enregistré dans Git",
     "save": "Enregistrer dans Git",
     "localConflict": "Ce fichier a été modifié localement. Vérifiez-le avant d’enregistrer l’opération."
+  },
+  "observe": "Lire les règles NAT actives",
+  "observeScope": "Cette tentative en lecture seule vérifie le nœud choisi et enregistre les règles NAT natives des réseaux déclarés. Elle ne teste pas le trafic des invités.",
+  "enableHost": "Activer les pare-feu du datacenter et du nœud",
+  "disableHost": "Désactiver les pare-feu du datacenter et du nœud",
+  "reviewHost": "{action} les pare-feu du datacenter et du nœud {name}",
+  "hostAck": "J’autorise la modification du commutateur du cluster et de l’accès de gestion du nœud choisi.",
+  "hostScope": "Le commutateur du datacenter affecte le filtrage du cluster, y compris les autres invités. L’activation garantit d’abord un accès de gestion entrant sans restriction sur TCP 22 et 8006 au datacenter et au nœud choisi, avec les protections natives. La désactivation conserve ces règles. Le scénario enregistré reste inchangé.",
+  "report": {
+    "title": "Règles et observations",
+    "observed": "Configuration observée",
+    "partial": "Certaines portées sont illisibles. Les observations manquantes restent inconnues.",
+    "traffic": "Le trafic n’a pas été testé. La configuration des commutateurs et les règles observées sont des preuves distinctes.",
+    "scopes": {
+      "datacenter": "Datacenter",
+      "node": "Nœud choisi",
+      "vm": "Invité"
+    },
+    "emptyRules": "Aucune règle configurée dans cette chaîne.",
+    "source": "Source",
+    "destination": "Destination",
+    "alias": "Alias",
+    "configuredFiltering": "Prérequis du filtrage",
+    "liveNat": "Dernière observation NAT native",
+    "natUnknown": "Règles actives inconnues. Lancez une observation native du nœud choisi.",
+    "historical": "Observation enregistrée ; l’état peut avoir changé depuis cette tentative.",
+    "noNat": "Aucune règle NAT par source observée pour ces réseaux déclarés.",
+    "reasons": {
+      "datacenter_unknown": "Commutateur du datacenter illisible.",
+      "datacenter_disabled": "Commutateur du datacenter désactivé.",
+      "guest_unknown": "Commutateur de l’invité illisible.",
+      "guest_disabled": "Commutateur de l’invité désactivé.",
+      "nic_unknown": "Indicateur de carte réseau illisible.",
+      "nic_disabled": "Indicateur de carte réseau désactivé.",
+      "all_switches_enabled_traffic_unverified": "Tous les commutateurs requis sont activés ; le trafic reste non vérifié."
+    },
+    "pending": "Modifications SDN en attente",
+    "identity": "Identité déclarée correspondante",
+    "active": "Actif sur le nœud sélectionné",
+    "declaredNat": "NAT déclaré",
+    "configuredNat": "NAT configuré",
+    "yes": "Oui",
+    "no": "Non"
+  },
+  "network": {
+    "create": "Créer le réseau {name}",
+    "delete": "Supprimer le réseau {name}",
+    "scope": "Seuls ce VNet et son sous-réseau changent. La suppression exige une propriété vérifiée et aucun invité ou modèle connecté ; la zone partagée est conservée. L’application SDN affecte le cluster. Les autres réseaux conservent leur nombre de règles NAT. Le scénario enregistré reste inchangé et peut recréer le réseau lors d’un déploiement ultérieur."
+  },
+  "policy": {
+    "title": "Politiques de pare-feu et alias",
+    "scopeHint": "Ces changements d’exécution affectent la portée choisie. Les politiques du datacenter peuvent affecter d’autres nœuds et invités. Les règles de gestion sont protégées ; les alias référencés ne peuvent être renommés ou supprimés. Les nouvelles règles sont insérées en premier. Le scénario enregistré reste inchangé et un déploiement ultérieur peut rétablir ses paramètres déclarés.",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "up": "Monter",
+    "down": "Descendre",
+    "rename": "Renommer l’alias",
+    "target": "Portée du pare-feu",
+    "newRule": "Ajouter une règle en tête de chaîne",
+    "editRule": "Modifier la règle",
+    "name": "Nom",
+    "direction": "Direction",
+    "action": "Action",
+    "protocol": "Protocole",
+    "port": "Ports de destination (ex. 443 ou 8000:8010)",
+    "source": "CIDR source ou alias (vide : tous)",
+    "destination": "CIDR destination ou alias (vide : tous)",
+    "review": "Vérifier le changement",
+    "reset": "Nouvelle règle / alias",
+    "newAlias": "Créer un alias",
+    "newName": "Nouveau nom de l’alias",
+    "reviewTitle": "{action} dans {scope}",
+    "ack": "J’ai vérifié la portée, l’ordre des règles et les ressources affectées.",
+    "actions": {
+      "create": "Créer",
+      "update": "Modifier la règle",
+      "delete": "Supprimer",
+      "move": "Déplacer la règle",
+      "rename": "Renommer l’alias"
+    }
   }
 }
