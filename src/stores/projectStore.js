@@ -1,6 +1,7 @@
 // @ts-check
 import { validateAuthoredFiles } from '@/services/projectFiles'
 import { normalizeCanvasNotes } from '@/services/canvasNotes'
+import { validateCatalogWorkloadOwnership } from '@/services/catalogWorkload'
 
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
@@ -149,7 +150,22 @@ export const useProjectStore = defineStore('projects', () => {
       reader.onload = () => {
         try {
           if (typeof reader.result !== 'string') throw new Error('Project file did not contain text')
-          const project = importProject(reader.result)
+          const data = JSON.parse(reader.result)
+          const workloads = new Map()
+          for (const path of Object.keys(data.files || {})) {
+            const match = /^scenarios\/([^/]+)\/content\/workloads\/([^/]+)\//.exec(path)
+            if (match) workloads.set(`${match[1]}/${match[2]}`, { scenarioLabel: match[1], attachmentId: match[2] })
+          }
+          for (const item of Array.isArray(data.scenario?.content) ? data.scenario.content : []) {
+            const match = /^content\/workloads\/([^/]+)\//.exec(String(item.path))
+            if (match) workloads.set(`${data.scenario.label}/${match[1]}`, { scenarioLabel: data.scenario.label, attachmentId: match[1] })
+          }
+          if (workloads.size) {
+            if (typeof data.id !== 'string' || !data.id.trim() || data.id.trim() !== data.id) throw new Error('Managed workloads require their original project ID; import an unchanged project export')
+            for (const workload of workloads.values()) validateCatalogWorkloadOwnership({ files: data.files || {}, projectId: data.id, ...workload })
+            if (getProject(data.id)) throw new Error('This managed application project already exists. Open the existing project to continue. To replace it, export a backup first, then remove the local project and import again.')
+          }
+          const project = importProject(data, { generateNewId: !workloads.size })
           resolve(project)
         } catch (error) {
           reject(error)

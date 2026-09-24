@@ -294,6 +294,20 @@ export async function reviewCatalogWorkload(input: Pick<WorkloadInput, 'project'
   return result
 }
 
+/** Check a saved workload's identity without discarding payload edits awaiting review. */
+export function validateCatalogWorkloadOwnership({ files, scenarioLabel, attachmentId, projectId }: { files: ProjectFiles; scenarioLabel: string; attachmentId: string; projectId: string }) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(scenarioLabel) || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(attachmentId)) throw new Error('Invalid workload review identity')
+  const prefix = `scenarios/${scenarioLabel}/content/workloads/${attachmentId}`
+  let review: ObjectValue
+  try { review = object(JSON.parse(fileText(files[`${prefix}/review.json`])), 'Workload review') } catch { throw new Error('Workload review is missing or malformed; import a complete project export') }
+  const origin = publicCatalogReference(review.origin)
+  if (review.version !== 1 || origin?.version !== 1 || origin.kind !== 'container' || !exactSha.test(String(origin.sha))
+    || !Array.isArray(review.published_ports) || !/^[a-f0-9]{64}$/.test(String(review.runtime_sha256))) throw new Error('Workload review is incomplete; import a complete project export')
+  object(review.file_hashes, 'Workload review file hashes')
+  object(review.file_modes, 'Workload review file modes')
+  if (review.compose_project !== `r42-${digest(`${projectId}\n${attachmentId}`).slice(0, 24)}`) throw new Error('Workload ownership does not match the original project ID; import an unchanged project export')
+}
+
 /** Detect edits since explicit workload review before compiling or staging its lifecycle action. */
 export function validateCatalogWorkloadReview({ files, scenarioLabel, attachmentId, projectId }: { files: ProjectFiles; scenarioLabel: string; attachmentId: string; projectId?: string }) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(scenarioLabel) || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(attachmentId)) throw new Error('Invalid workload review identity')

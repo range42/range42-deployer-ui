@@ -191,6 +191,7 @@ const formatDate = (date) => {
 
     <!-- Main Content -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <p v-if="importError" class="alert alert-error mb-4" role="alert">{{ importError }}</p>
       <!-- Hero Section -->
       <section class="mb-12">
         <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-base-200 to-secondary/20 p-8 md:p-12">
