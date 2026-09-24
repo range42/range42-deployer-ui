@@ -116,11 +116,14 @@
     "no": "Non"
   },
   "network": {
+    "preparation": "Créez chaque nouveau réseau ici avant de démarrer les machines si vous souhaitez pouvoir le supprimer ici ensuite. Les réseaux partagés existants sont conservés.",
     "create": "Créer le réseau {name}",
     "delete": "Supprimer le réseau {name}",
     "scope": "Seuls ce VNet et son sous-réseau changent. La suppression exige une propriété vérifiée et aucun invité ou modèle connecté ; la zone partagée est conservée. L’application SDN affecte le cluster. Les autres réseaux conservent leur nombre de règles NAT. Le scénario enregistré reste inchangé et peut recréer le réseau lors d’un déploiement ultérieur."
   },
   "policy": {
+    "ruleChanged": "Cette règle a changé ou a été déplacée depuis sa sélection. Votre brouillon est conservé ici. Cliquez sur Modifier sur la règle actuelle pour charger ses derniers paramètres avant de vérifier une modification.",
+    "aliasChanged": "Cet alias a changé ou a été supprimé depuis sa sélection. Votre brouillon est conservé ici. Cliquez sur Renommer sur l’alias actuel pour charger ses derniers paramètres avant de vérifier une modification.",
     "title": "Politiques de pare-feu et alias",
     "scopeHint": "Ces changements d’exécution affectent la portée choisie. Les politiques du datacenter peuvent affecter d’autres nœuds et invités. Les règles de gestion sont protégées ; les alias référencés ne peuvent être renommés ou supprimés. Les nouvelles règles sont insérées en premier. Le scénario enregistré reste inchangé et un déploiement ultérieur peut rétablir ses paramètres déclarés.",
     "edit": "Modifier",

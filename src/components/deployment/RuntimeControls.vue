@@ -20,6 +20,7 @@ const queued = ref('')
 const preview = ref(null)
 const planning = ref(false)
 const showReport = ref(false)
+const reportRefresh = ref(0)
 const reviewedKinds = ['host_firewall', 'sdn_network', 'firewall_alias', 'firewall_rule']
 let version = 0
 const busy = computed(() => loading.value || submitting.value || planning.value || props.disabled || state.value?.permissions?.operate === false)
@@ -61,6 +62,7 @@ async function reload() {
     if (!Array.isArray(result?.firewall?.errors) || !Array.isArray(result?.sdn?.errors)
       || !Array.isArray(result.vms) || !Array.isArray(result.networks)) throw new Error(t('runtime.invalidState'))
     state.value = result
+    reportRefresh.value += 1
   } catch (cause) {
     if (current === version) { state.value = null; error.value = cause.message }
   } finally {
@@ -137,7 +139,7 @@ onBeforeUnmount(() => { version += 1 })
         <button type="button" class="btn btn-sm btn-outline" data-testid="runtime-report-open" @click="showReport = !showReport">{{ t('runtime.report.title') }}</button>
         <button v-if="supported('runtime_observe')" type="button" class="btn btn-sm btn-outline" :disabled="busy" @click="review({ kind: 'runtime_observe' })">{{ t('runtime.observe') }}</button>
       </div>
-      <RuntimeReport v-if="showReport" :deployment-id="deploymentId" :can-admin="state.permissions?.admin && supported('firewall_rule') && supported('firewall_alias')" :disabled="busy" @review="review" />
+      <RuntimeReport v-if="showReport" :deployment-id="deploymentId" :refresh-version="reportRefresh" :can-admin="state.permissions?.admin && supported('firewall_rule') && supported('firewall_alias')" :disabled="busy" @review="review" />
       <div v-if="state.permissions?.admin && supported('host_firewall')" class="flex flex-wrap gap-2">
         <button type="button" class="btn btn-sm btn-outline" data-testid="runtime-host-enable" :disabled="busy" @click="review({ kind: 'host_firewall', enabled: true })">{{ t('runtime.enableHost') }}</button>
         <button type="button" class="btn btn-sm btn-outline" :disabled="busy" @click="review({ kind: 'host_firewall', enabled: false })">{{ t('runtime.disableHost') }}</button>
@@ -160,6 +162,8 @@ onBeforeUnmount(() => { version += 1 })
             @click="review({ kind: 'vm_firewall', vm_id: vm.vm_id, enabled: !vm.firewall_enabled })">{{ t(vm.firewall_enabled ? 'runtime.disableFirewall' : 'runtime.enableFirewall') }}</button>
         </li>
       </ul>
+      <p v-if="state.permissions?.admin && supported('sdn_network') && state.networks.some(network => !network.identity_matches)"
+        class="text-sm text-base-content/70" data-testid="runtime-network-preparation">{{ t('runtime.network.preparation') }}</p>
       <div v-for="network in state.networks" :key="network.vnet" class="rounded-lg bg-base-200/60 p-3 flex flex-wrap justify-between gap-3">
         <div class="min-w-0"><p class="text-sm font-medium break-all">{{ network.vnet }} · {{ network.subnet }}</p>
           <p class="text-sm">{{ t('runtime.liveNat') }}: {{ flag(network.configured_snat) }} · {{ t('runtime.savedNat') }}: {{ flag(network.manifest_snat) }}</p>

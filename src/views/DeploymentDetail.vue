@@ -53,7 +53,9 @@ const checkingPreflight = ref(false)
 const starting = ref(false)
 const warningsAck = ref(false)
 const canPrepare = computed(() => meta.value && !isRetired.value && !loading.value && !loadError.value
-  && ['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value))
+  && attemptsIdle.value && (['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value)
+    || (supportsConcreteActions.value && !meta.value.native
+      && ['runtime', 'teardown'].includes(attempts.value.find(attempt => attempt.id === meta.value.current_attempt_id)?.scope))))
 const hasWarnings = computed(() => preflight.value?.result === 'warn'
   || preflight.value?.checks?.some(check => check.result === 'warn'))
 const canStart = computed(() => canPrepare.value && !checkingPreflight.value && !starting.value
@@ -100,6 +102,7 @@ const maintenanceWarningsAck = ref(false)
 const maintenanceBusy = ref(false)
 let maintenanceVersion = 0
 const canMaintain = computed(() => supportsConcreteActions.value && !loading.value && !loadError.value
+  && attemptsIdle.value
   && ['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value))
 const maintenanceRequest = computed(() => meta.value?.native ? { scope: maintenanceScope.value } : maintenanceScope.value === 'configure'
   ? { scope: 'configure', project_sha: maintenanceSha.value.trim() } : { scope: 'teardown' })
@@ -135,13 +138,15 @@ const { showToast } = useToast()
 
 const IN_FLIGHT_STATES = new Set(['deploying', 'running_attempt'])
 const inFlight = computed(() => IN_FLIGHT_STATES.has(effectiveState.value))
-const ALLOCATION_IDLE_STATES = new Set(['pending', 'draft', 'preflight_review', 'succeeded', 'completed', 'deployed', 'partial', 'failed', 'cancelled', 'torn_down'])
+const IDLE_DEPLOYMENT_STATES = new Set(['pending', 'draft', 'preflight_review', 'succeeded', 'completed', 'deployed', 'partial', 'failed', 'cancelled', 'torn_down'])
 const TERMINAL_ATTEMPT_STATES = new Set(['succeeded', 'completed', 'partial', 'failed', 'cancelled', 'unknown'])
-const allocationReleaseDisabled = computed(() => loading.value || !!loadError.value || !!attemptsError.value
-  || starting.value || checkingPreflight.value || maintenanceBusy.value
-  || !ALLOCATION_IDLE_STATES.has(effectiveState.value)
-  || (live.value?.state === 'unknown' && live.value.last_event_seq > 0)
-  || attempts.value.some(attempt => !TERMINAL_ATTEMPT_STATES.has(attempt.state)))
+const attemptsIdle = computed(() => !loading.value && !loadError.value && !attemptsError.value
+  && IDLE_DEPLOYMENT_STATES.has(effectiveState.value)
+  && !(live.value?.state === 'unknown' && live.value.last_event_seq > 0)
+  && (!meta.value?.current_attempt_id || attempts.value.some(attempt => attempt.id === meta.value.current_attempt_id))
+  && attempts.value.every(attempt => TERMINAL_ATTEMPT_STATES.has(attempt.state)))
+const operationControlsDisabled = computed(() => !attemptsIdle.value
+  || starting.value || checkingPreflight.value || maintenanceBusy.value)
 
 function onOpenReset(payload) {
   if (!supportsLegacyActions.value) return
@@ -335,6 +340,8 @@ async function loadMeta() {
 
 async function onRuntimeStarted(attempt) {
   newRuntimeAttempt.value = attempt
+  preflight.value = null
+  warningsAck.value = false
   maintenanceRecord.value = null
   maintenanceSnapshot.value = null
   await loadMeta()
@@ -672,11 +679,11 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
-      <DeploymentAllocations v-if="meta && !meta.native && !loadError" :deployment-id="String(route.params.id)" :disabled="allocationReleaseDisabled" />
+      <DeploymentAllocations v-if="meta && !meta.native && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"
         :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
       <RuntimeControls v-if="supportsConcreteActions && !meta?.native" :deployment-id="String(route.params.id)"
-        :disabled="!canMaintain || starting || maintenanceBusy" @started="onRuntimeStarted" />
+        :disabled="operationControlsDisabled" @started="onRuntimeStarted" />
       <RuntimeGitRecords v-if="supportsConcreteActions && !meta?.native" :deployment="meta" :attempts="attempts" :new-attempt="newRuntimeAttempt" />
       <div class="card card-compact bg-base-100 border border-base-300 mb-4">
         <div class="card-body p-4">

@@ -116,11 +116,14 @@
     "no": "No"
   },
   "network": {
+    "preparation": "Create each new network here before starting the guests if you want to delete it here afterward. Existing shared networks stay in place.",
     "create": "Create network {name}",
     "delete": "Delete network {name}",
     "scope": "Only this VNet and its subnet are changed. Deletion requires verified ownership and no attached guests or templates; the shared zone is preserved. Applying SDN affects the cluster. Other networks retain their prior NAT rule counts. The saved scenario stays unchanged and may recreate the network on a later deployment."
   },
   "policy": {
+    "ruleChanged": "This rule changed or moved since you selected it. Your draft is kept here. Select Edit on the current rule to load its latest settings before reviewing a change.",
+    "aliasChanged": "This alias changed or was removed since you selected it. Your draft is kept here. Select Rename on the current alias to load its latest settings before reviewing a change.",
     "title": "Firewall policies and aliases",
     "scopeHint": "These runtime changes affect the selected scope. Datacenter policies can affect other nodes and guests. Management rules are protected; referenced aliases cannot be renamed or deleted. New rules are inserted first. The saved scenario remains unchanged and a later deployment may restore its declared settings.",
     "edit": "Edit",

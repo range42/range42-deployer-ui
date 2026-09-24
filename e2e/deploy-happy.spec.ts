@@ -9,7 +9,7 @@ interface ReservationInput {
   networks: Array<{ network_id: string; bridge: string; subnet: string; gateway?: string }>
 }
 
-test('saved replicas hand their private reservation to a registered deployment before preflight and start', async ({ page }) => {
+test('saved SDN replicas prepare networks, deploy, change NAT, teardown and release their allocations', async ({ page }) => {
   const localId = 'local-happy', backendId = 'backend-happy', deploymentId = 'happy-deployment'
   const branch = 'range42-ui/happy', base = 'b'.repeat(40)
   const input = replicatedScenario()
@@ -82,8 +82,25 @@ test('saved replicas hand their private reservation to a registered deployment b
 
   const writes: string[] = []
   let owner = '', lease: Record<string, unknown> | undefined
-  let metadata = { id: deploymentId, project_id: backendId, project_sha: '', target_host_id: 'pve-happy', codename: 'HAPPY', scenario_label: 'replicated', state: 'pending', team_count: 1 }
-  const attempts: Array<{ id: string; state: string; scope: string }> = []
+  let metadata = { id: deploymentId, project_id: backendId, project_sha: '', target_host_id: 'pve-happy', codename: 'HAPPY', scenario_label: 'replicated', state: 'pending', team_count: 1, current_attempt_id: '' }
+  const attempts: Array<{ id: string; state: string; scope: string; operation?: unknown }> = []
+  const createdNetworks = new Set<string>(), nat = new Map<string, boolean>()
+  let guestsExist = false, allocationsReleased = false
+  const networkManifest = () => JSON.parse(files['scenarios/replicated/manifest/scenario_networks.json'])
+  const vmManifest = () => JSON.parse(files['scenarios/replicated/manifest/scenario_vms.json'])
+  function startAttempt(scope: string, operation?: unknown) {
+    const attempt = { id: `happy-attempt-${attempts.length + 1}`, state: 'deploying', scope, ...(operation ? { operation } : {}) }
+    metadata.state = 'deploying'
+    metadata.current_attempt_id = attempt.id
+    attempts.push(attempt)
+    return attempt
+  }
+  async function finishAttempt() {
+    metadata.state = 'succeeded'
+    attempts.at(-1)!.state = 'succeeded'
+    await page.reload()
+    await expect(page.getByTestId('detail-state')).toHaveText('succeeded')
+  }
   await page.route(/\/v1\/(?:proxmox\/hosts|projects\/|deployments(?:[/?]|$))/, async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method()
     expect(request.headers().authorization).toBe('Bearer route-fixture-token')
@@ -116,17 +133,71 @@ test('saved replicas hand their private reservation to a registered deployment b
     }
     if (path === `/v1/deployments/${deploymentId}` && method === 'GET') return route.fulfill({ json: metadata })
     if (path.endsWith('/allocations') && method === 'GET') {
+      if (allocationsReleased) return route.fulfill({ status: 404, json: { code: 'ALLOCATION_NOT_FOUND' } })
       const manifest = JSON.parse(files['scenarios/replicated/manifest/scenario_vms.json'])
       return route.fulfill({ json: { deployment_id: deploymentId, project_sha: metadata.project_sha, host_id: 'pve-happy', node_name: 'pve01', created_at: new Date().toISOString(), assignments: manifest.vms } })
+    }
+    if (path.endsWith('/allocations') && method === 'DELETE') {
+      expect(guestsExist).toBe(false)
+      expect(createdNetworks.size).toBe(0)
+      allocationsReleased = true
+      return route.fulfill({ status: 204 })
+    }
+    if (path.endsWith('/runtime') && method === 'GET') return route.fulfill({ json: {
+      deployment_id: deploymentId, target_host_id: 'pve-happy', node_name: 'pve01', project_sha: metadata.project_sha,
+      firewall: { datacenter_enabled: true, node_enabled: true, errors: [] }, sdn: { pending_changes: false, errors: [] },
+      permissions: { admin: true, operate: true }, runtime: { available: true, contract: 'native-sdn-20260921', operations: ['sdn_network', 'sdn_snat'] },
+      vms: vmManifest().vms.map((vm: { vm_id: number; vm_name: string }) => ({ vm_id: vm.vm_id, name: vm.vm_name, status: guestsExist ? 'owned' : 'missing', nics: [], firewall_enabled: false })),
+      networks: networkManifest().vnets.map((network: { vnet: string; snat: boolean }) => ({ ...network, zone: networkManifest().zone,
+        manifest_snat: network.snat, configured_snat: createdNetworks.has(network.vnet) ? nat.get(network.vnet) : null,
+        identity_matches: createdNetworks.has(network.vnet), active: createdNetworks.has(network.vnet), live_forwarding_verified: false })),
+    } })
+    if (path.endsWith('/operations/plan') && method === 'POST') {
+      const body = request.postDataJSON()
+      expect(body).toMatchObject({ kind: 'sdn_network', acknowledge_shared_scope: true })
+      const network = networkManifest().vnets.find((value: { vnet: string }) => value.vnet === body.vnet)
+      expect(network).toBeDefined()
+      if (body.action === 'delete' && guestsExist) return route.fulfill({ status: 409, json: { code: 'SDN_NETWORK_ATTACHED', message: 'This VNet still has attached guests or templates.' } })
+      return route.fulfill({ json: { review_fingerprint: 'e'.repeat(64), target_host_id: 'pve-happy', target_identity: { node_name: 'pve01' },
+        project_sha: metadata.project_sha, plan: { network: { ...network, zone: networkManifest().zone }, preserve_zone: true } } })
+    }
+    if (path.endsWith('/operations') && method === 'POST') {
+      const body = request.postDataJSON()
+      expect(body.acknowledge_shared_scope).toBe(true)
+      expect(['blue1', 'red1']).toContain(body.vnet)
+      if (body.kind === 'sdn_network') {
+        expect(body.review_fingerprint).toBe('e'.repeat(64))
+        expect(guestsExist).toBe(false)
+        if (body.action === 'create') {
+          expect(createdNetworks.has(body.vnet)).toBe(false)
+          createdNetworks.add(body.vnet)
+          nat.set(body.vnet, networkManifest().vnets.find((value: { vnet: string }) => value.vnet === body.vnet).snat)
+        } else {
+          expect(body.action).toBe('delete')
+          expect(createdNetworks.has(body.vnet)).toBe(true)
+          createdNetworks.delete(body.vnet)
+          nat.delete(body.vnet)
+        }
+      } else {
+        expect(body).toEqual({ kind: 'sdn_snat', vnet: 'red1', enabled: false, acknowledge_shared_scope: true })
+        expect(guestsExist).toBe(true)
+        nat.set(body.vnet, body.enabled)
+      }
+      return route.fulfill({ status: 201, json: startAttempt('runtime', { request: body }) })
     }
     if (path.endsWith('/preflight') && method === 'POST') return route.fulfill({ json: { result: 'pass', blocking: false, checks: [{ check: 'saved_manifest', result: 'pass' }] } })
     if (path.endsWith('/attempts') && method === 'GET') return route.fulfill({ json: { items: attempts, total: attempts.length } })
     if (path.endsWith('/attempts') && method === 'POST') {
-      expect(request.postDataJSON()).toEqual({ scope: 'full' })
-      metadata.state = 'deploying'
-      const attempt = { id: 'happy-attempt', state: 'deploying', scope: 'full' }
-      attempts.push(attempt)
-      return route.fulfill({ status: 201, json: attempt })
+      const body = request.postDataJSON()
+      if (body.scope === 'full') {
+        expect(body).toEqual({ scope: 'full' })
+        expect([...createdNetworks].sort()).toEqual(['blue1', 'red1'])
+        guestsExist = true
+      } else {
+        expect(body).toEqual({ scope: 'teardown', confirm_codename: 'HAPPY' })
+        guestsExist = false
+      }
+      return route.fulfill({ status: 201, json: startAttempt(body.scope) })
     }
     return route.fallback()
   })
@@ -147,20 +218,61 @@ test('saved replicas hand their private reservation to a registered deployment b
   await expect.poll(() => lockReleased).toBe(true)
   await expect(page.getByTestId('deployment-allocations').locator('li')).toHaveCount(3)
   await expect(page.getByTestId('deployment-start')).toBeDisabled()
+  for (const vnet of ['blue1', 'red1']) {
+    await page.getByTestId(`runtime-network-create-${vnet}`).click()
+    await page.getByTestId('runtime-shared-ack').check()
+    await page.getByTestId('runtime-apply').click()
+    await expect(page.getByTestId('detail-state')).toHaveText('deploying')
+    await finishAttempt()
+    await expect(page.getByTestId('deployment-start')).toBeDisabled()
+  }
   await page.getByTestId('deployment-run-preflight').click()
   await expect(page.getByTestId('deployment-start')).toBeEnabled()
   await page.getByTestId('deployment-start').click()
   await expect(page.getByTestId('detail-state')).toHaveText('deploying')
-  metadata.state = 'succeeded'; attempts[0].state = 'succeeded'
-  await page.reload()
-  await expect(page.getByTestId('detail-state')).toHaveText('succeeded')
+  await finishAttempt()
+  const savedNetworks = files['scenarios/replicated/manifest/scenario_networks.json']
+  await page.getByTestId('runtime-nat-red1').click()
+  await page.getByTestId('runtime-shared-ack').check()
+  await page.getByTestId('runtime-apply').click()
+  await expect(page.getByTestId('detail-state')).toHaveText('deploying')
+  await finishAttempt()
+  await expect(page.getByTestId('runtime-nat-red1')).toHaveText('Enable outbound NAT')
+  expect(files['scenarios/replicated/manifest/scenario_networks.json']).toBe(savedNetworks)
+
+  const operationsBeforeRefusal = writes.filter(value => value.endsWith('/operations')).length
+  await page.getByTestId('runtime-network-delete-blue1').click()
+  await expect(page.getByTestId('runtime-controls')).toContainText('still has attached guests')
+  await expect(page.getByTestId('runtime-apply')).toHaveCount(0)
+  expect(writes.filter(value => value.endsWith('/operations'))).toHaveLength(operationsBeforeRefusal)
+
+  await page.getByTestId('maintenance-scope').selectOption('teardown')
+  await page.getByTestId('maintenance-preflight').click()
+  await expect(page.getByTestId('maintenance-start')).toBeDisabled()
+  await page.getByTestId('maintenance-confirm').fill('HAPPY')
+  await page.getByTestId('maintenance-start').click()
+  await expect(page.getByTestId('detail-state')).toHaveText('deploying')
+  await finishAttempt()
+  for (const vnet of ['blue1', 'red1']) {
+    await page.getByTestId(`runtime-network-delete-${vnet}`).click()
+    await page.getByTestId('runtime-shared-ack').check()
+    await page.getByTestId('runtime-apply').click()
+    await expect(page.getByTestId('detail-state')).toHaveText('deploying')
+    await finishAttempt()
+    await expect(page.getByTestId(`runtime-network-delete-${vnet}`)).toBeDisabled()
+  }
+  await page.getByTestId('allocation-review-release').click()
+  await page.getByTestId('allocation-confirm-release').click()
+  await expect(page.getByTestId('allocation-absent')).toContainText('released')
+  expect(allocationsReleased).toBe(true)
   const instances: { instances: Array<{ vm_id: number }> } = JSON.parse(files['scenarios/replicated/manifest/scenario_instances.json'])
   expect(instances.instances.map(vm => vm.vm_id)).toEqual([3101, 3102, 3103])
   expect(JSON.stringify(files)).not.toContain(owner)
   expect(JSON.stringify(files)).not.toContain('route-fixture-token')
   expect(JSON.stringify(files)).not.toContain('git-fixture-token')
-  expect(writes).toEqual(['POST /v1/proxmox/hosts/pve-happy/reservations', `PUT /v1/projects/${backendId}`, 'POST /v1/deployments',
-    `POST /v1/deployments/${deploymentId}/preflight`, `POST /v1/deployments/${deploymentId}/attempts`])
+  expect(writes.slice(0, 3)).toEqual(['POST /v1/proxmox/hosts/pve-happy/reservations', `PUT /v1/projects/${backendId}`, 'POST /v1/deployments'])
+  expect(attempts.map(attempt => attempt.scope)).toEqual(['runtime', 'runtime', 'full', 'runtime', 'teardown', 'runtime', 'runtime'])
+  expect(writes.at(-1)).toBe(`DELETE /v1/deployments/${deploymentId}/allocations`)
   expect(gitWrites.some(write => write.startsWith('PATCH'))).toBe(true)
   expect(unexpected).toEqual([])
   expect(api.state.writes).toEqual([])

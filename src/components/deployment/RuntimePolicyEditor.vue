@@ -12,6 +12,15 @@ const chain = computed(() => choices.value.find(value => key(value) === selected
 const editPosition = ref(null)
 const rule = reactive({ name: '', direction: 'in', action: 'ACCEPT', protocol: 'tcp', destination_port: '', source: '', destination: '', enabled: true })
 const alias = reactive({ name: '', cidr: '', new_name: '', action: 'create' })
+// Reports contain flat rule/alias records. Keep the original selection separate
+// from the user's draft so a refreshed position/name cannot target another object.
+const snapshot = value => value ? JSON.stringify(Object.keys(value).sort().map(field => [field, value[field]])) : null
+const selectedRule = ref(null)
+const selectedAlias = ref(null)
+const ruleChanged = computed(() => editPosition.value !== null
+  && snapshot(chain.value?.rules.find(value => value.position === editPosition.value)) !== selectedRule.value)
+const aliasChanged = computed(() => alias.action === 'rename'
+  && snapshot(chain.value?.aliases.find(value => value.name === alias.name)) !== selectedAlias.value)
 const target = value => ({ scope: value.scope, ...(value.scope === 'vm' ? { vm_id: value.vm_id } : {}) })
 const ownsAlias = value => value.comment === `range42-deployment:${props.deploymentId}`
 const ownsRule = value => value.comment?.startsWith(`range42-deployment:${props.deploymentId};rule:`)
@@ -30,28 +39,32 @@ function edit(value, current) {
   if (props.disabled) return
   selected.value = key(value)
   editPosition.value = current.position
+  selectedRule.value = snapshot(current)
   Object.assign(rule, { name: '', direction: current.direction, action: current.action, protocol: current.protocol,
     destination_port: current.destination_port, source: current.source || '', destination: current.destination || '', enabled: current.enabled })
 }
 function rename(value, current) {
   if (props.disabled) return
   selected.value = key(value)
+  selectedAlias.value = snapshot(current)
   Object.assign(alias, { name: current.name, cidr: current.cidr, new_name: '', action: 'rename' })
 }
 function submitRule() {
-  if (!chain.value || props.disabled) return
+  if (!chain.value || props.disabled || ruleChanged.value) return
   review({ kind: 'firewall_rule', ...target(chain.value), action: editPosition.value === null ? 'create' : 'update',
     ...(editPosition.value === null ? { name: rule.name.trim() } : { position: editPosition.value }),
     rule: { direction: rule.direction, action: rule.action, protocol: rule.protocol, destination_port: rule.destination_port.trim(),
       source: rule.source.trim() || null, destination: rule.destination.trim() || null, enabled: rule.enabled } })
 }
 function submitAlias() {
-  if (!chain.value || chain.value.scope === 'node' || props.disabled) return
+  if (!chain.value || chain.value.scope === 'node' || props.disabled || aliasChanged.value) return
   review({ kind: 'firewall_alias', ...target(chain.value), action: alias.action, name: alias.name.trim(),
     ...(alias.action === 'create' ? { cidr: alias.cidr.trim() } : { new_name: alias.new_name.trim() }) })
 }
 function resetEditor() {
   editPosition.value = null
+  selectedRule.value = null
+  selectedAlias.value = null
   Object.assign(rule, { name: '', direction: 'in', action: 'ACCEPT', protocol: 'tcp', destination_port: '', source: '', destination: '', enabled: true })
   Object.assign(alias, { name: '', cidr: '', new_name: '', action: 'create' })
 }
@@ -85,6 +98,7 @@ watch(choices, values => { if (!values.some(value => key(value) === selected.val
       </label>
       <form data-testid="policy-rule-form" class="space-y-2 rounded bg-base-200/60 p-3" @submit.prevent="submitRule">
         <h4 class="text-sm font-semibold">{{ t(editPosition === null ? 'runtime.policy.newRule' : 'runtime.policy.editRule') }} <span v-if="editPosition !== null">#{{ editPosition }}</span></h4>
+        <p v-if="ruleChanged" role="alert" class="text-sm border-l-2 border-warning pl-2">{{ t('runtime.policy.ruleChanged') }}</p>
         <label v-if="editPosition === null" class="block text-sm">{{ t('runtime.policy.name') }}<input v-model="rule.name" :disabled="disabled" required pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" class="input input-bordered input-sm w-full" /></label>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <label class="text-sm">{{ t('runtime.policy.direction') }}<select v-model="rule.direction" :disabled="disabled" class="select select-bordered select-sm w-full"><option value="in">IN</option><option value="out">OUT</option></select></label>
@@ -95,14 +109,15 @@ watch(choices, values => { if (!values.some(value => key(value) === selected.val
         <label class="block text-sm">{{ t('runtime.policy.source') }}<input v-model="rule.source" data-testid="policy-source" :disabled="disabled" class="input input-bordered input-sm w-full" /></label>
         <label class="block text-sm">{{ t('runtime.policy.destination') }}<input v-model="rule.destination" :disabled="disabled" class="input input-bordered input-sm w-full" /></label>
         <label class="flex gap-2 items-center text-sm"><input v-model="rule.enabled" type="checkbox" :disabled="disabled" class="checkbox checkbox-sm" />{{ t('runtime.enabled') }}</label>
-        <div class="flex flex-wrap gap-2"><button type="submit" class="btn btn-sm btn-primary" :disabled="disabled">{{ t('runtime.policy.review') }}</button><button type="button" class="btn btn-sm btn-ghost" :disabled="disabled" @click="resetEditor">{{ t('runtime.policy.reset') }}</button></div>
+        <div class="flex flex-wrap gap-2"><button type="submit" class="btn btn-sm btn-primary" :disabled="disabled || ruleChanged">{{ t('runtime.policy.review') }}</button><button type="button" class="btn btn-sm btn-ghost" :disabled="disabled" @click="resetEditor">{{ t('runtime.policy.reset') }}</button></div>
       </form>
       <form v-if="chain.scope !== 'node'" data-testid="policy-alias-form" class="space-y-2 rounded bg-base-200/60 p-3" @submit.prevent="submitAlias">
         <h4 class="text-sm font-semibold">{{ t(alias.action === 'create' ? 'runtime.policy.newAlias' : 'runtime.policy.rename') }}</h4>
+        <p v-if="aliasChanged" role="alert" class="text-sm border-l-2 border-warning pl-2">{{ t('runtime.policy.aliasChanged') }}</p>
         <label class="block text-sm">{{ t('runtime.policy.name') }}<input v-model="alias.name" :disabled="disabled || alias.action === 'rename'" required pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" class="input input-bordered input-sm w-full" /></label>
         <label v-if="alias.action === 'create'" class="block text-sm">CIDR<input v-model="alias.cidr" :disabled="disabled" required class="input input-bordered input-sm w-full" /></label>
         <label v-else class="block text-sm">{{ t('runtime.policy.newName') }}<input v-model="alias.new_name" data-testid="alias-new-name" :disabled="disabled" required pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" class="input input-bordered input-sm w-full" /></label>
-        <button type="submit" class="btn btn-sm btn-primary" :disabled="disabled">{{ t('runtime.policy.review') }}</button>
+        <button type="submit" class="btn btn-sm btn-primary" :disabled="disabled || aliasChanged">{{ t('runtime.policy.review') }}</button>
       </form>
     </template>
   </section>
