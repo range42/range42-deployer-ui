@@ -23,7 +23,7 @@ const receiptKey = (scope, path) => JSON.stringify([scope, path])
 const rows = computed(() => {
   const attempts = [...props.attempts]
   if (props.newAttempt && !attempts.some(attempt => attempt.id === props.newAttempt.id)) attempts.unshift(props.newAttempt)
-  return attempts.filter(attempt => attempt.operation).map(attempt => {
+  return attempts.filter(attempt => attempt.operation?.request).map(attempt => {
     try {
       const record = buildRuntimeRecord(props.deployment, attempt, getBackendScope())
       const sha = project.value?.runtime_git_receipts?.[receiptKey(getBackendScope(), record.path)]

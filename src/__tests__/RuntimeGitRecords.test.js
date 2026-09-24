@@ -39,6 +39,32 @@ async function show(props = {}) {
 }
 
 describe('runtime Git save status', () => {
+  const snapshotAttempt = { id: 'snapshot-attempt', deployment_id: deployment.id, scope: 'snapshot_set', state: 'succeeded',
+    operation: { kind: 'snapshot_set', operation_id: 'snapshot-operation' } }
+
+  it('does not render Git records for snapshot-set attempts, including a newly received attempt', async () => {
+    const wrapper = await show({ attempts: [snapshotAttempt], newAttempt: snapshotAttempt })
+    expect(wrapper.find('[data-testid="runtime-git-records"]').exists()).toBe(false)
+    expect(save).not.toHaveBeenCalled()
+    expect(useProjectStore().getProject(project.id).files).toEqual(project.files)
+  })
+
+  it('keeps network runtime records saveable alongside snapshot-set history', async () => {
+    const networkAttempt = { ...attempt, scope: 'runtime', operation: { ...operation,
+      request: { kind: 'sdn_network', action: 'create', vnet: 'r42blue', acknowledge_shared_scope: true, review_fingerprint: 'a'.repeat(64) } } }
+    const wrapper = await show({ attempts: [snapshotAttempt, networkAttempt] })
+    expect(wrapper.findAll('li')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Network lifecycle')
+    expect(wrapper.text()).not.toContain(snapshotAttempt.id)
+    expect(wrapper.text()).not.toContain('runtime.operations.undefined')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="runtime-git-save-attempt-1"]').trigger('click')
+    await flushPromises()
+    expect(save).toHaveBeenCalledOnce()
+    expect(save.mock.calls[0][2]).toEqual(networkAttempt)
+    expect(wrapper.text()).toContain('Saved request')
+  })
+
   it('offers historical changes for explicit save without writing merely on page load', async () => {
     const wrapper = await show()
     expect(save).not.toHaveBeenCalled()
