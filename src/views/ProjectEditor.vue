@@ -62,6 +62,7 @@ import { useObservedGuestStatus } from '@/composables/useObservedGuestStatus'
 import { prepareEditorBranchRecovery, editorAuthoredSignature } from '@/services/gitEditorRecovery'
 import { createNativeFilesFs } from '@/services/nativeScenario'
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
+import WorkloadReviewPanel from '../components/project/WorkloadReviewPanel.vue'
 
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
@@ -1033,6 +1034,13 @@ function handleConfigSave() {
   void manualSave()
 }
 
+/** @param {{ projectId: string; files: import('@/services/projectFiles').ProjectFiles; scenario: Record<string, unknown> }} result */
+function handleWorkloadReview({ projectId, files, scenario }) {
+  if (!editorActive || currentProject.value?.id !== projectId) return
+  projectStore.updateProject(projectId, { files, scenario })
+  scheduleAutosave()
+}
+
 /** @param {import('@/overlay/serialize').CanvasAttachment[]} next */
 function handleAttachmentsUpdate(next) {
   if (!currentProject.value) return
@@ -1480,7 +1488,8 @@ const handleInfrastructureImport = (result) => {
       />
 
       <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->
-      <div v-show="tab === 'config'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
+      <div v-show="tab === 'config'" class="flex flex-col flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
+        <WorkloadReviewPanel v-if="currentProject?.scenario && tab === 'config'" :project="currentProject" :path="selectedFilePath" @apply="handleWorkloadReview" />
         <KeepAlive :max="1">
           <ConfigTab
             :key="currentProject.id"

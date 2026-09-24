@@ -1,5 +1,6 @@
 import { vmMemoryMb, vmDiskGb } from './vmResources'
 import { validateRoleAttachment } from './catalogRoleExecution'
+import { validateCatalogWorkloadReview } from './catalogWorkload'
 import { expandScenarioReplication } from './scenarioReplication'
 import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
@@ -230,6 +231,11 @@ export function emitConcreteScenario({ scenario, nodes = [], edges = [], files =
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
   requireValue(['sdn', 'existing_bridge'].includes(scenario.network_mode), 'Choose SDN or an existing bridge network')
   requireValue(!attachments.length, 'Existing canvas attachments must be moved into the scenario Content list before generating; they cannot be silently omitted')
+  for (const item of scenario.content || []) {
+    if (item.kind === 'playbook' && ['deploy.yml', 'cleanup.yml'].some(name => item.path === `content/workloads/${item.id}/${name}`)) {
+      validateCatalogWorkloadReview({ files, scenarioLabel: scenario.label, attachmentId: item.id })
+    }
+  }
   const authoringScenario = scenario
   const expanded = expandScenarioReplication({ scenario, nodes, edges })
   if (expanded) ({ scenario, nodes, edges } = expanded)

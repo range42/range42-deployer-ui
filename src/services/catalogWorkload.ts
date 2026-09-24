@@ -1,12 +1,12 @@
 import { sha256 } from '@noble/hashes/sha2.js'
-import { stringify } from 'yaml'
+import { parseDocument, stringify } from 'yaml'
 import { composeContract } from './catalogCompose'
 import type { CatalogEntry } from '@/composables/useCatalog'
 import type { GitSource } from '@/stores/inventoryStore'
 import type { GitProviderV1 } from '@/services/git/types'
 import { readFileContent } from '@/services/git/fileContent'
 import { publicCatalogReference } from '@/services/catalogReference'
-import { cloneFiles, fileBytes, fileText, validateFileMap, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
+import { cloneFiles, fileBytes, fileText, isBinaryFile, validateFileMap, validateFilePath, type FileContent, type ProjectFiles } from '@/services/projectFiles'
 
 type ObjectValue = Record<string, unknown>
 type Scenario = ObjectValue & { label: string; vms: ObjectValue[]; content: ObjectValue[] }
@@ -25,7 +25,18 @@ function literalPath(path: string): void {
   validateFilePath(path)
   if (!/^[A-Za-z0-9_.\-/]+$/.test(path)) throw new Error('Workload paths must be literal portable file paths without interpolation')
 }
-export function assertWorkloadFileSafe(path: string, content: string): void {
+export function assertWorkloadFileSafe(path: string, value: FileContent): void {
+  const bytes = fileBytes(value)
+  if (/(?:^|\/)\.env(?:\.|$)/i.test(path)) throw new Error(`Secret-bearing configuration is unsupported: ${path}`)
+  let content: string
+  try { content = new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch {
+    if (/(?:^|\/)(?:Dockerfile(?:\.[^/]*)?|[^/]+\.(?:ya?ml|json|toml|ini|conf|cfg|env|pem|key))$/i.test(path)) throw new Error(`Workload configuration must be UTF-8 text: ${path}`)
+    return
+  }
+  if (content.includes('\0')) {
+    if (typeof value === 'string' || /(?:^|\/)(?:Dockerfile(?:\.[^/]*)?|[^/]+\.(?:ya?ml|json|toml|ini|conf|cfg|env|pem|key))$/i.test(path)) throw new Error(`Workload configuration must be UTF-8 text without NUL bytes: ${path}`)
+    return
+  }
   const literalSecret = content.split(/\r?\n/).some(line => /^\s*["']?(?:password|passwd|token|api[_-]?key|secret|private[_-]?key)["']?\s*[:=]\s*\S/i.test(line)
     && !/:\s*["']?\$\{[A-Za-z_][A-Za-z0-9_]*\}["']?\s*$/.test(line))
   if (/(?:^|\/)\.env(?:\.|$)/i.test(path) || /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content)
@@ -55,8 +66,6 @@ async function loadTree(owner: string, repo: string, root: string, sha: string, 
     const file = await readFileContent(provider, { owner, repo, path: entry.path, ref: sha })
     if (file.sha !== entry.sha) throw new Error('Pinned workload file changed or resolved outside its reviewed tree')
     const relative = entry.path.slice(root.length + 1)
-    // The initial adapter cannot inspect arbitrary binary configuration for credentials.
-    if (typeof file.content !== 'string') throw new Error(`Binary workload file needs separate review: ${relative}`)
     assertWorkloadFileSafe(relative, file.content)
     files[relative] = file.content
     modes[relative] = entry.mode === '100755' ? '0755' : '0644'
@@ -116,12 +125,24 @@ function playbook(projectName: string, services: string[], volumes: string[], mo
   } else tasks.push(
     { name: 'Inspect workload directory paths', 'ansible.builtin.stat': { path: '{{ item }}', follow: false }, loop: [...directories].sort(), register: 'r42_workload_directories' },
     assertion('Refuse linked workload subdirectories', ['not item.stat.exists or (item.stat.isdir | default(false) and not item.stat.islnk | default(false))'], 'Workload directory contains a non-directory or symlink', { loop: '{{ r42_workload_directories.results }}' }),
-    { name: 'Create private workload directories', 'ansible.builtin.file': { path: '{{ item }}', state: 'directory', mode: '0700' }, loop: [...directories].sort() },
+    { name: 'Create workload directories', 'ansible.builtin.file': { path: '{{ item.path }}', state: 'directory', mode: '{{ item.mode }}' }, loop: [...directories].sort().map(path => ({ path, mode: path === root ? '0700' : '0755' })) },
     { name: 'Record workload ownership', 'ansible.builtin.copy': { content: marker, dest: `${root}/owner.txt`, mode: '0600' } },
+    { name: 'Inspect copied payload manifest', 'ansible.builtin.stat': { path: `${root}/payload-files.json`, follow: false }, register: 'r42_payload_manifest' },
+    assertion('Refuse a linked payload manifest', ['not r42_payload_manifest.stat.exists or (r42_payload_manifest.stat.isreg | default(false) and not r42_payload_manifest.stat.islnk | default(false))'], 'The workload payload manifest is not a regular owned file'),
+    { name: 'Read previously copied payload files', 'ansible.builtin.slurp': { src: `${root}/payload-files.json` }, register: 'r42_payload_previous', when: 'r42_payload_manifest.stat.exists' },
+    { name: 'Load previously copied payload paths', 'ansible.builtin.set_fact': { r42_payload_paths: "{{ (r42_payload_previous.content | b64decode | from_json) if r42_payload_manifest.stat.exists else [] }}" } },
+    assertion('Require a payload path list', ["r42_payload_paths | type_debug == 'list'"], 'The workload payload manifest must contain a path list'),
+    assertion('Validate previously copied payload paths', ["item is string and item is match('^[A-Za-z0-9_.\\/-]+$') and not item.startswith('/') and '..' not in item.split('/') and '.' not in item.split('/') and '' not in item.split('/')"], 'The workload payload manifest contains an unsafe path', { loop: '{{ r42_payload_paths }}' }),
+    { name: 'Find links in the owned payload', 'ansible.builtin.find': { paths: payload, recurse: true, follow: false, hidden: true, file_type: 'link' }, register: 'r42_payload_links' },
+    assertion('Refuse links in the owned payload', ['r42_payload_links.matched == 0'], 'The owned workload payload contains symlinks; review it before updating'),
+    { name: 'Inspect previously copied obsolete payload files', 'ansible.builtin.stat': { path: `${payload}/{{ item }}`, follow: false }, loop: `{{ r42_payload_paths | difference(${JSON.stringify(Object.keys(modes))}) }}`, register: 'r42_payload_obsolete' },
+    assertion('Refuse non-file obsolete payload entries', ['not item.stat.exists or (item.stat.isreg | default(false) and not item.stat.islnk | default(false))'], 'A previously copied payload file is no longer a regular file', { loop: '{{ r42_payload_obsolete.results }}' }),
+    { name: 'Remove previously copied obsolete payload files', 'ansible.builtin.file': { path: `${payload}/{{ item.item }}`, state: 'absent' }, loop: '{{ r42_payload_obsolete.results }}', when: 'item.stat.exists' },
     { name: 'Copy the complete pinned workload tree', 'ansible.builtin.copy': { src: '{{ playbook_dir }}/payload/{{ item.path }}', dest: `${payload}/{{ item.path }}`, mode: '{{ item.mode }}' }, loop: Object.entries(modes).map(([path, mode]) => ({ path, mode })) },
+    { name: 'Record copied workload payload files', 'ansible.builtin.copy': { content: JSON.stringify(Object.keys(modes)), dest: `${root}/payload-files.json`, mode: '0600' } },
     { name: 'Copy the reviewed Compose configuration', 'ansible.builtin.copy': { src: '{{ playbook_dir }}/runtime.compose.yml', dest: `${root}/runtime.compose.yml`, mode: '0600' } },
     command('Validate copied Compose configuration before starting it', [...compose, 'config', '--quiet'], { no_log: true }),
-    command('Start the selected guest workload', [...compose, 'up', '--detach', '--build', '--wait', '--wait-timeout', '120', ...services], { changed_when: true, no_log: true }),
+    command('Start the selected guest workload', [...compose, 'up', '--detach', '--build', '--force-recreate', '--wait', '--wait-timeout', '120', ...services], { changed_when: true, no_log: true }),
     ...containers.flatMap(container => [
       command('Read started workload state', [...docker, 'container', 'inspect', container], { register: 'r42_workload_started', no_log: true }),
       assertion('Require the selected workload container to be running', [`(r42_workload_started.stdout | from_json | length) == 1`, `(r42_workload_started.stdout | from_json)[0].Config.Labels['io.range42.workload'] | default('') == '${marker}'`, '(r42_workload_started.stdout | from_json)[0].State.Running == true'], 'Compose returned but the selected workload container is not running'),
@@ -146,7 +167,12 @@ function validatedSecretBindings(value: unknown, variables: unknown): Record<str
 }
 
 /** Stage an ordinary project-contained playbook; no provider, backend or guest writes. */
-export async function prepareCatalogWorkload(input: { entry: CatalogEntry; source: GitSource; project: { id: string; files?: ProjectFiles; nodes?: Array<{ id: string; type?: string }>; baseDoc?: { env?: unknown } }; scenario: unknown; targetNode: string; attachmentId: string; hostPorts?: number[]; secretBindings?: Record<string, string> }, provider: Provider) {
+type WorkloadInput = { entry: CatalogEntry; source: GitSource; project: { id: string; files?: ProjectFiles; nodes?: Array<{ id: string; type?: string }>; baseDoc?: { env?: unknown } }; scenario: unknown; targetNode: string; attachmentId: string; hostPorts?: number[]; secretBindings?: Record<string, string> }
+type LoadedWorkload = { files: ProjectFiles; modes: Record<string, string> }
+export async function prepareCatalogWorkload(input: WorkloadInput, provider: Provider) {
+  return prepareWorkload(input, (owner, repo, root, sha) => loadTree(owner, repo, root, sha, provider))
+}
+async function prepareWorkload(input: WorkloadInput, load: (owner: string, repo: string, root: string, sha: string) => Promise<LoadedWorkload>, reviewing = false) {
   const { entry, source, targetNode, attachmentId, project, hostPorts, secretBindings: requestedBindings, scenario: requestedScenario } = structuredClone(input)
   const secretBindings = validatedSecretBindings(requestedBindings, project.baseDoc?.env)
   const scenario = object(requestedScenario, 'Scenario') as Scenario
@@ -163,7 +189,7 @@ export async function prepareCatalogWorkload(input: { entry: CatalogEntry; sourc
   const repo = source.repos[0]
   const origin = publicCatalogReference({ version: 1, mode: 'use', kind: 'container', source_id: source.id, provider: source.provider, base_url: source.base_url,
     repo_owner: repo.owner, repo_name: repo.repo, branch: repo.branch, path: entry.path, sha: entry.sha, ...(source.backend_url ? { backend_url: source.backend_url } : {}) })!
-  const loaded = await loadTree(repo.owner, repo.repo, entry.path, entry.sha!, provider)
+  const loaded = await load(repo.owner, repo.repo, entry.path, entry.sha!)
   const contract = composeContract(loaded.files, hostPorts, secretBindings)
   for (const item of scenario.content) {
     if (item.target_node !== targetNode || item.kind !== 'playbook' || typeof item.path !== 'string' || !/^content\/workloads\/[^/]+\/(?:deploy|cleanup)\.yml$/.test(item.path)) continue
@@ -174,31 +200,120 @@ export async function prepareCatalogWorkload(input: { entry: CatalogEntry; sourc
     const payloadPrefix = reviewPath.replace(/review\.json$/, 'payload/')
     const existingFiles = Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith(payloadPrefix)).map(([path, content]) => [path.slice(payloadPrefix.length), content]))
     const expectedHashes = object(review.file_hashes, 'Existing workload file hashes')
-    if (Object.keys(existingFiles).length !== Object.keys(expectedHashes).length || Object.entries(existingFiles).some(([path, content]) => expectedHashes[path] !== digest(fileBytes(content)))) throw new Error('Existing workload files changed since review; review its current Config before appending another workload')
+    if (!reviewing && (Object.keys(existingFiles).length !== Object.keys(expectedHashes).length || Object.entries(existingFiles).some(([path, content]) => expectedHashes[path] !== digest(fileBytes(content))))) throw new Error('Existing workload files changed since review; review its current Config before appending another workload')
     const runtimePath = reviewPath.replace(/review\.json$/, 'runtime.compose.yml')
     if (!Object.hasOwn(files, runtimePath) || digest(fileBytes(files[runtimePath])) !== review.runtime_sha256) throw new Error('Existing workload execution config changed since review; review its current Config before appending another workload')
-    const actualPorts = composeContract(existingFiles, review.host_ports, validatedSecretBindings(review.secret_bindings, project.baseDoc?.env)).ports
-    if (JSON.stringify(actualPorts) !== JSON.stringify(review.published_ports)) throw new Error('Existing workload port review changed; review its current Config before appending another workload')
-    const collision = contract.ports.find(port => (review.published_ports as unknown[]).includes(port))
+    const bindings = validatedSecretBindings(review.secret_bindings, project.baseDoc?.env)
+    if (reviewing) for (const [path, content] of Object.entries(existingFiles)) assertWorkloadFileSafe(path, content)
+    const sourcePorts = composeContract(existingFiles, undefined, bindings).portMappings.map(port => port.original_host_port)
+    const peerPorts = reviewing && Array.isArray(review.source_host_ports) && JSON.stringify(sourcePorts) !== JSON.stringify(review.source_host_ports) ? sourcePorts : review.host_ports
+    const actualPorts = composeContract(existingFiles, peerPorts, bindings).ports
+    if (!reviewing && JSON.stringify(actualPorts) !== JSON.stringify(review.published_ports)) throw new Error('Existing workload port review changed; review its current Config before appending another workload')
+    const collision = contract.ports.find(port => actualPorts.includes(port))
     if (collision) throw new Error(`Host port ${collision} is already assigned to another workload on this VM; choose different Host ports in the append dialog and review again`)
   }
   const marker = digest(`${project.id}\n${attachmentId}`), projectName = `r42-${marker.slice(0, 24)}`
   const addedFilePaths: string[] = []
-  const add = (path: string, content: string) => { files[path] = content; addedFilePaths.push(path) }
-  for (const [path, content] of Object.entries(loaded.files)) add(`${prefix}/payload/${path}`, fileText(content))
+  const add = (path: string, content: FileContent) => { files[path] = content; addedFilePaths.push(path) }
+  for (const [path, content] of Object.entries(loaded.files)) add(`${prefix}/payload/${path}`, content)
   const runtime = stringify({ ...contract.document, services: Object.fromEntries(contract.rows.map(row => [row.service, { ...row.config,
     ports: row.portMappings.map(port => `${port.host_port}:${port.container_port}/${port.protocol}`),
     container_name: contract.services.length === 1 ? `${projectName}-service` : `${projectName}-${row.service}`, labels: { 'io.range42.workload': marker },
   }])), networks: { default: { labels: { 'io.range42.workload': marker } } },
   ...(contract.volumes.length ? { volumes: Object.fromEntries(contract.volumes.map(name => [name, { labels: { 'io.range42.workload': marker } }])) } : {}) })
   add(`${prefix}/runtime.compose.yml`, runtime)
-  add(`${prefix}/review.json`, JSON.stringify({ version: 1, origin, compose_project: projectName, secret_bindings: secretBindings, published_ports: contract.ports, host_ports: contract.portMappings.map(port => port.host_port), runtime_sha256: digest(runtime), file_hashes: Object.fromEntries(Object.entries(loaded.files).map(([path, content]) => [path, digest(fileBytes(content))])), file_modes: loaded.modes }, null, 2) + '\n')
-  add(`${prefix}/deploy.yml`, playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), secretBindings))
-  add(`${prefix}/cleanup.yml`, playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), secretBindings, true))
+  const deploy = playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), secretBindings)
+  const cleanup = playbook(projectName, contract.services, contract.volumes, loaded.modes, marker, digest(runtime), secretBindings, true)
+  add(`${prefix}/review.json`, JSON.stringify({ version: 1, origin, compose_project: projectName, secret_bindings: secretBindings, published_ports: contract.ports, source_host_ports: contract.portMappings.map(port => port.original_host_port), host_ports: contract.portMappings.map(port => port.host_port), runtime_sha256: digest(runtime), file_hashes: Object.fromEntries(Object.entries(loaded.files).map(([path, content]) => [path, digest(fileBytes(content))])), file_modes: loaded.modes, wrapper_hashes: { 'deploy.yml': digest(deploy), 'cleanup.yml': digest(cleanup) } }, null, 2) + '\n')
+  add(`${prefix}/deploy.yml`, deploy)
+  add(`${prefix}/cleanup.yml`, cleanup)
   validateFileMap(files)
   scenario.content.push({ id: attachmentId, kind: 'playbook', target_node: targetNode, path: `content/workloads/${attachmentId}/deploy.yml`, vars: {} })
-  return { files, scenario, summary: { addedContentIds: [attachmentId], addedFilePaths, source_sha: entry.sha!, service: contract.service, services: contract.services, required_secrets: [...new Set(Object.values(secretBindings))], readiness: contract.readiness, cleanup_file: `${prefix}/cleanup.yml`,
+  const assets = Object.entries(loaded.files).filter(([, content]) => isBinaryFile(content)).map(([path, content]) => ({ path, size: fileBytes(content).length, ...(isBinaryFile(content) && content.media_type ? { media_type: content.media_type } : {}) }))
+  return { files, scenario, summary: { assets, addedContentIds: [attachmentId], addedFilePaths, source_sha: entry.sha!, service: contract.service, services: contract.services, required_secrets: [...new Set(Object.values(secretBindings))], readiness: contract.readiness, cleanup_file: `${prefix}/cleanup.yml`,
     published_ports: contract.ports, original_ports: contract.portMappings.map(port => `${port.original_host_port}/${port.protocol}`), port_mappings: contract.portMappings, compose_project: projectName, images: contract.images, build: contract.build, destination: `/opt/range42/workloads/${projectName}`, container_names: contract.services.map(service => contract.services.length === 1 ? `${projectName}-service` : `${projectName}-${service}`), ...(contract.services.length === 1 ? { container_name: `${projectName}-service` } : {}), selected_file: `${prefix}/deploy.yml`,
     prerequisites: ['Docker Engine and Docker Compose v2 or later with --wait and --wait-timeout support must already work on the selected guest; the playbook checks both.'],
-    limitations: ['Pinned Git files do not pin mutable registry image tags or prove package availability.', 'Up to 32 services; literal public environment values, owned named volumes and pinned read-only relative mounts. Secrets use explicit bindings to declared backend vault variables; literal secret values, arbitrary host mounts, external dependencies and binary source files are not imported.', contract.readiness, 'The workload must be trusted executable source. Cleanup is an explicit reviewed playbook and preserves named volumes, images and copied files.', 'The reviewed published ports expose the workload on the guest; external port conflicts fail during Compose execution.'] } }
+    limitations: ['Pinned Git files do not pin mutable registry image tags or prove package availability.', 'Up to 32 services; literal public environment values, owned named volumes and pinned read-only relative mounts. Secrets use explicit bindings to declared backend vault variables; literal secret values, arbitrary host mounts, external dependencies are not imported. Binary assets are copied byte-for-byte; they are not inspected as configuration.', contract.readiness, 'The workload must be trusted executable source. Cleanup is an explicit reviewed playbook and preserves named volumes, images and copied files.', 'The reviewed published ports expose the workload on the guest; external port conflicts fail during Compose execution.'] } }
+}
+
+/** Explicitly review an edited project payload; source provenance and runtime ownership remain stable. */
+export async function reviewCatalogWorkload(input: Pick<WorkloadInput, 'project' | 'scenario' | 'attachmentId' | 'hostPorts' | 'secretBindings'>) {
+  const { project, attachmentId, hostPorts, secretBindings, scenario: requestedScenario } = structuredClone(input)
+  const scenario = object(requestedScenario, 'Scenario') as Scenario
+  if (!Array.isArray(scenario.content) || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(attachmentId)) throw new Error('Select one existing workload attachment')
+  const selected = scenario.content.filter(item => item.id === attachmentId)
+  const item = selected[0]
+  if (selected.length !== 1 || item.kind !== 'playbook' || typeof item.target_node !== 'string'
+    || ![`content/workloads/${attachmentId}/deploy.yml`, `content/workloads/${attachmentId}/cleanup.yml`].includes(String(item.path))) throw new Error('Select one existing workload attachment')
+  const prefix = `scenarios/${scenario.label}/content/workloads/${attachmentId}`
+  const files = cloneFiles(project.files || {})
+  let review: ObjectValue
+  try { review = object(JSON.parse(fileText(files[`${prefix}/review.json`])), 'Workload review') } catch { throw new Error('The existing workload review is missing or malformed') }
+  const origin = publicCatalogReference(review.origin)
+  if (review.version !== 1 || origin?.version !== 1 || origin.kind !== 'container'
+    || !['github', 'gitlab', 'gitea'].includes(String(origin.provider)) || !origin.repo_owner || !origin.repo_name || !origin.base_url || !origin.branch) throw new Error('The existing workload review requires complete pinned source provenance')
+  if (review.compose_project !== `r42-${digest(`${project.id}\n${attachmentId}`).slice(0, 24)}`) throw new Error('Workload ownership identity does not match this project and attachment')
+  const oldModes = object(review.file_modes, 'Workload file modes'), payload: ProjectFiles = Object.create(null), modes: Record<string, string> = Object.create(null)
+  for (const path of Object.keys(files)) {
+    if (!path.startsWith(`${prefix}/`)) continue
+    const relative = path.slice(prefix.length + 1)
+    if (relative.startsWith('payload/')) {
+      const local = relative.slice(8)
+      literalPath(local)
+      assertWorkloadFileSafe(local, files[path])
+      payload[local] = files[path]
+      const mode = Object.hasOwn(oldModes, local) ? oldModes[local] : '0644'
+      if (!['0644', '0755'].includes(String(mode))) throw new Error('Unsupported workload file mode in existing review')
+      modes[local] = String(mode)
+    } else if (!['review.json', 'runtime.compose.yml', 'deploy.yml', 'cleanup.yml'].includes(relative)) throw new Error('The workload directory contains an unrecognized file; move it into payload before reviewing')
+    delete files[path]
+  }
+  if (Object.keys(payload).some(path => Object.keys(oldModes).some(previous => path.startsWith(`${previous}/`) || previous.startsWith(`${path}/`)))) throw new Error('Changing a payload path between a file and a directory requires a new path or a separate attachment')
+  const binding = validatedSecretBindings(secretBindings ?? review.secret_bindings, project.baseDoc?.env)
+  const sourceContract = composeContract(payload, undefined, binding)
+  const sourcePorts = sourceContract.portMappings.map(port => port.original_host_port)
+  const reviewedPorts = hostPorts ?? (Array.isArray(review.source_host_ports) && JSON.stringify(sourcePorts) !== JSON.stringify(review.source_host_ports) ? sourcePorts : review.host_ports as number[])
+  const contract = composeContract(payload, reviewedPorts, binding)
+  const previousRuntime = parseDocument(fileText(project.files![`${prefix}/runtime.compose.yml`]))
+  if (previousRuntime.errors.length) throw new Error('Existing runtime configuration is malformed; restore the last reviewed configuration')
+  const runtime = object(previousRuntime.toJS({ maxAliasCount: 50 }), 'Existing workload execution config')
+  if (digest(fileBytes(project.files![`${prefix}/runtime.compose.yml`])) !== review.runtime_sha256) throw new Error('Existing execution config changed; edit payload/compose.yml and restore the reviewed runtime before reviewing')
+  const sameNames = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort())
+  if (!sameNames(Object.keys(object(runtime.services, 'Existing services')), contract.services)
+    || !sameNames(Object.keys(object(runtime.volumes ?? {}, 'Existing volumes')), contract.volumes)) throw new Error('Changing the workload service or volume identities requires cleanup and a separate attachment')
+  const result = await prepareWorkload({ project: { ...project, files }, scenario: { ...scenario, content: scenario.content.filter(row => row.id !== attachmentId) },
+    targetNode: item.target_node, attachmentId, hostPorts: reviewedPorts, secretBindings: binding,
+    source: { id: String(origin.source_id), provider: origin.provider as GitSource['provider'], base_url: String(origin.base_url), auth: { kind: 'none' },
+      repos: [{ owner: String(origin.repo_owner), repo: String(origin.repo_name), branch: String(origin.branch) }], ...(origin.backend_url ? { backend_url: String(origin.backend_url) } : {}) },
+    entry: { source_id: String(origin.source_id), kind: 'container', name: attachmentId, path: String(origin.path), sha: String(origin.sha) },
+  }, async () => ({ files: payload, modes }), true)
+  result.scenario.content = scenario.content
+  const revised = JSON.parse(fileText(result.files[`${prefix}/review.json`]))
+  result.files[`${prefix}/review.json`] = JSON.stringify({ ...revised, origin, customized: true }, null, 2) + '\n'
+  validateFileMap(result.files)
+  return result
+}
+
+/** Detect edits since explicit workload review before compiling or staging its lifecycle action. */
+export function validateCatalogWorkloadReview({ files, scenarioLabel, attachmentId, projectId }: { files: ProjectFiles; scenarioLabel: string; attachmentId: string; projectId?: string }) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(scenarioLabel) || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(attachmentId)) throw new Error('Invalid workload review identity')
+  const prefix = `scenarios/${scenarioLabel}/content/workloads/${attachmentId}`
+  let review: ObjectValue
+  try { review = object(JSON.parse(fileText(files[`${prefix}/review.json`])), 'Workload review') } catch { throw new Error('Workload review is missing or malformed; review its current Config') }
+  if (review.version !== 1 || !Array.isArray(review.published_ports)) throw new Error('Workload review is missing its version or published ports')
+  if (projectId !== undefined && review.compose_project !== `r42-${digest(`${projectId}\n${attachmentId}`).slice(0, 24)}`) throw new Error('Workload ownership does not match this project')
+  const payloadPrefix = `${prefix}/payload/`, payload = Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith(payloadPrefix)).map(([path, content]) => [path.slice(payloadPrefix.length), content]))
+  const hashes = object(review.file_hashes, 'Workload review file hashes'), modes = object(review.file_modes, 'Workload review file modes')
+  if (Object.keys(payload).length !== Object.keys(hashes).length || Object.keys(payload).length !== Object.keys(modes).length
+    || Object.entries(payload).some(([path, content]) => hashes[path] !== digest(fileBytes(content)) || !['0644', '0755'].includes(String(modes[path])))) throw new Error('Workload payload changed since review; review its current Config')
+  if (!Object.hasOwn(files, `${prefix}/runtime.compose.yml`) || digest(fileBytes(files[`${prefix}/runtime.compose.yml`])) !== review.runtime_sha256) throw new Error('Workload execution configuration changed since review; review its current Config')
+  // Earlier v1 imports predate wrapper hashes; their payload and runtime reviews still apply.
+  if (review.wrapper_hashes !== undefined) {
+    const wrappers = object(review.wrapper_hashes, 'Workload wrapper review')
+    for (const name of ['deploy.yml', 'cleanup.yml']) if (!Object.hasOwn(files, `${prefix}/${name}`) || digest(fileBytes(files[`${prefix}/${name}`])) !== wrappers[name]) throw new Error('Workload playbook changed since review; review its current Config')
+  }
+  const bindings = object(review.secret_bindings ?? {}, 'Workload reviewed secret bindings') as Record<string, string>
+  const contract = composeContract(payload, review.host_ports, bindings)
+  if (JSON.stringify(contract.ports) !== JSON.stringify(review.published_ports)) throw new Error('Workload port configuration changed since review')
+  return review
 }

@@ -117,6 +117,7 @@
     "service": "サービス",
     "effective_ports": "ホスト → コンテナ",
     "directory": "VM内のディレクトリ",
+    "assets": "カスタム素材",
     "duplicate_secret_binding": "参照名は一度だけ指定できます。重複を削除してください。",
     "port_mapping": "マッピング {number} のホストポート",
     "remove_port": "ポート変更 {number} を削除",

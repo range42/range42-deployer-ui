@@ -1,4 +1,5 @@
 """Local Ansible consumer's fake Docker executable; never talks to a daemon."""
+import base64
 import json
 import os
 import pathlib
@@ -37,12 +38,12 @@ if mode == "secret":
     assert os.environ.get("DB_PASSWORD") == "consumer-fixture-value"
 payload = pathlib.Path(args[args.index("--project-directory") + 1])
 expected = json.loads((root / "expected.json").read_text())
-assert all((payload / name).read_bytes() == value.encode() for name, value in expected.items()), "copy bytes/path mismatch"
+assert all((payload / name).read_bytes() == base64.b64decode(value) for name, value in expected.items()), "copy bytes/path mismatch"
 assert args[args.index("--env-file") + 1] == "/dev/null"
 assert (payload / "compose.yml").is_file()
 assert args.count("-f") == 1
 if "up" in args:
-    assert args[args.index("up"):] == ["up", "--detach", "--build", "--wait", "--wait-timeout", "120", *settings["services"]]
+    assert args[args.index("up"):] == ["up", "--detach", "--build", "--force-recreate", "--wait", "--wait-timeout", "120", *settings["services"]]
     started.touch()
     sys.exit(1 if mode == "unhealthy" else 0)
 if "down" in args:
