@@ -392,6 +392,34 @@ describe('<DeploymentDetail>', () => {
     expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
   })
 
+  it('refreshes a completed runtime attempt when the live deployment state is already succeeded', async () => {
+    let attemptState = 'deploying'
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [{ id: 'runtime-1', scope: 'runtime', state: attemptState }] }
+        : { id: 'd-runtime', state: 'succeeded', current_attempt_id: 'runtime-1', project_sha: 'a'.repeat(40),
+          scenario_label: 'demo', target_host_id: 'host-1' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-runtime?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()], stubs: { SnapshotSets: true } } })
+    await settle(wrapper)
+    const live = useDeploymentStore().deployments['d-runtime']
+    applySseEvent(live, { event_type: 'attempt_end', event_seq: 1, attempt_id: 'previous', payload: { terminal_state: 'succeeded' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('succeeded')
+    expect(wrapper.get('ol li').text()).toContain('deploying')
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
+
+    applySseEvent(live, { event_type: 'attempt_start', event_seq: 2, attempt_id: 'runtime-1', payload: { scope: 'runtime' } })
+    attemptState = 'succeeded'
+    applySseEvent(live, { event_type: 'attempt_end', event_seq: 3, attempt_id: 'runtime-1', payload: { terminal_state: 'succeeded' } })
+    await flushPromises()
+
+    expect(wrapper.get('ol li').text()).toContain('succeeded')
+    expect(wrapper.get('ol li').text()).not.toContain('deploying')
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(false)
+  })
+
   it('preflights and runs a chosen configure revision, invalidating the check after a revision edit', async () => {
     const base = 'a'.repeat(40)
     const latest = 'b'.repeat(40)

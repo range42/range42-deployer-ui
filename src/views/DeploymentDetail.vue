@@ -360,8 +360,9 @@ async function loadAttempts() {
   }
 }
 
-watch(() => live.value?.state, (state, previous) => {
-  if (state !== previous && ['succeeded', 'failed', 'cancelled', 'partial'].includes(state)) {
+// Consecutive attempts can finish with the same state; their SSE cursor still advances.
+watch([() => live.value?.state, () => live.value?.state_event_seq], ([state]) => {
+  if (['succeeded', 'failed', 'cancelled', 'partial'].includes(state)) {
     void loadAttempts()
   }
 })
