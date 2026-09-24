@@ -64,10 +64,13 @@
     "openProject": "プロジェクトを開く: {name}",
     "cacheError": "Git に保存しましたが、ブラウザーのコピーを更新できませんでした: {message}",
     "saved": {
+      "legacy": "結果を保存済み（元の日時を保持）",
       "request": "要求を保存しました",
       "result": "結果を保存しました"
     },
     "saving": "Git に保存しています…",
+    "verifying": "保存済みの Git 記録を確認しています…",
+    "verify": "保存済みの記録を確認",
     "unsaved": "Git に未保存",
     "save": "Git に保存",
     "localConflict": "この実行時の記録はローカルで編集されています。操作を保存する前にファイルを確認してください。"

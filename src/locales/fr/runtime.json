@@ -64,10 +64,13 @@
     "openProject": "Ouvrir le projet : {name}",
     "cacheError": "Enregistré dans Git, mais la copie du navigateur n’a pas pu être mise à jour : {message}",
     "saved": {
+      "legacy": "Résultat enregistré (horodatage d’origine conservé)",
       "request": "Demande enregistrée",
       "result": "Résultat enregistré"
     },
     "saving": "Enregistrement dans Git…",
+    "verifying": "Vérification du fichier enregistré dans Git…",
+    "verify": "Vérifier le fichier enregistré",
     "unsaved": "Pas encore enregistré dans Git",
     "save": "Enregistrer dans Git",
     "localConflict": "Ce fichier a été modifié localement. Vérifiez-le avant d’enregistrer l’opération."

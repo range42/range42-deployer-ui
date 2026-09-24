@@ -8,8 +8,8 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { buildRuntimeRecord } from '@/services/runtimeGitRecords'
 
-const { save } = vi.hoisted(() => ({ save: vi.fn() }))
-vi.mock('@/services/runtimeGitRecords', async importOriginal => ({ ...await importOriginal(), saveRuntimeRecord: save }))
+const { save, verifyReceipt } = vi.hoisted(() => ({ save: vi.fn(), verifyReceipt: vi.fn() }))
+vi.mock('@/services/runtimeGitRecords', async importOriginal => ({ ...await importOriginal(), saveRuntimeRecord: save, verifyRuntimeRecordReceipt: verifyReceipt }))
 vi.mock('@/i18n', () => ({ ensureNamespaces: vi.fn().mockResolvedValue(undefined) }))
 enableAutoUnmount(afterEach)
 const scope = 'https://backend.test'
@@ -28,6 +28,10 @@ beforeEach(() => {
   useProjectStore().loadProjects()
   save.mockReset().mockImplementation(async (_project, dep, att, backend) => ({ ...buildRuntimeRecord(dep, att, backend),
     commit_sha: 'b'.repeat(40), expected_head: 'a'.repeat(40), branch: 'range42-ui/project-1' }))
+  verifyReceipt.mockReset().mockImplementation(async (selected, dep, att, backend) => {
+    const record = buildRuntimeRecord(dep, att, backend)
+    return { ...record, content: selected.files[record.path], commit_sha: 'c'.repeat(40) }
+  })
 })
 async function show(props = {}) {
   const wrapper = mount(RuntimeGitRecords, { props: { deployment, attempts: [attempt], ...props }, global: {
@@ -39,6 +43,99 @@ async function show(props = {}) {
 }
 
 describe('runtime Git save status', () => {
+  function legacyResult() {
+    const done = { ...attempt, state: 'succeeded', ended_at: '2026-09-24T20:15:48.356086', rc: 0,
+      operation_result: { desired_reached: true, partial: false } }
+    const record = buildRuntimeRecord(deployment, done, scope)
+    const content = `${JSON.stringify({ ...JSON.parse(record.content), version: 1, ended_at: '2026-09-24T18:15:48.356Z' }, null, 2)}\n`
+    const receipts = { [JSON.stringify([scope, record.path])]: 'c'.repeat(40),
+      [JSON.stringify([scope, record.path.replace(/result\.json$/, 'request.json')])]: 'b'.repeat(40) }
+    useProjectStore().updateProject(project.id, { files: { ...project.files, [record.path]: content }, runtime_git_receipts: receipts })
+    return { done, record, content, receipts }
+  }
+
+  it('verifies legacy result bytes from Git before showing them as saved on each page load', async () => {
+    const { done, record, content, receipts } = legacyResult()
+    let resolve
+    verifyReceipt.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const wrapper = await show({ attempts: [done], newAttempt: done })
+    expect(verifyReceipt).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('Verifying saved Git record')
+    expect(wrapper.text()).not.toContain('Saved result (original timestamp preserved)')
+    expect(wrapper.get('[data-testid="runtime-git-save-attempt-1"]').attributes('disabled')).toBeDefined()
+    expect(save).not.toHaveBeenCalled()
+    resolve({ ...record, content, commit_sha: 'c'.repeat(40) })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Saved result (original timestamp preserved)')
+    expect(wrapper.find('[data-testid="runtime-git-save-attempt-1"]').exists()).toBe(false)
+    expect(useProjectStore().getProject(project.id).files[record.path]).toBe(content)
+    expect(useProjectStore().getProject(project.id).runtime_git_receipts).toEqual(receipts)
+    wrapper.unmount()
+    const reopened = await show({ attempts: [done] })
+    expect(verifyReceipt).toHaveBeenCalledTimes(2)
+    expect(reopened.text()).toContain('Saved result (original timestamp preserved)')
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('retries a failed legacy receipt read without attempting a Git write', async () => {
+    const { done } = legacyResult()
+    verifyReceipt.mockRejectedValueOnce(new Error('Network unreachable'))
+    const wrapper = await show({ attempts: [done] })
+    expect(wrapper.get('[role="alert"]').text()).toContain('Network unreachable')
+    expect(wrapper.text()).not.toContain('Write access')
+    const retry = wrapper.get('[data-testid="runtime-git-save-attempt-1"]')
+    expect(retry.text()).toBe('Verify saved record')
+    await retry.trigger('click')
+    await flushPromises()
+    expect(verifyReceipt).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Saved result (original timestamp preserved)')
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('keeps an unsaved legacy local file protected when it has no result receipt', async () => {
+    const { done, record, content } = legacyResult()
+    useProjectStore().updateProject(project.id, { runtime_git_receipts: {} })
+    const wrapper = await show({ attempts: [done], newAttempt: done })
+    expect(wrapper.get('[role="alert"]').text()).toMatch(/edited locally/i)
+    expect(useProjectStore().getProject(project.id).files[record.path]).toBe(content)
+    expect(verifyReceipt).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('ignores a legacy verification response after switching the backend', async () => {
+    const { done } = legacyResult()
+    let resolve
+    verifyReceipt.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const wrapper = await show({ attempts: [done] })
+    const backend = useBackendApiStore()
+    backend.setActiveHost(backend.addHost({ url: 'https://elsewhere.test' }))
+    resolve({ commit_sha: 'c'.repeat(40) })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Saved result (original timestamp preserved)')
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it.each(['file', 'receipt'])('does not reuse a pending legacy verification after the local %s changes', async field => {
+    const { done, record, content, receipts } = legacyResult()
+    let resolve
+    verifyReceipt.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+      .mockRejectedValueOnce(new Error('The saved Git receipt does not match this local runtime record'))
+    const wrapper = await show({ attempts: [done] })
+    const edited = content.replace('18:15:48', '19:15:48')
+    useProjectStore().updateProject(project.id, field === 'file'
+      ? { files: { ...project.files, [record.path]: edited } }
+      : { runtime_git_receipts: { ...receipts, [JSON.stringify([scope, record.path])]: 'd'.repeat(40) } })
+    await flushPromises()
+    resolve({ ...record, content, commit_sha: 'c'.repeat(40) })
+    await flushPromises()
+    expect(verifyReceipt).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[role="alert"]').text()).toContain('does not match')
+    expect(wrapper.text()).not.toContain('Saved result (original timestamp preserved)')
+    expect(wrapper.find('[data-testid="runtime-git-save-attempt-1"]').exists()).toBe(true)
+    expect(useProjectStore().getProject(project.id).files[record.path]).toBe(field === 'file' ? edited : content)
+    expect(save).not.toHaveBeenCalled()
+  })
+
   const snapshotAttempt = { id: 'snapshot-attempt', deployment_id: deployment.id, scope: 'snapshot_set', state: 'succeeded',
     operation: { kind: 'snapshot_set', operation_id: 'snapshot-operation' } }
 

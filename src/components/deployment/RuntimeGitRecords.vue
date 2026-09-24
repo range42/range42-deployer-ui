@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useProjectStore } from '@/stores/projectStore'
 import { getBackendScope } from '@/services/backendApi'
 import { registeredLocalProject } from '@/services/backendProjectRegistration'
-import { buildRuntimeRecord, saveRuntimeRecord } from '@/services/runtimeGitRecords'
+import { buildRuntimeRecord, isLegacyRuntimeRecord, saveRuntimeRecord, verifyRuntimeRecordReceipt } from '@/services/runtimeGitRecords'
 import { ensureNamespaces } from '@/i18n'
 
 const props = defineProps({ deployment: { type: Object, required: true }, attempts: { type: Array, default: () => [] }, newAttempt: Object })
@@ -17,6 +17,7 @@ const project = computed(() => {
   return selected?.scenario?.label === props.deployment.scenario_label ? selected : null
 })
 const status = ref({})
+const receiptChecks = ref({})
 const tried = new Set()
 const bindingKey = value => JSON.stringify(value?.git)
 const receiptKey = (scope, path) => JSON.stringify([scope, path])
@@ -27,15 +28,37 @@ const rows = computed(() => {
     try {
       const record = buildRuntimeRecord(props.deployment, attempt, getBackendScope())
       const sha = project.value?.runtime_git_receipts?.[receiptKey(getBackendScope(), record.path)]
-      const saved = sha && project.value?.files?.[record.path] === record.content
+      const content = project.value?.files?.[record.path]
+      const saved = sha && content === record.content
+      const legacyKey = sha && isLegacyRuntimeRecord(record, content)
+        ? JSON.stringify([context.value, project.value.id, bindingKey(project.value), sha, record.content, content]) : null
+      const checked = legacyKey && receiptChecks.value[legacyKey]
       const requestPath = record.path.replace(/result\.json$/, 'request.json')
       const savedRequest = project.value?.runtime_git_receipts?.[receiptKey(getBackendScope(), requestPath)]
-      return { attempt, record, saved: saved ? sha : null, savedRequest }
+      return { attempt, record, saved: saved ? sha : checked?.sha, savedRequest, legacyKey,
+        checking: checked?.checking, receiptError: checked?.error }
     } catch (error) { return { attempt, error: error.message } }
   })
 })
 
+async function verifyReceipt(row) {
+  if (!project.value || !row.legacyKey || receiptChecks.value[row.legacyKey]?.checking) return
+  const selected = { ...project.value, git: { ...project.value.git } }
+  const scope = getBackendScope()
+  const current = context.value
+  const attempt = JSON.parse(JSON.stringify(row.attempt))
+  receiptChecks.value = { ...receiptChecks.value, [row.legacyKey]: { checking: true } }
+  status.value = { ...status.value, [attempt.id]: {} }
+  try {
+    const checked = await verifyRuntimeRecordReceipt(selected, props.deployment, attempt, scope)
+    if (context.value === current) receiptChecks.value = { ...receiptChecks.value, [row.legacyKey]: { sha: checked.commit_sha } }
+  } catch (error) {
+    if (context.value === current) receiptChecks.value = { ...receiptChecks.value, [row.legacyKey]: { error: error.message } }
+  }
+}
+
 async function save(row) {
+  if (row.legacyKey) return verifyReceipt(row)
   if (!project.value || row.error || status.value[row.attempt.id]?.saving) return
   const selected = { ...project.value, git: { ...project.value.git } }
   const scope = getBackendScope()
@@ -67,10 +90,14 @@ async function save(row) {
   }
 }
 
-watch(context, () => { status.value = {}; tried.clear() })
+watch(context, () => { status.value = {}; receiptChecks.value = {}; tried.clear() })
 watch([rows, project, status], () => {
   for (const row of rows.value) {
     if (!project.value || !row.record || row.saved || status.value[row.attempt.id]?.saving) continue
+    if (row.legacyKey) {
+      if (!receiptChecks.value[row.legacyKey]) void verifyReceipt(row)
+      continue
+    }
     if (props.newAttempt?.id !== row.attempt.id && !row.savedRequest) continue
     const key = JSON.stringify([context.value, row.record.content])
     if (tried.has(key)) continue
@@ -92,15 +119,15 @@ onMounted(() => ensureNamespaces(['runtime']))
       <li v-for="row in rows" :key="row.attempt.id" class="text-sm flex flex-wrap items-center justify-between gap-2">
         <div class="min-w-0 space-y-1">
           <p class="break-words">{{ t(`runtime.operations.${row.attempt.operation.request?.kind}`) }} · {{ row.attempt.id }}</p>
-          <p v-if="row.error || status[row.attempt.id]?.error" role="alert" class="text-base-content border-l-2 border-error pl-2 break-words">{{ row.error || status[row.attempt.id].error }}</p>
+          <p v-if="row.error || row.receiptError || status[row.attempt.id]?.error" role="alert" class="text-base-content border-l-2 border-error pl-2 break-words">{{ row.error || row.receiptError || status[row.attempt.id].error }}</p>
           <p v-if="status[row.attempt.id]?.cacheError" role="alert" class="break-words">{{ status[row.attempt.id].cacheError }}</p>
           <p v-if="row.saved || (status[row.attempt.id]?.sha && status[row.attempt.id].phase === row.record?.phase)" role="status">
-            {{ t(`runtime.git.saved.${row.record.phase}`) }} · <code>{{ (row.saved || status[row.attempt.id].sha).slice(0, 12) }}</code>
+            {{ t(`runtime.git.saved.${row.legacyKey ? 'legacy' : row.record.phase}`) }} · <code>{{ (row.saved || status[row.attempt.id].sha).slice(0, 12) }}</code>
           </p>
-          <p v-else class="text-base-content/70">{{ t(status[row.attempt.id]?.saving ? 'runtime.git.saving' : 'runtime.git.unsaved') }}</p>
+          <p v-else class="text-base-content/70">{{ t(row.checking ? 'runtime.git.verifying' : status[row.attempt.id]?.saving ? 'runtime.git.saving' : 'runtime.git.unsaved') }}</p>
         </div>
         <button v-if="project && !row.saved && !row.error" type="button" class="btn btn-sm btn-outline"
-          :data-testid="`runtime-git-save-${row.attempt.id}`" :disabled="status[row.attempt.id]?.saving" @click="save(row)">{{ t('runtime.git.save') }}</button>
+          :data-testid="`runtime-git-save-${row.attempt.id}`" :disabled="row.checking || status[row.attempt.id]?.saving" @click="save(row)">{{ t(row.legacyKey ? 'runtime.git.verify' : 'runtime.git.save') }}</button>
       </li>
     </ul>
   </section>
