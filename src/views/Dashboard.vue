@@ -190,7 +190,7 @@ const formatDate = (date) => {
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <!-- Hero Section -->
       <section class="mb-12">
         <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-base-200 to-secondary/20 p-8 md:p-12">
@@ -261,6 +261,8 @@ const formatDate = (date) => {
               <button
                 class="btn btn-sm join-item"
                 :class="{ 'btn-active': viewMode === 'grid' }"
+                aria-label="Grid view"
+                :aria-pressed="viewMode === 'grid'"
                 @click="viewMode = 'grid'"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,6 +272,8 @@ const formatDate = (date) => {
               <button
                 class="btn btn-sm join-item"
                 :class="{ 'btn-active': viewMode === 'list' }"
+                aria-label="List view"
+                :aria-pressed="viewMode === 'list'"
                 @click="viewMode = 'list'"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -463,7 +467,7 @@ const formatDate = (date) => {
           </button>
         </div>
       </section>
-    </main>
+    </div>
 
     <!-- Create Project Modal -->
     <FocusTrap v-if="showCreateModal" :active="true" :escape-deactivates="false" :return-focus-on-deactivate="false" :initial-focus="'#new-project-name'">

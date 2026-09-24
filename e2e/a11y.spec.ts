@@ -14,6 +14,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { setupMockApi, seedLocalStorage } from './fixtures/mockApi'
+import { routeApi } from './fixtures/routeApi'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -35,6 +36,22 @@ async function runAxe(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a']).analyze()
   return results.violations
 }
+
+test('a11y: home exposes one main landmark and has zero wcag2a violations', async ({ page }) => {
+  await routeApi(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Build Infrastructure Visually' })).toBeVisible()
+  await expect(page.getByRole('main')).toHaveCount(1)
+  const gridView = page.getByRole('button', { name: 'Grid view', exact: true })
+  const listView = page.getByRole('button', { name: 'List view', exact: true })
+  await expect(gridView).toHaveAttribute('aria-pressed', 'true')
+  await listView.click()
+  await expect(listView).toHaveAttribute('aria-pressed', 'true')
+  await expect(gridView).toHaveAttribute('aria-pressed', 'false')
+  await gridView.click()
+  const violations = await runAxe(page)
+  expect(violations, JSON.stringify(violations, null, 2)).toEqual([])
+})
 
 test('a11y: /project/:id has zero wcag2a violations', async ({ page }) => {
   const PROJECT_ID = 'project_e2e_a11y_1'
