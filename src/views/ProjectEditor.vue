@@ -49,6 +49,9 @@ import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
 import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
 import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
+import PlatformStackModal from '@/components/project/PlatformStackModal.vue'
+import PlatformStackNode from '@/components/nodes/PlatformStackNode.vue'
+import { appendPlatformComponent, platformSelection } from '@/services/platformComponents'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -141,6 +144,36 @@ function closeProjectActions() {
 }
 // Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
 const showDeployForm = ref(false)
+const showPlatformStack = ref(false)
+const showDeploymentPicker = ref(false)
+/** @type {import('vue').Ref<import('@/services/nativeScenario').NativeScenario | undefined>} */
+const deploymentScenario = ref()
+const platformNodes = computed(() => (liveNodes.value || []).filter(node => node.type === 'range42-stack'))
+const platformProject = computed(() => currentProject.value ? { ...currentProject.value, ...projectGraph() } : undefined)
+/** @param {import('@/services/platformComponents').PlatformComponent} component */
+function addPlatformStack(component) {
+  if (!platformProject.value) return
+  try {
+    const candidate = appendPlatformComponent(platformProject.value, component)
+    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ id: node.id, type: node.type, data: node.data, position: node.position || { x: 0, y: 0 } }))
+    projectStore.updateProject(candidate.id, { files: candidate.files, nodes: candidate.nodes, edges: candidate.edges })
+    vfAddNodes(added)
+    showPlatformStack.value = false
+    void setTab('canvas')
+    nextTick(() => fitView({ padding: 0.15, maxZoom: 1 }))
+  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'>} node */
+function deployPlatform(node) {
+  showDeploymentPicker.value = false
+  void handleOpenDeploy(platformSelection(node))
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'>} node */
+function openPlatformFiles(node) {
+  const selected = platformSelection(node)
+  if (!selected) return
+  void router.push({ query: { ...route.query, tab: 'config', file: `${selected.path}/manifest/stack.json` } })
+}
 const deploymentIndex = useDeploymentIndex()
 const existingCodenames = computed(() => deploymentIndex.items.value.map(item => item.codename))
 const showTemplateBrowser = ref(false)
@@ -866,7 +899,14 @@ const closeProxmoxSettings = () => {
 
 // Deployment handlers
 
-const handleOpenDeploy = async () => {
+/** @param {import('@/services/nativeScenario').NativeScenario | null | Event} [selection] */
+const handleOpenDeploy = async (selection = undefined) => {
+  if (selection && 'path' in selection) deploymentScenario.value = selection
+  else if (selection !== null && platformNodes.value.length) {
+    if (platformNodes.value.length === 1 && !liveNodes.value.some(node => node.type === 'vm')) deploymentScenario.value = platformSelection(platformNodes.value[0])
+    else { showDeploymentPicker.value = true; return }
+  } else deploymentScenario.value = currentProject.value?.native_scenario
+  showDeploymentPicker.value = false
   const scope = getBackendScope()
   try {
     const args = currentPushArgs()
@@ -1144,6 +1184,7 @@ const handleInfrastructureImport = (result) => {
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
+      @openPlatformStack="showPlatformStack = true"
       @openInventory="openCatalog"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
@@ -1156,6 +1197,7 @@ const handleInfrastructureImport = (result) => {
         @openExport="showExportModal = true; closeMobileSidebar()"
         @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
         @openValidate="handleOpenValidate(); closeMobileSidebar()"
+        @openPlatformStack="showPlatformStack = true; closeMobileSidebar()"
         @openInventory="openCatalog(); closeMobileSidebar()"
         @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
         @openImport="handleOpenImport(); closeMobileSidebar()" />
@@ -1406,6 +1448,9 @@ const handleInfrastructureImport = (result) => {
           </Controls>
           <MiniMap position="bottom-right" :width="160" :height="110" />
 
+          <template #node-range42-stack="props">
+            <PlatformStackNode v-bind="props" @deploy="deployPlatform(props)" @files="openPlatformFiles(props)" />
+          </template>
           <!-- Organization -->
           <template #node-note="props">
             <NoteNode v-bind="props" />
@@ -1625,20 +1670,31 @@ const handleInfrastructureImport = (result) => {
       @update:targets="updatePublicationTargets"
     />
 
-    <!-- Plan C §C4.6 — DeployForm with inline preflight + SHA-pin -->
+    <PlatformStackModal v-if="showPlatformStack && platformProject" :project="platformProject" @close="showPlatformStack = false" @add="addPlatformStack" />
+    <div v-if="showDeploymentPicker" class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="deployment-choice">
+      <div class="modal-box">
+        <h2 id="deployment-choice" class="text-lg font-semibold">Choose what to deploy</h2>
+        <div class="mt-4 space-y-2">
+          <button v-if="liveNodes.some(node => node.type === 'vm')" class="btn btn-outline w-full" @click="handleOpenDeploy(null)">Project machines</button>
+          <button v-for="node in platformNodes" :key="node.id" class="btn btn-outline w-full" @click="deployPlatform(node)">{{ node.data.label }}</button>
+        </div>
+        <div class="modal-action"><button class="btn btn-ghost" @click="showDeploymentPicker = false">Cancel</button></div>
+      </div>
+    </div>
+    <!-- Deploy the selected project scenario or platform component. -->
     <DeployForm
       v-if="showDeployForm && currentProject"
       :visible="showDeployForm"
       :project-id="registeredProjectId || currentProject.id"
       :local-project-id="currentProject.id"
       :project-name="currentProject.name"
-      :initial-scenario-label="currentProject.scenario?.label || currentProject.native_scenario?.path.split('/').at(-1) || ''"
-      :native-scenario="currentProject.native_scenario"
-      :allocation="currentProject.scenario?.allocation"
+      :initial-scenario-label="deploymentScenario?.path.split('/').at(-1) || currentProject.scenario?.label || ''"
+      :native-scenario="deploymentScenario"
+      :allocation="deploymentScenario ? undefined : currentProject.scenario?.allocation"
       :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
       :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
       :existing-codenames="existingCodenames"
-      :gamenet="!currentProject.scenario && !currentProject.native_scenario && !!currentProject?.gamenet"
+      :gamenet="!currentProject.scenario && !deploymentScenario && !!currentProject?.gamenet"
       @close="showDeployForm = false"
       @created="refreshActiveDeployment"
     />

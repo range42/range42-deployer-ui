@@ -107,5 +107,9 @@
   "redo": "Redo",
   "projectActions": "Project actions",
   "nodeCount": "No nodes | 1 node | {count} nodes",
-  "edgeCount": "No connections | 1 connection | {count} connections"
+  "edgeCount": "No connections | 1 connection | {count} connections",
+  "platform": {
+    "title": "Range42 stack",
+    "description": "Add a platform to this project"
+  }
 }

@@ -228,6 +228,9 @@ function teardownPlay(vms) {
 export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay, runtimeCapabilities }) {
   validateFileMap(files)
   ;({ nodes, edges } = withoutCanvasNotes(nodes, edges))
+  const platforms = new Set(nodes.filter(node => node.type === 'range42-stack').map(node => node.id))
+  requireValue(edges.every(edge => !platforms.has(edge.source) && !platforms.has(edge.target)), 'Stack connections are configured inside the stack settings')
+  nodes = nodes.filter(node => !platforms.has(node.id))
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
   requireValue(['sdn', 'existing_bridge'].includes(scenario.network_mode), 'Choose SDN or an existing bridge network')
   requireValue(!attachments.length, 'Existing canvas attachments must be moved into the scenario Content list before generating; they cannot be silently omitted')

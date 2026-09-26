@@ -466,3 +466,13 @@ describe('concrete scenario emitter', () => {
   })
 
 })
+
+it('preserves a separately deployed platform component when compiling the existing topology', () => {
+  const input = fixture()
+  const before = emitConcreteScenario(input)
+  input.nodes.push({ id: 'platform-alpha', type: 'range42-stack', data: { config: { scenario: { version: 1, path: 'platforms/alpha' } } } })
+  input.files['platforms/alpha/main.yml'] = '- hosts: platform\n  tasks: []\n'
+  const after = emitConcreteScenario(input)
+  expect(after.files['platforms/alpha/main.yml']).toBe(input.files['platforms/alpha/main.yml'])
+  for (const path of before.generatedPaths) expect(after.files[path]).toBe(before.files[path])
+})
