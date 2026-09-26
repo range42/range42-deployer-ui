@@ -28,7 +28,7 @@ describe('Config tab binary files', () => {
   it('forks binary files without inserting the text tracking header into their bytes', async () => {
     const baseFs = createMemoryFs({ files: { 'content/a.bin': asset } })
     const overlayFs = createMemoryFs({ files: {} })
-    const wrapper = shallowMount(FileTree, { props: { baseFs, overlayFs } })
+    const wrapper = shallowMount(FileTree, { props: { baseFs, overlayFs, selectedPath: "content/a.bin" } })
     await flushPromises()
     await wrapper.get('[data-path="content/a.bin"]').trigger('contextmenu')
     await wrapper.get('[role="menuitem"]').trigger('click')

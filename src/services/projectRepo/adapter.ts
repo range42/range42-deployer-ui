@@ -1,6 +1,7 @@
+import { sha1 } from '@noble/hashes/legacy.js'
 import { randomId } from '@/services/randomId'
 import { isGitNotFound, readFileContent } from '@/services/git/fileContent'
-import { authoredFilesMetadata, validateAuthoredFilePath, validateAuthoredFiles, restoreBinaryFile, fileContentEquals, fileText, validateFileMap, validateFilePath, type FileContent, type ProjectFiles } from '@/services/projectFiles'
+import { authoredFilesMetadata, validateAuthoredFilePath, validateAuthoredFiles, restoreBinaryFile, fileBytes, fileContentEquals, fileText, validateFileMap, validateFilePath, type FileContent, type ProjectFiles } from '@/services/projectFiles'
 /**
  * ProjectRepoAdapter implementation (C1.10).
  *
@@ -259,7 +260,21 @@ class RepoAdapter implements ProjectRepoAdapter {
     if (!baseline) throw new GitEditorConflict('changed', 'Review the remote project before saving changes.')
     const lock = await this.owned(projectId, branch === this.draftBranch ? expectedHead : undefined)
     const changes = []
+    const digests = this.provider.getFileDigests ? await Promise.all([expectedHead, baseline].map(ref =>
+      this.provider.getFileDigests!({ owner: this.owner, repo: this.repo, ref }))) : null
     for (const [path, content] of Object.entries(files)) {
+      if (digests) {
+        const bytes = fileBytes(content), header = new TextEncoder().encode(`blob ${bytes.length}\0`)
+        const digest = Array.from(sha1.create().update(header).update(bytes).digest(), byte => byte.toString(16).padStart(2, '0')).join('')
+        const existing = digests[0]![path], reviewed = digests[1]![path]
+        if (existing === digest) continue
+        if (existing !== reviewed) {
+          this.blocked = true
+          throw new GitEditorConflict('changed', 'Remote project files changed since review. Your local draft is preserved; reopen the remote project or save a separate working branch.')
+        }
+        changes.push({ path, content, sha: existing })
+        continue
+      }
       const [existing, reviewed] = await Promise.all([this.safeGet(path, expectedHead), this.safeGet(path, baseline)])
       if (fileContentEquals(existing?.content, content)) continue
       if (!fileContentEquals(existing?.content, reviewed?.content)) {

@@ -50,8 +50,9 @@ import { useProblems } from '../composables/useProblems'
 import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
 import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
 import PlatformStackModal from '@/components/project/PlatformStackModal.vue'
+import PlatformResourceNode from '@/components/nodes/PlatformResourceNode.vue'
 import PlatformStackNode from '@/components/nodes/PlatformStackNode.vue'
-import { appendPlatformComponent, platformSelection } from '@/services/platformComponents'
+import { appendPlatformComponent, expandPlatformCanvas, platformSelection } from '@/services/platformComponents'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -155,9 +156,11 @@ function addPlatformStack(component) {
   if (!platformProject.value) return
   try {
     const candidate = appendPlatformComponent(platformProject.value, component)
-    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ id: node.id, type: node.type, data: node.data, position: node.position || { x: 0, y: 0 } }))
+    /** @type {import('@vue-flow/core').Node[]} */
+    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ ...node, style: /** @type {import('@vue-flow/core').Node['style']} */ (node.style), position: node.position || { x: 0, y: 0 }, ...(node.type?.startsWith('platform-') ? { deletable: false } : {}) }))
     projectStore.updateProject(candidate.id, { files: candidate.files, nodes: candidate.nodes, edges: candidate.edges })
     vfAddNodes(added)
+    vfAddEdges(candidate.edges.filter(edge => !liveEdges.value.some(existing => existing.id === edge.id)))
     showPlatformStack.value = false
     void setTab('canvas')
     nextTick(() => fitView({ padding: 0.15, maxZoom: 1 }))
@@ -190,7 +193,7 @@ const projectId = computed(() => currentProject.value?.id || queryText(route.par
 const topologyResolver = useTopologyResolver()
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
-const selectedGroup = computed(() => flowGetNodes.value?.find(node => node.type === 'group' && node.selected))
+const selectedGroup = computed(() => flowGetNodes.value?.find(node => ['group', 'range42-stack'].includes(node.type) && node.selected))
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
 /**
@@ -364,6 +367,9 @@ onMounted(() => {
     return
   }
 
+  const expanded = expandPlatformCanvas(project.nodes || [], project.edges || [])
+  for (const node of expanded.nodes) if (node.type?.startsWith('platform-')) node.deletable = false
+  Object.assign(project, expanded)
   currentProject.value = project
   loadProjectData(project)
   ensureNamespaces(['configTab', 'configPanel', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog', 'deployment'])
@@ -705,6 +711,7 @@ async function handleAutoLayout() {
 
 /** @param {import('@vue-flow/core').NodeMouseEvent} event */
 const handleNodeClick = (event) => {
+  if (event.node.type?.startsWith('platform-')) { closeConfigPanel(); return }
   onNodeClick(event)
   showConfigPanel.value = !!selectedNode.value
   if (selectedNode.value) router.replace({ query: { ...route.query, node: selectedNode.value.id } })
@@ -1448,6 +1455,8 @@ const handleInfrastructureImport = (result) => {
           </Controls>
           <MiniMap position="bottom-right" :width="160" :height="110" />
 
+          <template #node-platform-vm="props"><PlatformResourceNode v-bind="props" /></template>
+          <template #node-platform-network="props"><PlatformResourceNode v-bind="props" network /></template>
           <template #node-range42-stack="props">
             <PlatformStackNode v-bind="props" @deploy="deployPlatform(props)" @files="openPlatformFiles(props)" />
           </template>

@@ -1,4 +1,4 @@
-import type { CanvasNode } from '@/overlay/serialize'
+import type { CanvasNode, CanvasEdge } from '@/overlay/serialize'
 import type { ProjectDraft } from '@/types/project'
 import { validateAuthoredFiles, type ProjectFiles } from '@/services/projectFiles'
 import { nativeScenario, type NativeScenario } from '@/services/nativeScenario'
@@ -64,5 +64,27 @@ export function appendPlatformComponent(original: ProjectDraft, component: Platf
   project.nodes.push({ id, type: 'range42-stack', position: { x, y: 80 },
     data: { label: `Range42 ${component.plan.id}`, config: { name: `Range42 ${component.plan.id}`, scenario: component.scenario, plan: component.plan } } })
   project.files = files
+  Object.assign(project, expandPlatformCanvas(project.nodes, project.edges))
   return project
+}
+
+/** Expand older cards too, preserving authored positions of existing service nodes. */
+export function expandPlatformCanvas(sourceNodes: CanvasNode[], sourceEdges: CanvasEdge[]) {
+  const nodes = sourceNodes.map(node => ({ ...node })), edges = [...sourceEdges]
+  for (const group of nodes.filter(node => node.type === 'range42-stack')) {
+    const plan = group.data?.config?.plan as PlatformPlan | undefined
+    if (!plan?.vms?.length) continue
+    group.style = { width: '960px', height: `${290 + Math.ceil(plan.vms.length / 3) * 160}px`, ...(typeof group.style === 'object' ? group.style : {}) }
+    const networkId = `${group.id}-network`
+    if (!nodes.some(node => node.id === networkId)) nodes.push({ id: networkId, type: 'platform-network', parentNode: group.id, extent: 'parent',
+      position: { x: 345, y: 140 }, data: { label: plan.bridge, config: { name: plan.bridge, subnet: plan.subnet, gateway: plan.gateway } } })
+    plan.vms.forEach((vm, index) => {
+      const id = `${group.id}-${vm.service}`
+      if (!nodes.some(node => node.id === id)) nodes.push({ id, type: 'platform-vm', parentNode: group.id, extent: 'parent',
+        position: { x: 30 + (index % 3) * 310, y: 285 + Math.floor(index / 3) * 160 }, data: { label: vm.service, config: { ...vm, name: vm.vm_name } } })
+      const edgeId = `${networkId}-${id}`
+      if (!edges.some(edge => edge.id === edgeId)) edges.push({ id: edgeId, type: 'smoothstep', source: networkId, target: id })
+    })
+  }
+  return { nodes, edges }
 }
