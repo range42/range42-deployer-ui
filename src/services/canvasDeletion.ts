@@ -1,3 +1,4 @@
+import { isPlatformStack } from './platformComponents'
 import type { XYPosition } from '@vue-flow/core'
 
 interface DeletionNode {
@@ -40,7 +41,7 @@ export function removeCanvasNode<N extends DeletionNode, E extends { source: str
   const removed = nodes.find(node => node.id === nodeId)
   if (!removed) return { nodes: [...nodes], edges: [...edges] }
   const removedIds = new Set([nodeId])
-  if ((removed.type === 'group' && recursive) || removed.type === 'range42-stack') {
+  if ((removed.type === 'group' && recursive) || isPlatformStack(removed)) {
     for (const id of canvasDescendants(nodes, nodeId)) removedIds.add(id)
   }
   const parent = parentId(removed)

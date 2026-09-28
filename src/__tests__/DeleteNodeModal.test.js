@@ -80,3 +80,11 @@ describe('group deletion choices', () => {
     expect(mountModal(deployedVm).find('[data-testid="remove-group-recursive"]').exists()).toBe(false)
   })
 })
+
+it('explains that removing a stack removes its generated nodes together', async () => {
+  const w = mountModal({ id: 'platform-alpha', type: 'group', data: { config: { name: 'Alpha', platformStack: 'platform-alpha', scenario: { version: 1, path: 'platforms/alpha' } } } })
+  await w.setProps({ descendantCount: 6 })
+  expect(w.text()).toContain('all 6 stack nodes')
+  expect(w.get('[data-testid="remove-canvas"]').text()).toBe('Remove stack')
+  expect(w.find('[data-testid="remove-group-recursive"]').exists()).toBe(false)
+})

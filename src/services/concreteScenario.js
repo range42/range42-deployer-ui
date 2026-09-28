@@ -1,3 +1,4 @@
+import { isPlatformResource } from './platformComponents'
 import { vmMemoryMb, vmDiskGb } from './vmResources'
 import { validateRoleAttachment } from './catalogRoleExecution'
 import { validateCatalogWorkloadReview } from './catalogWorkload'
@@ -112,6 +113,7 @@ function configurationVariables(baseDoc, overlay) {
 
 /** Seed explicit authoring values; never guess VMIDs or source template IDs. */
 export function createScenarioDraft(project, nodes = [], edges = []) {
+  nodes = nodes.filter(node => !isPlatformResource(node))
   const saved = project.scenario ? JSON.parse(JSON.stringify(project.scenario)) : null
   const label = String(project.name || 'scenario').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'scenario'
   const networks = nodes.filter(node => node.type === 'network-segment').map((node, index) => ({
@@ -228,7 +230,7 @@ function teardownPlay(vms) {
 export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay, runtimeCapabilities }) {
   validateFileMap(files)
   ;({ nodes, edges } = withoutCanvasNotes(nodes, edges))
-  const platforms = new Set(nodes.filter(node => node.type === 'range42-stack' || node.type?.startsWith('platform-')).map(node => node.id))
+  const platforms = new Set(nodes.filter(isPlatformResource).map(node => node.id))
   edges = edges.filter(edge => !(platforms.has(edge.source) && platforms.has(edge.target)))
   requireValue(edges.every(edge => !platforms.has(edge.source) && !platforms.has(edge.target)), 'Stack connections are configured inside the stack settings')
   nodes = nodes.filter(node => !platforms.has(node.id))

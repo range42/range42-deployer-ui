@@ -1,5 +1,5 @@
 import type { ProjectDraft } from '@/types/project'
-import type { PlatformPlan } from './platformComponents'
+import { isPlatformStack, type PlatformPlan } from './platformComponents'
 export interface StackInventory { vmids: number[]; vnets: string[]; subnets: string[] }
 function bounds(cidr: string): [number, number] | null {
   if (cidr.includes(':')) return null
@@ -10,7 +10,7 @@ function bounds(cidr: string): [number, number] | null {
 }
 /** Suggestions only. Backend preflight remains authoritative for live resource ownership. */
 export function suggestStackSettings(project: ProjectDraft, inventory: StackInventory, count: number, stackId: string) {
-  const plans = project.nodes.filter(n => n.type === 'range42-stack').map(n => n.data?.config?.plan as PlatformPlan)
+  const plans = project.nodes.filter(isPlatformStack).map(n => n.data?.config?.plan as PlatformPlan)
   const scenario = project.scenario as { vms?: { vm_id: number }[]; networks?: { vnet: string; subnet: string }[] } | undefined
   const used = new Set([...inventory.vmids, ...plans.flatMap(p => p.vms.map(v => v.vm_id)),
     ...(scenario?.vms || []).map(v => v.vm_id), ...project.nodes.filter(n => n.type === 'vm').map(n => Number(n.data?.vmId || n.data?.config?.vmid))])

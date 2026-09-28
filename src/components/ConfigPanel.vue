@@ -1,4 +1,5 @@
 <script setup>
+import { isPlatformResource, isPlatformStack } from '@/services/platformComponents'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
@@ -74,7 +75,8 @@ const props = defineProps({
     default: () => [],
   },
 })
-const emit = defineEmits(['close', 'update', 'delete', 'update:attachments', 'open-content'])
+const emit = defineEmits(['close', 'update', 'delete', 'update:attachments', 'open-content', 'open-stack-files'])
+const managedStack = computed(() => !!props.node && isPlatformResource(props.node))
 
 const statusView = computed(() =>
   resolveNodeStatus(props.node?.data?.status, props.node?.data?.pendingAction),
@@ -196,7 +198,7 @@ onMounted(async () => {
   focusReady.value = true
   ensureNamespaces(['configPanel', 'project', 'common'])
 
-  if (props.node?.type === 'vm' && !props.node?.data?.deployed) {
+  if (props.node?.type === 'vm' && !props.node?.data?.deployed && !managedStack.value) {
     await loadTemplates()
   }
 })
@@ -319,7 +321,7 @@ async function handleVmAction(action) {
 
 const saving = ref(false)
 const handleSave = () => {
-  if (saving.value) return
+  if (saving.value || managedStack.value) return
   saving.value = true
   const newStatus = isValid.value ? 'orange' : 'gray'
   const payload = {
@@ -396,6 +398,7 @@ watch(() => props.node, (newNode) => {
       config.value.team_count = Number(newNode.data?.team_count ?? config.value.team_count ?? 1)
     }
     config.value.role = config.value.role ?? ''
+    if (managedStack.value && config.value.template) availableTemplates.value = [{ value: config.value.template, label: `Template ${config.value.template}` }]
   }
 }, { immediate: true })
 
@@ -483,6 +486,8 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true }, openDele
       <div class="flex-1 space-y-5 overflow-y-auto overscroll-contain px-6 py-5">
         <NodeContextNotice :type="node.type" />
 
+        <p v-if="managedStack" class="text-sm text-base-content/75">Configured by the Range42 stack. Open Stack files to review its deployment settings.</p>
+        <fieldset :disabled="managedStack" class="space-y-5 min-w-0">
         <!-- Common Fields -->
         <FormSection icon="" title="" :columns="1">
           <FormField
@@ -631,10 +636,11 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true }, openDele
 
         <!-- Shared Service Specific Fields -->
         <SharedServiceFields v-if="node.type === 'shared-service'" v-model="config" />
+        </fieldset>
       </div>
 
       <!-- Footer (sticky) -->
-      <footer class="sticky bottom-0 z-10 border-t border-base-300 bg-base-100 shadow-[0_-1px_3px_rgba(0,0,0,0.06)]">
+      <footer v-if="!managedStack" class="sticky bottom-0 z-10 border-t border-base-300 bg-base-100 shadow-[0_-1px_3px_rgba(0,0,0,0.06)]">
         <!-- Pending-changes strip (deployed nodes with unsaved diffs) -->
         <div
           v-if="hasPendingChanges"
@@ -692,6 +698,11 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true }, openDele
           </div>
           <button v-else class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('configPanel.close') }}</button>
         </div>
+      </footer>
+      <footer v-else class="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-base-300 bg-base-100 px-6 py-4">
+        <button v-if="isPlatformStack(node)" type="button" class="btn btn-error btn-outline btn-sm mr-auto" @click="handleDelete">Remove stack</button>
+        <button type="button" class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('configPanel.close') }}</button>
+        <button type="button" class="btn btn-primary btn-sm" data-testid="stack-resource-files" @click="emit('open-stack-files')">Stack files</button>
       </footer>
     </div>
   </div>

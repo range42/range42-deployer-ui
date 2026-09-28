@@ -1,4 +1,5 @@
 <script setup>
+import { isPlatformStack } from '@/services/platformComponents'
 import { computed, ref, watch, nextTick } from 'vue'
 import { FocusTrap } from 'focus-trap-vue'
 import { useI18n } from 'vue-i18n'
@@ -21,7 +22,8 @@ watch(() => props.open, async open => {
     if (props.open) focusReady.value = true
   }
 }, { immediate: true })
-const isGroup = computed(() => props.node?.type === 'group')
+const isStack = computed(() => isPlatformStack(props.node))
+const isGroup = computed(() => props.node?.type === 'group' && !isStack.value)
 const name = computed(() => props.node?.data?.config?.name || props.node?.data?.name || props.node?.type || 'node')
 const canProxmoxDelete = computed(() => {
   const n = props.node
@@ -45,7 +47,7 @@ const isRunning = computed(() => props.node?.data?.status === 'running')
       <div ref="dialog" class="modal-box" tabindex="-1">
         <h3 id="delete-node-title" class="font-semibold text-lg">{{ t(isGroup ? 'project.deleteNode.groupTitle' : 'project.deleteNode.title') }}</h3>
         <p class="py-2 text-sm">
-          {{ isGroup ? t('project.deleteNode.promptGroup', { name, count: descendantCount }) : canProxmoxDelete ? t('project.deleteNode.promptProxmox', { name }) : t('project.deleteNode.promptCanvas', { name }) }}
+          {{ isStack ? `Remove ${name} and all ${descendantCount} stack nodes from the canvas? Deployed machines and stack files are kept.` : isGroup ? t('project.deleteNode.promptGroup', { name, count: descendantCount }) : canProxmoxDelete ? t('project.deleteNode.promptProxmox', { name }) : t('project.deleteNode.promptCanvas', { name }) }}
         </p>
         <p v-if="isGroup" class="text-sm text-base-content/75">{{ t('project.deleteNode.groupHelp') }}</p>
         <p v-if="canProxmoxDelete" class="text-xs opacity-70">{{ t('project.deleteNode.destroyWarning') }}</p>
@@ -64,7 +66,7 @@ const isRunning = computed(() => props.node?.data?.status === 'running')
             class="btn btn-outline"
             data-testid="remove-canvas"
             @click="emit('removeCanvas')"
-          >{{ isGroup ? t('project.deleteNode.groupOnly') : canProxmoxDelete ? t('project.deleteNode.removeCanvasOnly') : t('project.deleteNode.remove') }}</button>
+          >{{ isStack ? 'Remove stack' : isGroup ? t('project.deleteNode.groupOnly') : canProxmoxDelete ? t('project.deleteNode.removeCanvasOnly') : t('project.deleteNode.remove') }}</button>
           <button v-if="isGroup && descendantCount > 0" type="button" class="btn btn-error"
             data-testid="remove-group-recursive" @click="emit('removeCanvas', { recursive: true })">
             {{ t('project.deleteNode.groupRecursive') }}

@@ -29,3 +29,10 @@ describe('connection text editing', () => {
     expect(wrapper.get('textarea').element.value).toBe('Other traffic')
   })
 })
+
+it('inspects stack connection addresses without changing their deployment configuration', async () => {
+  const w = mountPanel({ edge: { id: 'e', data: { connection: { ipAddress: '10.81.0.12/24' } } }, sourceNode: { type: 'vm', data: { config: { platformStack: 'platform-alpha' } } }, targetNode: { type: 'network-segment' } })
+  expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+  await w.vm.updateConnection()
+  expect(w.emitted('update')).toBeUndefined()
+})

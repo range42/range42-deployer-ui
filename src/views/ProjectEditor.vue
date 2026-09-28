@@ -50,9 +50,7 @@ import { useProblems } from '../composables/useProblems'
 import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
 import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
 import PlatformStackModal from '@/components/project/PlatformStackModal.vue'
-import PlatformResourceNode from '@/components/nodes/PlatformResourceNode.vue'
-import PlatformStackNode from '@/components/nodes/PlatformStackNode.vue'
-import { appendPlatformComponent, expandPlatformCanvas, platformSelection } from '@/services/platformComponents'
+import { appendPlatformComponent, expandPlatformCanvas, platformSelection, isPlatformStack, isPlatformResource } from '@/services/platformComponents'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -149,7 +147,7 @@ const showPlatformStack = ref(false)
 const showDeploymentPicker = ref(false)
 /** @type {import('vue').Ref<import('@/services/nativeScenario').NativeScenario | undefined>} */
 const deploymentScenario = ref()
-const platformNodes = computed(() => (liveNodes.value || []).filter(node => node.type === 'range42-stack'))
+const platformNodes = computed(() => (liveNodes.value || []).filter(isPlatformStack))
 const platformProject = computed(() => currentProject.value ? { ...currentProject.value, ...projectGraph() } : undefined)
 /** @param {import('@/services/platformComponents').PlatformComponent} component */
 function addPlatformStack(component) {
@@ -157,10 +155,10 @@ function addPlatformStack(component) {
   try {
     const candidate = appendPlatformComponent(platformProject.value, component)
     /** @type {import('@vue-flow/core').Node[]} */
-    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ ...node, style: /** @type {import('@vue-flow/core').Node['style']} */ (node.style), position: node.position || { x: 0, y: 0 }, ...(node.type?.startsWith('platform-') ? { deletable: false } : {}) }))
+    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ ...node, style: /** @type {import('@vue-flow/core').Node['style']} */ (node.style), position: node.position || { x: 0, y: 0 }, ...(isPlatformResource(node) ? { deletable: false, connectable: false } : {}) }))
     projectStore.updateProject(candidate.id, { files: candidate.files, nodes: candidate.nodes, edges: candidate.edges })
     vfAddNodes(added)
-    vfAddEdges(candidate.edges.filter(edge => !liveEdges.value.some(existing => existing.id === edge.id)))
+    vfAddEdges(candidate.edges.filter(edge => !liveEdges.value.some(existing => existing.id === edge.id)).map(edge => ({ ...edge, deletable: false, updatable: false })))
     showPlatformStack.value = false
     void setTab('canvas')
     nextTick(() => fitView({ padding: 0.15, maxZoom: 1 }))
@@ -171,11 +169,17 @@ function deployPlatform(node) {
   showDeploymentPicker.value = false
   void handleOpenDeploy(platformSelection(node))
 }
-/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'>} node */
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'> | null | undefined} node */
 function openPlatformFiles(node) {
-  const selected = platformSelection(node)
+  if (!node) return
+  const owner = isPlatformStack(node) ? node : platformNodes.value.find(group => group.id === node.data?.config?.platformStack)
+  const selected = owner && platformSelection(owner)
   if (!selected) return
-  void router.push({ query: { ...route.query, tab: 'config', file: `${selected.path}/manifest/stack.json` } })
+  closeConfigPanel()
+  closeEdgeConfig()
+  const query = { ...route.query }
+  delete query.node
+  void router.push({ query: { ...query, tab: 'config', file: `${selected.path}/manifest/stack.json` } })
 }
 const deploymentIndex = useDeploymentIndex()
 const existingCodenames = computed(() => deploymentIndex.items.value.map(item => item.codename))
@@ -368,7 +372,8 @@ onMounted(() => {
   }
 
   const expanded = expandPlatformCanvas(project.nodes || [], project.edges || [])
-  for (const node of expanded.nodes) if (node.type?.startsWith('platform-')) node.deletable = false
+  for (const node of expanded.nodes) if (isPlatformResource(node)) Object.assign(node, { deletable: false, connectable: false })
+  for (const edge of expanded.edges) if (expanded.nodes.some(node => isPlatformResource(node) && (node.id === edge.source || node.id === edge.target))) Object.assign(edge, { deletable: false, updatable: false })
   Object.assign(project, expanded)
   currentProject.value = project
   loadProjectData(project)
@@ -711,7 +716,6 @@ async function handleAutoLayout() {
 
 /** @param {import('@vue-flow/core').NodeMouseEvent} event */
 const handleNodeClick = (event) => {
-  if (event.node.type?.startsWith('platform-')) { closeConfigPanel(); return }
   onNodeClick(event)
   showConfigPanel.value = !!selectedNode.value
   if (selectedNode.value) router.replace({ query: { ...route.query, node: selectedNode.value.id } })
@@ -910,7 +914,7 @@ const closeProxmoxSettings = () => {
 const handleOpenDeploy = async (selection = undefined) => {
   if (selection && 'path' in selection) deploymentScenario.value = selection
   else if (selection !== null && platformNodes.value.length) {
-    if (platformNodes.value.length === 1 && !liveNodes.value.some(node => node.type === 'vm')) deploymentScenario.value = platformSelection(platformNodes.value[0])
+    if (platformNodes.value.length === 1 && !liveNodes.value.some(node => node.type === 'vm' && !isPlatformResource(node))) deploymentScenario.value = platformSelection(platformNodes.value[0])
     else { showDeploymentPicker.value = true; return }
   } else deploymentScenario.value = currentProject.value?.native_scenario
   showDeploymentPicker.value = false
@@ -1455,11 +1459,6 @@ const handleInfrastructureImport = (result) => {
           </Controls>
           <MiniMap position="bottom-right" :width="160" :height="110" />
 
-          <template #node-platform-vm="props"><PlatformResourceNode v-bind="props" /></template>
-          <template #node-platform-network="props"><PlatformResourceNode v-bind="props" network /></template>
-          <template #node-range42-stack="props">
-            <PlatformStackNode v-bind="props" @deploy="deployPlatform(props)" @files="openPlatformFiles(props)" />
-          </template>
           <!-- Organization -->
           <template #node-note="props">
             <NoteNode v-bind="props" />
@@ -1470,7 +1469,12 @@ const handleInfrastructureImport = (result) => {
               @update:kind="updateNodeStatus(props.id, { kind: $event })"
               @update:scope="updateNodeStatus(props.id, { kind: $event })"
               @update:expanded="updateNodeStatus(props.id, { _expanded_preview: $event })"
-            />
+            >
+              <template v-if="isPlatformStack(props)" #actions>
+                <button type="button" class="btn btn-primary btn-sm nodrag nopan" @click.stop="deployPlatform(props)">Deploy stack</button>
+                <button type="button" class="btn btn-ghost btn-sm nodrag nopan" @click.stop="openPlatformFiles(props)">Stack files</button>
+              </template>
+            </GroupNode>
           </template>
 
           <!-- Compute -->
@@ -1631,6 +1635,7 @@ const handleInfrastructureImport = (result) => {
       @delete="handleDeleteNode"
       @update:attachments="handleAttachmentsUpdate"
       @open-content="openScenarioContent"
+      @open-stack-files="openPlatformFiles(selectedNode)"
     />
     
     <!-- Edge Config Panel -->
@@ -1640,6 +1645,7 @@ const handleInfrastructureImport = (result) => {
         :source-node="edgeSourceNode || undefined"
         :target-node="edgeTargetNode || undefined"
         @close="handleCloseEdgeConfig"
+        @open-stack-files="openPlatformFiles(edgeSourceNode || edgeTargetNode)"
         @update="handleEdgeUpdate"
       />
     </div>

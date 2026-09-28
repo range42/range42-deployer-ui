@@ -201,6 +201,6 @@ it('reopens a stack component in the same project alongside its generated topolo
   const reopened = prepareGitProjectImport(await loadGitProject(project.git, []))
   expect(reopened.scenario).toEqual(original.scenario)
   expect(reopened.native_scenario).toBeUndefined()
-  expect(platformSelection(reopened.nodes.find(node => node.type === 'range42-stack'))).toEqual(component.scenario)
+  expect(platformSelection(reopened.nodes.find(node => node.type === 'group'))).toEqual(component.scenario)
   expect(reopened.files['platforms/alpha/main.yml']).toBe(component.files['platforms/alpha/main.yml'])
 })
