@@ -62,6 +62,7 @@ onUnmounted(async () => {
 const titleId = 'config-panel-title'
 
 const props = defineProps({
+  canOpenStackFiles: { type: Boolean, default: true },
   node: {
     type: Object,
     default: null,
@@ -702,7 +703,7 @@ defineExpose({ openApplyDialog: () => { showApplyDialog.value = true }, openDele
       <footer v-else class="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-base-300 bg-base-100 px-6 py-4">
         <button v-if="isPlatformStack(node)" type="button" class="btn btn-error btn-outline btn-sm mr-auto" @click="handleDelete">{{ node.data?.config?.nativeScenario ? 'Remove scenario' : 'Remove stack' }}</button>
         <button type="button" class="btn btn-ghost btn-sm" @click="emit('close')">{{ t('configPanel.close') }}</button>
-        <button type="button" class="btn btn-primary btn-sm" data-testid="stack-resource-files" @click="emit('open-stack-files')">{{ node.data?.config?.nativeScenario ? 'Scenario source' : 'Stack files' }}</button>
+        <button v-if="canOpenStackFiles" type="button" class="btn btn-primary btn-sm" data-testid="stack-resource-files" @click="emit('open-stack-files')">{{ node.data?.config?.nativeScenario ? 'Scenario source' : 'Stack files' }}</button>
       </footer>
     </div>
   </div>

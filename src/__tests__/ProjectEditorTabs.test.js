@@ -69,6 +69,21 @@ describe('Actual ProjectEditor tab and selection navigation', () => {
     expect(store.getProject('tabs').files[`${prefix}/payload/index.html`]).toBe('<h1>Updated page</h1>')
   })
 
+  it.each([
+    ['github', '/tree/'], ['gitlab', '/-/tree/'], ['gitea', '/src/commit/'], ['generic', null],
+  ])('opens the pinned scenario source for %s', async (provider, routePath) => {
+    const group = { id: 'catalog-1', type: 'group', position: { x: 0, y: 0 }, data: { config: {
+      platformStack: 'catalog-1', nativeScenario: true, scenario: { version: 1, path: 'scenarios/demo', component_id: 'catalog-1' },
+      nativeCatalog: { provider, base_url: 'https://git.example.test', repo_owner: 'team', repo_name: 'playbooks', sha: 'a'.repeat(40) },
+    } } }
+    await editor('?tab=canvas', { nodes: [group] })
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    expect(wrapper.findComponent(ProjectEditor).vm.canOpenPlatformFiles(group)).toBe(!!routePath)
+    wrapper.findComponent(ProjectEditor).vm.openPlatformFiles(group)
+    if (routePath) expect(open).toHaveBeenCalledWith(`https://git.example.test/team/playbooks${routePath}${'a'.repeat(40)}/scenarios/demo`, '_blank', 'noopener,noreferrer')
+    else expect(open).not.toHaveBeenCalled()
+  })
+
   it('opens native projects in the file editor and hides canvas generation', async () => {
     await editor('?tab=canvas', { native_scenario: { version: 1, path: 'training/example' }, nodes: [] })
     await flushPromises()

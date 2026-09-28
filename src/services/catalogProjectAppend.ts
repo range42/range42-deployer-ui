@@ -196,13 +196,13 @@ export async function prepareCatalogAppend(input: CatalogAppendInput, provider?:
       if (attachment.inherited_from !== undefined) attachment.inherited_from = reference(attachment.inherited_from)
     }
     project.nodes.push(...canvas.nodes); project.edges.push(...canvas.edges); project.attachments.push(...canvas.attachments)
-    readCanvasSnapshot(captureCanvasSnapshot(project), project.attachments)
     provenance.node_ids.push(...canvas.nodes.map(node => node.id))
     provenance.attachment_ids.push(...canvas.attachments.map(row => row.id!))
     Object.assign(result.counts, { nodes: canvas.nodes.length, edges: canvas.edges.length, attachments: canvas.attachments.length })
     result.warnings.push('Review network addresses, SDN names and fresh VM/IP allocation for the changed graph before deployment.')
     if (canvas.nodes.some(node => !['vm', 'group', 'network-segment'].includes(node.type || ''))) result.warnings.push('Some added node types are authoring-only; the current concrete deployment compiler does not support them.')
   }
+  readCanvasSnapshot(captureCanvasSnapshot(project), project.attachments)
   project.catalogImports = publicCatalogImports([...imports, provenance])
   return result
 }

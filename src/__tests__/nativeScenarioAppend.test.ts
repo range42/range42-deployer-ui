@@ -40,6 +40,14 @@ describe('existing scenarios on the canvas', () => {
     expect(canvas.edges[0]?.data?.connection?.ipAddress).toBe('10.42.0.10/24')
     expect(result.warnings).toContain('Diagram contains all declared resources.')
   })
+  it.each(['nodes', 'edges'] as const)('rejects an append that exceeds the combined %s limit without changing the project', async kind => {
+    const original = project()
+    original.nodes = Array.from({ length: kind === 'nodes' ? 1020 : 2 }, (_, i) => ({ id: `existing-${i}`, type: 'note', position: { x: 0, y: 0 } }))
+    if (kind === 'edges') original.edges = Array.from({ length: 4095 }, (_, i) => ({ id: `edge-${i}`, source: 'existing-0', target: 'existing-1' }))
+    const before = JSON.stringify(original)
+    await expect(prepareCatalogAppend({ entry: entry(), source, project: original })).rejects.toThrow(/canvas|limit|large|many/i)
+    expect(JSON.stringify(original)).toBe(before)
+  })
   it('rejects VMID reuse even when the scenario is added a second time', async () => {
     const first = await prepareCatalogAppend({ entry: entry(), source, project: project() })
     await expect(prepareCatalogAppend({ entry: entry(), source, project: first.project })).rejects.toThrow(/VMID|already/)

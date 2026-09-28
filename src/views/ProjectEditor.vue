@@ -170,18 +170,39 @@ function deployPlatform(node) {
   void handleOpenDeploy(platformSelection(node))
 }
 /** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'> | null | undefined} node */
+function platformOwner(node) {
+  return node && (isPlatformStack(node) ? node : platformNodes.value.find(group => group.id === node.data?.config?.platformStack))
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'> | null | undefined} node */
+function nativeSourceUrl(node) {
+  const owner = platformOwner(node)
+  const origin = owner?.data?.config?.nativeCatalog
+  const selected = owner && platformSelection(owner)
+  if (!origin || !selected) return undefined
+  /** @type {Record<string, string>} */
+  const routes = { github: '/tree/', gitlab: '/-/tree/', gitea: '/src/commit/' }
+  const sourceRoute = routes[String(origin.provider)]
+  if (!sourceRoute) return undefined
+  try {
+    const base = new URL(String(origin.base_url))
+    if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) return undefined
+    const path = [origin.repo_owner, origin.repo_name].map(value => String(value).split('/').map(encodeURIComponent).join('/')).join('/')
+    return `${base.href.replace(/\/$/, '')}/${path}${sourceRoute}${encodeURIComponent(String(origin.sha))}/${selected.path.split('/').map(encodeURIComponent).join('/')}`
+  } catch { return undefined }
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'> | null | undefined} node */
+function canOpenPlatformFiles(node) {
+  const owner = platformOwner(node)
+  return !!owner && (!owner.data?.config?.nativeScenario || !!nativeSourceUrl(owner))
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'> | null | undefined} node */
 function openPlatformFiles(node) {
-  if (!node) return
-  const owner = isPlatformStack(node) ? node : platformNodes.value.find(group => group.id === node.data?.config?.platformStack)
+  const owner = platformOwner(node)
   const selected = owner && platformSelection(owner)
   if (!selected) return
-  const origin = owner?.data?.config?.nativeCatalog
-  if (origin) {
-    const base = new URL(String(origin.base_url))
-    if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) return
-    const route = origin.provider === 'gitlab' ? '/-/tree/' : '/tree/'
-    const source = `${base.href.replace(/\/$/, '')}/${origin.repo_owner}/${origin.repo_name}${route}${origin.sha}/${selected.path}`
-    window.open(source, '_blank', 'noopener,noreferrer')
+  if (owner?.data?.config?.nativeScenario) {
+    const source = nativeSourceUrl(owner)
+    if (source) window.open(source, '_blank', 'noopener,noreferrer')
     return
   }
   closeConfigPanel()
@@ -1484,7 +1505,7 @@ const handleInfrastructureImport = (result) => {
             >
               <template v-if="isPlatformStack(props)" #actions>
                 <button type="button" class="btn btn-primary btn-sm nodrag nopan" @click.stop="deployPlatform(props)">{{ props.data.config?.nativeScenario ? 'Deploy scenario' : 'Deploy stack' }}</button>
-                <button type="button" class="btn btn-ghost btn-sm nodrag nopan" @click.stop="openPlatformFiles(props)">{{ props.data.config?.nativeScenario ? 'Scenario source' : 'Stack files' }}</button>
+                <button v-if="canOpenPlatformFiles(props)" type="button" class="btn btn-ghost btn-sm nodrag nopan" @click.stop="openPlatformFiles(props)">{{ props.data.config?.nativeScenario ? 'Scenario source' : 'Stack files' }}</button>
               </template>
             </GroupNode>
           </template>
@@ -1640,6 +1661,7 @@ const handleInfrastructureImport = (result) => {
       ref="configPanelRef"
       v-if="selectedNode && showConfigPanel && tab === 'canvas'"
       :node="selectedNode"
+      :can-open-stack-files="canOpenPlatformFiles(selectedNode)"
       :attachments="attachmentsRef"
       :nodes="liveNodes"
       @close="closeConfigPanel"
@@ -1653,11 +1675,12 @@ const handleInfrastructureImport = (result) => {
     <!-- Edge Config Panel -->
     <div v-if="showEdgeConfig && selectedEdge" class="fixed right-4 top-20 z-50">
       <EdgeConfigPanel 
-        :edge="selectedEdge" 
+        :edge="selectedEdge"
+        :can-open-stack-files="canOpenPlatformFiles(edgeSourceNode) || canOpenPlatformFiles(edgeTargetNode)"
         :source-node="edgeSourceNode || undefined"
         :target-node="edgeTargetNode || undefined"
         @close="handleCloseEdgeConfig"
-        @open-stack-files="openPlatformFiles(edgeSourceNode || edgeTargetNode)"
+        @open-stack-files="openPlatformFiles(isPlatformResource(edgeSourceNode || {}) ? edgeSourceNode : edgeTargetNode)"
         @update="handleEdgeUpdate"
       />
     </div>
