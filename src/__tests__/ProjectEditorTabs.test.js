@@ -53,6 +53,20 @@ async function editor(query = '', overrides = {}) {
 }
 
 describe('Actual ProjectEditor tab and selection navigation', () => {
+  it.each(['sidebar', 'mobile drawer'])('opens existing scenarios for this project from %s', async source => {
+    const { store, router } = await editor('?tab=canvas')
+    const before = { ...store.getProject('tabs').files }
+    expect(wrapper.findComponent({ name: 'PlatformStackModal' }).exists()).toBe(false)
+    if (source === 'mobile drawer') await wrapper.get('[data-testid="mobile-drawer-toggle"]').trigger('click')
+    wrapper.findAllComponents(Sidebar).at(source === 'sidebar' ? 0 : -1).vm.$emit('openNativeScenarios')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/catalog')
+    expect(router.currentRoute.value.query).toMatchObject({ project: 'tabs', kind: 'scenario' })
+    expect(store.getProject('tabs').files).toEqual(before)
+    expect(store.getProject('tabs').nodes.map(node => node.id)).toEqual(['first', 'second'])
+    expect(pushToGit).not.toHaveBeenCalled()
+  })
+
   it('offers workload review beside the selected application files and retains accepted changes locally', async () => {
     const prefix = 'scenarios/custom/content/workloads/web'
     const scenario = { label: 'custom', content: [{ id: 'web', kind: 'playbook', target_node: 'first', path: 'content/workloads/web/deploy.yml' }] }

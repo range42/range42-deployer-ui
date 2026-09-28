@@ -49,8 +49,7 @@ import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
 import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
 import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
-import PlatformStackModal from '@/components/project/PlatformStackModal.vue'
-import { appendPlatformComponent, expandPlatformCanvas, platformSelection, isPlatformStack, isPlatformResource } from '@/services/platformComponents'
+import { expandPlatformCanvas, platformSelection, isPlatformStack, isPlatformResource } from '@/services/platformComponents'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -143,27 +142,10 @@ function closeProjectActions() {
 }
 // Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
 const showDeployForm = ref(false)
-const showPlatformStack = ref(false)
 const showDeploymentPicker = ref(false)
 /** @type {import('vue').Ref<import('@/services/nativeScenario').NativeScenario | undefined>} */
 const deploymentScenario = ref()
 const platformNodes = computed(() => (liveNodes.value || []).filter(isPlatformStack))
-const platformProject = computed(() => currentProject.value ? { ...currentProject.value, ...projectGraph() } : undefined)
-/** @param {import('@/services/platformComponents').PlatformComponent} component */
-function addPlatformStack(component) {
-  if (!platformProject.value) return
-  try {
-    const candidate = appendPlatformComponent(platformProject.value, component)
-    /** @type {import('@vue-flow/core').Node[]} */
-    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ ...node, style: /** @type {import('@vue-flow/core').Node['style']} */ (node.style), position: node.position || { x: 0, y: 0 }, ...(isPlatformResource(node) ? { deletable: false, connectable: false } : {}) }))
-    projectStore.updateProject(candidate.id, { files: candidate.files, nodes: candidate.nodes, edges: candidate.edges })
-    vfAddNodes(added)
-    vfAddEdges(candidate.edges.filter(edge => !liveEdges.value.some(existing => existing.id === edge.id)).map(edge => ({ ...edge, deletable: false, updatable: false })))
-    showPlatformStack.value = false
-    void setTab('canvas')
-    nextTick(() => fitView({ padding: 0.15, maxZoom: 1 }))
-  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
-}
 /** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'>} node */
 function deployPlatform(node) {
   showDeploymentPicker.value = false
@@ -1226,7 +1208,6 @@ const handleInfrastructureImport = (result) => {
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
-      @openPlatformStack="showPlatformStack = true"
       @openNativeScenarios="openCatalog('scenario')"
       @openInventory="openCatalog"
       @openTemplates="showTemplateBrowser = true"
@@ -1240,7 +1221,6 @@ const handleInfrastructureImport = (result) => {
         @openExport="showExportModal = true; closeMobileSidebar()"
         @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
         @openValidate="handleOpenValidate(); closeMobileSidebar()"
-        @openPlatformStack="showPlatformStack = true; closeMobileSidebar()"
         @openNativeScenarios="openCatalog('scenario'); closeMobileSidebar()"
         @openInventory="openCatalog(); closeMobileSidebar()"
         @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
@@ -1720,7 +1700,6 @@ const handleInfrastructureImport = (result) => {
       @update:targets="updatePublicationTargets"
     />
 
-    <PlatformStackModal v-if="showPlatformStack && platformProject" :project="platformProject" @close="showPlatformStack = false" @add="addPlatformStack" />
     <div v-if="showDeploymentPicker" class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="deployment-choice">
       <div class="modal-box">
         <h2 id="deployment-choice" class="text-lg font-semibold">Choose what to deploy</h2>

@@ -23,6 +23,7 @@ for (const [existing, width] of [[false, 1440], [true, 1440], [false, 390]] as c
     await page.setViewportSize({ width, height: 1000 })
     await page.goto('/project/native-project')
     if (width < 1024) await page.getByRole('button', { name: 'Project tools', exact: true }).click()
+    await expect(page.getByTestId('add-platform-stack')).toHaveCount(0)
     await page.getByTestId('add-native-scenario').filter({ visible: true }).click()
     await expect(page).toHaveURL(/kind=scenario/)
     await page.getByTestId('catalog-add-to-project').click()
