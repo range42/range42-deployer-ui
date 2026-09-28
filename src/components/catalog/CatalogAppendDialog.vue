@@ -257,10 +257,16 @@ const workload = computed(() => preview.value?.review as undefined | {
         <div v-if="preview" class="rounded-xl border border-base-300 p-4 space-y-3" data-testid="catalog-append-preview">
           <h3 class="font-semibold">{{ t('catalog.append.preview') }}</h3>
           <p class="text-sm">{{ t('catalog.append.counts', preview.counts) }}</p>
+          <p v-if="entry.kind === 'scenario'" class="text-sm">Allocations come from the scenario manifest. Shared templates stay in the original workflow. Choose optional components when deploying.</p>
           <ul v-if="newNodes.length" class="grid gap-2 sm:grid-cols-2">
             <li v-for="node in newNodes" :key="node.id" class="rounded-lg bg-base-200 p-3 min-w-0 text-sm">
               <p class="font-medium break-words">{{ node.data?.label || node.id }} <span class="badge badge-sm badge-ghost">{{ node.type }}</span></p>
               <p class="font-mono text-xs break-all mt-1">{{ node.id }}</p>
+              <p v-if="entry.kind === 'scenario'" class="text-xs mt-1 break-all">
+                <span v-if="node.data?.config?.vmid">VMID {{ node.data.config.vmid }} · </span>
+                {{ node.data?.config?.ipAddress || node.data?.config?.cidr }}
+                <span v-if="node.data?.config?.bridge"> · {{ node.data.config.bridge }}</span>
+              </p>
               <dl class="mt-2 grid grid-cols-2 gap-x-2 gap-y-1">
                 <template v-for="field in resources(node)" :key="field.label">
                   <dt class="text-base-content/60">{{ t(`catalog.append.fields.${field.label}`) }}</dt><dd class="break-all">{{ field.value }}</dd>

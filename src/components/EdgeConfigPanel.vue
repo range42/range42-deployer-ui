@@ -9,6 +9,7 @@ import { isReferenceEdge } from '@/services/canvasNotes'
 const { t } = useI18n()
 
 const props = defineProps({
+  canOpenStackFiles: { type: Boolean, default: true },
   edge: {
     type: Object,
     required: true
@@ -25,6 +26,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'update', 'open-stack-files'])
 const managedStack = computed(() => [props.sourceNode, props.targetNode].some(node => node && isPlatformResource(node)))
+const nativeScenario = computed(() => [props.sourceNode, props.targetNode].some(node => node && isPlatformResource(node) && node.data?.config?.nativeScenario))
 const panel = ref(null)
 const fieldPrefix = `connection-${useId()}`
 const opener = typeof document !== 'undefined' ? document.activeElement : null
@@ -143,7 +145,7 @@ const close = async () => {
         <button type="button" class="btn btn-sm btn-circle btn-ghost shrink-0" :aria-label="t('configPanel.connection.close')" @click="close">✕</button>
       </div>
 
-      <p v-if="managedStack" class="text-sm mb-3">Configured by the Range42 stack. <button type="button" class="link" @click="emit('open-stack-files')">Stack files</button></p>
+      <p v-if="managedStack" class="text-sm mb-3">{{ nativeScenario ? 'Configured by its scenario.' : 'Configured by the Range42 stack.' }} <button v-if="canOpenStackFiles" type="button" class="link" @click="emit('open-stack-files')">{{ nativeScenario ? 'Scenario source' : 'Stack files' }}</button></p>
       <fieldset :disabled="managedStack" class="min-w-0">
       <FormField :model-value="edge.label ?? edge.data?.label ?? ''" :label="t('configPanel.connection.text')"
         :hint="t('configPanel.connection.hint')" type="textarea" :rows="2" icon=""
