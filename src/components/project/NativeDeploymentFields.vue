@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 
-const props = defineProps<{ projectId: string; revision: string; path: string }>()
+const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string }>()
 const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean> }] }>()
 const { t } = useI18n()
 const backend = useBackendApiStore()
@@ -22,6 +22,7 @@ const flags = ref<Record<string, boolean>>({})
 const parametersText = ref('{}')
 const busy = ref(false)
 const error = ref('')
+const reservationNotice = ref('')
 let epoch = 0
 const context = computed(() => contexts.value.find(item => item.id === selected.value))
 const parameters = computed(() => {
@@ -51,18 +52,24 @@ const parameters = computed(() => {
     return value as Record<string, string | number | boolean>
   } catch { return null }
 })
-watch(() => [props.projectId, props.revision, props.path, getBackendScope(), backend.token], async () => {
+watch(() => [props.projectId, props.revision, props.path, props.componentId, getBackendScope(), backend.token], async () => {
   const request = ++epoch
   contexts.value = []; features.value = []; selected.value = ''; flags.value = {}; error.value = ''; busy.value = true
   platform.value = null; setup.value = {}; parametersText.value = '{}'
+  reservationNotice.value = ''
   emit('select', null)
   try {
     const query = new URLSearchParams({ sha: props.revision, path: props.path })
+    if (props.componentId) query.set('component_id', props.componentId)
     const [environments, descriptor] = await Promise.all([
       backendRequest<{ items: Context[] }>('/v1/contexts'),
-      backendRequest<{ features: Feature[]; platform?: Platform }>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario?${query}`),
+      backendRequest<{ features: Feature[]; platform?: Platform; topology?: { reservations: { status: string; issues: string[] } } }>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario?${query}`),
     ])
     if (request !== epoch) return
+    const registry = descriptor.topology?.reservations
+    if (registry && ['conflict', 'invalid'].includes(registry.status)) throw new Error(registry.issues.join(' '))
+    if (registry) reservationNotice.value = registry.status === 'checked'
+      ? 'Declared VMIDs and addresses match the scenario registry. Preflight checks the selected Proxmox host before execution.' : registry.issues.join(' ')
     contexts.value = environments.items
     features.value = descriptor.features
     platform.value = descriptor.platform || null
@@ -85,6 +92,7 @@ onBeforeUnmount(() => { epoch += 1 })
     <p class="text-sm">{{ t('deployment.native.workflow') }}</p>
     <p v-if="busy" role="status" class="text-sm">{{ t('deployment.native.loading') }}</p>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
+    <p v-if="reservationNotice" class="text-xs text-base-content/70">{{ reservationNotice }}</p>
     <p v-if="!busy && !error && !contexts.length" role="status" data-testid="native-context-empty" class="text-sm">{{ t('deployment.native.empty') }}</p>
     <label v-if="contexts.length" class="form-control gap-1">
       <span>{{ t('deployment.native.environment') }}</span>

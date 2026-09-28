@@ -175,6 +175,15 @@ function openPlatformFiles(node) {
   const owner = isPlatformStack(node) ? node : platformNodes.value.find(group => group.id === node.data?.config?.platformStack)
   const selected = owner && platformSelection(owner)
   if (!selected) return
+  const origin = owner?.data?.config?.nativeCatalog
+  if (origin) {
+    const base = new URL(String(origin.base_url))
+    if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) return
+    const route = origin.provider === 'gitlab' ? '/-/tree/' : '/tree/'
+    const source = `${base.href.replace(/\/$/, '')}/${origin.repo_owner}/${origin.repo_name}${route}${origin.sha}/${selected.path}`
+    window.open(source, '_blank', 'noopener,noreferrer')
+    return
+  }
   closeConfigPanel()
   closeEdgeConfig()
   const query = { ...route.query }
@@ -1012,7 +1021,8 @@ watch(() => [currentProject.value?.id, route.query.node], () => {
   showConfigPanel.value = !!selectedNode.value
 }, { flush: 'post' })
 
-function openCatalog() {
+/** @param {string | Event} [kind] */
+function openCatalog(kind = undefined) {
   if (!currentProject.value) return
   try {
     projectStore.updateProject(currentProject.value.id, projectGraph())
@@ -1021,7 +1031,7 @@ function openCatalog() {
     if (autosaveTimer !== null) clearTimeout(autosaveTimer)
     autosaveTimer = null
     router.push({ path: '/catalog', query: currentProject.value.native_scenario ? {} : {
-      project: currentProject.value.id, ...(selectedNode.value ? { node: selectedNode.value.id } : {}) } })
+      project: currentProject.value.id, ...(kind === 'scenario' ? { kind } : {}), ...(selectedNode.value ? { node: selectedNode.value.id } : {}) } })
   } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
 }
 
@@ -1196,6 +1206,7 @@ const handleInfrastructureImport = (result) => {
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
       @openPlatformStack="showPlatformStack = true"
+      @openNativeScenarios="openCatalog('scenario')"
       @openInventory="openCatalog"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
@@ -1209,6 +1220,7 @@ const handleInfrastructureImport = (result) => {
         @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
         @openValidate="handleOpenValidate(); closeMobileSidebar()"
         @openPlatformStack="showPlatformStack = true; closeMobileSidebar()"
+        @openNativeScenarios="openCatalog('scenario'); closeMobileSidebar()"
         @openInventory="openCatalog(); closeMobileSidebar()"
         @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
         @openImport="handleOpenImport(); closeMobileSidebar()" />
@@ -1471,8 +1483,8 @@ const handleInfrastructureImport = (result) => {
               @update:expanded="updateNodeStatus(props.id, { _expanded_preview: $event })"
             >
               <template v-if="isPlatformStack(props)" #actions>
-                <button type="button" class="btn btn-primary btn-sm nodrag nopan" @click.stop="deployPlatform(props)">Deploy stack</button>
-                <button type="button" class="btn btn-ghost btn-sm nodrag nopan" @click.stop="openPlatformFiles(props)">Stack files</button>
+                <button type="button" class="btn btn-primary btn-sm nodrag nopan" @click.stop="deployPlatform(props)">{{ props.data.config?.nativeScenario ? 'Deploy scenario' : 'Deploy stack' }}</button>
+                <button type="button" class="btn btn-ghost btn-sm nodrag nopan" @click.stop="openPlatformFiles(props)">{{ props.data.config?.nativeScenario ? 'Scenario source' : 'Stack files' }}</button>
               </template>
             </GroupNode>
           </template>

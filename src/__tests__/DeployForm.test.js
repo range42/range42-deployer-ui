@@ -51,6 +51,7 @@ function fetchMockHosts(extra = {}) {
     if (url.includes('/native-scenario')) return { ok: true, status: 200, json: async () => ({
       path: 'training/exercise-a', actions: { full: 'exercise.setup.sh', teardown: 'exercise.delete_all.sh' },
       features: [{ id: 'WAZUH', label: 'Monitoring', description: 'Optional monitoring', default: false }],
+      ...(extra.topology ? { topology: extra.topology } : {}),
     }) }
     if (url.includes('/v1/proxmox/hosts') && (!opts || opts.method !== 'POST')) {
       return {
@@ -88,10 +89,10 @@ describe('<DeployForm>', () => {
     globalThis.fetch = originalFetch
   })
 
-  it('deploys a native scenario with its chosen environment and feature selections', async () => {
+  it.each([undefined, 'catalog-1'])('deploys a native scenario with its environment and saved component %s', async component_id => {
     const fetchSpy = fetchMockHosts()
     globalThis.fetch = fetchSpy
-    const wrapper = mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'training/exercise-a' },
+    const wrapper = mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'training/exercise-a', component_id },
       projectSha: 'a'.repeat(40), gamenet: false }), global: { plugins: [makeRouter(), makeI18n()] } })
     await flushPromises()
     await wrapper.get('[data-testid="native-context"]').setValue('training-demo')
@@ -106,8 +107,19 @@ describe('<DeployForm>', () => {
     const body = JSON.parse(request[1].body)
     expect(body.scenario_label).toBe('exercise-a')
     expect(body.target_host_id).toBe('host-2')
-    expect(body.native).toEqual({ context_id: 'training-demo', path: 'training/exercise-a', features: { WAZUH: true }, parameters: {} })
+    expect(body.native).toEqual({ context_id: 'training-demo', path: 'training/exercise-a', features: { WAZUH: true }, parameters: {}, ...(component_id ? { component_id } : {}) })
+    const preview = fetchSpy.mock.calls.find(([url]) => String(url).includes('/native-scenario'))
+    expect(new URL(preview[0], 'http://localhost').searchParams.get('component_id')).toBe(component_id || null)
     expect(body).not.toHaveProperty('secrets')
+  })
+
+  it('shows a scenario registry conflict before deployment can be submitted', async () => {
+    globalThis.fetch = fetchMockHosts({ topology: { reservations: { status: 'conflict', issues: ['VMID 1187 conflicts with misp_lab'] } } })
+    const wrapper = mount(DeployForm, { props: baseProps({ nativeScenario: { version: 1, path: 'scenarios/admin_services_lab', component_id: 'catalog-1' }, projectSha: 'a'.repeat(40) }), global: { plugins: [makeRouter(), makeI18n()] } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('VMID 1187 conflicts with misp_lab')
+    await wrapper.get('[data-testid="deploy-sha-ack"] input').setValue(true)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeDefined()
   })
 
   it('explains missing native environments and blocks deployment', async () => {

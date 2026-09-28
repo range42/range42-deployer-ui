@@ -21,7 +21,7 @@ export function isPlatformResource(node: PlatformNode): boolean {
 export function platformSelection(node: Pick<CanvasNode, 'type' | 'data'>): NativeScenario | undefined {
   if (!isPlatformStack(node)) return undefined
   const selection = nativeScenario(node.data?.config?.scenario)
-  if (!/^platforms\/[a-z][a-z0-9-]{0,23}$/.test(selection.path)) throw new Error('Invalid stack scenario path')
+  if (!node.data?.config?.nativeScenario && !/^platforms\/[a-z][a-z0-9-]{0,23}$/.test(selection.path)) throw new Error('Invalid stack scenario path')
   return selection
 }
 function range(cidr: string): [number, number] {
@@ -41,7 +41,7 @@ export function appendPlatformComponent(original: ProjectDraft, component: Platf
   const project = JSON.parse(JSON.stringify(original)) as ProjectDraft
   const id = `platform-${component.plan.id}`
   if (project.nodes.some(node => node.id === id || platformSelection(node)?.path === component.scenario.path)) throw new Error('A stack with this name already exists in the project')
-  const peers = project.nodes.filter(isPlatformStack).map(node => node.data?.config?.plan as PlatformPlan)
+  const peers = project.nodes.filter(isPlatformStack).map(node => node.data?.config?.plan as PlatformPlan).filter(Boolean)
   const vmids = new Set([
     ...((project.scenario?.vms || []) as { vm_id: number }[]).map(vm => Number(vm.vm_id)),
     ...project.nodes.filter(node => node.type === 'vm').map(node => Number(node.data?.vmId || node.data?.config?.vmid)),
@@ -83,6 +83,10 @@ export function appendPlatformComponent(original: ProjectDraft, component: Platf
 export function expandPlatformCanvas(sourceNodes: CanvasNode[], sourceEdges: CanvasEdge[]) {
   const nodes = sourceNodes.map(node => ({ ...node })), edges = [...sourceEdges]
   for (const group of nodes.filter(isPlatformStack)) {
+    if (group.data?.config?.nativeScenario) {
+      group.data = { ...group.data, hasChildren: nodes.some(node => (node.parentNode || node.parent) === group.id) }
+      continue
+    }
     const plan = group.data?.config?.plan as PlatformPlan | undefined
     if (!plan?.vms?.length) continue
     group.type = 'group'

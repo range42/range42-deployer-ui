@@ -1,4 +1,5 @@
 import { catalogCanvas } from '@/services/catalogProjectHandoff'
+import { nativeScenarioCanvas, checkNativeProjectCollisions, type NativeTopology } from '@/services/nativeScenarioCanvas'
 import { publicCatalogImports, publicCatalogReference, type CatalogImportReference } from '@/services/catalogReference'
 import { captureProjectAuthoring, inspectProjectAuthoring, objectValue, publicProjectOverlay } from '@/services/projectAuthoring'
 import { captureCanvasSnapshot, readCanvasSnapshot } from '@/services/projectCanvasSnapshot'
@@ -99,7 +100,21 @@ export async function prepareCatalogAppend(input: CatalogAppendInput, provider?:
   const provenance: CatalogImportReference = { version: 1, id, origin, node_ids: [], attachment_ids: [], content_ids: [] }
   const result: CatalogAppendPreview = { project, addedNodeIds: provenance.node_ids, counts: { nodes: 0, edges: 0, attachments: 0, roles: 0, files: 0 },
     warnings: [], provenance }
-  if (entry.kind === 'ansible_role') {
+  if (entry.kind === 'scenario') {
+    if (project.native_scenario) throw new Error('Add scenarios to a canvas project')
+    if (entry.document?.format !== 'range42-native') throw new Error('Choose an existing native scenario')
+    const topology = entry.document.topology as NativeTopology
+    const canvas = nativeScenarioCanvas(id, entry.name, entry.path, topology, origin)
+    checkNativeProjectCollisions(project, topology)
+    const group = canvas.nodes[0]!
+    group.position = { x: Math.max(0, ...project.nodes.filter(node => !node.parentNode && !node.parent).map(node =>
+      (node.position?.x || 0) + (Number.parseFloat(String(typeof node.style === 'object' ? (node.style as Record<string, unknown>)?.width : '')) || 280) + 80)), y: 80 }
+    project.nodes.push(...canvas.nodes); project.edges.push(...canvas.edges)
+    provenance.node_ids.push(...canvas.nodes.map(node => node.id))
+    Object.assign(result.counts, { nodes: canvas.nodes.length, edges: canvas.edges.length })
+    result.warnings.push(...topology.warnings, ...topology.reservations.issues,
+      'Deployment uses this scenario’s original playbooks and fixed VMIDs at the selected commit. Templates are shared references, not additional project machines.')
+  } else if (entry.kind === 'ansible_role') {
     if (!targetNode || !project.nodes.some(node => node.id === targetNode && node.type === 'vm')) throw new Error('Choose an existing target VM before appending a role')
     const files = await loadCatalogRoleFiles({ owner: repo.owner, repo: repo.repo, path: entry.path, sha: entry.sha! },
       provider || providerForBinding({ source_id: source.id, provider: source.provider, base_url: source.base_url }))

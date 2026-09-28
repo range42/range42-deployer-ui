@@ -143,7 +143,7 @@ const close = async () => {
         <button type="button" class="btn btn-sm btn-circle btn-ghost shrink-0" :aria-label="t('configPanel.connection.close')" @click="close">✕</button>
       </div>
 
-      <p v-if="managedStack" class="text-sm mb-3">Configured by the Range42 stack. <button type="button" class="link" @click="emit('open-stack-files')">Stack files</button></p>
+      <p v-if="managedStack" class="text-sm mb-3">Configured by its scenario. <button type="button" class="link" @click="emit('open-stack-files')">Scenario source</button></p>
       <fieldset :disabled="managedStack" class="min-w-0">
       <FormField :model-value="edge.label ?? edge.data?.label ?? ''" :label="t('configPanel.connection.text')"
         :hint="t('configPanel.connection.hint')" type="textarea" :rows="2" icon=""

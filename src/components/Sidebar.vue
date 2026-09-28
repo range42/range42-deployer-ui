@@ -10,7 +10,7 @@ defineOptions({ name: 'ProjectSidebar' })
 const props = defineProps<{ project?: { name?: string; nodes?: unknown[]; edges?: unknown[]; native_scenario?: { version: number; path: string } } }>()
 const emit = defineEmits<{
   addComponent: [type: string]; openExport: []; openDeploy: []; openValidate: [];
-  openPlatformStack: []; openInventory: []; openTemplates: []; openImport: [];
+  openNativeScenarios: []; openPlatformStack: []; openInventory: []; openTemplates: []; openImport: [];
 }>()
 const { t, locale } = useI18n()
 const { onDragStart } = useDragAndDrop()
@@ -51,9 +51,14 @@ const statuses = ['gray', 'orange', 'green', 'red', 'blue']
         </button>
       </div>
       <div v-if="!project?.native_scenario" class="px-3 pb-3">
+        <button type="button" class="catalog-action w-full mb-2" data-testid="add-native-scenario" @click="emit('openNativeScenarios')">
+          <span aria-hidden="true"><AppIcon name="books" class="size-5 shrink-0" /></span>
+          <span class="min-w-0"><span class="block text-sm font-semibold">Add scenario</span><span class="block text-xs text-base-content/70">Use existing machines, networks and playbooks</span></span>
+          <span class="ml-auto" aria-hidden="true">+</span>
+        </button>
         <button type="button" class="catalog-action w-full" data-testid="add-platform-stack" @click="emit('openPlatformStack')">
           <span aria-hidden="true"><AppIcon name="cube" class="size-5 shrink-0" /></span>
-          <span class="min-w-0"><span class="block text-sm font-semibold">{{ t('sidebar.platform.title') }}</span><span class="block text-xs text-base-content/70">{{ t('sidebar.platform.description') }}</span></span>
+          <span class="min-w-0"><span class="block text-sm font-semibold">Custom stack</span><span class="block text-xs text-base-content/70">Advanced: generate an isolated instance</span></span>
           <span class="ml-auto" aria-hidden="true">+</span>
         </button>
       </div>
