@@ -85,7 +85,7 @@ async function loadInventory() {
   finally { if (current === inventoryEpoch) inventoryBusy.value = false }
 }
 watch(hostId, id => { if (id) void loadInventory() })
-watch(() => [backend.url, backend.token, backend.activeHost?.id, props.project.id], loadHosts, { immediate: true })
+watch([() => backend.url, () => backend.token, () => backend.activeHost?.id, () => props.project.id], loadHosts, { immediate: true })
 async function review() {
   const request = ++generation, scope = getBackendScope()
   busy.value = true; error.value = ''; preview.value = null
