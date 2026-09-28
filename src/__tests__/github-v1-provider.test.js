@@ -246,3 +246,14 @@ describe('GitHubV1Provider', () => {
     expect(typeof h.rtt_ms).toBe('number');
   });
 });
+
+it('reads complete Git blob digests at one pinned revision and refuses incomplete trees', async () => {
+  const ref='a'.repeat(40)
+  const fetchImpl=vi.fn(async()=>jsonResponse({tree:[{path:'folder',type:'tree',sha:'b'.repeat(40)},{path:'folder/a.yml',type:'blob',sha:'c'.repeat(40)}],truncated:false}))
+  const provider=new GitHubV1Provider({fetchImpl})
+  expect(typeof provider.getFileDigests).toBe('function')
+  expect(await provider.getFileDigests({owner:'o',repo:'r',ref})).toEqual({'folder/a.yml':'c'.repeat(40)})
+  expect(fetchImpl.mock.calls[0][0]).toContain(`/git/trees/${ref}?recursive=true`)
+  fetchImpl.mockImplementation(async()=>jsonResponse({tree:[],truncated:true}))
+  await expect(provider.getFileDigests({owner:'o',repo:'r',ref})).rejects.toThrow(/truncated/)
+})

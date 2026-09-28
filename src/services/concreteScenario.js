@@ -1,5 +1,7 @@
+import { isPlatformResource } from './platformComponents'
 import { vmMemoryMb, vmDiskGb } from './vmResources'
 import { validateRoleAttachment } from './catalogRoleExecution'
+import { validateCatalogWorkloadReview } from './catalogWorkload'
 import { expandScenarioReplication } from './scenarioReplication'
 import { validateFileMap } from '@/services/projectFiles'
 import { parse, stringify } from 'yaml'
@@ -111,6 +113,7 @@ function configurationVariables(baseDoc, overlay) {
 
 /** Seed explicit authoring values; never guess VMIDs or source template IDs. */
 export function createScenarioDraft(project, nodes = [], edges = []) {
+  nodes = nodes.filter(node => !isPlatformResource(node))
   const saved = project.scenario ? JSON.parse(JSON.stringify(project.scenario)) : null
   const label = String(project.name || 'scenario').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'scenario'
   const networks = nodes.filter(node => node.type === 'network-segment').map((node, index) => ({
@@ -227,9 +230,18 @@ function teardownPlay(vms) {
 export function emitConcreteScenario({ scenario, nodes = [], edges = [], files = {}, attachments = [], generatedPaths = [], baseDoc, overlay, runtimeCapabilities }) {
   validateFileMap(files)
   ;({ nodes, edges } = withoutCanvasNotes(nodes, edges))
+  const platforms = new Set(nodes.filter(isPlatformResource).map(node => node.id))
+  edges = edges.filter(edge => !(platforms.has(edge.source) && platforms.has(edge.target)))
+  requireValue(edges.every(edge => !platforms.has(edge.source) && !platforms.has(edge.target)), 'Stack connections are configured inside the stack settings')
+  nodes = nodes.filter(node => !platforms.has(node.id))
   requireValue(scenario && /^[a-z][a-z0-9_]{0,47}$/.test(scenario.label), 'Scenario name must start with a lowercase letter and contain only letters, numbers and underscores (48 characters maximum)')
   requireValue(['sdn', 'existing_bridge'].includes(scenario.network_mode), 'Choose SDN or an existing bridge network')
   requireValue(!attachments.length, 'Existing canvas attachments must be moved into the scenario Content list before generating; they cannot be silently omitted')
+  for (const item of scenario.content || []) {
+    if (item.kind === 'playbook' && ['deploy.yml', 'cleanup.yml'].some(name => item.path === `content/workloads/${item.id}/${name}`)) {
+      validateCatalogWorkloadReview({ files, scenarioLabel: scenario.label, attachmentId: item.id })
+    }
+  }
   const authoringScenario = scenario
   const expanded = expandScenarioReplication({ scenario, nodes, edges })
   if (expanded) ({ scenario, nodes, edges } = expanded)

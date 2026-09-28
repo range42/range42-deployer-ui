@@ -62,6 +62,74 @@ describe('<DeploymentDetail>', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('allows network preparation before the first full attempt', async () => {
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [] }
+        : { id: 'd-network', state: 'pending', project_sha: 'a'.repeat(40), scenario_label: 'demo' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-network?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(false)
+    expect(wrapper.get('[data-testid="deployment-start"]').attributes('disabled')).toBeDefined()
+  })
+
+  it.each(['runtime', 'teardown'])('allows a fresh full preflight after a successful %s attempt', async scope => {
+    globalThis.fetch = vi.fn(async (url, options) => ({ ok: true, status: 200, json: async () => {
+      if (url.endsWith('/preflight')) return { result: 'pass', checks: [] }
+      if (url.endsWith('/attempts')) return options?.method === 'POST'
+        ? { id: 'full-next', scope: 'full', state: 'pending' }
+        : { items: [{ id: 'prepared', scope, state: 'succeeded' }] }
+      return { id: 'd-network', state: 'succeeded', current_attempt_id: 'prepared', project_sha: 'a'.repeat(40), scenario_label: 'demo' }
+    } }))
+    const router = makeRouter()
+    await router.push('/deployments/d-network?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.get('[data-testid="deployment-start"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="deployment-run-preflight"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="deployment-start"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="deployment-start"]').trigger('click')
+    await flushPromises()
+    const call = globalThis.fetch.mock.calls.find(([url, options]) => url.endsWith('/attempts') && options?.method === 'POST')
+    expect(JSON.parse(call[1].body)).toEqual({ scope: 'full' })
+  })
+
+  it.each(['pending', 'deploying'])('blocks runtime controls while an attempt is %s despite terminal deployment metadata', async state => {
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [{ id: 'active', scope: 'runtime', state }] }
+        : { id: 'd-network', state: 'succeeded', project_sha: 'a'.repeat(40), scenario_label: 'demo' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-network?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
+  })
+
+  it('requires another full preflight after network preparation changes the deployment', async () => {
+    let prepared = false
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () => {
+      if (url.endsWith('/preflight')) return { result: 'pass', checks: [] }
+      if (url.endsWith('/attempts')) return { items: prepared ? [{ id: 'network', scope: 'runtime', state: 'succeeded' }] : [] }
+      return { id: 'd-network', state: prepared ? 'succeeded' : 'pending', current_attempt_id: prepared ? 'network' : null,
+        project_sha: 'a'.repeat(40), scenario_label: 'demo' }
+    } }))
+    const router = makeRouter()
+    await router.push('/deployments/d-network?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()] } })
+    await settle(wrapper)
+    await wrapper.get('[data-testid="deployment-run-preflight"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="deployment-start"]').attributes('disabled')).toBeUndefined()
+    prepared = true
+    wrapper.getComponent(RuntimeControls).vm.$emit('started', { id: 'network', scope: 'runtime', state: 'succeeded' })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="deployment-start"]').attributes('disabled')).toBeDefined()
+  })
+
   it('keeps current REST state while replaying older attempts, then accepts newer live state', async () => {
     globalThis.fetch = vi.fn(async input => ({ ok: true, status: 200, json: async () => String(input).endsWith('/attempts')
       ? { items: [{ id: 'current', state: 'succeeded', event_cursor_tip: 100 }] }
@@ -322,6 +390,34 @@ describe('<DeploymentDetail>', () => {
     expect(wrapper.getComponent(RuntimeGitRecords).props('newAttempt').id).toBe('runtime-1')
     expect(wrapper.text()).toContain('runtime-1')
     expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
+  })
+
+  it('refreshes a completed runtime attempt when the live deployment state is already succeeded', async () => {
+    let attemptState = 'deploying'
+    globalThis.fetch = vi.fn(async url => ({ ok: true, status: 200, json: async () =>
+      url.endsWith('/attempts') ? { items: [{ id: 'runtime-1', scope: 'runtime', state: attemptState }] }
+        : { id: 'd-runtime', state: 'succeeded', current_attempt_id: 'runtime-1', project_sha: 'a'.repeat(40),
+          scenario_label: 'demo', target_host_id: 'host-1' },
+    }))
+    const router = makeRouter()
+    await router.push('/deployments/d-runtime?tab=overview')
+    const wrapper = mount(DeploymentDetail, { global: { plugins: [router, makeI18n()], stubs: { SnapshotSets: true } } })
+    await settle(wrapper)
+    const live = useDeploymentStore().deployments['d-runtime']
+    applySseEvent(live, { event_type: 'attempt_end', event_seq: 1, attempt_id: 'previous', payload: { terminal_state: 'succeeded' } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-state"]').text()).toBe('succeeded')
+    expect(wrapper.get('ol li').text()).toContain('deploying')
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(true)
+
+    applySseEvent(live, { event_type: 'attempt_start', event_seq: 2, attempt_id: 'runtime-1', payload: { scope: 'runtime' } })
+    attemptState = 'succeeded'
+    applySseEvent(live, { event_type: 'attempt_end', event_seq: 3, attempt_id: 'runtime-1', payload: { terminal_state: 'succeeded' } })
+    await flushPromises()
+
+    expect(wrapper.get('ol li').text()).toContain('succeeded')
+    expect(wrapper.get('ol li').text()).not.toContain('deploying')
+    expect(wrapper.getComponent(RuntimeControls).props('disabled')).toBe(false)
   })
 
   it('preflights and runs a chosen configure revision, invalidating the check after a revision edit', async () => {

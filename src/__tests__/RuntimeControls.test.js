@@ -35,6 +35,64 @@ async function show(props = {}) {
 }
 
 describe('live network and firewall controls', () => {
+  it('explains how to prepare new networks for later cleanup', async () => {
+    state.permissions = { admin: true, operate: true }
+    state.runtime.operations.push('sdn_network')
+    state.networks[0].identity_matches = false
+    const wrapper = await show()
+    expect(wrapper.get('[data-testid="runtime-network-preparation"]').text()).toContain('before starting the guests')
+    expect(wrapper.get('[data-testid="runtime-network-create-lab1"]').attributes('disabled')).toBeUndefined()
+  })
+  it('preserves a policy draft and blocks editing if the refreshed report is unavailable', async () => {
+    state.permissions = { admin: true, operate: true }
+    state.runtime.operations.push('firewall_rule', 'firewall_alias')
+    let failReport = false
+    fetchMock.mockImplementation(url => {
+      if (url.endsWith('/runtime-report') && failReport) return Promise.resolve(new Response(JSON.stringify({ message: 'Report unavailable' }), { status: 503 }))
+      return Promise.resolve(new Response(JSON.stringify(url.endsWith('/runtime-report')
+        ? { version: 1, chains: [{ scope: 'vm', vm_id: 3191, available: true, aliases: [], rules: [] }],
+          cards: [], live_nat: { available: false, rules: [] } } : state)))
+    })
+    const wrapper = await show()
+    await wrapper.get('[data-testid="runtime-report-open"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="policy-port"]').setValue('8443')
+    failReport = true
+    await wrapper.get('header button').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="runtime-report"] [role="alert"]').text()).toContain('Report unavailable')
+    expect(wrapper.get('[data-testid="policy-port"]').element.value).toBe('8443')
+    expect(wrapper.get('[data-testid="policy-port"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="policy-rule-form"]').trigger('submit')
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true)
+  })
+  it.each(['operation completion', 'manual refresh'])('refreshes the open report after %s without losing a policy draft', async trigger => {
+    state.permissions = { admin: true, operate: true }
+    state.runtime.operations.push('firewall_rule', 'firewall_alias')
+    let observedPort = '443'
+    fetchMock.mockImplementation(url => Promise.resolve(new Response(JSON.stringify(url.endsWith('/runtime-report')
+      ? { version: 1, chains: [{ scope: 'vm', vm_id: 3191, available: true, aliases: [], rules: [{ position: 0,
+        direction: 'in', action: 'ACCEPT', protocol: 'tcp', destination_port: observedPort, enabled: true,
+        comment: 'range42-deployment:dep;rule:web' }] }], cards: [], live_nat: { available: false, rules: [] } }
+      : state))))
+    const wrapper = await show()
+    await wrapper.get('[data-testid="runtime-report-open"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="policy-edit-vm-3191-0"]').trigger('click')
+    await wrapper.get('[data-testid="policy-port"]').setValue('8443')
+    observedPort = '9443'
+    if (trigger === 'operation completion') {
+      await wrapper.setProps({ disabled: true })
+      await wrapper.setProps({ disabled: false })
+    } else {
+      await wrapper.get('header button').trigger('click')
+    }
+    await flushPromises()
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/runtime-report'))).toHaveLength(2)
+    expect(wrapper.get('[data-testid="runtime-report"]').text()).toContain('9443')
+    expect(wrapper.get('[data-testid="policy-port"]').element.value).toBe('8443')
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true)
+  })
   it('reviews exact VNet lifecycle scope and submits only the server-reviewed identity', async () => {
     state.permissions = { admin: true, operate: true }
     state.runtime.operations.push('sdn_network')

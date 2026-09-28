@@ -173,6 +173,7 @@ function resources(node: CanvasNode) {
 const workload = computed(() => preview.value?.review as undefined | {
   service: string; images: string[]; destination: string;
   port_mappings: Array<{ host_port: number; container_port: number; protocol: string }>;
+  assets?: Array<{ path: string; size: number; media_type?: string }>;
   prerequisites: string[]; limitations: string[];
 })
 </script>
@@ -273,6 +274,9 @@ const workload = computed(() => preview.value?.review as undefined | {
               <dt class="text-base-content/60">{{ t('catalog.append.fields.image') }}</dt><dd class="break-all">{{ workload.images.join(', ') }}</dd>
               <dt class="text-base-content/60">{{ t('catalog.append.effective_ports') }}</dt><dd><ul><li v-for="port in workload.port_mappings" :key="`${port.host_port}/${port.protocol}`">{{ port.host_port }} → {{ port.container_port }}/{{ port.protocol }}</li></ul></dd>
               <dt class="text-base-content/60">{{ t('catalog.append.directory') }}</dt><dd class="font-mono text-xs break-all">{{ workload.destination }}</dd>
+              <template v-if="workload.assets?.length">
+                <dt class="text-base-content/60">{{ t('catalog.append.assets') }}</dt><dd><ul><li v-for="asset in workload.assets" :key="asset.path" class="break-all">{{ asset.path }} · {{ asset.size }} bytes</li></ul></dd>
+              </template>
             </dl>
             <ul class="space-y-2"><li v-for="item in [...workload.prerequisites, ...workload.limitations]" :key="item">{{ item }}</li></ul>
           </div>

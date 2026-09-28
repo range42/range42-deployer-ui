@@ -466,3 +466,30 @@ describe('concrete scenario emitter', () => {
   })
 
 })
+
+it('preserves a separately deployed platform component when compiling the existing topology', () => {
+  const input = fixture()
+  const before = emitConcreteScenario(input)
+  input.nodes.push({ id: 'platform-alpha', type: 'range42-stack', data: { config: { scenario: { version: 1, path: 'platforms/alpha' } } } })
+  input.files['platforms/alpha/main.yml'] = '- hosts: platform\n  tasks: []\n'
+  const after = emitConcreteScenario(input)
+  expect(after.files['platforms/alpha/main.yml']).toBe(input.files['platforms/alpha/main.yml'])
+  for (const path of before.generatedPaths) expect(after.files[path]).toBe(before.files[path])
+})
+
+it('keeps standard stack nodes out of ordinary scenario authoring and deployment', async () => {
+  const { appendPlatformComponent } = await import('@/services/platformComponents')
+  const input = fixture(), before = emitConcreteScenario(input)
+  const graph = appendPlatformComponent({ ...input, id: 'p', name: 'Demo' }, {
+    version: 1, scenario: { version: 1, path: 'platforms/alpha' }, files: {},
+    plan: { id: 'alpha', domain: 'alpha.example.test', profile: 'core', subnet: '10.81.0.0/24', bridge: 'r42alpha',
+      vms: [{ service: 'ui', vm_id: 31000, vm_name: 'r42-alpha-ui', ip: '10.81.0.12' }] },
+  })
+  expect(graph.nodes.find(n => n.id === 'platform-alpha-ui')?.type).toBe('vm')
+  const draft = createScenarioDraft({ name: 'Demo', scenario: input.scenario }, graph.nodes, graph.edges)
+  expect(draft.vms.map(n => n.node_id)).toEqual(['vm1'])
+  expect(draft.networks.map(n => n.id)).toEqual(['net1'])
+  const result = emitConcreteScenario({ ...input, nodes: graph.nodes, edges: graph.edges })
+  for (const path of before.generatedPaths) expect(result.files[path]).toBe(before.files[path])
+  expect(() => emitConcreteScenario({ ...input, nodes: graph.nodes, edges: [...graph.edges, { source: 'vm1', target: 'platform-alpha-network' }] })).toThrow(/Stack connections/)
+})

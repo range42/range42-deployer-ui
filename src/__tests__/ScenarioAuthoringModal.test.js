@@ -7,6 +7,7 @@ import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
 import fixture from './fixtures/catalogRoleNtp.json'
 import FileAssetField from '@/components/project/FileAssetField.vue'
 import ScenarioAuthoringModal from '@/components/project/ScenarioAuthoringModal.vue'
+import { customSimulation } from './fixtures/customSimulation'
 
 vi.mock('@/i18n/index.js', () => ({ ensureNamespaces: vi.fn() }))
 vi.mock('@/services/backendApi', async importOriginal => ({ ...await importOriginal(), backendRequest: vi.fn() }))
@@ -138,16 +139,12 @@ describe('scenario authoring review', () => {
     expect(result.scenario.vms[0].storage).toBe('fast-pool')
     expect(JSON.parse(result.files['scenarios/demo/manifest/scenario_vms.json']).vms[0].storage).toBe('fast-pool')
   })
-  it('stages an existing workload cleanup playbook for explicit review and preserves edited deployment content', async () => {
-    const wrapper = modal(), project = JSON.parse(JSON.stringify(wrapper.props('project')))
-    const prefix = 'content/workloads/test'
-    const deploy = '- hosts: "{{ global_vm_ssh_name }}"\n  tasks: []\n'
-    const cleanup = '- hosts: "{{ global_vm_ssh_name }}"\n  tasks:\n    - ansible.builtin.debug:\n        msg: cleanup\n'
-    project.files = { [`scenarios/demo/${prefix}/deploy.yml`]: deploy, [`scenarios/demo/${prefix}/cleanup.yml`]: cleanup }
-    project.scenario.content = [{ id: 'test', kind: 'playbook', target_node: 'vm', path: `${prefix}/deploy.yml`, vars: {} }]
-    await wrapper.setProps({ open: false, project })
-    await wrapper.setProps({ open: true })
-    await wrapper.get('[data-testid="content-text"]').setValue(deploy + '# keep this edit\n')
+  it('stages a reviewed workload cleanup playbook and preserves its deployment files and assets', async () => {
+    const { project } = await customSimulation()
+    const wrapper = modal({ project, nodes: project.nodes, edges: project.edges })
+    const prefix = 'content/workloads/web'
+    const deploy = project.files[`scenarios/saved/${prefix}/deploy.yml`]
+    const cleanup = project.files[`scenarios/saved/${prefix}/cleanup.yml`]
     await wrapper.get('[data-testid="workload-cleanup"]').trigger('click')
     expect(wrapper.get('[data-testid="content-path"]').element.value).toBe(`${prefix}/cleanup.yml`)
     expect(wrapper.get('[data-testid="content-text"]').element.value).toBe(cleanup)
@@ -156,8 +153,9 @@ describe('scenario authoring review', () => {
     await wrapper.get('[data-testid="scenario-apply"]').trigger('click')
     const generated = wrapper.emitted('generated')[0][0]
     expect(generated.scenario.content[0].path).toBe(`${prefix}/cleanup.yml`)
-    expect(generated.files[`scenarios/demo/${prefix}/deploy.yml`]).toContain('# keep this edit')
-    expect(generated.files['scenarios/demo/configure.yml']).toContain(`${prefix}/cleanup.yml`)
+    expect(generated.files[`scenarios/saved/${prefix}/deploy.yml`]).toBe(deploy)
+    expect(generated.files[`scenarios/saved/${prefix}/payload/site/logo.png`]).toEqual(project.files[`scenarios/saved/${prefix}/payload/site/logo.png`])
+    expect(generated.files['scenarios/saved/configure.yml']).toContain(`${prefix}/cleanup.yml`)
   })
   it('stages copied role files and preserves explicit content order only after scenario review', async () => {
     const wrapper = modal()

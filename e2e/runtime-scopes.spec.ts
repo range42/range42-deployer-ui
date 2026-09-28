@@ -44,6 +44,17 @@ for (const width of [1280, 390]) {
     await expect(panel.getByTestId('reported-network-r42blue')).toContainText('10.42.70.0/24')
     await panel.getByTestId('policy-edit-vm-3191-0').click()
     await panel.getByTestId('policy-port').fill('8443')
+    // A refreshed chain must not retarget the existing draft to changed policy.
+    rule.source = '10.42.71.0/24'
+    await panel.locator('header').getByRole('button', { name: 'Refresh state' }).click()
+    const ruleForm = panel.getByTestId('policy-rule-form')
+    await expect(ruleForm.getByRole('alert')).toContainText('rule changed')
+    await expect(panel.getByTestId('policy-port')).toHaveValue('8443')
+    await expect(ruleForm.getByRole('button', { name: 'Review change' })).toBeDisabled()
+    expect(writes).toEqual([])
+    await panel.getByTestId('policy-edit-vm-3191-0').click()
+    await expect(panel.getByTestId('policy-source')).toHaveValue('10.42.71.0/24')
+    await panel.getByTestId('policy-port').fill('8443')
     await panel.getByTestId('policy-rule-form').getByRole('button', { name: 'Review change' }).click()
     await expect(panel).toContainText('Configuration changed; review again.')
     await expect(panel.getByTestId('policy-port')).toHaveValue('8443')
@@ -60,6 +71,6 @@ for (const width of [1280, 390]) {
     await panel.getByTestId('runtime-apply').click()
     await expect.poll(() => writes.length).toBe(1)
     expect(writes[0]).toMatchObject({ kind: 'firewall_rule', action: 'update', scope: 'vm', vm_id: 3191, position: 0,
-      acknowledge_shared_scope: true, review_fingerprint: 'd'.repeat(64), rule: { destination_port: '8443', source: '10.42.70.0/24' } })
+      acknowledge_shared_scope: true, review_fingerprint: 'd'.repeat(64), rule: { destination_port: '8443', source: '10.42.71.0/24' } })
   })
 }

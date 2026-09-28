@@ -299,5 +299,13 @@
     "deploy_networks": "Créer les réseaux du scénario",
     "delete_networks": "Supprimer les réseaux du scénario",
     "pinned": "Ces actions utilisent la révision du dépôt enregistrée pour ce déploiement."
+  },
+  "platform": {
+    "title": "Plateforme Range42",
+    "core": "Services essentiels",
+    "full": "Tous les services disponibles",
+    "reserved": "Les profils sélectionnent les logiciels sur les VM réservées par ce scénario. Les allocations restent identiques.",
+    "unavailable": "Exclus de cette version",
+    "setupRequired": "Renseignez les champs obligatoires avec des chemins absolus, des URL HTTPS et des listes de réseaux JSON valides."
   }
 }

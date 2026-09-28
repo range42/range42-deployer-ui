@@ -49,6 +49,8 @@ import { getProvider as getV1Provider, getGitProvider } from '../services/git'
 import { useProblems } from '../composables/useProblems'
 import { useDeploymentActivityBridge } from '@/composables/useDeploymentActivityBridge'
 import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
+import PlatformStackModal from '@/components/project/PlatformStackModal.vue'
+import { appendPlatformComponent, expandPlatformCanvas, platformSelection, isPlatformStack, isPlatformResource } from '@/services/platformComponents'
 
 import { useAutoLayout } from '../composables/useAutoLayout'
 import { useNetworkZones } from '../composables/useNetworkZones'
@@ -62,6 +64,7 @@ import { useObservedGuestStatus } from '@/composables/useObservedGuestStatus'
 import { prepareEditorBranchRecovery, editorAuthoredSignature } from '@/services/gitEditorRecovery'
 import { createNativeFilesFs } from '@/services/nativeScenario'
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
+import WorkloadReviewPanel from '../components/project/WorkloadReviewPanel.vue'
 
 // setBaseUrl is managed via useApiConfig composable
 import { useDragAndDrop } from '../composables/useDragAndDrop'
@@ -140,6 +143,44 @@ function closeProjectActions() {
 }
 // Plan C §C4.6 — new-style DeployForm with inline preflight + SHA-pin.
 const showDeployForm = ref(false)
+const showPlatformStack = ref(false)
+const showDeploymentPicker = ref(false)
+/** @type {import('vue').Ref<import('@/services/nativeScenario').NativeScenario | undefined>} */
+const deploymentScenario = ref()
+const platformNodes = computed(() => (liveNodes.value || []).filter(isPlatformStack))
+const platformProject = computed(() => currentProject.value ? { ...currentProject.value, ...projectGraph() } : undefined)
+/** @param {import('@/services/platformComponents').PlatformComponent} component */
+function addPlatformStack(component) {
+  if (!platformProject.value) return
+  try {
+    const candidate = appendPlatformComponent(platformProject.value, component)
+    /** @type {import('@vue-flow/core').Node[]} */
+    const added = candidate.nodes.filter(node => !liveNodes.value.some(existing => existing.id === node.id)).map(node => ({ ...node, style: /** @type {import('@vue-flow/core').Node['style']} */ (node.style), position: node.position || { x: 0, y: 0 }, ...(isPlatformResource(node) ? { deletable: false, connectable: false } : {}) }))
+    projectStore.updateProject(candidate.id, { files: candidate.files, nodes: candidate.nodes, edges: candidate.edges })
+    vfAddNodes(added)
+    vfAddEdges(candidate.edges.filter(edge => !liveEdges.value.some(existing => existing.id === edge.id)).map(edge => ({ ...edge, deletable: false, updatable: false })))
+    showPlatformStack.value = false
+    void setTab('canvas')
+    nextTick(() => fitView({ padding: 0.15, maxZoom: 1 }))
+  } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error', 6000) }
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'>} node */
+function deployPlatform(node) {
+  showDeploymentPicker.value = false
+  void handleOpenDeploy(platformSelection(node))
+}
+/** @param {Pick<import('@/overlay/serialize').CanvasNode, 'type' | 'data'> | null | undefined} node */
+function openPlatformFiles(node) {
+  if (!node) return
+  const owner = isPlatformStack(node) ? node : platformNodes.value.find(group => group.id === node.data?.config?.platformStack)
+  const selected = owner && platformSelection(owner)
+  if (!selected) return
+  closeConfigPanel()
+  closeEdgeConfig()
+  const query = { ...route.query }
+  delete query.node
+  void router.push({ query: { ...query, tab: 'config', file: `${selected.path}/manifest/stack.json` } })
+}
 const deploymentIndex = useDeploymentIndex()
 const existingCodenames = computed(() => deploymentIndex.items.value.map(item => item.codename))
 const showTemplateBrowser = ref(false)
@@ -156,7 +197,7 @@ const projectId = computed(() => currentProject.value?.id || queryText(route.par
 const topologyResolver = useTopologyResolver()
 
 const liveNodes = computed(() => (flowGetNodes?.value && flowGetNodes.value.length ? flowGetNodes.value : nodes.value) || [])
-const selectedGroup = computed(() => flowGetNodes.value?.find(node => node.type === 'group' && node.selected))
+const selectedGroup = computed(() => flowGetNodes.value?.find(node => ['group', 'range42-stack'].includes(node.type) && node.selected))
 const liveEdges = computed(() => (flowGetEdges?.value && flowGetEdges.value.length ? flowGetEdges.value : edges.value) || [])
 
 /**
@@ -330,6 +371,10 @@ onMounted(() => {
     return
   }
 
+  const expanded = expandPlatformCanvas(project.nodes || [], project.edges || [])
+  for (const node of expanded.nodes) if (isPlatformResource(node)) Object.assign(node, { deletable: false, connectable: false })
+  for (const edge of expanded.edges) if (expanded.nodes.some(node => isPlatformResource(node) && (node.id === edge.source || node.id === edge.target))) Object.assign(edge, { deletable: false, updatable: false })
+  Object.assign(project, expanded)
   currentProject.value = project
   loadProjectData(project)
   ensureNamespaces(['configTab', 'configPanel', 'historyTab', 'variablesTab', 'project', 'common', 'reopening', 'catalog', 'deployment'])
@@ -865,7 +910,14 @@ const closeProxmoxSettings = () => {
 
 // Deployment handlers
 
-const handleOpenDeploy = async () => {
+/** @param {import('@/services/nativeScenario').NativeScenario | null | Event} [selection] */
+const handleOpenDeploy = async (selection = undefined) => {
+  if (selection && 'path' in selection) deploymentScenario.value = selection
+  else if (selection !== null && platformNodes.value.length) {
+    if (platformNodes.value.length === 1 && !liveNodes.value.some(node => node.type === 'vm' && !isPlatformResource(node))) deploymentScenario.value = platformSelection(platformNodes.value[0])
+    else { showDeploymentPicker.value = true; return }
+  } else deploymentScenario.value = currentProject.value?.native_scenario
+  showDeploymentPicker.value = false
   const scope = getBackendScope()
   try {
     const args = currentPushArgs()
@@ -1033,6 +1085,13 @@ function handleConfigSave() {
   void manualSave()
 }
 
+/** @param {{ projectId: string; files: import('@/services/projectFiles').ProjectFiles; scenario: Record<string, unknown> }} result */
+function handleWorkloadReview({ projectId, files, scenario }) {
+  if (!editorActive || currentProject.value?.id !== projectId) return
+  projectStore.updateProject(projectId, { files, scenario })
+  scheduleAutosave()
+}
+
 /** @param {import('@/overlay/serialize').CanvasAttachment[]} next */
 function handleAttachmentsUpdate(next) {
   if (!currentProject.value) return
@@ -1136,6 +1195,7 @@ const handleInfrastructureImport = (result) => {
       @openExport="showExportModal = true"
       @openDeploy="handleOpenDeploy"
       @openValidate="handleOpenValidate"
+      @openPlatformStack="showPlatformStack = true"
       @openInventory="openCatalog"
       @openTemplates="showTemplateBrowser = true"
       @openImport="handleOpenImport"
@@ -1148,6 +1208,7 @@ const handleInfrastructureImport = (result) => {
         @openExport="showExportModal = true; closeMobileSidebar()"
         @openDeploy="handleOpenDeploy(); closeMobileSidebar()"
         @openValidate="handleOpenValidate(); closeMobileSidebar()"
+        @openPlatformStack="showPlatformStack = true; closeMobileSidebar()"
         @openInventory="openCatalog(); closeMobileSidebar()"
         @openTemplates="showTemplateBrowser = true; closeMobileSidebar()"
         @openImport="handleOpenImport(); closeMobileSidebar()" />
@@ -1408,7 +1469,12 @@ const handleInfrastructureImport = (result) => {
               @update:kind="updateNodeStatus(props.id, { kind: $event })"
               @update:scope="updateNodeStatus(props.id, { kind: $event })"
               @update:expanded="updateNodeStatus(props.id, { _expanded_preview: $event })"
-            />
+            >
+              <template v-if="isPlatformStack(props)" #actions>
+                <button type="button" class="btn btn-primary btn-sm nodrag nopan" @click.stop="deployPlatform(props)">Deploy stack</button>
+                <button type="button" class="btn btn-ghost btn-sm nodrag nopan" @click.stop="openPlatformFiles(props)">Stack files</button>
+              </template>
+            </GroupNode>
           </template>
 
           <!-- Compute -->
@@ -1480,7 +1546,8 @@ const handleInfrastructureImport = (result) => {
       />
 
       <!-- Config tab (C3.7) — FileTree + TwoPaneEditor + AttachmentManager -->
-      <div v-show="tab === 'config'" class="flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
+      <div v-show="tab === 'config'" class="flex flex-col flex-1 min-h-0 overflow-hidden" data-testid="tab-config">
+        <WorkloadReviewPanel v-if="currentProject?.scenario && tab === 'config'" :project="currentProject" :path="selectedFilePath" @apply="handleWorkloadReview" />
         <KeepAlive :max="1">
           <ConfigTab
             :key="currentProject.id"
@@ -1568,6 +1635,7 @@ const handleInfrastructureImport = (result) => {
       @delete="handleDeleteNode"
       @update:attachments="handleAttachmentsUpdate"
       @open-content="openScenarioContent"
+      @open-stack-files="openPlatformFiles(selectedNode)"
     />
     
     <!-- Edge Config Panel -->
@@ -1577,6 +1645,7 @@ const handleInfrastructureImport = (result) => {
         :source-node="edgeSourceNode || undefined"
         :target-node="edgeTargetNode || undefined"
         @close="handleCloseEdgeConfig"
+        @open-stack-files="openPlatformFiles(edgeSourceNode || edgeTargetNode)"
         @update="handleEdgeUpdate"
       />
     </div>
@@ -1616,20 +1685,31 @@ const handleInfrastructureImport = (result) => {
       @update:targets="updatePublicationTargets"
     />
 
-    <!-- Plan C §C4.6 — DeployForm with inline preflight + SHA-pin -->
+    <PlatformStackModal v-if="showPlatformStack && platformProject" :project="platformProject" @close="showPlatformStack = false" @add="addPlatformStack" />
+    <div v-if="showDeploymentPicker" class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="deployment-choice">
+      <div class="modal-box">
+        <h2 id="deployment-choice" class="text-lg font-semibold">Choose what to deploy</h2>
+        <div class="mt-4 space-y-2">
+          <button v-if="liveNodes.some(node => node.type === 'vm')" class="btn btn-outline w-full" @click="handleOpenDeploy(null)">Project machines</button>
+          <button v-for="node in platformNodes" :key="node.id" class="btn btn-outline w-full" @click="deployPlatform(node)">{{ node.data.label }}</button>
+        </div>
+        <div class="modal-action"><button class="btn btn-ghost" @click="showDeploymentPicker = false">Cancel</button></div>
+      </div>
+    </div>
+    <!-- Deploy the selected project scenario or platform component. -->
     <DeployForm
       v-if="showDeployForm && currentProject"
       :visible="showDeployForm"
       :project-id="registeredProjectId || currentProject.id"
       :local-project-id="currentProject.id"
       :project-name="currentProject.name"
-      :initial-scenario-label="currentProject.scenario?.label || currentProject.native_scenario?.path.split('/').at(-1) || ''"
-      :native-scenario="currentProject.native_scenario"
-      :allocation="currentProject.scenario?.allocation"
+      :initial-scenario-label="deploymentScenario?.path.split('/').at(-1) || currentProject.scenario?.label || ''"
+      :native-scenario="deploymentScenario"
+      :allocation="deploymentScenario ? undefined : currentProject.scenario?.allocation"
       :catalog-sha="currentProject?.catalog_sha || currentProject?.pinned_catalog_sha || ''"
       :project-sha="currentProject?.head_sha || currentProject?.project_sha || ''"
       :existing-codenames="existingCodenames"
-      :gamenet="!currentProject.scenario && !currentProject.native_scenario && !!currentProject?.gamenet"
+      :gamenet="!currentProject.scenario && !deploymentScenario && !!currentProject?.gamenet"
       @close="showDeployForm = false"
       @created="refreshActiveDeployment"
     />

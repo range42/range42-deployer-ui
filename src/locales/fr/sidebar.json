@@ -107,5 +107,9 @@
   "redo": "Rétablir",
   "projectActions": "Actions du projet",
   "nodeCount": "Aucun nœud | 1 nœud | {count} nœuds",
-  "edgeCount": "Aucune connexion | 1 connexion | {count} connexions"
+  "edgeCount": "Aucune connexion | 1 connexion | {count} connexions",
+  "platform": {
+    "title": "Stack Range42",
+    "description": "Ajouter une plateforme au projet"
+  }
 }

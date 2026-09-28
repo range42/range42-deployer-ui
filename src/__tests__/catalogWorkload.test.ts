@@ -1,20 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import { parse, stringify } from 'yaml'
-import { prepareCatalogWorkload } from '@/services/catalogWorkload'
+import { assetFromBytes, fileBytes, type ProjectFiles } from '@/services/projectFiles'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { prepareCatalogWorkload, reviewCatalogWorkload, validateCatalogWorkloadReview } from '@/services/catalogWorkload'
 import { emitConcreteScenario } from '@/services/concreteScenario'
 import { captureProjectAuthoring } from '@/services/projectAuthoring'
 import { savedScenario } from './fixtures/savedScenario'
 import fixture from './fixtures/catalogComposeApache.json'
 
 function setup() {
-  const files = structuredClone(fixture.files) as Record<string, string>
+  const files = structuredClone(fixture.files) as ProjectFiles
   const tree = structuredClone(fixture.tree)
   const provider = { listTree: vi.fn(async () => tree), getFileContent: vi.fn(async ({ path }: { path: string }) => ({ content: files[path], sha: tree.find(row => row.path === path)!.sha })), getFile: vi.fn() }
   const project = savedScenario()
   const input = { project, scenario: project.scenario, targetNode: 'vm1', attachmentId: 'catalog-1',
-    entry: { source_id: 'catalog', kind: 'container', name: 'Apache', path: fixture.path, sha: fixture.sha, document: JSON.parse(files[`${fixture.path}/meta.json`]) },
+    entry: { source_id: 'catalog', kind: 'container', name: 'Apache', path: fixture.path, sha: fixture.sha, document: JSON.parse(files[`${fixture.path}/meta.json`] as string) },
     source: { id: 'catalog', provider: 'github' as const, base_url: 'https://github.com', auth: { kind: 'none' as const }, repos: [{ owner: 'range42', repo: 'range42-catalog', branch: 'main' }] } }
-  const compose = () => parse(files[`${fixture.path}/compose.yml`])
+  const compose = () => parse(files[`${fixture.path}/compose.yml`] as string)
   const setCompose = (value: unknown) => { files[`${fixture.path}/compose.yml`] = stringify(value) }
   return { files, tree, provider, input, compose, setCompose }
 }
@@ -40,6 +42,124 @@ describe('catalog Compose workload attachment', () => {
     expect(parse(emitted.files['scenarios/saved/configure.yml']).at(-1)).toMatchObject({ 'ansible.builtin.import_playbook': item.path, vars: { global_vm_ssh_name: 'saved-vm' } })
     expect(captureProjectAuthoring('project', { scenario: result.scenario }).scenario.content.at(-1)).toEqual(item)
     expect(Object.keys(result.files).filter(path => !Object.hasOwn(before.files, path))).toEqual(result.summary.addedFilePaths)
+  })
+  it('preserves pinned binary assets for both local builds and read-only mounts with byte hashes', async () => {
+    const f = setup(), path = `${fixture.path}/site/logo.png`
+    const asset = assetFromBytes(new Uint8Array([137, 80, 78, 71, 0, 255, 1, 2]), 'image/png')
+    f.files[path] = asset
+    f.tree.push({ path, type: 'blob', mode: '100644', sha: 'c'.repeat(40) })
+    f.files[`${fixture.path}/Dockerfile`] = 'FROM nginx:alpine\nCOPY site /usr/share/nginx/html\n'
+    f.setCompose({ services: { web: { build: '.', volumes: ['./site:/srv:ro'] } } })
+    const result = await prepareCatalogWorkload(f.input, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1'
+    expect(result.files[`${prefix}/payload/site/logo.png`]).toEqual(asset)
+    const review = JSON.parse(result.files[`${prefix}/review.json`] as string)
+    expect(review.file_hashes['site/logo.png']).toBe(Array.from(sha256(fileBytes(asset)), b => b.toString(16).padStart(2, '0')).join(''))
+    expect(result.summary.assets).toEqual([{ path: 'site/logo.png', size: 8, media_type: 'image/png' }])
+    const changed = { ...result.files, [`${prefix}/payload/site/logo.png`]: assetFromBytes(new Uint8Array([0, 255, 4])) }
+    await expect(prepareCatalogWorkload({ ...f.input, project: { ...f.input.project, files: changed }, scenario: result.scenario, attachmentId: 'second' }, f.provider)).rejects.toThrow(/changed.*review/)
+    expect(f.input.project.files).not.toHaveProperty(`${prefix}/payload/site/logo.png`)
+  })
+  it('re-reviews edited assets and images while preserving workload ownership and source provenance', async () => {
+    const f = setup()
+    f.setCompose({ services: { web: { image: 'nginx:1.26', ports: ['8080:80'] } } })
+    const first = await prepareCatalogWorkload(f.input, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1'
+    const files = { ...first.files, [`${prefix}/payload/site/logo.png`]: assetFromBytes(new Uint8Array([0, 255, 7])) }
+    files[`${prefix}/payload/compose.yml`] = stringify({ services: { web: { image: 'nginx:1.27', ports: ['8080:80'], volumes: ['./site:/srv:ro'] } } })
+    const project = { ...f.input.project, files }, before = structuredClone(project)
+    const result = await reviewCatalogWorkload({ project, scenario: first.scenario, attachmentId: 'catalog-1' })
+    expect(project).toEqual(before)
+    expect(result.summary.compose_project).toBe(first.summary.compose_project)
+    expect(result.summary.images).toEqual(['nginx:1.27'])
+    expect(result.scenario.content).toEqual(first.scenario.content)
+    const review = JSON.parse(result.files[`${prefix}/review.json`] as string), previous = JSON.parse(first.files[`${prefix}/review.json`] as string)
+    expect(review.origin).toEqual(previous.origin)
+    expect(review.customized).toBe(true)
+    expect(review.file_hashes['site/logo.png']).toHaveLength(64)
+    expect(review.file_modes['site/logo.png']).toBe('0644')
+    expect(parse(result.files[`${prefix}/deploy.yml`] as string)[0].tasks.find(task => task.name === 'Copy the complete pinned workload tree').loop).toContainEqual({ path: 'site/logo.png', mode: '0644' })
+    await expect(prepareCatalogWorkload({ ...f.input, project: { ...project, files: result.files }, scenario: result.scenario, attachmentId: 'second', hostPorts: [8081] }, f.provider)).resolves.toBeDefined()
+  })
+  it('refuses workload identity changes, unknown files, or malformed review during re-review', async () => {
+    const f = setup(), first = await prepareCatalogWorkload(f.input, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1', project = { ...f.input.project, files: first.files }
+    await expect(reviewCatalogWorkload({ project: { ...project, id: 'different' }, scenario: first.scenario, attachmentId: 'catalog-1' })).rejects.toThrow(/ownership|identity/)
+    for (const compose of [{ services: { other: { image: 'nginx', ports: ['8888:80'] } } }, { services: { 'apache-cve-2021-42013': { image: 'nginx', ports: ['8888:80'], volumes: ['data:/data'] } }, volumes: { data: {} } }]) {
+      await expect(reviewCatalogWorkload({ project: { ...project, files: { ...first.files, [`${prefix}/payload/compose.yml`]: stringify(compose) } }, scenario: first.scenario, attachmentId: 'catalog-1' })).rejects.toThrow(/service|volume/)
+    }
+    await expect(reviewCatalogWorkload({ project: { ...project, files: { ...first.files, [`${prefix}/custom.yml`]: 'user file' } }, scenario: first.scenario, attachmentId: 'catalog-1' })).rejects.toThrow(/unrecognized/)
+    await expect(reviewCatalogWorkload({ project: { ...project, files: { ...first.files, [`${prefix}/review.json`]: '{}' } }, scenario: first.scenario, attachmentId: 'catalog-1' })).rejects.toThrow(/review|origin/)
+  })
+  it('validates the exact reviewed payload, execution config, wrappers and ownership before compilation', async () => {
+    const f = setup(), result = await prepareCatalogWorkload(f.input, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1'
+    const validate = (files = result.files, projectId = f.input.project.id) => validateCatalogWorkloadReview({ files, scenarioLabel: 'saved', attachmentId: 'catalog-1', projectId })
+    expect(() => validate()).not.toThrow()
+    expect(() => validate(result.files, 'other-project')).toThrow(/ownership/)
+    for (const path of ['payload/hello.sh', 'runtime.compose.yml', 'deploy.yml', 'cleanup.yml']) {
+      expect(() => validate({ ...result.files, [`${prefix}/${path}`]: 'changed' })).toThrow(/review|changed|configuration/i)
+    }
+    expect(() => validate({ ...result.files, [`${prefix}/payload/new.png`]: assetFromBytes(new Uint8Array([0, 255])) })).toThrow(/review|changed/i)
+    const missing = { ...result.files }; delete missing[`${prefix}/payload/hello.sh`]
+    expect(() => validate(missing)).toThrow(/review|changed/i)
+  })
+  it('keeps ownership metadata private while bind-mounted asset directories are readable by application users', async () => {
+    const f = setup(), result = await prepareCatalogWorkload(f.input, f.provider)
+    const tasks = parse(result.files['scenarios/saved/content/workloads/catalog-1/deploy.yml'] as string)[0].tasks
+    const directory = tasks.find(task => task.name === 'Create workload directories')
+    expect(directory['ansible.builtin.file'].mode).toBe('{{ item.mode }}')
+    expect(directory.loop).toContainEqual({ path: result.summary.destination, mode: '0700' })
+    expect(directory.loop).toContainEqual({ path: `${result.summary.destination}/payload`, mode: '0755' })
+    expect(tasks.find(task => task.name === 'Record workload ownership')['ansible.builtin.copy'].mode).toBe('0600')
+  })
+  it('recreates the owned application container so replaced single-file bind mounts use the reviewed bytes', async () => {
+    const f = setup(), result = await prepareCatalogWorkload(f.input, f.provider)
+    const tasks = parse(result.files['scenarios/saved/content/workloads/catalog-1/deploy.yml'] as string)[0].tasks
+    expect(tasks.find(task => task.name === 'Start the selected guest workload')['ansible.builtin.command'].argv).toContain('--force-recreate')
+  })
+  it('removes only previously recorded obsolete regular payload files after ownership and path checks', async () => {
+    const f = setup(), result = await prepareCatalogWorkload(f.input, f.provider)
+    const tasks = parse(result.files['scenarios/saved/content/workloads/catalog-1/deploy.yml'] as string)[0].tasks
+    const remove = tasks.find(task => task.name === 'Remove previously copied obsolete payload files')
+    expect(remove['ansible.builtin.file'].path).toBe(`${result.summary.destination}/payload/{{ item.item }}`)
+    expect(remove.when).toBe('item.stat.exists')
+    expect(tasks.findIndex(task => task.name === 'Refuse links in the owned payload')).toBeLessThan(tasks.indexOf(remove))
+    expect(tasks.findIndex(task => task.name === 'Validate previously copied payload paths')).toBeLessThan(tasks.indexOf(remove))
+    const manifest = tasks.find(task => task.name === 'Record copied workload payload files')['ansible.builtin.copy']
+    expect(manifest.mode).toBe('0600')
+    expect(JSON.parse(manifest.content)).toContain('hello.sh')
+  })
+  it('preserves reviewed port overrides for asset-only updates but reviews explicit Compose port edits', async () => {
+    const f = setup(), first = await prepareCatalogWorkload({ ...f.input, hostPorts: [18888] }, f.provider)
+    const input = { project: { ...f.input.project, files: first.files }, scenario: first.scenario, attachmentId: 'catalog-1' }
+    expect((await reviewCatalogWorkload(input)).summary.published_ports).toEqual(['18888/tcp'])
+    const compose = f.compose(); compose.services['apache-cve-2021-42013'].ports = ['28888:80'];
+    input.project.files['scenarios/saved/content/workloads/catalog-1/payload/compose.yml'] = stringify(compose)
+    expect((await reviewCatalogWorkload(input)).summary.published_ports).toEqual(['28888/tcp'])
+    expect((await reviewCatalogWorkload({ ...input, hostPorts: [38888] })).summary.published_ports).toEqual(['38888/tcp'])
+  })
+  it('allows independently re-reviewing two edited workloads without a stale-review deadlock', async () => {
+    const f = setup(), first = await prepareCatalogWorkload(f.input, f.provider)
+    const second = await prepareCatalogWorkload({ ...f.input, project: { ...f.input.project, files: first.files }, scenario: first.scenario, attachmentId: 'second', hostPorts: [18888] }, f.provider)
+    const firstPath = 'scenarios/saved/content/workloads/catalog-1/payload/hello.sh', secondPath = 'scenarios/saved/content/workloads/second/payload/hello.sh'
+    const project = { ...f.input.project, files: { ...second.files, [firstPath]: '# first update', [secondPath]: '# second update' } }
+    const reviewedFirst = await reviewCatalogWorkload({ project, scenario: second.scenario, attachmentId: 'catalog-1' })
+    expect(() => validateCatalogWorkloadReview({ files: reviewedFirst.files, scenarioLabel: 'saved', attachmentId: 'second' })).toThrow(/changed/)
+    const reviewedSecond = await reviewCatalogWorkload({ project: { ...project, files: reviewedFirst.files }, scenario: second.scenario, attachmentId: 'second' })
+    for (const attachmentId of ['catalog-1', 'second']) expect(() => validateCatalogWorkloadReview({ files: reviewedSecond.files, scenarioLabel: 'saved', attachmentId })).not.toThrow()
+    const composePath = 'scenarios/saved/content/workloads/second/payload/compose.yml'
+    const compose = f.compose(); compose.services['apache-cve-2021-42013'].ports = ['8888:80']
+    await expect(reviewCatalogWorkload({ project: { ...project, files: { ...reviewedSecond.files, [composePath]: stringify(compose) } }, scenario: second.scenario, attachmentId: 'second', hostPorts: [8888] })).rejects.toThrow(/already assigned/)
+  })
+  it('refuses file-to-directory and directory-to-file payload changes before runtime', async () => {
+    const f = setup(), first = await prepareCatalogWorkload(f.input, f.provider)
+    const prefix = 'scenarios/saved/content/workloads/catalog-1/payload/'
+    const nested = { ...first.files, [`${prefix}hello.sh/new.txt`]: 'new file' }
+    delete nested[`${prefix}hello.sh`]
+    const collapsed = { ...first.files, [`${prefix}poc`]: 'new file' }
+    for (const path of Object.keys(collapsed)) if (path.startsWith(`${prefix}poc/`)) delete collapsed[path]
+    for (const files of [nested, collapsed]) await expect(reviewCatalogWorkload({ project: { ...f.input.project, files }, scenario: first.scenario, attachmentId: 'catalog-1' })).rejects.toThrow(/file.*directory|directory.*file/)
   })
   it('gives the Compose default network an ownership label and refuses a foreign network before copying', async () => {
     const f = setup(), result = await prepareCatalogWorkload(f.input, f.provider)
@@ -88,7 +208,7 @@ describe('catalog Compose workload attachment', () => {
     for (const doc of [
       { services: { a: { image: 'nginx', ports: ['80:80'] }, b: { image: 'nginx', ports: ['80:80'] } } },
       { services: { a: { image: 'nginx', depends_on: ['b'] }, b: { image: 'nginx', depends_on: ['a'] } } },
-      { services: { a: { image: 'nginx', volumes: ['data:/data'] } }, volumes: { data: { external: true } } },
+      { services: { a: { image: 'nginx', ports: ['8888:80'], volumes: ['data:/data'] } }, volumes: { data: { external: true } } },
     ]) {
       f.setCompose(doc)
       await expect(prepareCatalogWorkload(f.input, f.provider)).rejects.toThrow(/same host port|cycle|external/i)

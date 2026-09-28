@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ensureBackendProject } from '@/services/backendProjectRegistration'
-import { buildRuntimeRecord, saveRuntimeRecord } from '@/services/runtimeGitRecords'
+import { buildRuntimeRecord, saveRuntimeRecord, verifyRuntimeRecordReceipt } from '@/services/runtimeGitRecords'
 
 const { state, provider } = vi.hoisted(() => ({ state: { scope: 'https://backend.test', files: {}, head: 'a'.repeat(40) }, provider: {} }))
 vi.mock('@/services/backendApi', () => ({ getBackendScope: () => state.scope,
@@ -41,6 +41,74 @@ beforeEach(async () => {
 })
 
 describe('runtime change records in project Git', () => {
+  it.each([
+    '2026-09-24T20:15:48.356086',
+    '2026-09-24T20:15:48.356086Z',
+    '2026-09-24T22:15:48.356086+02:00',
+  ])('records UTC result timestamps for %s independently of the browser timezone', ended_at => {
+    const record = buildRuntimeRecord(deployment(), { ...attempt(), state: 'succeeded', ended_at }, state.scope)
+    expect(JSON.parse(record.content)).toMatchObject({ version: 2, ended_at: '2026-09-24T20:15:48.356Z' })
+    expect(record.path).toBe('scenarios/demo/runtime/deployment-1/attempt-1/result.json')
+  })
+
+  function savedLegacyResult() {
+    const current = { ...attempt(), state: 'succeeded', ended_at: '2026-09-24T20:15:48.356086', rc: 0,
+      operation_result: { desired_reached: true, partial: false } }
+    const record = buildRuntimeRecord(deployment(), current, state.scope)
+    const content = `${JSON.stringify({ ...JSON.parse(record.content), version: 1, ended_at: '2026-09-24T18:15:48.356Z' }, null, 2)}\n`
+    const saved = { ...project(), files: { [record.path]: content },
+      runtime_git_receipts: { [JSON.stringify([state.scope, record.path])]: 'd'.repeat(40) } }
+    state.files[`projects/demo/${record.path}`] = content
+    return { current, record, content, saved }
+  }
+
+  it('verifies a legacy result at its saved Git receipt without rewriting it or checking write access', async () => {
+    const { current, record, content, saved } = savedLegacyResult()
+    const result = await verifyRuntimeRecordReceipt(saved, deployment(), current, state.scope)
+    expect(result).toMatchObject({ path: record.path, content, phase: 'result', commit_sha: 'd'.repeat(40) })
+    expect(provider.getFile).toHaveBeenCalledExactlyOnceWith({ owner: 'team', repo: 'lab',
+      path: `projects/demo/${record.path}`, ref: 'd'.repeat(40) })
+    expect(provider.canWrite).not.toHaveBeenCalled()
+    expect(provider.listCommits).not.toHaveBeenCalled()
+    expect(provider.commitFiles).not.toHaveBeenCalled()
+    expect(saved.files[record.path]).toBe(content)
+  })
+
+  it('rejects a timestamp-only local edit when the immutable Git receipt differs', async () => {
+    const { current, record, saved } = savedLegacyResult()
+    saved.files[record.path] = saved.files[record.path].replace('18:15:48', '19:15:48')
+    await expect(verifyRuntimeRecordReceipt(saved, deployment(), current, state.scope)).rejects.toThrow(/does not match/i)
+    expect(provider.commitFiles).not.toHaveBeenCalled()
+    expect(saved.files[record.path]).toContain('19:15:48')
+  })
+
+  it.each(['request', 'result', 'deployment_id', 'backend_url'])('rejects changed legacy %s even when the receipt contains those bytes', async field => {
+    const { current, record, saved } = savedLegacyResult()
+    const changed = JSON.parse(saved.files[record.path])
+    changed[field] = field === 'request' ? { ...changed.request, enabled: true }
+      : field === 'result' ? { ...changed.result, desired_reached: false } : 'other'
+    saved.files[record.path] = `${JSON.stringify(changed, null, 2)}\n`
+    state.files[`projects/demo/${record.path}`] = saved.files[record.path]
+    await expect(verifyRuntimeRecordReceipt(saved, deployment(), current, state.scope)).rejects.toThrow(/legacy|local runtime record/i)
+    expect(provider.getFile).not.toHaveBeenCalled()
+    expect(provider.commitFiles).not.toHaveBeenCalled()
+  })
+
+  it('preserves a legacy pending result without a receipt instead of treating it as verified', async () => {
+    const { current, saved } = savedLegacyResult()
+    delete saved.runtime_git_receipts
+    await expect(verifyRuntimeRecordReceipt(saved, deployment(), current, state.scope)).rejects.toThrow(/receipt/i)
+    expect(provider.getFile).not.toHaveBeenCalled()
+    expect(provider.commitFiles).not.toHaveBeenCalled()
+  })
+
+  it('retains an existing legacy Git result when a new canonical result would collide', async () => {
+    const { current, content, record } = savedLegacyResult()
+    await expect(saveRuntimeRecord(project(), deployment(), current, state.scope)).rejects.toThrow(/different record/i)
+    expect(state.files[`projects/demo/${record.path}`]).toBe(content)
+    expect(provider.commitFiles).not.toHaveBeenCalled()
+  })
+
   it.each([
     { kind: 'firewall_alias', scope: 'vm', vm_id: 3191, action: 'rename', name: 'clients', new_name: 'students' },
     { kind: 'firewall_rule', scope: 'node', action: 'move', position: 3, move_to: 1 },

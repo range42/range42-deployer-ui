@@ -1,4 +1,5 @@
 <script setup>
+import { isPlatformResource } from '@/services/platformComponents'
 import { ref, computed, watch, useId, onMounted, nextTick } from 'vue'
 import AppIcon from '@/components/icons/AppIcon.vue'
 import FormField from '@/components/ui/FormField.vue'
@@ -22,7 +23,8 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'update'])
+const emit = defineEmits(['close', 'update', 'open-stack-files'])
+const managedStack = computed(() => [props.sourceNode, props.targetNode].some(node => node && isPlatformResource(node)))
 const panel = ref(null)
 const fieldPrefix = `connection-${useId()}`
 const opener = typeof document !== 'undefined' ? document.activeElement : null
@@ -114,7 +116,7 @@ const connectionData = computed(() => ({
 
 // Only input events write configuration; selecting an edge just loads its form.
 function updateConnection() {
-  if (!isNetworkConnection.value) return
+  if (!isNetworkConnection.value || managedStack.value) return
   // Emit the edge data in the correct format: { connection: NetworkConnectionData }
   emit('update', props.edge.id, {
     connection: connectionData.value,
@@ -141,9 +143,11 @@ const close = async () => {
         <button type="button" class="btn btn-sm btn-circle btn-ghost shrink-0" :aria-label="t('configPanel.connection.close')" @click="close">✕</button>
       </div>
 
+      <p v-if="managedStack" class="text-sm mb-3">Configured by the Range42 stack. <button type="button" class="link" @click="emit('open-stack-files')">Stack files</button></p>
+      <fieldset :disabled="managedStack" class="min-w-0">
       <FormField :model-value="edge.label ?? edge.data?.label ?? ''" :label="t('configPanel.connection.text')"
         :hint="t('configPanel.connection.hint')" type="textarea" :rows="2" icon=""
-        @update:model-value="emit('update', edge.id, { label: $event })" />
+        @update:model-value="!managedStack && emit('update', edge.id, { label: $event })" />
 
       <div v-if="isNetworkConnection" @input="updateConnection" @change="updateConnection">
       <!-- Connection Info -->
@@ -354,6 +358,7 @@ const close = async () => {
         </label>
       </div>
       </div>
+      </fieldset>
     </div>
   </div>
 </template>
