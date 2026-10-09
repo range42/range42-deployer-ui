@@ -45,6 +45,12 @@ function policyRequest(input) {
 }
 
 function requireValue(condition, message) { if (!condition) throw new Error(message) }
+function utcTimestamp(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/.test(value)) return null
+  // Older backend responses omit the UTC offset after SQLite deserialization.
+  const timestamp = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? value : `${value}Z`
+  return Number.isFinite(Date.parse(timestamp)) ? new Date(timestamp).toISOString() : null
+}
 function safePath(path) {
   requireValue(typeof path === 'string' && path.length > 0 && !path.includes('\\')
     && Array.from(path).every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
@@ -89,11 +95,12 @@ export function buildRuntimeRecord(deployment, attempt, scope) {
   if (['sdn_snat', 'host_firewall', 'sdn_network', ...policyKinds].includes(input.kind)) request.acknowledge_shared_scope = true
   requireValue(terminal.has(attempt.state) || ['pending', 'deploying', 'running'].includes(attempt.state), 'Unknown runtime attempt state')
   const phase = terminal.has(attempt.state) ? 'result' : 'request'
-  const record = { version: 1, phase, backend_url: scope, deployment_id: deployment.id, attempt_id: attempt.id,
+  const record = { version: phase === 'result' ? 2 : 1, phase, backend_url: scope, deployment_id: deployment.id, attempt_id: attempt.id,
     project_sha: operation.project_sha, target_host_id: operation.target_host_id, request }
   if (phase === 'result') {
     record.state = attempt.state
-    if (attempt.ended_at && Number.isFinite(Date.parse(attempt.ended_at))) record.ended_at = new Date(attempt.ended_at).toISOString()
+    const endedAt = utcTimestamp(attempt.ended_at)
+    if (endedAt) record.ended_at = endedAt
     if (Number.isInteger(attempt.rc)) record.rc = attempt.rc
     const result = attempt.operation_result
     record.result = result ? { error_present: Boolean(result.error) } : null
@@ -108,6 +115,38 @@ export function buildRuntimeRecord(deployment, attempt, scope) {
   }
   return { path: `scenarios/${deployment.scenario_label}/runtime/${deployment.id}/${attempt.id}/${phase}.json`,
     content: `${JSON.stringify(record, null, 2)}\n`, phase }
+}
+
+/** A legacy candidate still needs exact readback at its immutable Git receipt. */
+export function isLegacyRuntimeRecord(record, content) {
+  if (record.phase !== 'result' || typeof content !== 'string') return false
+  try {
+    const expected = { ...JSON.parse(record.content), version: 1 }
+    const legacy = JSON.parse(content)
+    if (expected.ended_at) {
+      if (typeof legacy?.ended_at !== 'string' || utcTimestamp(legacy.ended_at) !== legacy.ended_at) return false
+      expected.ended_at = legacy.ended_at
+    }
+    // All other fields, the schema and the original serialization must match.
+    return content === `${JSON.stringify(expected, null, 2)}\n`
+  } catch { return false }
+}
+
+/** Verify historical bytes; never create, replace, or migrate a Git record. */
+export async function verifyRuntimeRecordReceipt(project, deployment, attempt, scope) {
+  requireValue(registeredLocalProject(deployment.project_id, [project], scope) === project
+    && project.scenario?.label === deployment.scenario_label, 'Open the matching registered project to verify this runtime record')
+  const binding = { ...project.git }
+  const record = buildRuntimeRecord(deployment, attempt, scope)
+  const content = project.files?.[record.path]
+  const sha = project.runtime_git_receipts?.[JSON.stringify([scope, record.path])]
+  requireValue(shaPattern.test(sha), 'A saved Git receipt is required to verify a legacy runtime record')
+  requireValue(isLegacyRuntimeRecord(record, content), 'Review the local runtime record before verifying its legacy Git receipt')
+  const prefix = binding.subdir ? `${safePath(binding.subdir.replace(/\/+$/, ''))}/` : ''
+  const provider = providerForBinding(binding)
+  const existing = await provider.getFile({ owner: binding.repo_owner, repo: binding.repo_name, path: `${prefix}${record.path}`, ref: sha })
+  requireValue(existing.content === content, 'The saved Git receipt does not match this local runtime record. Review the file before saving.')
+  return { ...record, content, commit_sha: sha }
 }
 
 /** Append a record and its file index without serializing or overwriting the canvas. */

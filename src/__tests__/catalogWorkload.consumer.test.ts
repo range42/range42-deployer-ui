@@ -9,21 +9,22 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import process from 'node:process'
 import { parse, stringify } from 'yaml'
-import { prepareCatalogWorkload } from '@/services/catalogWorkload'
+import { prepareCatalogWorkload, reviewCatalogWorkload } from '@/services/catalogWorkload'
 import { emitConcreteScenario } from '@/services/concreteScenario'
-import { fileBytes } from '@/services/projectFiles'
+import { assetFromBytes, fileBase64, fileBytes, type ProjectFiles } from '@/services/projectFiles'
 import { savedScenario } from './fixtures/savedScenario'
 import fixture from './fixtures/catalogComposeApache.json'
 
 const backend = process.env.R42_WORKLOAD_BACKEND
 const temporary: string[] = []
 afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }) })
-async function setup(mode: string, hostPorts?: number[], document?: object, secretBindings: Record<string, string> = {}) {
+async function setup(mode: string, hostPorts?: number[], document?: object, secretBindings: Record<string, string> = {}, extras: ProjectFiles = {}) {
   const root = mkdtempSync(join(tmpdir(), 'r42-workload-consumer-')); temporary.push(root)
   const project = savedScenario(); project.scenario.content = []
   project.baseDoc.env.push(...Object.values(secretBindings).map(name => ({ name, secret: true })))
-  const sourceFiles: Record<string, string> = { ...fixture.files, ...(document ? { [`${fixture.path}/compose.yml`]: stringify(document) } : {}) }
-  const provider = { listTree: async () => fixture.tree, getFile: async () => { throw new Error('text fallback unused') }, getFileContent: async ({ path }: { path: string }) => ({ content: sourceFiles[path], sha: fixture.tree.find(row => row.path === path)!.sha }) }
+  const sourceFiles: ProjectFiles = { ...fixture.files, ...Object.fromEntries(Object.entries(extras).map(([path, content]) => [`${fixture.path}/${path}`, content])), ...(document ? { [`${fixture.path}/compose.yml`]: stringify(document) } : {}) }
+  const tree = [...fixture.tree, ...Object.keys(extras).map(path => ({ path: `${fixture.path}/${path}`, type: 'blob', mode: '100644', sha: 'c'.repeat(40) }))]
+  const provider = { listTree: async () => tree, getFile: async () => { throw new Error('text fallback unused') }, getFileContent: async ({ path }: { path: string }) => ({ content: sourceFiles[path], sha: tree.find(row => row.path === path)!.sha }) }
   const result = await prepareCatalogWorkload({ project, scenario: project.scenario, targetNode: 'vm1', attachmentId: 'catalog-1', hostPorts, secretBindings,
     entry: { source_id: 'catalog', kind: 'container', name: 'Apache', path: fixture.path, sha: fixture.sha },
     source: { id: 'catalog', provider: 'github', base_url: 'https://github.com', auth: { kind: 'none' }, repos: [{ owner: 'range42', repo: 'range42-catalog', branch: 'main' }] } }, provider)
@@ -34,7 +35,7 @@ async function setup(mode: string, hostPorts?: number[], document?: object, secr
   expect(accepted.trim()).toBe('accepted:[3101]')
   const bin = join(root, 'bin'); mkdirSync(bin)
   const guest = join(root, 'guest'), calls = join(root, 'docker-calls.jsonl')
-  const expected = Object.fromEntries(Object.entries(sourceFiles).map(([path, content]) => [path.slice(fixture.path.length + 1), content]))
+  const expected = Object.fromEntries(Object.entries(sourceFiles).map(([path, content]) => [path.slice(fixture.path.length + 1), fileBase64(content)]))
   writeFileSync(join(root, 'expected.json'), JSON.stringify(expected))
   const marker = JSON.parse(result.files['scenarios/saved/content/workloads/catalog-1/review.json'] as string).compose_project
   writeFileSync(join(root, 'consumer.json'), JSON.stringify({ mode, marker, services: result.summary.services }))
@@ -43,12 +44,22 @@ async function setup(mode: string, hostPorts?: number[], document?: object, secr
   const stub = readFileSync(join(process.cwd(), 'src/__tests__/fixtures/workloadDockerConsumer.py'), 'utf8')
   writeFileSync(join(bin, 'docker'), `#!${python}\n${stub}`)
   execFileSync('/bin/chmod', ['0755', join(bin, 'docker')])
-  for (const name of ['deploy.yml', 'cleanup.yml']) {
-    const playbook = join(root, `scenarios/saved/content/workloads/catalog-1/${name}`)
-    const plays = parse(readFileSync(playbook, 'utf8').replaceAll('/opt/range42/workloads', guest))
-    plays[0].become = false
-    plays[0].environment = { PATH: `${bin}:/usr/bin:/bin`, R42_WORKLOAD_TEST_ROOT: root }
-    writeFileSync(playbook, stringify(plays, { lineWidth: 0 }))
+  function localize() {
+    for (const name of ['deploy.yml', 'cleanup.yml']) {
+      const playbook = join(root, `scenarios/saved/content/workloads/catalog-1/${name}`)
+      const plays = parse(readFileSync(playbook, 'utf8').replaceAll('/opt/range42/workloads', guest))
+      plays[0].become = false
+      plays[0].environment = { PATH: `${bin}:/usr/bin:/bin`, R42_WORKLOAD_TEST_ROOT: root }
+      writeFileSync(playbook, stringify(plays, { lineWidth: 0 }))
+    }
+  }
+  localize()
+  const stage = (files: ProjectFiles) => {
+    const prefix = 'scenarios/saved/content/workloads/catalog-1/'
+    const compiled = emitConcreteScenario({ ...project, files, scenario: result.scenario, generatedPaths: project.scenario_generated_paths })
+    for (const [name, content] of Object.entries(compiled.files)) { const path = join(root, name); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, fileBytes(content)) }
+    writeFileSync(join(root, 'expected.json'), JSON.stringify(Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith(`${prefix}payload/`)).map(([path, content]) => [path.slice(`${prefix}payload/`.length), fileBase64(content)]))))
+    localize()
   }
   writeFileSync(join(root, 'test-hosts.yml'), stringify({ all: { hosts: { 'saved-vm': { ansible_connection: 'local', ansible_python_interpreter: python }, 'unselected-vm': { ansible_connection: 'local', ansible_python_interpreter: python } } } }))
   writeFileSync(join(root, 'ansible.cfg'), '[defaults]\n')
@@ -56,7 +67,7 @@ async function setup(mode: string, hostPorts?: number[], document?: object, secr
     try { return { rc: 0, output: execFileSync(ansible, ['-i', join(root, 'test-hosts.yml'), join(root, cleanup ? 'scenarios/saved/content/workloads/catalog-1/cleanup.yml' : 'scenarios/saved/configure.yml'), '-e', 'global_vm_ssh_name=saved-vm'], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, RANGE42_ACTIVE_CONFIG_DIR: join(root, 'active'), ANSIBLE_CONFIG: join(root, 'ansible.cfg'), ANSIBLE_STDOUT_CALLBACK: 'default', ANSIBLE_NOCOLOR: '1', ANSIBLE_LOCAL_TEMP: join(root, 'ansible-tmp') } }) } }
     catch (error) { const failure = error as { status?: number; stdout?: string }; return { rc: failure.status || 1, output: String(failure.stdout || '') } }
   }
-  return { root, result, run, calls, guest, marker }
+  return { root, result, run, calls, guest, marker, project, stage }
 }
 
 describe.skipIf(!backend)('actual backend + local Ansible workload consumer', () => {
@@ -68,6 +79,27 @@ describe.skipIf(!backend)('actual backend + local Ansible workload consumer', ()
     const calls = readFileSync(f.calls, 'utf8').trim().split('\n').map(line => JSON.parse(line))
     expect(calls.some(args => args.includes('up'))).toBe(true)
   }, 60000)
+  it('copies, updates and removes only tracked picture assets through real Ansible then cleans up owned containers', async () => {
+    const picture = assetFromBytes(new Uint8Array([137, 80, 78, 71, 0, 255]))
+    const f = await setup('ok', undefined, { services: { web: { image: 'nginx:alpine', volumes: ['./site:/srv:ro'] } } }, {}, { 'site/logo.png': picture, 'site/old.png': picture })
+    const deployed = f.run()
+    expect({ rc: deployed.rc, failure: deployed.rc ? deployed.output : '' }).toEqual({ rc: 0, failure: '' })
+    const payload = join(f.guest, f.marker, 'payload')
+    expect([...readFileSync(join(payload, 'site/logo.png'))]).toEqual([...fileBytes(picture)])
+    writeFileSync(join(payload, 'site/untracked.txt'), 'preserve')
+    const prefix = 'scenarios/saved/content/workloads/catalog-1/payload/'
+    const files = { ...f.result.files, [`${prefix}site/logo.png`]: assetFromBytes(new Uint8Array([137, 80, 78, 71, 0, 254])) }
+    delete files[`${prefix}site/old.png`]
+    const reviewed = await reviewCatalogWorkload({ project: { ...f.project, files }, scenario: f.result.scenario, attachmentId: 'catalog-1' })
+    f.stage(reviewed.files)
+    const updated = f.run()
+    expect({ rc: updated.rc, failure: updated.rc ? updated.output : '' }).toEqual({ rc: 0, failure: '' })
+    expect([...readFileSync(join(payload, 'site/logo.png'))]).toEqual([...fileBytes(files[`${prefix}site/logo.png`])])
+    expect(existsSync(join(payload, 'site/old.png'))).toBe(false)
+    expect(readFileSync(join(payload, 'site/untracked.txt'), 'utf8')).toBe('preserve')
+    const cleanup = f.run(true)
+    expect({ rc: cleanup.rc, failure: cleanup.rc ? cleanup.output : '' }).toEqual({ rc: 0, failure: '' })
+  }, 120000)
   it.skipIf(!process.env.R42_WORKLOAD_DOCKER)('validates the copied source and identity override with the actual Compose CLI without a daemon', async () => {
     const f = await setup('ok', [18888]), prefix = join(f.root, 'scenarios/saved/content/workloads/catalog-1')
     const result = execFileSync(process.env.R42_WORKLOAD_DOCKER!, ['--host', 'unix:///nonexistent-r42-test.sock', 'compose', '--project-name', f.marker, '--project-directory', join(prefix, 'payload'), '--env-file', '/dev/null', '-f', join(prefix, 'runtime.compose.yml'), 'config', '--format', 'json'], { encoding: 'utf8', timeout: 10000, env: { PATH: process.env.PATH, DOCKER_CONFIG: join(f.root, 'empty-docker-config') } })

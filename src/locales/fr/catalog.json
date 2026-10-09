@@ -117,6 +117,7 @@
     "service": "Service",
     "effective_ports": "Hôte → conteneur",
     "directory": "Répertoire dans la VM",
+    "assets": "Ressources personnalisées",
     "duplicate_secret_binding": "Chaque référence doit être unique. Retirez le doublon.",
     "port_mapping": "Port hôte de la correspondance {number}",
     "remove_port": "Retirer le remplacement du port {number}",

@@ -117,6 +117,7 @@
     "service": "Service",
     "effective_ports": "Host → container",
     "directory": "Guest directory",
+    "assets": "Custom assets",
     "duplicate_secret_binding": "Each placeholder must appear only once. Remove the duplicate binding.",
     "port_mapping": "Host port for mapping {number}",
     "remove_port": "Remove port override {number}",

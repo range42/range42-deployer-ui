@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
+import { createHash } from 'node:crypto';
+import { fileBytes } from '@/services/projectFiles';
+const blobId = content => { const bytes = fileBytes(content); return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') };
 import { assetFromBytes } from '@/services/projectFiles';
 import { createProjectRepoAdapter } from '../services/projectRepo';
 import { _resetProjectDbForTests, openProjectDb } from '../services/projectRepo/indexeddb';
 
-function makeMockProvider() {
+function makeMockProvider({ digests = false } = {}) {
   const calls = [];
   const files = new Map(); // key = `${branch}:${path}` -> { content, sha }
   const snapshots = new Map();
@@ -19,6 +22,7 @@ function makeMockProvider() {
     heads,
     impl: {
       id: 'gitlab',
+      ...(digests ? { async getFileDigests({ref}) { calls.push({op:'getFileDigests',ref}); return Object.fromEntries([...(snapshots.get(ref) || new Map())].map(([path,file])=>[path,blobId(file.content)])) } } : {}),
       async canWrite() { return true; },
       async listRepos() { return []; },
       async getFile({ owner, repo, path, ref }) {
@@ -29,7 +33,7 @@ function makeMockProvider() {
       },
       async putFile({ owner, repo, path, content, sha, message, branch }) {
         calls.push({ op: 'putFile', owner, repo, path, sha, message, branch });
-        const newSha = nextSha();
+        const newSha = digests ? blobId(content) : nextSha();
         files.set(`${branch}:${path}`, { content, sha: newSha });
         // Every write advances the branch's HEAD commit.
         heads.set(branch, `commit-${newSha}`);
@@ -39,7 +43,7 @@ function makeMockProvider() {
         for (const change of changes) if (files.get(`${branch}:${change.path}`)?.sha !== change.sha) throw new Error('409 CAS conflict');
         for (const change of changes) {
           calls.push({ op: 'putFile', owner, repo, branch, path: change.path, sha: change.sha, message });
-          files.set(`${branch}:${change.path}`, { content: change.content, sha: nextSha() });
+          files.set(`${branch}:${change.path}`, { content: change.content, sha: digests ? blobId(change.content) : nextSha() });
         }
         const sha = `commit-${nextSha()}`; heads.set(branch, sha);
         snapshots.set(sha, new Map([...files.entries()].filter(([key]) => key.startsWith(`${branch}:`)).map(([key, value]) => [key.slice(branch.length + 1), JSON.parse(JSON.stringify(value))])));
@@ -362,3 +366,21 @@ describe('ProjectRepoAdapter', () => {
     expect(written?.content).toBe('{"schema_version":"1.0"}');
   });
 });
+
+it('saves a large platform snapshot using revision digests while preserving conflict checks', async () => {
+  const mock = makeMockProvider({digests:true}), adapter = makeAdapter(mock)
+  const files = Object.fromEntries(Array.from({length:521}, (_,i)=>[`projects/demo/platform/file-${i}.yml`, `service: ${i}\n`]))
+  files['projects/demo/platform/file-0.yml'] = 'name: é雪\n'
+  files['projects/demo/platform/file-1.yml'] = assetFromBytes(Uint8Array.of(0, 128, 255))
+  await adapter.stageFiles('platform', files, 'Save stack')
+  const saved = await adapter.save('platform', 'Save stack')
+  expect(saved.commit_sha).toBeTruthy()
+  expect(mock.calls.filter(c=>c.op==='getFileDigests')).toHaveLength(2)
+  expect(mock.calls.filter(c=>c.op==='getFile' && c.path.includes('/platform/'))).toEqual([])
+  const writes = mock.calls.filter(c=>c.op==='putFile').length
+  await adapter.stageFiles('platform', files, 'Unchanged stack')
+  expect(mock.calls.filter(c=>c.op==='putFile').length).toBe(writes)
+  const branch = saved.branch, path = 'projects/demo/platform/file-0.yml'
+  await mock.impl.commitFiles({owner:'acme',repo:'lab',branch,files:[{path,content:'external: change',sha:mock.files.get(`${branch}:${path}`).sha}],message:'Other editor'})
+  await expect(adapter.stageFiles('platform', {...files,[path]:'local: change'}, 'Conflicting edit')).rejects.toThrow(/changed since review/)
+})

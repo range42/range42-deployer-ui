@@ -20,7 +20,8 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: `VITE_DEV_PORT=${PORT} npm run dev`,
+    // Exclude development-only Vue DevTools from user-facing accessibility checks.
+    command: `VITE_DEV_PORT=${PORT} npm run dev -- --mode test`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -128,6 +128,7 @@ const previewClones = computed(() => {
         </div>
       </div>
       <div class="flex shrink-0 flex-wrap items-center gap-2 pointer-events-auto">
+        <slot name="actions">
         <!-- Team-scope replication chip -->
         <div
           v-if="isTeamScope"
@@ -166,6 +167,7 @@ const previewClones = computed(() => {
         >
           {{ expandedPreview ? 'Collapse' : 'Expand' }}
         </button>
+        </slot>
       </div>
     </div>
 

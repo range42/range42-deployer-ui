@@ -299,5 +299,13 @@
     "deploy_networks": "Create scenario networks",
     "delete_networks": "Delete scenario networks",
     "pinned": "Lifecycle actions use this deployment’s saved repository revision."
+  },
+  "platform": {
+    "title": "Range42 platform",
+    "core": "Core services",
+    "full": "All available services",
+    "reserved": "Presets select software on the VMs reserved by this scenario. They do not change VM allocations.",
+    "unavailable": "Excluded from this release",
+    "setupRequired": "Complete the required setup fields with absolute paths and valid HTTPS URLs or JSON network lists."
   }
 }

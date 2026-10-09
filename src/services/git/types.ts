@@ -358,6 +358,8 @@ export interface GitProviderV1 {
   mergePullRequest?(opts: MergePullRequestOptions): Promise<{ merged: boolean; sha?: string }>
   ensureFork?(opts: { owner: string; repo: string; destination?: string }): Promise<RepoRef>
   commitFiles?(opts: CommitFilesOptions): Promise<{ sha: string }>
+  /** Complete path-to-Git-SHA1 blob inventory at an immutable commit; reject truncated reads. */
+  getFileDigests?(opts: { owner: string; repo: string; ref: string }): Promise<Record<string, string>>
   getFileContent?(opts: { owner: string; repo: string; path: string; ref?: string }): Promise<{ content: FileContent; sha: string }>
   listRepos(opts: { owner?: string }): Promise<RepoRef[]>
   getFile(opts: {

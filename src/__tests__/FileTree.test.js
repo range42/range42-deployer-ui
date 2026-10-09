@@ -43,7 +43,7 @@ describe('FileTree', () => {
     })
     const overlay = makeFs({ tree: [] })
 
-    const wrapper = mount(FileTree, { props: { baseFs: base, overlayFs: overlay } })
+    const wrapper = mount(FileTree, { props: { baseFs: base, overlayFs: overlay, selectedPath: 'roles/foo.yml' } })
     await flushPromises()
 
     // Simulate right-click context menu → fork
@@ -67,4 +67,26 @@ describe('FileTree', () => {
     expect(forkEvents.length).toBeGreaterThan(0)
     expect(forkEvents[0][0]).toEqual({ path: 'roles/foo.yml', baseSha: 'base-sha-x' })
   })
+})
+
+it('groups nested files into collapsible folders and reveals the selected file', async () => {
+  const baseFs=makeFs({tree:[{path:'platforms/alpha/main.yml',type:'blob',sha:'base'}]})
+  const overlayFs=makeFs({tree:[{path:'platforms/alpha/main.yml',type:'blob',sha:'override'},{path:'platform_runtime/bundles/main.yml',type:'blob',sha:'runtime'},{path:'root.yml',type:'blob',sha:'root'}]})
+  const wrapper=mount(FileTree,{props:{baseFs,overlayFs}})
+  await flushPromises()
+  expect(wrapper.find('[data-folder="platforms"]').exists()).toBe(true)
+  expect(wrapper.find('[data-path="platforms/alpha/main.yml"]').exists()).toBe(false)
+  await wrapper.get('[data-folder="platforms"] button').trigger('click')
+  await wrapper.get('[data-folder="platforms/alpha"] button').trigger('click')
+  const file=wrapper.get('[data-path="platforms/alpha/main.yml"]')
+  expect(file.text()).toContain('main.yml');expect(file.text()).not.toContain('platforms/alpha/')
+  expect(file.attributes('data-marker')).toBe('overlay_override')
+  await file.trigger('click')
+  expect(wrapper.emitted('select').at(-1)[0]).toEqual({path:'platforms/alpha/main.yml',fsKind:'overlay'})
+  await wrapper.get('[data-folder="platforms"] button').trigger('click')
+  expect(wrapper.find('[data-path="platforms/alpha/main.yml"]').exists()).toBe(false)
+  await wrapper.setProps({selectedPath:'platform_runtime/bundles/main.yml'})
+  expect(wrapper.find('[data-path="platform_runtime/bundles/main.yml"]').exists()).toBe(true)
+  expect(wrapper.find('[data-path="platforms/alpha/main.yml"]').exists()).toBe(false)
+  wrapper.unmount()
 })

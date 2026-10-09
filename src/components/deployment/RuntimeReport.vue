@@ -5,7 +5,8 @@ import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import RuntimePolicyEditor from './RuntimePolicyEditor.vue'
 
-const props = defineProps({ deploymentId: { type: String, required: true }, canAdmin: Boolean, disabled: Boolean })
+const props = defineProps({ deploymentId: { type: String, required: true }, canAdmin: Boolean, disabled: Boolean,
+  refreshVersion: { type: Number, default: 0 } })
 const emit = defineEmits(['review'])
 const { t } = useI18n()
 const backend = useBackendApiStore()
@@ -30,6 +31,7 @@ async function reload() {
   } finally { if (current === version) loading.value = false }
 }
 watch([() => props.deploymentId, getBackendScope, () => backend.token], () => { report.value = null; void reload() }, { immediate: true })
+watch(() => props.refreshVersion, () => { void reload() })
 onBeforeUnmount(() => { version += 1 })
 </script>
 

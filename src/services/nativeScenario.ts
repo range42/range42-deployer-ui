@@ -10,13 +10,15 @@ function editablePath(path: string): boolean {
   return !reserved.includes(path) && !path.split('/').some(part => ['secrets', 'ssh_keys', '.env', '.lock'].includes(part))
 }
 
-export interface NativeScenario { version: 1; path: string }
+export interface NativeScenario { version: 1; path: string; component_id?: string }
 
 export function nativeScenario(value: unknown): NativeScenario {
   if (!value || typeof value !== 'object' || !('version' in value) || value.version !== 1
     || !('path' in value) || typeof value.path !== 'string') throw new Error('Invalid native scenario metadata')
   validateFilePath(value.path)
-  return { version: 1, path: value.path }
+  const component = 'component_id' in value ? value.component_id : undefined
+  if (component !== undefined && (typeof component !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(component))) throw new Error('Invalid native component identity')
+  return { version: 1, path: value.path, ...(component ? { component_id: component as string } : {}) }
 }
 
 /** Read only the selected scenario; its complete repository remains pinned in Git. */

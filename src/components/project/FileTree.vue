@@ -65,6 +65,45 @@ const merged = computed(() =>
   ),
 )
 
+const expanded = ref(new Set())
+watch(() => props.selectedPath, path => {
+  const parts = path.split('/'), next = new Set(expanded.value)
+  for (let index = 1; index < parts.length; index++) next.add(parts.slice(0, index).join('/'))
+  expanded.value = next
+}, { immediate: true })
+const rows = computed(() => {
+  const entries = new Map()
+  for (const entry of merged.value) {
+    const parts = entry.path.split('/')
+    for (let index = 1; index < parts.length; index++) {
+      const path = parts.slice(0, index).join('/')
+      if (!entries.has(path)) entries.set(path, { path, type: 'tree', name: parts[index - 1], depth: index - 1 })
+    }
+    entries.set(entry.path, { ...entry, name: parts.at(-1), depth: parts.length - 1 })
+  }
+  const children = new Map()
+  for (const entry of entries.values()) {
+    const parent = entry.path.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/')) : ''
+    if (!children.has(parent)) children.set(parent, [])
+    children.get(parent).push(entry)
+  }
+  const visible = []
+  function visit(parent) {
+    for (const entry of (children.get(parent) || []).sort((a, b) => Number(b.type === 'tree') - Number(a.type === 'tree') || a.name.localeCompare(b.name))) {
+      visible.push(entry)
+      if (entry.type === 'tree' && expanded.value.has(entry.path)) visit(entry.path)
+    }
+  }
+  visit('')
+  return visible
+})
+function toggleFolder(path) {
+  const next = new Set(expanded.value)
+  if (next.has(path)) next.delete(path)
+  else next.add(path)
+  expanded.value = next
+}
+
 // --- context menu (Fork to override) ---
 const menu = ref({ open: false, x: 0, y: 0, entry: null })
 function closeMenu() {
@@ -132,17 +171,23 @@ function markerGlyph(marker) {
 
     <ul v-else class="flex-1 overflow-y-auto text-sm" data-testid="file-tree-list">
       <li
-        v-for="entry in merged"
+        v-for="entry in rows"
         :key="entry.path"
         class="flex items-center gap-2 px-2 py-0.5 cursor-pointer hover:bg-base-200"
         :class="{
           'bg-base-300': entry.path === selectedPath,
         }"
         :data-marker="entry.marker"
-        :data-path="entry.path"
-        @click="onRowClick(entry)"
-        @contextmenu="openMenu($event, entry)"
+        :data-path="entry.type === 'blob' ? entry.path : undefined"
+        :data-folder="entry.type === 'tree' ? entry.path : undefined"
+        :style="{ paddingLeft: `${0.5 + entry.depth * 0.85}rem` }"
+        @click="entry.type === 'tree' ? toggleFolder(entry.path) : onRowClick(entry)"
+        @contextmenu="entry.type === 'blob' && openMenu($event, entry)"
       >
+        <button v-if="entry.type === 'tree'" type="button" class="flex items-center gap-2 min-w-0 w-full text-left py-1 font-medium" :aria-expanded="expanded.has(entry.path)" :title="entry.path">
+          <span aria-hidden="true">{{ expanded.has(entry.path) ? '▾' : '▸' }}</span><span class="truncate">{{ entry.name }}</span>
+        </button>
+        <template v-else>
         <span
           class="inline-flex w-3 h-3 items-center justify-center text-[10px]"
           :data-glyph="markerGlyph(entry.marker)"
@@ -157,7 +202,8 @@ function markerGlyph(marker) {
           class="w-2 h-2 rounded-full bg-warning"
           :title="$t ? $t('configTab.drift') : 'Drift'"
         />
-        <span class="truncate font-mono">{{ entry.path }}</span><span v-if="entry.binary" class="text-xs text-base-content/70">Binary</span>
+        <button type="button" class="truncate font-mono text-left min-w-0" :title="entry.path" :aria-current="entry.path === selectedPath ? 'true' : undefined">{{ entry.name }}</button><span v-if="entry.binary" class="text-xs text-base-content/70">Binary</span>
+        </template>
       </li>
     </ul>
 

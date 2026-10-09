@@ -88,3 +88,11 @@ describe('GroupNode (Plan C §6 — team_scope replication)', () => {
     expect(labels.length).toBe(5)
   })
 })
+
+it('uses the standard group shell with optional stack actions', () => {
+  const w = mount(GroupNode, { props: { data: { config: { name: 'Stack' }, hasChildren: true } }, slots: { actions: '<button>Deploy stack</button>' } })
+  expect(w.find('.group-container').exists()).toBe(true)
+  expect(w.find('.group-header').text()).toContain('Deploy stack')
+  expect(w.text()).not.toContain('Drop components here')
+  expect(w.find('[data-testid^="group-kind-toggle"]').exists()).toBe(false)
+})

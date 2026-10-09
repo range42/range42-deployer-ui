@@ -17,6 +17,46 @@ function show(props = {}) {
   } })
 }
 describe('reviewed policy editor', () => {
+  it.each(['replacement', 'changed settings', 'removed'])('preserves the draft but refuses a stale rule after %s', async change => {
+    const wrapper = show()
+    await wrapper.get('[data-testid="policy-edit-vm-3191-0"]').trigger('click')
+    await wrapper.get('[data-testid="policy-port"]').setValue('8443')
+    const updated = chains()
+    if (change === 'replacement') updated[0].rules[0].comment = 'range42-deployment:dep;rule:other'
+    if (change === 'changed settings') updated[0].rules[0].source = '10.42.80.0/24'
+    if (change === 'removed') updated[0].rules = []
+    await wrapper.setProps({ chains: updated })
+    await wrapper.get('[data-testid="policy-rule-form"]').trigger('submit')
+    expect(wrapper.emitted('review')).toBeUndefined()
+    expect(wrapper.get('[data-testid="policy-port"]').element.value).toBe('8443')
+    expect(wrapper.get('[data-testid="policy-rule-form"] [role="alert"]').text()).toContain('changed')
+  })
+  it('allows an unchanged rule draft after refreshing and explicitly reselecting a changed rule', async () => {
+    const wrapper = show()
+    await wrapper.get('[data-testid="policy-edit-vm-3191-0"]').trigger('click')
+    await wrapper.get('[data-testid="policy-port"]').setValue('8443')
+    await wrapper.setProps({ chains: chains() })
+    await wrapper.get('[data-testid="policy-rule-form"]').trigger('submit')
+    expect(wrapper.emitted('review')).toHaveLength(1)
+    const updated = chains()
+    updated[0].rules[0].destination_port = '9443'
+    await wrapper.setProps({ chains: updated })
+    await wrapper.get('[data-testid="policy-edit-vm-3191-0"]').trigger('click')
+    await wrapper.get('[data-testid="policy-rule-form"]').trigger('submit')
+    expect(wrapper.emitted('review')[1][0].rule.destination_port).toBe('9443')
+  })
+  it('keeps a rename draft but refuses to rename an alias changed since selection', async () => {
+    const wrapper = show()
+    await wrapper.get('[data-testid="alias-rename-vm-3191-clients"]').trigger('click')
+    await wrapper.get('[data-testid="alias-new-name"]').setValue('students')
+    const updated = chains()
+    updated[0].aliases[0].cidr = '10.42.80.0/24'
+    await wrapper.setProps({ chains: updated })
+    await wrapper.get('[data-testid="policy-alias-form"]').trigger('submit')
+    expect(wrapper.emitted('review')).toBeUndefined()
+    expect(wrapper.get('[data-testid="alias-new-name"]').element.value).toBe('students')
+    expect(wrapper.get('[data-testid="policy-alias-form"] [role="alert"]').text()).toContain('changed')
+  })
   it('prepares a complete guest rule edit and preserves source restrictions', async () => {
     const wrapper = show()
     await wrapper.get('[data-testid="policy-edit-vm-3191-0"]').trigger('click')

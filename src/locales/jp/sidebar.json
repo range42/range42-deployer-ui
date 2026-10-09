@@ -107,5 +107,9 @@
   "redo": "やり直す",
   "projectActions": "プロジェクト操作",
   "nodeCount": "ノードなし | ノード 1 個 | ノード {count} 個",
-  "edgeCount": "接続なし | 接続 1 本 | 接続 {count} 本"
+  "edgeCount": "接続なし | 接続 1 本 | 接続 {count} 本",
+  "platform": {
+    "title": "Range42 スタック",
+    "description": "このプロジェクトにプラットフォームを追加"
+  }
 }

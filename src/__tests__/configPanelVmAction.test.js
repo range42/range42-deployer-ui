@@ -255,3 +255,16 @@ it('shows desired tag edits while preserving observed tags and exposing the writ
   expect(wrapper.find('[aria-label="Remove tag observed"]').exists()).toBe(false)
   wrapper.unmount()
 })
+
+it('shows generated stack resources in the normal inspector without saving ignored edits', async () => {
+  setActivePinia(createPinia())
+  const w = mountPanel({ id: 'platform-alpha-ui', type: 'vm', data: { config: { name: 'Alpha UI', platformStack: 'platform-alpha', vmid: 31000, template: 9221 } } })
+  await flushPromises()
+  expect(w.get('fieldset').attributes('disabled')).toBeDefined()
+  expect(w.text()).toContain('Configured by the Range42 stack')
+  await w.vm.handleSave()
+  expect(w.emitted('update')).toBeUndefined()
+  await w.get('[data-testid="stack-resource-files"]').trigger('click')
+  expect(w.emitted('open-stack-files')).toBeTruthy()
+  w.unmount()
+})

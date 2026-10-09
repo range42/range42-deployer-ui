@@ -9,6 +9,7 @@ import { prepareRoleAttachment } from '@/services/catalogRoleExecution'
 import catalogRole from './fixtures/catalogRoleNtp.json'
 import { replicatedScenario } from './fixtures/replicatedScenario'
 import { savedScenario } from './fixtures/savedScenario'
+import { appendPlatformComponent, platformSelection } from '@/services/platformComponents'
 
 const { getProvider } = vi.hoisted(() => ({ getProvider: vi.fn() }))
 vi.mock('@/services/git', () => ({ getProvider }))
@@ -188,4 +189,18 @@ describe('open project from Git', () => {
     expect(restored.baseDoc.env[1]).toEqual({ name: 'VAULT_VALUE', secret: true, required: true })
     expect(JSON.stringify(restored.overlay)).not.toContain('must-not-restore')
   })
+})
+
+it('reopens a stack component in the same project alongside its generated topology', async () => {
+  const original = savedScenario()
+  const component = { version: 1, scenario: { version: 1, path: 'platforms/alpha' },
+    plan: { id: 'alpha', domain: 'alpha.example.test', profile: 'core', bridge: 'r42alpha', subnet: '10.81.0.0/24', vms: [{ service: 'ui', vm_id: 31000, vm_name: 'r42-alpha-ui' }] },
+    files: { 'platforms/alpha/main.yml': '- hosts: all\n  tasks: []\n' } }
+  const project = appendPlatformComponent(original, component)
+  repository(project)
+  const reopened = prepareGitProjectImport(await loadGitProject(project.git, []))
+  expect(reopened.scenario).toEqual(original.scenario)
+  expect(reopened.native_scenario).toBeUndefined()
+  expect(platformSelection(reopened.nodes.find(node => node.type === 'group'))).toEqual(component.scenario)
+  expect(reopened.files['platforms/alpha/main.yml']).toBe(component.files['platforms/alpha/main.yml'])
 })

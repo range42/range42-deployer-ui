@@ -260,6 +260,7 @@ async function submit() {
       team_count: props.gamenet ? Number(teamCount.value) : 1,
       ...(props.nativeScenario && nativeSelection.value ? { native: {
         path: props.nativeScenario.path, context_id: nativeSelection.value.context_id,
+        ...(props.nativeScenario.component_id ? { component_id: props.nativeScenario.component_id } : {}),
         features: nativeSelection.value.features, parameters: nativeSelection.value.parameters,
       } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
@@ -357,7 +358,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         {{ t('deployment.deploy.backend', { backend: backendLabel }) }}
       </p>
       <fieldset class="space-y-3" :disabled="submitting">
-        <NativeDeploymentFields v-if="nativeScenario" :project-id="projectId" :revision="projectSha" :path="nativeScenario.path" @select="selectNative" />
+        <NativeDeploymentFields v-if="nativeScenario" :project-id="projectId" :revision="projectSha" :path="nativeScenario.path" :component-id="nativeScenario.component_id" @select="selectNative" />
         <!-- Codename -->
         <div class="form-control" data-testid="deploy-field-codename">
           <label class="label pb-1">

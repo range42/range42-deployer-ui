@@ -100,6 +100,14 @@ export class GitHubV1Provider implements GitProviderV1 {
     }))
   }
 
+  async getFileDigests(opts: { owner: string; repo: string; ref: string }): Promise<Record<string, string>> {
+    if (!/^[a-f0-9]{40}$/i.test(opts.ref)) throw new Error('File inventory requires an exact Git commit')
+    const tree = await this.listTree(opts)
+    const files = tree.filter(entry => entry.type === 'blob')
+    if (files.some(entry => !/^[a-f0-9]{40}$/i.test(entry.sha))) throw new Error('Invalid Git file digest')
+    return Object.fromEntries(files.map(entry => [entry.path, entry.sha]))
+  }
+
   async getFile(opts: { owner: string; repo: string; path: string; ref?: string }): Promise<{ content: string; sha: string }> {
     const file = await this.getFileContent(opts)
     return { ...file, content: fileText(file.content) }
