@@ -65,6 +65,71 @@ range42-backend-api ----> Saved scenario playbooks ----> Proxmox / SDN
 - For ready-made scenario execution, existing Range42 contexts exposed by the
   backend. See [scenario deployment prerequisites](docs/native-scenarios.md).
 
+### Deploy `dev_deployer_ui_lab` with range42-context
+
+Use the existing Range42 init and scenario workflow to create the Proxmox lab
+and install the backend API and deployer UI. The scenario creates three
+development guests: `dev-deployer-ui`, `dev-backend` and `dev-kong`. Wazuh, MISP
+and Tailscale are optional features.
+
+On an existing deployer, initialize the workspace:
+
+```zsh
+range42-context init
+```
+
+Select your infrastructure codename, enter the Proxmox connection details and
+actual node name, and choose `dev_deployer_ui_lab`. The wizard's **Deploy now**
+bootstraps the deployer, inventory, encrypted vault and SSH keys. It prepares the
+workspace; the following command deploys the scenario guests and applications.
+For a new deployer, first clone the core repository and run `./range42-init.py`
+as described in the [Range42 setup guide](https://github.com/range42/range42/blob/dev/GETTING_STARTED.md).
+
+Open a new zsh session, then select and deploy the context:
+
+```zsh
+# Replace pve01 with the codename chosen in the wizard.
+range42-context use pve01 dev_deployer_ui_lab
+range42-context status
+range42-context deploy
+```
+
+Use compatible revisions of `range42-backend-api`, `range42-deployer-ui` and
+`range42-playbooks` under the repository root shown by the context. The application
+installers build these selected checkouts. The updated backend installer resolves
+its immutable image ID automatically, provisions its private API credentials once,
+and preserves managed state on a repeat deployment. The UI receives this lab's
+backend URL and the node selected during setup. No manual `BACKEND_IMAGE` is needed
+for the normal source deployment. The playbooks installer update must accompany
+these application revisions when promoting them to `dev` or `main`.
+
+Optional machine-specific application settings belong in
+`$RANGE42_ACTIVE_CONFIG_DIR/deployment.yml`. The scenario reads this file
+automatically; command-line `-e` overrides take precedence. For example:
+
+```yaml
+API_PORT: 8000
+UI_PORT: 3000
+BACKEND_INSTALL_ROOT: /var/lib/range42-backend
+```
+
+For an existing managed backend, retain its recorded installation root, private
+credentials and execution-runtime bindings. `BACKEND_IMAGE` is an optional pin for
+a reviewed image already present on the backend guest. Without that pin, the
+installer builds the selected source and uses a guarded update when it changes.
+Full scenario execution through the API also requires a complete reviewed runtime,
+a private credential template and a matching registered Proxmox target; see
+[scenario deployment prerequisites](docs/native-scenarios.md) and
+[backend runtime packaging](https://github.com/range42/range42-backend-api/blob/dev/docs/container-packaging.md).
+The source-build fix handles application installation; it does not export a new
+execution runtime or auto-register Proxmox credentials.
+
+The default UI is `http://192.168.142.190:3000` on the lab network and the API is
+`http://192.168.142.191:8000`. Use your configured proxy URL when accessing the
+showcase externally. In **Settings → Backend API hosts**, enter the backend's
+private bearer token and check its readiness. The public `/health` (UI) and
+`/v1/health` (API) endpoints confirm startup; API readiness requires authentication.
+
 ### Docker
 
 ```bash
