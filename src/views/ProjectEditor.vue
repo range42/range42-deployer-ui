@@ -148,6 +148,7 @@ const showDeploymentPicker = ref(false)
 /** @type {import('vue').Ref<import('@/services/nativeScenario').NativeScenario | undefined>} */
 const deploymentScenario = ref()
 const platformNodes = computed(() => (liveNodes.value || []).filter(isPlatformStack))
+const hasProjectMachines = computed(() => liveNodes.value.some(node => node.type === 'vm' && !isPlatformResource(node)))
 const platformProject = computed(() => currentProject.value ? { ...currentProject.value, ...projectGraph() } : undefined)
 /** @param {import('@/services/platformComponents').PlatformComponent} component */
 function addPlatformStack(component) {
@@ -944,7 +945,7 @@ const closeProxmoxSettings = () => {
 const handleOpenDeploy = async (selection = undefined) => {
   if (selection && 'path' in selection) deploymentScenario.value = selection
   else if (selection !== null && platformNodes.value.length) {
-    if (platformNodes.value.length === 1 && !liveNodes.value.some(node => node.type === 'vm' && !isPlatformResource(node))) deploymentScenario.value = platformSelection(platformNodes.value[0])
+    if (platformNodes.value.length === 1 && !hasProjectMachines.value) deploymentScenario.value = platformSelection(platformNodes.value[0])
     else { showDeploymentPicker.value = true; return }
   } else deploymentScenario.value = currentProject.value?.native_scenario
   showDeploymentPicker.value = false
@@ -1725,7 +1726,7 @@ const handleInfrastructureImport = (result) => {
       <div class="modal-box">
         <h2 id="deployment-choice" class="text-lg font-semibold">Choose what to deploy</h2>
         <div class="mt-4 space-y-2">
-          <button v-if="liveNodes.some(node => node.type === 'vm')" class="btn btn-outline w-full" @click="handleOpenDeploy(null)">Project machines</button>
+          <button v-if="hasProjectMachines" class="btn btn-outline w-full" @click="handleOpenDeploy(null)">Project machines</button>
           <button v-for="node in platformNodes" :key="node.id" class="btn btn-outline w-full" @click="deployPlatform(node)">{{ node.data.label }}</button>
         </div>
         <div class="modal-action"><button class="btn btn-ghost" @click="showDeploymentPicker = false">Cancel</button></div>

@@ -19,6 +19,7 @@ import * as gitProviders from '@/services/git'
 import projectMessages from '@/locales/en/project.json'
 import historyTab from '@/locales/en/historyTab.json'
 import deployment from '@/locales/en/deployment.json'
+import sidebar from '@/locales/en/sidebar.json'
 const { pushToGit } = vi.hoisted(() => ({ pushToGit: vi.fn() }))
 vi.mock('@/composables/useProjectGitSync', async original => ({ ...await original(), useProjectGitSync: () => ({ pushToGit }) }))
 vi.mock('@/composables/useDeploymentIndex', async () => {
@@ -43,7 +44,7 @@ async function editor(query = '', overrides = {}) {
   await router.push('/project/tabs' + query); await router.isReady()
   wrapper = shallowMount(AppShell, { attachTo: document.body, global: {
     stubs: { RouterView: false, ProjectEditor: false, ConfigTab: false, KeepAlive: false, teleport: true },
-    plugins: [pinia, router, createI18n({ legacy: false, locale: 'en', messages: { en: { project: projectMessages, historyTab, deployment } } })],
+    plugins: [pinia, router, createI18n({ legacy: false, locale: 'en', messages: { en: { project: projectMessages, historyTab, deployment, sidebar } } })],
   } })
   await flushPromises()
   if (router.currentRoute.value.query.tab === 'config') {
@@ -53,6 +54,26 @@ async function editor(query = '', overrides = {}) {
 }
 
 describe('Actual ProjectEditor tab and selection navigation', () => {
+  it.each([false, true])('offers Project machines only when ordinary VMs exist (ordinary: %s)', async ordinary => {
+    const stacks = ['alpha', 'beta'].map((id, index) => ({
+      id: `platform-${id}`, type: 'group', position: { x: index * 1000, y: 0 },
+      data: { label: `Range42 ${id}`, config: { platformStack: `platform-${id}`,
+        scenario: { version: 1, path: `platforms/${id}` },
+        plan: { id, domain: `${id}.example.test`, bridge: `net${id}`, subnet: `10.${81 + index}.0.0/24`,
+          vms: [{ service: 'web', vm_id: 31000 + index, vm_name: `${id}-web`, ip: `10.${81 + index}.0.10` }] },
+      } },
+    }))
+    const { store } = await editor('?tab=canvas', { nodes: [...stacks, ...(ordinary ? [node('ordinary', 'Ordinary guest')] : [])] })
+    // The actual editor expands each stack into standard VM children.
+    expect(store.getProject('tabs').nodes.filter(item => item.type === 'vm').length).toBe(ordinary ? 3 : 2)
+    wrapper.findComponent(Sidebar).vm.$emit('openDeploy')
+    await flushPromises()
+    const picker = wrapper.get('[aria-labelledby="deployment-choice"]')
+    expect(picker.text()).toContain('Range42 alpha')
+    expect(picker.text()).toContain('Range42 beta')
+    expect(picker.text().includes('Project machines')).toBe(ordinary)
+  })
+
   it('offers workload review beside the selected application files and retains accepted changes locally', async () => {
     const prefix = 'scenarios/custom/content/workloads/web'
     const scenario = { label: 'custom', content: [{ id: 'web', kind: 'playbook', target_node: 'first', path: 'content/workloads/web/deploy.yml' }] }

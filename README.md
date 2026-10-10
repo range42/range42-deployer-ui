@@ -72,6 +72,38 @@ and install the backend API and deployer UI. The scenario creates three
 development guests: `dev-deployer-ui`, `dev-backend` and `dev-kong`. Wazuh, MISP
 and Tailscale are optional features.
 
+Before running `init`, select matching repository revisions in the deployer's
+repository root (normally `~/range42`). The wizard discovers scenarios from the
+`range42-playbooks` checkout beside the core repository; the scenario manifest
+and all four setup templates must already exist there. Its automatic clone of
+`main` does not guarantee the current scenario and installer fixes are available.
+
+For the current showcase review build, use these refs:
+
+| Repository | Ref |
+| --- | --- |
+| `range42` | `dev` |
+| `range42-playbooks` | `fix/dev-deployer-ui-bootstrap-20261009` ([PR #179](https://github.com/range42/range42-playbooks/pull/179)) |
+| `range42-backend-api` | `fix/context-bootstrap-20261009` ([PR #156](https://github.com/range42/range42-backend-api/pull/156)) |
+| `range42-deployer-ui` | `fix/context-bootstrap-20261009` ([PR #118](https://github.com/range42/range42-deployer-ui/pull/118)) |
+
+After those PRs merge, use the destination branch containing their changes. An
+API/UI promotion alone does not include the playbooks fix.
+
+For a fresh default repository root:
+
+```zsh
+mkdir -p "$HOME/range42"
+git clone --branch dev https://github.com/range42/range42.git "$HOME/range42/range42"
+git clone --branch fix/dev-deployer-ui-bootstrap-20261009 https://github.com/range42/range42-playbooks.git "$HOME/range42/range42-playbooks"
+git clone --branch fix/context-bootstrap-20261009 https://github.com/range42/range42-backend-api.git "$HOME/range42/range42-backend-api"
+git clone --branch fix/context-bootstrap-20261009 https://github.com/range42/range42-deployer-ui.git "$HOME/range42/range42-deployer-ui"
+```
+
+For existing checkouts, preserve local edits, fetch the remote refs and select
+the same revisions before continuing. Use the actual repository root shown by
+`range42-context status` rather than the default path if it differs.
+
 On an existing deployer, initialize the workspace:
 
 ```zsh
@@ -82,22 +114,28 @@ Select your infrastructure codename, enter the Proxmox connection details and
 actual node name, and choose `dev_deployer_ui_lab`. The wizard's **Deploy now**
 bootstraps the deployer, inventory, encrypted vault and SSH keys. It prepares the
 workspace; the following command deploys the scenario guests and applications.
-For a new deployer, first clone the core repository and run `./range42-init.py`
+For a new deployer, run `./range42-init.py` from the selected core checkout
 as described in the [Range42 setup guide](https://github.com/range42/range42/blob/dev/GETTING_STARTED.md).
 
-Open a new zsh session, then select and deploy the context:
+Open a new zsh session. Bootstrap can select `main` in the shared repository
+checkouts, so recheck the refs before deploying. For the review build above:
 
 ```zsh
+RANGE42_SOURCE_ROOT="$HOME/range42" # Use the root selected in the wizard.
+git -C "$RANGE42_SOURCE_ROOT/range42" switch dev
+git -C "$RANGE42_SOURCE_ROOT/range42-playbooks" switch fix/dev-deployer-ui-bootstrap-20261009
+git -C "$RANGE42_SOURCE_ROOT/range42-backend-api" switch fix/context-bootstrap-20261009
+git -C "$RANGE42_SOURCE_ROOT/range42-deployer-ui" switch fix/context-bootstrap-20261009
+# Load the CLI from the matching core checkout in this session.
+source "$RANGE42_SOURCE_ROOT/range42/roles/deployer.bootstrap/files/range42-context.sh"
 # Replace pve01 with the codename chosen in the wizard.
 range42-context use pve01 dev_deployer_ui_lab
 range42-context status
 range42-context deploy
 ```
 
-Use compatible revisions of `range42-backend-api`, `range42-deployer-ui` and
-`range42-playbooks` under the repository root shown by the context. The application
-installers build these selected checkouts. The updated backend installer resolves
-its immutable image ID automatically, provisions its private API credentials once,
+The application installers build these selected checkouts. The updated backend
+installer resolves its immutable image ID automatically, provisions its private API credentials once,
 and preserves managed state on a repeat deployment. The UI receives this lab's
 backend URL and the node selected during setup. No manual `BACKEND_IMAGE` is needed
 for the normal source deployment. The playbooks installer update must accompany
