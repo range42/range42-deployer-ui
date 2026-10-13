@@ -1,5 +1,17 @@
 # Deploy a ready-made scenario
 
+For a canvas project, **Add scenario → Add Range42 stack** can create a dedicated
+SDN network or use an existing private Linux bridge. In existing-bridge mode,
+enter the operator's bridge, subnet and gateway. List each approved external VM
+already attached to that bridge by its exact Proxmox ID, name and description.
+Editing these settings invalidates the reviewed preview. Live deployment verifies
+the identities again and refuses unexpected attached guests.
+
+The existing network and approved external VMs remain outside the stack
+lifecycle. The operator prepares and qualifies routing, DNS and network isolation.
+This option requires matching backend and playbooks releases; it does not provide
+multi-node automation or independent shared-service selection.
+
 1. Connect the public `range42-playbooks` repository or your private Git source in Settings. A private source needs a credential with repository access.
 2. Open a scenario from Catalog and choose Create project. For a repository not yet indexed, use Open from Git, select native scenario mode, and enter the relative scenario folder, for example `scenarios/demo_lab` or `training/exercise-a`.
 3. Fork the public repository when you need your own copy, or open a writable branch in an existing repository. A fork retains the whole repository and shared dependencies.

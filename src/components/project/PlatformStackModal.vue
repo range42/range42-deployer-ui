@@ -9,17 +9,19 @@ import { suggestStackSettings, type StackInventory } from '@/services/platformSu
 import type { ProjectDraft } from '@/types/project'
 const props = defineProps<{ project: ProjectDraft }>()
 const emit = defineEmits<{ close: []; add: [component: PlatformComponent] }>()
-const form = reactive({ id: 'platform', domain: '', profile: 'core', vmid_start: '', template_vmid: '', subnet: '', gateway: '', bridge: '', node: 'pve01', ssh_user: 'alice', dns: '1.1.1.1' })
+const form = reactive({ id: 'platform', domain: '', profile: 'core', network_mode: 'sdn', vmid_start: '', template_vmid: '', subnet: '', gateway: '', bridge: '', node: 'pve01', ssh_user: 'alice', dns: '1.1.1.1' })
+const networkPeers = ref<{ vm_id: string; vm_name: string; description: string }[]>([])
 const fields = [
   ['id', 'Stack name', 'platform'], ['domain', 'Domain', 'platform.example.org'],
   ['vmid_start', 'First new VM ID', '31000'],
   ['subnet', 'Private subnet', '10.81.0.0/24'], ['gateway', 'Gateway', '10.81.0.1'],
-  ['bridge', 'New network name', 'r42alpha'],
   ['ssh_user', 'Template SSH user', 'alice'], ['dns', 'DNS server', '1.1.1.1'],
 ] as const
 const preview = ref<PlatformComponent | null>(null), busy = ref(false), error = ref(''), active = ref(false)
 let generation = 0
-watch(form, () => { generation++; preview.value = null; error.value = ''; busy.value = false }, { flush: 'sync' })
+function invalidateReview() { generation++; preview.value = null; error.value = ''; busy.value = false }
+watch(form, invalidateReview, { flush: 'sync' })
+watch(networkPeers, invalidateReview, { deep: true, flush: 'sync' })
 watch(() => props.project.id, () => { generation++; preview.value = null; busy.value = false })
 onMounted(async () => { await nextTick(); active.value = true })
 onBeforeUnmount(() => { generation++; inventoryEpoch++ })
@@ -38,10 +40,19 @@ function useSuggestions() {
   if (!suggestions.value) return
   form.vmid_start = String(suggestions.value.vmidStarts[0] || '')
   const network = suggestions.value.networks[0]
-  if (network) Object.assign(form, network)
+  if (network) useNetwork(network)
 }
+function useNetwork(network: { subnet: string; gateway: string; bridge: string }) {
+  form.subnet = network.subnet; form.gateway = network.gateway
+  if (form.network_mode === 'sdn') form.bridge = network.bridge
+}
+watch(() => form.network_mode, mode => {
+  networkPeers.value = []
+  form.bridge = mode === 'sdn' ? suggestions.value?.networks[0]?.bridge || '' : ''
+}, { flush: 'sync' })
 function clearInventory() {
   generation++; inventoryEpoch++; inventory.value = null; templates.value = []; preview.value = null
+  networkPeers.value = []
   Object.assign(form, { template_vmid: '', vmid_start: '', subnet: '', gateway: '', bridge: '', node: '' })
 }
 async function loadHosts() {
@@ -93,8 +104,25 @@ async function review() {
     if (!inventory.value || !templates.value.some(vm => vm.vmid === Number(form.template_vmid))) throw new Error('Choose a source VM template from the selected Proxmox target.')
     const start = Number(form.vmid_start), end = start + count.value - 1
     if (inventory.value.vmids.some(id => id >= start && id <= end)) throw new Error(`VM IDs ${start}–${end} include an existing VM or template. Choose one of the suggested ranges or enter another unused range.`)
+    const { network_mode, ...settings } = form
+    const binding: Record<string, unknown> = {}
+    if (network_mode === 'existing_bridge') {
+      if (!/^vmbr[1-9][0-9]{0,8}$/.test(form.bridge)) throw new Error('Choose a dedicated existing Linux bridge other than vmbr0.')
+      const ids = new Set<number>()
+      const peers = networkPeers.value.map(peer => {
+        const id = Number(peer.vm_id)
+        if (!Number.isSafeInteger(id) || id < 100 || id > 999999999 || ids.has(id)
+          || (id >= start && id <= end) || id === Number(form.template_vmid)
+          || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(peer.vm_name)
+          || !peer.description.trim() || peer.description.length > 256
+          || [...peer.description].some(char => char.charCodeAt(0) < 32)) throw new Error('Each approved existing VM needs a distinct exact VM ID, name and ownership description outside this stack.')
+        ids.add(id)
+        return { vm_id: id, vm_name: peer.vm_name, description: peer.description }
+      })
+      Object.assign(binding, { network_mode, network_peers: peers })
+    }
     const result = await backendRequest<PlatformComponent>('/v1/platform/components/preview', { method: 'POST',
-      body: JSON.stringify({ ...form, vmid_start: Number(form.vmid_start), template_vmid: Number(form.template_vmid) }) })
+      body: JSON.stringify({ ...settings, ...binding, vmid_start: start, template_vmid: Number(form.template_vmid) }) })
     if (request !== generation || scope !== getBackendScope()) return
     appendPlatformComponent(props.project, result)
     preview.value = result
@@ -122,17 +150,34 @@ async function review() {
             <option value="full">All available services (11 VMs)</option>
           </select></label>
           <p class="text-sm text-base-content/70">The full stack also includes Wazuh, Gitea, registry, Mattermost, Rocket.Chat and Nextcloud. EMP and MISP are unavailable in this release.</p>
+          <label class="form-control gap-1"><span>Network</span><select v-model="form.network_mode" name="network_mode" class="select select-bordered w-full">
+            <option value="sdn">Create a dedicated SDN network</option>
+            <option value="existing_bridge">Use an existing private bridge</option>
+          </select></label>
+          <p v-if="form.network_mode === 'existing_bridge'" class="text-sm">The operator provides an active private bridge without host addresses or physical ports, and its routing and firewall. Stack deployment and retirement leave that network in place.</p>
           <section v-if="suggestions" class="rounded-lg bg-base-200 p-3 space-y-2" aria-label="Suggested stack settings">
             <p class="text-sm">{{ count }} VM IDs are needed. Suggestions exclude visible PVE resources and this project's existing allocations.</p>
             <div class="flex flex-wrap gap-2"><span class="text-sm py-1">Suggested VM IDs:</span><button v-for="start in suggestions.vmidStarts" :key="start" type="button" class="btn btn-xs btn-outline" @click="form.vmid_start = String(start)">{{ start }}–{{ start + count - 1 }}</button></div>
-            <div class="flex flex-wrap gap-2"><span class="text-sm py-1">Suggested networks:</span><button v-for="network in suggestions.networks" :key="network.subnet" type="button" class="btn btn-xs btn-outline" @click="Object.assign(form, network)">{{ network.subnet }}</button></div>
-            <p class="text-xs">A network suggestion fills the subnet, gateway and a new network name. You can edit them below. Availability is checked again during deployment.</p>
+            <div class="flex flex-wrap gap-2"><span class="text-sm py-1">Suggested subnets:</span><button v-for="network in suggestions.networks" :key="network.subnet" type="button" class="btn btn-xs btn-outline" @click="useNetwork(network)">{{ network.subnet }}</button></div>
+            <p class="text-xs">Suggestions fill the subnet and gateway, plus a new network name when creating SDN. For an existing bridge, enter its configured subnet and gateway. Availability is checked again during deployment.</p>
           </section>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="form-control gap-1"><span>{{ form.network_mode === 'existing_bridge' ? 'Existing private bridge' : 'New network name' }}</span><input v-model="form.bridge" name="bridge" :placeholder="form.network_mode === 'existing_bridge' ? 'vmbr321' : 'r42alpha'" required class="input input-bordered w-full" autocomplete="off" /></label>
             <label v-for="[name, label, hint] in fields" :key="name" class="form-control gap-1">
               <span class="text-sm">{{ label }}</span><input v-model="form[name]" :name="name" :placeholder="hint" :type="['vmid_start', 'template_vmid'].includes(name) ? 'number' : 'text'" required class="input input-bordered w-full" autocomplete="off" />
             </label>
           </div>
+          <section v-if="form.network_mode === 'existing_bridge'" class="space-y-3" aria-label="Approved existing VMs">
+            <p class="text-sm">If an existing gateway or other VM uses this bridge, list its exact Proxmox ID, name and description. Deployment verifies these identities and refuses other attached VMs. Listed VMs stay outside the stack lifecycle.</p>
+            <fieldset v-for="(peer, index) in networkPeers" :key="index" class="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg border border-base-300 p-3">
+              <legend class="text-sm">Approved VM {{ index + 1 }}</legend>
+              <label class="form-control gap-1"><span>VM ID</span><input v-model="peer.vm_id" :name="`peer-${index}-id`" type="number" min="100" max="999999999" required class="input input-bordered w-full" /></label>
+              <label class="form-control gap-1"><span>Exact VM name</span><input v-model="peer.vm_name" :name="`peer-${index}-name`" maxlength="63" required class="input input-bordered w-full" /></label>
+              <label class="form-control gap-1 sm:col-span-2"><span>Exact ownership description</span><input v-model="peer.description" :name="`peer-${index}-description`" maxlength="256" required class="input input-bordered w-full" /></label>
+              <button type="button" class="btn btn-sm btn-ghost" @click="networkPeers.splice(index, 1)">Remove approved VM {{ index + 1 }}</button>
+            </fieldset>
+            <button type="button" class="btn btn-sm btn-outline" data-testid="platform-peer-add" :disabled="networkPeers.length >= 32" @click="networkPeers.push({ vm_id: '', vm_name: '', description: '' })">Add approved existing VM</button>
+          </section>
           <p class="text-sm text-base-content/70">Use an existing VM template. The stack inherits its CPU, memory and disk. Deployment also requires the backend's release files, a dedicated credential profile, DNS and a gateway certificate.</p>
           <p v-if="error" role="alert" class="text-error text-sm">{{ error }}</p>
           <button type="submit" class="btn btn-outline" data-testid="platform-review" :disabled="busy || inventoryBusy || !inventory || !form.template_vmid">{{ busy ? 'Preparing preview…' : 'Review stack' }}</button>

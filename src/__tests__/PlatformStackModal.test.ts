@@ -23,6 +23,9 @@ it('requires a review before adding and invalidates it when stack settings chang
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(request).toHaveBeenCalledWith('/v1/platform/components/preview', expect.objectContaining({ method: 'POST' }))
+    const wire = JSON.parse(request.mock.calls.find(([path]) => path === '/v1/platform/components/preview')![1].body)
+    expect(wire).not.toHaveProperty('network_mode')
+    expect(wire).not.toHaveProperty('network_peers')
     expect(wrapper.get('[data-testid="platform-add"]').text()).toBe('Add stack to project')
     const backend = useBackendApiStore()
     backend.updateHost(backend.activeHost!.id, { health: { status: 'ok', ts: new Date().toISOString() } })
@@ -57,4 +60,70 @@ it('selects a real template and suggests unused VM IDs and network settings', as
   await wrapper.get('[name="profile"]').setValue('full')
   expect(wrapper.text()).toContain('11 VM IDs')
   wrapper.unmount()
+})
+
+function borrowedNetworkModal() {
+  const component = { version: 1, plan: { id: 'platform', domain: 'platform.example.test', profile: 'core', bridge: 'vmbr321', subnet: '10.80.0.0/24', network_mode: 'existing_bridge', vms: [{ vm_id: 31000, vm_name: 'r42-platform-ui', service: 'ui' }] }, scenario: { version: 1, path: 'platforms/platform' }, files: {} }
+  request.mockImplementation(async path => {
+    if (path.startsWith('/v1/proxmox/hosts?')) return { items: [{ id: 'host', name: 'PVE', node_name: 'pve01' }], total: 1, offset: 0, limit: 100 }
+    if (path.endsWith('/vms')) return { items: [{ vmid: 9221, name: 'Template', type: 'qemu', template: true, node: 'pve01' }], total: 1 }
+    if (path.includes('/sdn/vnets')) return { items: [], total: 0, offset: 0, limit: 100, view: 'pending', visibility: 'credential_filtered' }
+    return component
+  })
+  return mount(PlatformStackModal, { props: { project: { id: 'p', name: 'Lab', nodes: [], edges: [], attachments: [] } }, global: { stubs: { FocusTrap: { template: '<div><slot /></div>' } } } })
+}
+
+it('reviews an existing bridge with exact approved VM identities and invalidates approval after edits', async () => {
+  const wrapper = borrowedNetworkModal()
+  try {
+    await flushPromises()
+    await wrapper.get('[name="network_mode"]').setValue('existing_bridge')
+    await wrapper.get('[name="bridge"]').setValue('vmbr321')
+    await wrapper.get('[data-testid="platform-peer-add"]').trigger('click')
+    await wrapper.get('[name="peer-0-id"]').setValue('40000')
+    await wrapper.get('[name="peer-0-name"]').setValue('trusted-gateway')
+    await wrapper.get('[name="peer-0-description"]').setValue('operator-owned gateway')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    const wire = JSON.parse(request.mock.calls.find(([path]) => path === '/v1/platform/components/preview')![1].body)
+    expect(wire.network_mode).toBe('existing_bridge')
+    expect(wire.bridge).toBe('vmbr321')
+    expect(wire.network_peers).toEqual([{ vm_id: 40000, vm_name: 'trusted-gateway', description: 'operator-owned gateway' }])
+    expect(wrapper.find('[data-testid="platform-add"]').exists()).toBe(true)
+    await wrapper.get('[name="peer-0-description"]').setValue('changed ownership')
+    expect(wrapper.find('[data-testid="platform-add"]').exists()).toBe(false)
+    await wrapper.get('[name="network_mode"]').setValue('sdn')
+    expect(wrapper.find('[data-testid="platform-peer-add"]').exists()).toBe(false)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    const legacy = JSON.parse(request.mock.calls.filter(([path]) => path === '/v1/platform/components/preview').at(-1)![1].body)
+    expect(legacy).not.toHaveProperty('network_mode')
+    expect(legacy).not.toHaveProperty('network_peers')
+  } finally { wrapper.unmount() }
+})
+
+it.each(['vmbr0', 'r42alpha'])('refuses unsafe borrowed bridge %s before contacting the generator', async bridge => {
+  const wrapper = borrowedNetworkModal()
+  try {
+    await flushPromises()
+    await wrapper.get('[name="network_mode"]').setValue('existing_bridge')
+    await wrapper.get('[name="bridge"]').setValue(bridge)
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(request.mock.calls.some(([path]) => path === '/v1/platform/components/preview')).toBe(false)
+    expect(wrapper.get('[role="alert"]').text()).toContain('existing Linux bridge')
+  } finally { wrapper.unmount() }
+})
+
+it('keeps network suggestions from replacing a borrowed bridge and rejects incomplete approved VM identities', async () => {
+  const wrapper = borrowedNetworkModal()
+  try {
+    await flushPromises()
+    await wrapper.get('[name="network_mode"]').setValue('existing_bridge')
+    await wrapper.get('[name="bridge"]').setValue('vmbr321')
+    const suggestion = wrapper.findAll('button').find(button => button.text() === '10.80.0.0/24')!
+    await suggestion.trigger('click')
+    expect(wrapper.get('[name="bridge"]').element.value).toBe('vmbr321')
+    await wrapper.get('[data-testid="platform-peer-add"]').trigger('click')
+    await wrapper.get('form').trigger('submit'); await flushPromises()
+    expect(request.mock.calls.some(([path]) => path === '/v1/platform/components/preview')).toBe(false)
+    expect(wrapper.get('[role="alert"]').text()).toContain('exact VM ID, name and ownership description')
+  } finally { wrapper.unmount() }
 })
