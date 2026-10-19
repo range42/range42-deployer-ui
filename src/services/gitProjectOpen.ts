@@ -109,7 +109,7 @@ export function prepareGitProjectImport(preview: GitProjectPreview, mode: 'struc
     gamenet: preview.gamenet, bridge_base: preview.bridge_base, git: preview.binding, head_sha: preview.revision.commit_sha,
     git_opened: { ...preview.revision, mode: useScenario ? 'structured' : 'files', authoring_status: preview.authoring.status },
     ...(useScenario ? { scenario: preview.authoring.scenario } : {}),
-    ...(preview.authoring.native_scenario ? { native_scenario: preview.authoring.native_scenario } : {}),
+    ...(preview.authoring.native_scenario ? { native_scenario: preview.authoring.native_scenario, native_saved_files: preview.files } : {}),
     scenario_generated_paths: useScenario ? preview.authoring.generated_paths : [],
   }))
 }
