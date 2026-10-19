@@ -466,3 +466,25 @@ describe('group deletion', () => {
     expect(flow.props('edges').map(e => e.id)).toEqual(['unrelated'])
   })
 })
+
+it('deploys an unchanged committed native public scenario without a Git write', async () => {
+  const files={'scenarios/catalog_try/main.yml':'---\n- hosts: proxmox\n'}
+  await editor(project({native_scenario:{version:1,path:'scenarios/catalog_try'},head_sha:'b'.repeat(40),
+    files,native_saved_files:files}))
+  pushToGit.mockClear()
+  wrapper.findComponent(Sidebar).vm.$emit('openDeploy');await flushPromises()
+  expect(pushToGit).not.toHaveBeenCalled()
+  expect(registerProject).toHaveBeenCalledOnce()
+  expect(wrapper.findComponent(DeployForm).exists()).toBe(true)
+  expect(wrapper.findComponent(DeployForm).props('projectSha')).toBe('b'.repeat(40))
+})
+
+it('requires saving edited native files before launching their deployment', async () => {
+  await editor(project({native_scenario:{version:1,path:'scenarios/catalog_try'},head_sha:'b'.repeat(40),
+    files:{'scenarios/catalog_try/main.yml':'changed'},native_saved_files:{'scenarios/catalog_try/main.yml':'original'}}))
+  pushToGit.mockClear()
+  wrapper.findComponent(Sidebar).vm.$emit('openDeploy');await flushPromises()
+  expect(pushToGit).not.toHaveBeenCalled()
+  expect(registerProject).not.toHaveBeenCalled()
+  expect(wrapper.findComponent(DeployForm).exists()).toBe(false)
+})

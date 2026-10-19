@@ -62,7 +62,7 @@ import { useTopologyResolver } from '../composables/useTopologyResolver'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useObservedGuestStatus } from '@/composables/useObservedGuestStatus'
 import { prepareEditorBranchRecovery, editorAuthoredSignature } from '@/services/gitEditorRecovery'
-import { createNativeFilesFs } from '@/services/nativeScenario'
+import { createNativeFilesFs, hasSavedNativeFiles } from '@/services/nativeScenario'
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
 import WorkloadReviewPanel from '../components/project/WorkloadReviewPanel.vue'
 
@@ -560,15 +560,21 @@ function currentPushArgs() {
     `Save ${currentProject.value?.name || 'project'}`)
 }
 
-/** @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result */
-function recordCheckpoint(result, project = currentProject.value) {
+/**
+ * @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result
+ * @param {import('@/types/project').ProjectDraft | null} [project]
+ * @param {import('@/services/projectFiles').ProjectFiles} [savedFiles]
+ */
+function recordCheckpoint(result, project = currentProject.value, savedFiles = undefined) {
   if (!project?.git || !result.commit_sha) return
   const git = { ...project.git, ...(result.binding || {}), working_branch: result.branch,
     ...(result.targets ? { publish_results: result.targets } : {}) }
-  projectStore.updateProject(project.id, { head_sha: result.commit_sha, git })
+  const nativeSnapshot = project.native_scenario && savedFiles ? { native_saved_files: JSON.parse(JSON.stringify(savedFiles)) } : {}
+  projectStore.updateProject(project.id, { head_sha: result.commit_sha, git, ...nativeSnapshot })
   if (currentProject.value?.id === project.id) {
     currentProject.value.head_sha = result.commit_sha
     currentProject.value.git = git
+    Object.assign(currentProject.value, nativeSnapshot)
   }
 }
 
@@ -609,7 +615,7 @@ const manualSave = async ({ quiet = false } = {}) => {
     if (project.scenario) projectStore.updateProject(project.id, { files: args.files })
     const result = await gitSync.pushToGit(args)
     if (gitBindingIdentity(project.git) !== originalBinding) throw new Error('Git connection changed while saving. The previous repository result was retained remotely; this project binding was not changed.')
-    recordCheckpoint(result, project)
+    recordCheckpoint(result, project, args.files)
     if (!quiet) showToast(translate('project.git.saved', { branch: result.branch, sha: result.commit_sha.slice(0, 7) }), 'success')
     return result
   } catch (error) {
@@ -950,11 +956,15 @@ const handleOpenDeploy = async (selection = undefined) => {
   showDeploymentPicker.value = false
   const scope = getBackendScope()
   try {
+    const native = !!currentProject.value?.native_scenario
+    if (native && currentProject.value && !hasSavedNativeFiles(currentProject.value)) throw new Error('Save your native scenario changes before deploying. Reopen older imported scenarios to review their committed files.')
     const args = currentPushArgs()
     const before = args ? JSON.stringify(buildProjectFiles(args)) : null
     if (args) {
-      const saved = await manualSave()
-      if (!saved || scope !== getBackendScope()) return
+      if (!native) {
+        const saved = await manualSave()
+        if (!saved || scope !== getBackendScope()) return
+      }
       const registered = await ensureBackendProject(currentProject.value)
       if (scope !== getBackendScope()) return
       registeredProjectId.value = registered.id
@@ -1104,6 +1114,7 @@ const configOverlayFs = computed(() => {
     },
   })
   const project = currentProject.value
+  if (project?.native_scenario && project.native_saved_files) return local
   if (project?.native_scenario && project.git && project.head_sha) {
     try { return createNativeFilesFs(project.git, project.head_sha, providerForBinding(project.git), local) }
     catch (error) { return { ...local, listTree: async () => { throw error } } }
