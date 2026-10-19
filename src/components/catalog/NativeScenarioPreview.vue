@@ -7,6 +7,7 @@ watch(() => props.features, features => { selection.value = Object.fromEntries((
 const effective = computed(() => selectNativeTopology(props.topology, props.selectedFeatures ?? selection.value, props.selectedSeat))
 const groups = computed(() => [...new Set([...effective.value.networks.map(network => network.vnet), ...effective.value.vms.map(vm => vm.bridge || 'Unattached')])]
   .map(bridge => ({ bridge, network: effective.value.networks.find(network => network.vnet === bridge), vms: effective.value.vms.filter(vm => (vm.bridge || 'Unattached') === bridge) })))
+const disksDeclared = computed(() => effective.value.vms.every(vm => typeof vm.disk_gib === 'number'))
 const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ cores: total.cores + (vm.cores || 0), memory: total.memory + (vm.memory_mib || 0), disk: total.disk + (vm.disk_gib || 0) }), { cores: 0, memory: 0, disk: 0 }))
 </script>
 
@@ -21,7 +22,7 @@ const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ co
         <input v-model="selection[feature.id]" type="checkbox" class="checkbox checkbox-sm" :data-testid="`preview-feature-${feature.id}`" />{{ feature.label || feature.id }}
       </label>
     </fieldset>
-    <p class="text-sm" data-testid="native-resource-summary" aria-live="polite">{{ effective.vms.length }} VMs · {{ effective.networks.length }} networks<span v-if="resources.cores"> · {{ resources.cores }} vCPUs · {{ resources.memory / 1024 }} GiB RAM · {{ resources.disk }} GiB disk</span></p>
+    <p class="text-sm" data-testid="native-resource-summary" aria-live="polite">{{ effective.vms.length }} VMs · {{ effective.networks.length }} networks<span v-if="resources.cores"> · {{ resources.cores }} vCPUs · {{ resources.memory / 1024 }} GiB RAM · <template v-if="disksDeclared">{{ resources.disk }} GiB disk</template><template v-else>Disk size not declared</template></span></p>
     <details :open="!compact" data-testid="native-topology-details" class="space-y-3">
       <summary class="cursor-pointer text-sm font-medium">Inspect VM and network topology</summary>
     <div v-for="group in groups" :key="group.bridge" class="rounded-lg border border-base-300 bg-base-200/40 p-3" :data-testid="`native-network-${group.bridge}`">
