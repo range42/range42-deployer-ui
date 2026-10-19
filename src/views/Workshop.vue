@@ -112,7 +112,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
           <p v-if="seat.certificate_fingerprint" class="text-xs break-all">Verified certificate: {{ seat.certificate_fingerprint }}</p>
           <div class="flex flex-wrap gap-2">
             <button class="btn btn-sm" :disabled="busy || !seat.handout_ready" @click="download(seat.username)">Download credentials</button>
-            <button class="btn btn-sm" :data-testid="`replace-key-${seat.username}`" :disabled="busy || !seat.key_ready || seat.closed || !!seat.device" @click="destructive('replace_key', seat.username)">Replace VPN key</button>
+            <button class="btn btn-sm" :data-testid="`replace-key-${seat.username}`" :disabled="busy || !seat.account_ready || seat.closed || !!seat.device" @click="destructive('replace_key', seat.username)">Replace VPN key</button>
             <RouterLink v-if="seat.deployment_id" class="btn btn-sm" :to="`/deployments/${seat.deployment_id}`">Deployment and logs</RouterLink>
             <button class="btn btn-sm btn-primary" :disabled="busy || seat.closed || !seat.account_ready || (!!seat.deployment_id && !['failed', 'pending'].includes(seat.deployment_state))" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
             <button class="btn btn-sm" :disabled="busy || !seat.deployment_id || seat.closed" @click="submit({ action: 'configure', username: seat.username })">Check / configure</button>
