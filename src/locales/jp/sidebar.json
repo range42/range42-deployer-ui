@@ -58,7 +58,8 @@
     "close": "ナビゲーションを閉じる",
     "title": "ナビゲーション",
     "breadcrumb": "パンくずリスト",
-    "skip": "本文へ移動"
+    "skip": "本文へ移動",
+    "workshop": "Workshop"
   },
   "items": {
     "vm": {

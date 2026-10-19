@@ -58,7 +58,8 @@
     "close": "Close navigation",
     "title": "Navigation",
     "breadcrumb": "Breadcrumb",
-    "skip": "Skip to content"
+    "skip": "Skip to content",
+    "workshop": "Workshop"
   },
   "items": {
     "vm": {
