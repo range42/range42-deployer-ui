@@ -519,19 +519,21 @@ describe('<DeploymentDetail>', () => {
     expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option=>option.element.value)).toEqual(['full','configure'])
   })
 
-  it('shows owned workshop controls in Overview while keeping reset participant-scoped', async () => {
+  it.each(['training/custom-course', 'scenarios/range42-native-workshop'])('shows owned workshop controls at %s without connecting the legacy fixed cohort', async path => {
     globalThis.fetch = vi.fn(async url => ({ok: true, status: 200, json: async () => url.endsWith('/attempts') ? {items: []}
-      : {id: 'run-a', project_sha: 'a'.repeat(40), state: 'succeeded', native: {path: 'training/custom-course',
+      : {id: 'run-a', project_sha: 'a'.repeat(40), state: 'succeeded', native: {path,
         workshop_plan: {run_id: 'run-a'}, descriptor: {actions: {full: 'main.yml', configure: 'configure.yml', reset: 'reset.yml', teardown: 'teardown.yml'}}}}}))
     const router = makeRouter(); await router.push('/deployments/run-a')
     const wrapper = mount(DeploymentDetail, {global: {plugins: [router, makeI18n()], stubs: {
       WorkshopRunParticipants: {template: '<section data-testid="owned-participants" />'},
       DeploymentAllocations: {template: '<section data-testid="owned-allocations" />'},
+      DeploymentParticipants: {template: '<section data-testid="legacy-participants" />'},
     }}})
     await settle(wrapper)
     expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option => option.element.value)).toEqual(['full', 'configure', 'teardown'])
     expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="owned-participants"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="owned-allocations"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="legacy-participants"]').exists()).toBe(false)
   })
 
   it('offers only declared native lifecycle actions and confirms destructive scope', async () => {
