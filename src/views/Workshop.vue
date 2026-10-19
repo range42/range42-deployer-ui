@@ -30,6 +30,10 @@ const pending = ref<Action | null>(null)
 const confirmInput = ref<HTMLInputElement | null>(null)
 const busy = computed(() => submitting.value || loading.value || !!error.value ||
   workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state)))
+function failedAccess(username: string, action: string) {
+  return workshop.value?.operations.find(op => op.username === username &&
+    (action === 'revoke' ? ['revoke', 'close'].includes(op.action) : op.action === action))?.state === 'failed'
+}
 function downloadBlocked(seat: Seat) {
   return submitting.value || loading.value || !!error.value || !seat.handout_ready ||
     workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state) &&
@@ -132,10 +136,10 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
             <p v-if="!seat.devices.length" class="text-sm text-base-content/60">No enrolled device observed. Have the participant connect with their PDF's one-use key, then refresh.</p>
             <div v-for="device in seat.devices" :key="device.id" class="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span>{{ device.name || `Device ${device.id}` }} · {{ device.address }} · {{ device.online ? 'online' : 'offline' }}</span>
-              <button class="btn btn-xs" :data-testid="`bind-${seat.username}-${device.id}`" :disabled="busy || !device.online || device.bound || !!seat.device || seat.closed" @click="submit({ action: 'bind', username: seat.username, node_id: device.id })">{{ device.bound ? 'Access enabled' : 'Enable laptop access' }}</button>
+              <button class="btn btn-xs" :data-testid="`bind-${seat.username}-${device.id}`" :disabled="busy || !device.online || (device.bound && !failedAccess(seat.username, 'bind')) || (!!seat.device && (!failedAccess(seat.username, 'bind') || seat.device.id !== device.id)) || seat.closed" @click="submit({ action: 'bind', username: seat.username, node_id: device.id })">{{ device.bound && !failedAccess(seat.username, 'bind') ? 'Access enabled' : 'Enable laptop access' }}</button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <button v-if="seat.device" class="btn btn-xs" :disabled="busy" @click="submit({ action: 'revoke', username: seat.username })">Revoke laptop access</button>
+              <button v-if="seat.device || failedAccess(seat.username, 'revoke')" class="btn btn-xs" :disabled="busy" @click="submit({ action: 'revoke', username: seat.username })">Revoke laptop access</button>
               <button class="btn btn-xs btn-ghost" :disabled="busy || seat.closed" @click="destructive('close', seat.username)">Close participant access</button>
             </div>
           </section>

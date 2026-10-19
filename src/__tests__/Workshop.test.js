@@ -77,3 +77,26 @@ it.each([
   expect(button.attributes('disabled') === undefined).toBe(available)
   view.unmount()
 })
+
+it('keeps a failed revocation retry available after the desired grant has already been removed', async () => {
+  backendRequest.mockResolvedValue({ ...roster, operations: [{ action: 'revoke', username: 'user01', state: 'failed' }],
+    seats: [{ ...roster.seats[0], device: null }] })
+  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const retry = view.findAll('button').find(button => button.text() === 'Revoke laptop access')
+  expect(retry).toBeDefined()
+  await retry.trigger('click'); await flushPromises()
+  expect(backendRequest).toHaveBeenCalledWith('/v1/admin/workshop/actions', expect.objectContaining({
+    body: JSON.stringify({ action: 'revoke', username: 'user01' }),
+  }))
+  view.unmount()
+})
+
+it('retries the same failed binding while keeping other devices disabled', async () => {
+  const device = { id: 5, address: '100.80.0.5', online: true, name: 'laptop', bound: true }
+  backendRequest.mockResolvedValue({ ...roster, operations: [{ action: 'bind', username: 'user01', state: 'failed' }],
+    seats: [{ ...roster.seats[0], device, devices: [device, { id: 6, address: '100.80.0.6', online: true, name: 'other' }] }] })
+  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  expect(view.get('[data-testid="bind-user01-5"]').attributes('disabled')).toBeUndefined()
+  expect(view.get('[data-testid="bind-user01-6"]').attributes('disabled')).toBeDefined()
+  view.unmount()
+})
