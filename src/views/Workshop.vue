@@ -19,6 +19,12 @@ const message = ref('')
 const loading = ref(false)
 const submitting = ref(false)
 const seats = ref(10)
+function labelFor(action: string) {
+  return ({ prepare: 'Prepare workshop', accounts: 'Create accounts', keys: 'Issue VPN keys', handouts: 'Generate PDFs',
+    bind: 'Enable laptop access', revoke: 'Revoke laptop access', close: 'Close participant access',
+    deploy: 'Deploy instance', configure: 'Configure instance', reset: 'Reset instance', teardown: 'Delete instance',
+    replace_key: 'Replace VPN key' } as Record<string, string>)[action] || action
+}
 const confirmation = ref('')
 const pending = ref<Action | null>(null)
 const confirmInput = ref<HTMLInputElement | null>(null)
@@ -40,7 +46,7 @@ async function submit(action: Action) {
   submitting.value = true; message.value = ''; error.value = ''
   try {
     const operation = await backendRequest<Operation>('/v1/admin/workshop/actions', { method: 'POST', body: JSON.stringify(action) })
-    message.value = `${action.action} queued${action.username ? ` for ${action.username}` : ''}. Operation ${operation.operation_id}.`
+    message.value = `${labelFor(action.action)} queued${action.username ? ` for ${action.username}` : ''}. Operation ${operation.operation_id}.`
     pending.value = null
     await refresh()
   } catch (e) { error.value = e instanceof Error ? e.message : 'The workshop action failed.' }
@@ -106,6 +112,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
           <p v-if="seat.certificate_fingerprint" class="text-xs break-all">Verified certificate: {{ seat.certificate_fingerprint }}</p>
           <div class="flex flex-wrap gap-2">
             <button class="btn btn-sm" :disabled="busy || !seat.handout_ready" @click="download(seat.username)">Download credentials</button>
+            <button class="btn btn-sm" :data-testid="`replace-key-${seat.username}`" :disabled="busy || !seat.key_ready || seat.closed || !!seat.device" @click="destructive('replace_key', seat.username)">Replace VPN key</button>
             <RouterLink v-if="seat.deployment_id" class="btn btn-sm" :to="`/deployments/${seat.deployment_id}`">Deployment and logs</RouterLink>
             <button class="btn btn-sm btn-primary" :disabled="busy || seat.closed || !seat.account_ready || !!seat.deployment_id" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
             <button class="btn btn-sm" :disabled="busy || !seat.deployment_id || seat.closed" @click="submit({ action: 'configure', username: seat.username })">Check / configure</button>
@@ -131,20 +138,20 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
       <section v-if="workshop.operations.length" class="space-y-2">
         <h2 class="text-lg font-semibold">Recent operations</h2>
         <ul class="space-y-2"><li v-for="op in workshop.operations" :key="op.operation_id" class="border border-base-300 rounded-lg p-3 text-sm">
-          <strong>{{ op.action }} {{ op.username || '' }}</strong> · {{ op.state }}<p v-if="op.message">{{ op.message }}</p>
+          <strong>{{ labelFor(op.action) }} {{ op.username || '' }}</strong> · {{ op.state }}<p v-if="op.message">{{ op.message }}</p>
         </li></ul>
       </section>
     </template>
     <div v-if="pending" role="dialog" aria-modal="true" aria-labelledby="workshop-confirm-title" class="modal modal-open" @keydown.esc="pending = null">
       <form class="modal-box space-y-4" @submit.prevent="submit({ ...pending!, confirmation })">
-        <h2 id="workshop-confirm-title" class="font-semibold text-lg">Confirm {{ pending.action }} for {{ pending.username }}</h2>
-        <p>{{ pending.action === 'close' ? 'This disables the participant account and VPN access.' : 'This removes the participant’s current installation and lab data from this instance.' }} Other seats remain available.</p>
+        <h2 id="workshop-confirm-title" class="font-semibold text-lg">Confirm: {{ labelFor(pending.action) }} for {{ pending.username }}</h2>
+        <p>{{ pending.action === 'close' ? 'This disables the participant account and VPN access.' : pending.action === 'replace_key' ? 'This invalidates previous VPN access and generates a new one-use key. Download the updated credential PDF after it finishes.' : 'This removes the participant’s current installation and lab data from this instance.' }} Other seats remain available.</p>
         <label class="form-control">Type {{ pending.username }} to continue
           <input ref="confirmInput" v-model="confirmation" data-testid="seat-confirmation" class="input input-bordered mt-2" autocomplete="off" />
         </label>
         <div class="modal-action">
           <button type="button" class="btn" @click="pending = null">Cancel</button>
-          <button type="submit" data-testid="confirm-destructive" class="btn btn-error" :disabled="confirmation !== pending.username || submitting">Confirm {{ pending.action }}</button>
+          <button type="submit" data-testid="confirm-destructive" class="btn btn-error" :disabled="confirmation !== pending.username || submitting">{{ labelFor(pending.action) }}</button>
         </div>
       </form>
     </div>

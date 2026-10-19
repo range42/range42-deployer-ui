@@ -44,3 +44,15 @@ describe('workshop administration', () => {
     view.unmount()
   })
 })
+
+it('lets the facilitator replace an unbound lost VPN key after confirming the participant', async () => {
+  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  await view.get('[data-testid="replace-key-user01"]').trigger('click')
+  await view.get('[data-testid="seat-confirmation"]').setValue('user01')
+  backendRequest.mockResolvedValueOnce({ operation_id: 'key-1', state: 'queued' }).mockResolvedValue(roster)
+  await view.get('form').trigger('submit'); await flushPromises()
+  expect(backendRequest).toHaveBeenCalledWith('/v1/admin/workshop/actions', expect.objectContaining({
+    body: JSON.stringify({ action: 'replace_key', username: 'user01', confirmation: 'user01' }),
+  }))
+  view.unmount()
+})
