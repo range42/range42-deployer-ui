@@ -1,9 +1,9 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import Workshop from '@/views/Workshop.vue'
+import Workshop from '@/components/deployment/DeploymentParticipants.vue'
 import { backendRequest } from '@/services/backendApi'
 vi.mock('@/services/backendApi', () => ({ backendRequest: vi.fn(), backendBlob: vi.fn() }))
-const roster = { id: 'native-friday', expires_at: '2026-10-23T18:00:00Z', operations: [], seats: [
+const roster = { cohort_deployment_id: 'cohort-one', id: 'native-friday', expires_at: '2026-10-23T18:00:00Z', operations: [], seats: [
   { username: 'user01', account_ready: true, key_ready: true, handout_ready: true,
     proxmox_address: '10.77.32.2', deployer_address: '10.77.32.3', deployment_id: 'seat-one',
     deployment_state: 'succeeded', devices: [{ id: 5, address: '100.80.0.5', online: true, name: 'laptop' }] },
@@ -11,7 +11,7 @@ const roster = { id: 'native-friday', expires_at: '2026-10-23T18:00:00Z', operat
 beforeEach(() => { vi.clearAllMocks(); backendRequest.mockResolvedValue(roster) })
 describe('workshop administration', () => {
   it('shows per-seat readiness, instance links and verified devices without exposing credentials', async () => {
-    const view = mount(Workshop, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
+    const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
     await flushPromises()
     expect(view.text()).toContain('user01')
     expect(view.text()).toContain('100.80.0.5')
@@ -20,7 +20,7 @@ describe('workshop administration', () => {
     view.unmount()
   })
   it('enables only the observed online participant device and refreshes the operation status', async () => {
-    const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+    const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
     backendRequest.mockResolvedValueOnce({ operation_id: 'bind-1', state: 'queued' }).mockResolvedValue(roster)
     await view.get('[data-testid="bind-user01-5"]').trigger('click'); await flushPromises()
     expect(backendRequest).toHaveBeenCalledWith('/v1/admin/workshop/actions', expect.objectContaining({
@@ -29,7 +29,7 @@ describe('workshop administration', () => {
     view.unmount()
   })
   it('requires the selected seat name before dispatching a destructive reset', async () => {
-    const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+    const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
     await view.get('[data-testid="reset-user01"]').trigger('click')
     const submit = view.get('[data-testid="confirm-destructive"]')
     expect(submit.attributes('disabled')).toBeDefined()
@@ -46,7 +46,7 @@ describe('workshop administration', () => {
 })
 
 it('lets the facilitator replace an unbound lost VPN key after confirming the participant', async () => {
-  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
   await view.get('[data-testid="replace-key-user01"]').trigger('click')
   await view.get('[data-testid="seat-confirmation"]').setValue('user01')
   backendRequest.mockResolvedValueOnce({ operation_id: 'key-1', state: 'queued' }).mockResolvedValue(roster)
@@ -59,7 +59,7 @@ it('lets the facilitator replace an unbound lost VPN key after confirming the pa
 
 it('allows retrying a failed initial deployment from the workshop page', async () => {
   backendRequest.mockResolvedValue({ ...roster, seats: [{ ...roster.seats[0], deployment_state: 'failed' }] })
-  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
   const button = view.findAll('button').find(button => button.text() === 'Deploy instance')
   expect(button.attributes('disabled')).toBeUndefined()
   view.unmount()
@@ -72,7 +72,7 @@ it.each([
   [{ action: 'handouts', state: 'running' }, false],
 ])('keeps private PDFs available unless their details are changing: %j', async (operation, available) => {
   backendRequest.mockResolvedValue({ ...roster, operations: [operation] })
-  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
   const button = view.findAll('button').find(button => button.text() === 'Download credentials')
   expect(button.attributes('disabled') === undefined).toBe(available)
   view.unmount()
@@ -81,7 +81,7 @@ it.each([
 it('keeps a failed revocation retry available after the desired grant has already been removed', async () => {
   backendRequest.mockResolvedValue({ ...roster, operations: [{ action: 'revoke', username: 'user01', state: 'failed' }],
     seats: [{ ...roster.seats[0], device: null }] })
-  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
   const retry = view.findAll('button').find(button => button.text() === 'Revoke laptop access')
   expect(retry).toBeDefined()
   await retry.trigger('click'); await flushPromises()
@@ -95,8 +95,25 @@ it('retries the same failed binding while keeping other devices disabled', async
   const device = { id: 5, address: '100.80.0.5', online: true, name: 'laptop', bound: true }
   backendRequest.mockResolvedValue({ ...roster, operations: [{ action: 'bind', username: 'user01', state: 'failed' }],
     seats: [{ ...roster.seats[0], device, devices: [device, { id: 6, address: '100.80.0.6', online: true, name: 'other' }] }] })
-  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } }); await flushPromises()
   expect(view.get('[data-testid="bind-user01-5"]').attributes('disabled')).toBeUndefined()
   expect(view.get('[data-testid="bind-user01-6"]').attributes('disabled')).toBeDefined()
+  view.unmount()
+})
+
+it('hides participant controls for unrelated deployments', async () => {
+  const view = mount(Workshop, { props: { deploymentId: 'unrelated' }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  expect(view.text()).not.toContain('user01')
+  expect(view.find('[data-testid="reset-user01"]').exists()).toBe(false)
+  view.unmount()
+})
+it('shows only the associated participant when opened from a seat deployment', async () => {
+  backendRequest.mockResolvedValue({ ...roster, seats: [...roster.seats, { ...roster.seats[0], username: 'user02', deployment_id: 'seat-two' }] })
+  const view = mount(Workshop, { props: { deploymentId: 'seat-one' }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  expect(view.text()).toContain('user01')
+  expect(view.text()).not.toContain('user02')
+  expect(view.text()).not.toContain('Create accounts')
   view.unmount()
 })

@@ -14,7 +14,6 @@ const groups = [
     { to: '/deployments', key: 'deployments', icon: 'rocket', belongs: (path: string) => path === '/deployments' || path.startsWith('/deployments/') },
   ] },
   { label: 'manage', items: [
-    { to: '/workshop', key: 'workshop', icon: 'users', belongs: (path: string) => path === '/workshop' },
     { to: '/sources', key: 'sources', icon: 'inbox', belongs: (path: string) => path === '/sources' },
     { to: '/settings', key: 'settings', icon: 'gear', belongs: (path: string) => path === '/settings' },
   ] },

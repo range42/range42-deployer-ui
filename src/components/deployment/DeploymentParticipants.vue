@@ -2,7 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { backendBlob, backendRequest } from '@/services/backendApi'
-defineOptions({ name: 'WorkshopManagement' })
+defineOptions({ name: 'DeploymentParticipants' })
+const props = defineProps<{ deploymentId: string }>()
 
 interface Device { id: number; address: string; name: string; online: boolean; bound?: boolean }
 interface Seat {
@@ -11,9 +12,12 @@ interface Seat {
   deployment_id?: string | null; deployment_state: string; certificate_fingerprint?: string | null;
 }
 interface Operation { operation_id: string; action: string; username?: string; state: string; message?: string }
-interface Workshop { id: string; expires_at: string; seats: Seat[]; operations: Operation[] }
+interface Workshop { cohort_deployment_id?: string | null; id: string; expires_at: string; seats: Seat[]; operations: Operation[] }
 interface Action { action: string; username?: string; node_id?: number; seats?: number; confirmation?: string }
 const workshop = ref<Workshop | null>(null)
+const isCohort = computed(() => !!workshop.value?.cohort_deployment_id && workshop.value.cohort_deployment_id === props.deploymentId)
+const visibleSeats = computed(() => workshop.value?.seats.filter(seat => isCohort.value || seat.deployment_id === props.deploymentId) || [])
+const associated = computed(() => isCohort.value || visibleSeats.value.length > 0)
 const error = ref('')
 const message = ref('')
 const loading = ref(false)
@@ -48,11 +52,13 @@ async function refresh() {
   loading.value = true
   try {
     const result = await backendRequest<Workshop>('/v1/admin/workshop')
+    if (!result || !Array.isArray(result.seats) || !Array.isArray(result.operations)) throw new Error('Participant status is unavailable. Refresh to retry.')
     if (!stopped) { workshop.value = result; error.value = '' }
   } catch (e) { if (!stopped) error.value = e instanceof Error ? e.message : 'Could not load workshop status.' }
   finally { loading.value = false }
 }
 async function submit(action: Action) {
+  if (!associated.value || (action.username ? !visibleSeats.value.some(seat => seat.username === action.username) : !isCohort.value)) return
   submitting.value = true; message.value = ''; error.value = ''
   try {
     const operation = await backendRequest<Operation>('/v1/admin/workshop/actions', { method: 'POST', body: JSON.stringify(action) })
@@ -67,6 +73,7 @@ async function destructive(action: string, username: string) {
   await nextTick(); confirmInput.value?.focus()
 }
 async function download(username: string) {
+  if (!visibleSeats.value.some(seat => seat.username === username)) return
   submitting.value = true
   try {
     const blob = await backendBlob(`/v1/admin/workshop/seats/${username}/handout`)
@@ -80,10 +87,10 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
 </script>
 
 <template>
-  <section class="max-w-7xl mx-auto p-6 space-y-6">
+  <section v-if="associated" class="my-4 space-y-6" data-testid="deployment-participants">
     <header class="flex flex-wrap gap-4 items-start justify-between">
       <div>
-        <h1 class="text-2xl font-semibold">Workshop</h1>
+        <h2 class="text-xl font-semibold">Participants and access</h2>
         <p class="text-sm text-base-content/70 mt-1">Prepare participant accounts, enable each laptop and manage its isolated environment.</p>
         <p v-if="workshop" class="text-sm mt-2">{{ workshop.id }} · Access expires {{ workshop.expires_at }} (UTC)</p>
       </div>
@@ -93,7 +100,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
     <p v-if="message" role="status" class="alert alert-info">{{ message }}</p>
     <p v-if="loading && !workshop" role="status">Loading workshop…</p>
     <template v-if="workshop">
-      <div class="card bg-base-100 border border-base-300 p-4 space-y-3">
+      <div v-if="isCohort" class="card bg-base-100 border border-base-300 p-4 space-y-3">
         <h2 class="font-semibold">Participant preparation</h2>
         <p class="text-sm text-base-content/70">Prepare once, then create accounts, issue connection keys and generate private PDFs. Repeating a step preserves existing credentials.</p>
         <div class="flex flex-wrap items-center gap-2">
@@ -107,7 +114,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
         </div>
       </div>
       <div class="grid gap-4 lg:grid-cols-2">
-        <article v-for="seat in workshop.seats" :key="seat.username" class="card bg-base-100 border border-base-300 p-5 space-y-4">
+        <article v-for="seat in visibleSeats" :key="seat.username" class="card bg-base-100 border border-base-300 p-5 space-y-4">
           <header class="flex justify-between items-center gap-2">
             <h2 class="text-lg font-semibold">{{ seat.username }}</h2>
             <span class="badge" :class="seat.closed ? 'badge-ghost' : seat.device?.online ? 'badge-success' : 'badge-warning'">{{ seat.closed ? 'Closed' : seat.device?.online ? 'Laptop connected' : 'Awaiting laptop' }}</span>

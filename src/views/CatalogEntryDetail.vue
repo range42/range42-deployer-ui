@@ -27,6 +27,7 @@ import { useBackendApiStore } from '@/stores/backendApiStore'
 import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vue'
 import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import CatalogReadme from '@/components/catalog/CatalogReadme.vue'
+import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
 import { ensureNamespaces } from '@/i18n'
 import { useCatalogSourceAccess } from '@/composables/useCatalogSourceAccess'
 import { catalogBrowseQuery, catalogCapabilities } from '@/services/catalogPresentation'
@@ -132,7 +133,7 @@ function customizeEntry() {
 }
 function openCreatedProject(project) {
   handoff.value = null
-  router.push(`/project/${project.id}?tab=${project.native_scenario || project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
+  router.push(`/project/${project.id}?tab=${project.catalogRef?.kind === 'ansible_role' ? 'config' : 'canvas'}`)
 }
 
 function openFork() {
@@ -276,6 +277,7 @@ onMounted(async () => {
       </section>
 
       <!-- Topology preview -->
+      <NativeScenarioPreview v-if="entry.document?.format === 'range42-native' && entry.document?.topology" :topology="entry.document.topology" :features="entry.document.features" />
       <section v-if="hasTopology" class="mb-8" data-testid="entry-topology">
         <h2 class="text-lg font-semibold mb-2">{{ t('catalog.detail.topology') }}</h2>
         <div class="card card-bordered bg-base-100 h-80">

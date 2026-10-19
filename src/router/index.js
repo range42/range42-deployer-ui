@@ -43,7 +43,6 @@ const router = createRouter({
       props: true,
       meta: { title: 'Preflight' },
     },
-    { path: '/workshop', name: 'workshop', component: () => import('../views/Workshop.vue'), meta: { title: 'Workshop' } },
     { path: '/sources', name: 'sources', component: Sources, meta: { title: 'Sources' } },
     { path: '/settings', name: 'settings', component: Settings, meta: { title: 'Settings' } },
     { path: '/:pathMatch(.*)*', redirect: '/' },

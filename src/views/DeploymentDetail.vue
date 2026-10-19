@@ -1,4 +1,6 @@
 <script setup>
+import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
+import DeploymentParticipants from '@/components/deployment/DeploymentParticipants.vue'
 /**
  * /deployments/:id — Plan C §C4.4
  *
@@ -680,6 +682,8 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
+      <NativeScenarioPreview v-if="meta?.native?.descriptor?.topology && !loadError" :topology="meta.native.descriptor.topology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" />
+      <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" />
       <DeploymentAllocations v-if="meta && !meta.native && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"
         :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
