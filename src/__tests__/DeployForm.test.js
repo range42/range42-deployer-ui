@@ -89,6 +89,31 @@ describe('<DeployForm>', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('keeps dialog keyboard navigation inside and restores the opener after Escape', async () => {
+    globalThis.fetch = fetchMockHosts()
+    const opener = document.createElement('button')
+    document.body.append(opener)
+    opener.focus()
+    const wrapper = mount(DeployForm, { attachTo: document.body, props: baseProps(),
+      global: { plugins: [makeRouter(), makeI18n()] } })
+    try {
+      await flushPromises()
+      const first = wrapper.get('button[aria-label="Close"]')
+      const last = wrapper.findAll('button').find(button => button.text() === 'Cancel')
+      expect(document.activeElement).toBe(first.element)
+      last.element.focus()
+      await last.trigger('keydown', { key: 'Tab' })
+      expect(document.activeElement).toBe(first.element)
+      await first.trigger('keydown', { key: 'Tab', shiftKey: true })
+      expect(document.activeElement).toBe(last.element)
+      await last.trigger('keydown', { key: 'Escape' })
+      expect(wrapper.emitted('close')).toHaveLength(1)
+      await wrapper.setProps({ visible: false })
+      await flushPromises()
+      expect(document.activeElement).toBe(opener)
+    } finally { wrapper.unmount(); opener.remove() }
+  })
+
   it.each([undefined, 'catalog-1'])('deploys a native scenario with its environment and saved component %s', async component_id => {
     const fetchSpy = fetchMockHosts()
     globalThis.fetch = fetchSpy

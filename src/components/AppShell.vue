@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
 import { useUiPreferencesStore } from '@/stores/uiPreferencesStore'
@@ -10,10 +10,22 @@ import LegacyStorageBanner from '@/components/LegacyStorageBanner.vue'
 import BackendAccessPanel from '@/components/ui/BackendAccessPanel.vue'
 
 const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 const preferences = useUiPreferencesStore()
 const mobileOpen = ref(false)
-onMounted(() => ensureNamespaces(['sidebar']))
+const failedNavigation = ref('')
+const stopErrors = router.onError((_error, to) => {
+  const destination = new URL(router.resolve(to).href, window.location.href)
+  if (destination.origin === window.location.origin) {
+    failedNavigation.value = destination.pathname + destination.search + destination.hash
+  }
+})
+const stopNavigation = router.afterEach((_to, _from, failure) => {
+  if (!failure) failedNavigation.value = ''
+})
+onBeforeUnmount(() => { stopErrors(); stopNavigation() })
+onMounted(() => ensureNamespaces(['sidebar', 'common']))
 watch(() => route.path, () => { mobileOpen.value = false })
 watch(() => preferences.theme, theme => {
   if (theme === 'system') document.documentElement.removeAttribute('data-theme')
@@ -66,6 +78,13 @@ const detail = computed(() => route.path !== section.value.to)
         </nav>
       </header>
       <main id="main-content" tabindex="-1" class="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div v-if="failedNavigation" role="alert" data-testid="route-load-error" class="m-4 rounded border border-error/50 bg-base-100 p-4">
+          <p>{{ t('common.route_load_error') }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <a :href="failedNavigation" class="btn btn-sm btn-primary">{{ t('common.reload_page') }}</a>
+            <button type="button" class="btn btn-sm btn-ghost" @click="failedNavigation = ''">{{ t('common.close') }}</button>
+          </div>
+        </div>
         <BackendAccessPanel />
         <router-view :key="route.name === 'project-editor' ? `project:${route.params.id}` : undefined" />
       </main>

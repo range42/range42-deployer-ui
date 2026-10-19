@@ -26,3 +26,16 @@ describe('deployment log verbosity', () => {
     ]).map(line => line.text)).toEqual(['included: /tmp/tasks.yml', 'we skipped a line in this script'])
   })
 })
+
+
+it('removes native terminal formatting for display and search while retaining the original event', () => {
+  const escape = String.fromCharCode(27)
+  const bell = String.fromCharCode(7)
+  const text = `${escape}]0;terminal title${bell}${escape}[34mRe${escape}[0mady [REDACTED:tainted_string]`
+  const event = Object.freeze({ text, ansible_event: 'verbose', stream: 'stdout' })
+  const history = Object.freeze([event])
+  expect(visibleDeploymentLogs(history, { query: 'READY' })).toEqual([
+    { ...event, text: 'Ready [REDACTED:tainted_string]' },
+  ])
+  expect(history[0].text).toBe(text)
+})

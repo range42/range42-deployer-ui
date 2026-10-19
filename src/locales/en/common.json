@@ -17,5 +17,7 @@
     "connecting": "Checking…",
     "failed": "Could not connect to the backend.",
     "storage": "The verified token is remembered in this browser for this backend."
-  }
+  },
+  "route_load_error": "This page could not be loaded. Check your connection, then reload the page.",
+  "reload_page": "Reload page"
 }

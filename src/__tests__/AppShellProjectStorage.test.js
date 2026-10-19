@@ -21,3 +21,27 @@ it.each([undefined, { source_id: 'source', repo_owner: 'team', repo_name: 'lab' 
   expect(localStorage.getItem('range42_projects')).toBe(saved)
   expect(localStorage.getItem('range42_projects_legacy')).toBeNull()
 })
+
+it('shows a safe reload link when a lazy page fails and clears it after successful navigation', async () => {
+  const failure = new Error('Failed to fetch dynamically imported module: private-request-details')
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: '/', component: { template: '<p>Projects</p>' } },
+    { path: '/catalog', component: () => Promise.reject(failure) },
+    { path: '/deployments', component: { template: '<p>Deployments</p>' } },
+    ...['/sources', '/settings'].map(path => ({ path, component: { template: '<p>Page</p>' } })),
+  ] })
+  router.onError(() => {})
+  await router.push('/')
+  const wrapper = mount(AppShell, { global: { plugins: [router, i18n],
+    stubs: { BackendAccessPanel: true, LegacyStorageBanner: true } } })
+  await flushPromises()
+  await expect(router.push('/catalog')).rejects.toBe(failure)
+  await flushPromises()
+  expect(wrapper.find('[data-testid="route-load-error"]').exists()).toBe(true)
+  expect(wrapper.get('[data-testid="route-load-error"]').text()).toMatch(/could not be loaded/i)
+  expect(wrapper.get('[data-testid="route-load-error"] a').attributes('href')).toBe('/catalog')
+  expect(wrapper.text()).not.toContain('private-request-details')
+  await router.push('/deployments')
+  await flushPromises()
+  expect(wrapper.find('[data-testid="route-load-error"]').exists()).toBe(false)
+})

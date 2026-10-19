@@ -45,6 +45,7 @@ import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { getScenarioAllocationProof } from '@/services/scenarioAllocation'
 import NativeDeploymentFields from './NativeDeploymentFields.vue'
+import { useDialogKeyboard } from '@/composables/useDialogKeyboard'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -61,6 +62,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'created'])
+const dialog = ref(null)
+const onDialogKeydown = useDialogKeyboard(() => props.visible, dialog, () => emit('close'))
 const router = useRouter()
 const { t } = useI18n({ useScope: 'global' })
 const backend = useBackendApiStore()
@@ -335,11 +338,14 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 <template>
   <div
     v-if="visible"
+    ref="dialog"
     class="modal modal-open z-[100]"
     role="dialog"
     aria-modal="true"
     aria-labelledby="deploy-form-title"
     data-testid="deploy-form"
+    tabindex="-1"
+    @keydown="onDialogKeydown"
   >
     <div class="modal-box max-w-2xl">
       <header class="flex items-start justify-between gap-4 mb-4">
