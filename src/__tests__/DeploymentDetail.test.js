@@ -494,6 +494,31 @@ describe('<DeploymentDetail>', () => {
     expect(JSON.parse(preflight[1].body)).toEqual({ scope: 'configure' })
   })
 
+  it('refreshes legacy seat topology from the same pinned revision before previewing it', async () => {
+    const vms=[{vm_id:43010,vm_name:'User01 Proxmox',seat:1,bridge:'vmbr430'}, {vm_id:43011,vm_name:'User01 CLI',seat:1,bridge:'vmbr430'}, {vm_id:43012,vm_name:'User02 Proxmox',seat:2,bridge:'vmbr431'}]
+    const topology={vms,templates:[],networks:[{vnet:'vmbr430'},{vnet:'vmbr431'}],warnings:[],reservations:{status:'checked',issues:[]}}
+    globalThis.fetch=vi.fn(async url=>({ok:true,status:200,json:async()=>{
+      if(url.includes('/native-scenario?'))return {topology}
+      if(url.endsWith('/workshop'))return {id:'test',seats:[],operations:[]}
+      if(url.endsWith('/attempts'))return {items:[]}
+      return {id:'d-seat',project_id:'project',project_sha:'a'.repeat(40),state:'succeeded',native:{path:'scenarios/range42-native-workshop',parameters:{WORKSHOP_ONLY_SEAT:1},features:{EXTRA_SEATS:true},descriptor:{actions:{configure:'configure.yml'},topology:{...topology,vms:vms.map(({seat:_seat,...vm})=>vm)}}}}
+    }}))
+    const router=makeRouter();await router.push('/deployments/d-seat')
+    const wrapper=mount(DeploymentDetail,{global:{plugins:[router,makeI18n()]}});await settle(wrapper);await flushPromises()
+    expect(wrapper.get('[data-testid="native-resource-summary"]').text()).toContain('2 VMs')
+    const request=globalThis.fetch.mock.calls.find(([url])=>url.includes('/native-scenario?'))
+    expect(request[0]).toContain('sha='+ 'a'.repeat(40))
+  })
+
+  it('keeps workshop reset and deletion scoped to individual participants', async () => {
+    globalThis.fetch=vi.fn(async url=>({ok:true,status:200,json:async()=> url.endsWith('/attempts') ? {items:[]}
+      : url.endsWith('/workshop') ? {id:'test',seats:[],operations:[]}
+      : {id:'d-cohort',project_sha:'a'.repeat(40),state:'succeeded',native:{path:'scenarios/range42-native-workshop',parameters:{WORKSHOP_ONLY_SEAT:0},descriptor:{actions:{full:'main.yml',configure:'configure.yml',reset:'reset.yml',teardown:'teardown.yml'}}}}}))
+    const router=makeRouter();await router.push('/deployments/d-cohort')
+    const wrapper=mount(DeploymentDetail,{global:{plugins:[router,makeI18n()]}});await settle(wrapper)
+    expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option=>option.element.value)).toEqual(['full','configure'])
+  })
+
   it('offers only declared native lifecycle actions and confirms destructive scope', async () => {
     globalThis.fetch = vi.fn(async (url, options = {}) => ({ ok: true, status: 200, json: async () => {
       if (url.endsWith('/preflight')) return { result: 'pass', checks: [] }

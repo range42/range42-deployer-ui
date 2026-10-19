@@ -5,7 +5,7 @@ import { parse } from 'yaml'
 
 export interface NativeTopology {
   vms: Array<{ vm_id: number; vm_name?: string; ip?: string; bridge?: string; role?: string; group?: string;
-    cores?: number; memory_mib?: number; disk_gib?: number; requires_features?: string[] }>
+    seat?: number; cores?: number; memory_mib?: number; disk_gib?: number; requires_features?: string[] }>
   templates: Array<{ vm_id: number; vm_name?: string; bridge?: string; ip?: string }>
   networks: Array<{ vnet: string; subnet?: string; gateway?: string }>
   warnings: string[]
@@ -27,8 +27,8 @@ export function nativePreviewFromFiles(files: ProjectFiles, path: string): { top
   return { topology, features: Array.isArray(flags?.features) ? flags.features : [] }
 }
 
-export function selectNativeTopology(topology: NativeTopology, features: Record<string, boolean>): NativeTopology {
-  const vms = topology.vms.filter(vm => !vm.requires_features?.some(flag => !features[flag]))
+export function selectNativeTopology(topology: NativeTopology, features: Record<string, boolean>, seat = 0): NativeTopology {
+  const vms = topology.vms.filter(vm => !vm.requires_features?.some(flag => !features[flag]) && (!seat || vm.seat === seat))
   const bridges = new Set(vms.map(vm => vm.bridge))
   const declaredBridges = new Set(topology.vms.map(vm => vm.bridge))
   return { ...topology, vms, networks: topology.networks.filter(network => !declaredBridges.has(network.vnet) || bridges.has(network.vnet)) }

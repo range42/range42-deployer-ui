@@ -25,12 +25,10 @@ const rows = computed(() => Object.entries(labels).flatMap(([key, [label, help]]
 <template>
   <dl v-if="rows.length" class="text-xs space-y-2 min-w-0" aria-live="polite" aria-label="Backend readiness checks">
     <div v-for="row in rows" :key="row.key" :data-testid="`readiness-${row.key}`">
-      <div class="flex flex-wrap items-center gap-2">
-        <dt>{{ row.label }}</dt>
-        <dd class="badge badge-sm" :class="row.status === 'Passed' ? 'badge-success' : row.status === 'Failed' ? 'badge-error' : 'badge-ghost'">
+      <dt class="inline">{{ row.label }}</dt>
+        <dd class="badge badge-sm ml-2" :class="row.status === 'Passed' ? 'badge-success' : row.status === 'Failed' ? 'badge-error' : 'badge-ghost'">
           {{ row.status }}
         </dd>
-      </div>
       <dd v-if="row.description" class="mt-1 text-base-content/80 break-words">{{ row.description }}</dd>
     </div>
   </dl>

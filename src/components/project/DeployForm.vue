@@ -361,10 +361,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         <NativeDeploymentFields v-if="nativeScenario" :project-id="projectId" :revision="projectSha" :path="nativeScenario.path" :component-id="nativeScenario.component_id" @select="selectNative" />
         <!-- Codename -->
         <div class="form-control" data-testid="deploy-field-codename">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-codename">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.codename') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <input
+            id="deploy-codename" name="deploy-codename" autocomplete="off"
             v-model="codename"
             type="text"
             class="input input-bordered input-sm"
@@ -377,10 +378,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 
         <!-- Scenario label -->
         <div class="form-control" data-testid="deploy-field-scenario">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-scenario">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.scenario') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <input
+            id="deploy-scenario" name="deploy-scenario" autocomplete="off"
             v-model="scenarioLabel"
             :readonly="!!nativeScenario"
             type="text"
@@ -393,10 +395,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 
         <!-- Target host -->
         <div class="form-control" data-testid="deploy-field-host">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-host">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.host') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <select
+            id="deploy-host" name="deploy-host" autocomplete="off"
             v-model="targetHost"
             class="select select-bordered select-sm"
             :disabled="hostsLoading || !!hostsError || !!nativeScenario"
@@ -421,10 +424,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 
         <!-- Team count (gamenet only) -->
         <div v-if="gamenet && !nativeScenario" class="form-control" data-testid="deploy-field-team-count">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-team-count">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.teamCount') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <input
+            id="deploy-team-count" name="deploy-team-count"
             v-model.number="teamCount"
             type="number"
             min="1"

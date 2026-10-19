@@ -41,6 +41,32 @@ const attempts = ref([])
 const newRuntimeAttempt = ref(null)
 const attemptsError = ref(null)
 const meta = ref(null) // deployment metadata from the backend (non-live)
+const refreshedNativeTopology = ref(null)
+const nativePreviewNotice = ref('')
+const workshopSeat = computed(() => meta.value?.native?.path === 'scenarios/range42-native-workshop'
+  ? Number(meta.value.native.parameters?.WORKSHOP_ONLY_SEAT || 0) : 0)
+const needsNativePreviewRefresh = computed(() => workshopSeat.value > 0
+  && meta.value?.native?.descriptor?.topology?.vms?.some(vm => !Number.isInteger(vm.seat)))
+const deploymentPreviewTopology = computed(() => needsNativePreviewRefresh.value
+  ? refreshedNativeTopology.value : meta.value?.native?.descriptor?.topology)
+async function refreshNativePreview() {
+  refreshedNativeTopology.value = null
+  nativePreviewNotice.value = ''
+  if (!needsNativePreviewRefresh.value) return
+  const version = contextVersion
+  const deployment = meta.value
+  nativePreviewNotice.value = 'Loading participant topology from the saved scenario revision…'
+  try {
+    const query = new URLSearchParams({sha: deployment.project_sha, path: deployment.native.path})
+    const descriptor = await backendRequest(`/v1/projects/${encodeURIComponent(deployment.project_id)}/native-scenario?${query}`)
+    if (version !== contextVersion) return
+    refreshedNativeTopology.value = descriptor.topology
+    nativePreviewNotice.value = ''
+  } catch {
+    if (version === contextVersion) nativePreviewNotice.value = 'Participant topology could not be loaded. Refresh to retry; the saved deployment revision is preserved.'
+  }
+}
+watch(() => meta.value?.id, refreshNativePreview)
 const isRetired = computed(() => meta.value?.scenario_label === '_universal')
 const loading = ref(true)
 const loadError = ref(null)
@@ -92,7 +118,8 @@ const supportsConcreteActions = computed(() => !!meta.value?.project_sha && !isR
 const supportsLegacyActions = computed(() => !!meta.value && !meta.value.project_sha && !isRetired.value)
 const maintenanceScope = ref('configure')
 const maintenanceActions = computed(() => meta.value?.native
-  ? Object.keys(meta.value.native.descriptor?.actions || {}).filter(action => ['full', 'configure', 'teardown', 'deploy_vms', 'delete_vms', 'reset', 'deploy_networks', 'delete_networks'].includes(action))
+  ? Object.keys(meta.value.native.descriptor?.actions || {}).filter(action => ['full', 'configure', 'teardown', 'deploy_vms', 'delete_vms', 'reset', 'deploy_networks', 'delete_networks'].includes(action)
+    && !(meta.value.native.path === 'scenarios/range42-native-workshop' && !workshopSeat.value && ['reset', 'teardown', 'delete_vms', 'delete_networks'].includes(action)))
   : ['configure', 'teardown'])
 watch(maintenanceActions, actions => { if (!actions.includes(maintenanceScope.value)) maintenanceScope.value = actions[0] || '' })
 const maintenanceDestructive = computed(() => ['teardown', 'delete_vms', 'delete_networks', 'reset'].includes(maintenanceScope.value))
@@ -683,8 +710,9 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
-      <NativeScenarioPreview v-if="meta?.native?.descriptor?.topology && !loadError" :topology="meta.native.descriptor.topology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" />
-      <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" />
+      <p v-if="nativePreviewNotice" role="status" class="text-sm mb-3">{{ nativePreviewNotice }} <button type="button" class="btn btn-sm" @click="refreshNativePreview">Refresh preview</button></p>
+      <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
+      <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="operationControlsDisabled" />
       <DeploymentAllocations v-if="meta && !meta.native && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"
         :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
@@ -700,7 +728,7 @@ onBeforeUnmount(() => {
               <span class="ml-2 text-base-content/70">{{ att.state }}</span>
               <span v-if="att.scope" class="ml-2 text-xs">{{ att.scope }}</span>
               <code v-if="att.project_sha" class="ml-2 text-xs break-all">{{ att.project_sha }}</code>
-              <span v-if="att.started_at" class="ml-2 text-xs text-base-content/50">{{ att.started_at }}</span>
+              <span v-if="att.started_at" class="ml-2 text-xs text-base-content/70">{{ att.started_at }}</span>
               <details v-if="att.operation?.request" class="mt-1">
                 <summary class="cursor-pointer">{{ t('runtime.historyOperation') }} · {{ t(`runtime.operations.${att.operation.request.kind}`) }}
                   <span v-if="typeof att.operation.request.enabled === 'boolean'"> · {{ t(att.operation.request.enabled ? 'runtime.enabled' : 'runtime.disabled') }}</span>

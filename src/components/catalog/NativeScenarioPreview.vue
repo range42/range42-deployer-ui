@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { selectNativeTopology, type NativeTopology, type NativeFeature } from '@/services/nativeScenarioCanvas'
-const props = defineProps<{ topology: NativeTopology; features?: NativeFeature[]; selectedFeatures?: Record<string, boolean> }>()
+const props = defineProps<{ topology: NativeTopology; features?: NativeFeature[]; selectedFeatures?: Record<string, boolean>; selectedSeat?: number; compact?: boolean }>()
 const selection = ref<Record<string, boolean>>({})
 watch(() => props.features, features => { selection.value = Object.fromEntries((features || []).map(feature => [feature.id, feature.default])) }, { immediate: true })
-const effective = computed(() => selectNativeTopology(props.topology, props.selectedFeatures ?? selection.value))
+const effective = computed(() => selectNativeTopology(props.topology, props.selectedFeatures ?? selection.value, props.selectedSeat))
 const groups = computed(() => [...new Set([...effective.value.networks.map(network => network.vnet), ...effective.value.vms.map(vm => vm.bridge || 'Unattached')])]
   .map(bridge => ({ bridge, network: effective.value.networks.find(network => network.vnet === bridge), vms: effective.value.vms.filter(vm => (vm.bridge || 'Unattached') === bridge) })))
 const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ cores: total.cores + (vm.cores || 0), memory: total.memory + (vm.memory_mib || 0), disk: total.disk + (vm.disk_gib || 0) }), { cores: 0, memory: 0, disk: 0 }))
@@ -21,7 +21,9 @@ const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ co
         <input v-model="selection[feature.id]" type="checkbox" class="checkbox checkbox-sm" :data-testid="`preview-feature-${feature.id}`" />{{ feature.label || feature.id }}
       </label>
     </fieldset>
-    <p class="text-sm" data-testid="native-resource-summary">{{ effective.vms.length }} VMs · {{ effective.networks.length }} networks<span v-if="resources.cores"> · {{ resources.cores }} vCPUs · {{ resources.memory / 1024 }} GiB RAM · {{ resources.disk }} GiB disk</span></p>
+    <p class="text-sm" data-testid="native-resource-summary" aria-live="polite">{{ effective.vms.length }} VMs · {{ effective.networks.length }} networks<span v-if="resources.cores"> · {{ resources.cores }} vCPUs · {{ resources.memory / 1024 }} GiB RAM · {{ resources.disk }} GiB disk</span></p>
+    <details :open="!compact" data-testid="native-topology-details" class="space-y-3">
+      <summary class="cursor-pointer text-sm font-medium">Inspect VM and network topology</summary>
     <div v-for="group in groups" :key="group.bridge" class="rounded-lg border border-base-300 bg-base-200/40 p-3" :data-testid="`native-network-${group.bridge}`">
       <div class="text-center text-sm font-medium"><span aria-hidden="true">◇ </span>{{ group.bridge }} <span class="font-mono">{{ group.network?.subnet }}</span><span v-if="group.network?.gateway" class="text-xs"> · gateway {{ group.network.gateway }}</span></div>
       <div class="mx-auto h-4 border-l-2 border-primary w-0" aria-hidden="true" />
@@ -34,6 +36,7 @@ const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ co
         </article>
       </div>
     </div>
+    </details>
     <p v-if="!effective.vms.length" class="text-sm">No VMs declared for these features.</p>
     <p v-for="warning in topology.warnings || []" :key="warning" class="text-xs text-base-content/70">{{ warning }}</p>
   </section>

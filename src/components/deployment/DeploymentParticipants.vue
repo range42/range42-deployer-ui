@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { backendBlob, backendRequest } from '@/services/backendApi'
 defineOptions({ name: 'DeploymentParticipants' })
-const props = defineProps<{ deploymentId: string }>()
+const props = defineProps<{ deploymentId: string; eligibleCohort?: boolean; disabled?: boolean }>()
 
 interface Device { id: number; address: string; name: string; online: boolean; bound?: boolean }
 interface Seat {
@@ -12,11 +12,11 @@ interface Seat {
   deployment_id?: string | null; deployment_state: string; certificate_fingerprint?: string | null;
 }
 interface Operation { operation_id: string; action: string; username?: string; state: string; message?: string }
-interface Workshop { cohort_deployment_id?: string | null; id: string; expires_at: string; seats: Seat[]; operations: Operation[] }
-interface Action { action: string; username?: string; node_id?: number; seats?: number; confirmation?: string }
+interface Workshop { cohort_seats?: number | null; cohort_deployment_id?: string | null; id: string; expires_at: string; seats: Seat[]; operations: Operation[] }
+interface Action { action: string; deployment_id?: string; username?: string; node_id?: number; seats?: number; confirmation?: string }
 const workshop = ref<Workshop | null>(null)
 const isCohort = computed(() => !!workshop.value?.cohort_deployment_id && workshop.value.cohort_deployment_id === props.deploymentId)
-const visibleSeats = computed(() => workshop.value?.seats.filter(seat => isCohort.value || seat.deployment_id === props.deploymentId) || [])
+const visibleSeats = computed(() => workshop.value?.seats.filter(seat => (isCohort.value && (!workshop.value?.cohort_seats || Number(seat.username.slice(4)) <= workshop.value.cohort_seats)) || seat.deployment_id === props.deploymentId) || [])
 const associated = computed(() => isCohort.value || visibleSeats.value.length > 0)
 const error = ref('')
 const message = ref('')
@@ -25,21 +25,21 @@ const submitting = ref(false)
 const seats = ref(10)
 function labelFor(action: string) {
   return ({ prepare: 'Prepare workshop', accounts: 'Create accounts', keys: 'Issue VPN keys', handouts: 'Generate PDFs',
-    bind: 'Enable laptop access', revoke: 'Revoke laptop access', close: 'Close participant access',
+    link: 'Connect participant management', bind: 'Enable laptop access', revoke: 'Revoke laptop access', close: 'Close participant access',
     deploy: 'Deploy instance', configure: 'Configure instance', reset: 'Reset instance', teardown: 'Delete instance',
     replace_key: 'Replace VPN key' } as Record<string, string>)[action] || action
 }
 const confirmation = ref('')
 const pending = ref<Action | null>(null)
 const confirmInput = ref<HTMLInputElement | null>(null)
-const busy = computed(() => submitting.value || loading.value || !!error.value ||
+const busy = computed(() => props.disabled || submitting.value || loading.value || !!error.value ||
   workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state)))
 function failedAccess(username: string, action: string) {
   return workshop.value?.operations.find(op => op.username === username &&
     (action === 'revoke' ? ['revoke', 'close'].includes(op.action) : op.action === action))?.state === 'failed'
 }
 function downloadBlocked(seat: Seat) {
-  return submitting.value || loading.value || !!error.value || !seat.handout_ready ||
+  return props.disabled || submitting.value || loading.value || !!error.value || !seat.handout_ready ||
     workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state) &&
       (['prepare', 'accounts', 'keys', 'handouts'].includes(op.action) ||
        (op.username === seat.username && ['deploy', 'configure', 'reset', 'teardown', 'replace_key', 'close'].includes(op.action))))
@@ -53,12 +53,13 @@ async function refresh() {
   try {
     const result = await backendRequest<Workshop>('/v1/admin/workshop')
     if (!result || !Array.isArray(result.seats) || !Array.isArray(result.operations)) throw new Error('Participant status is unavailable. Refresh to retry.')
-    if (!stopped) { workshop.value = result; error.value = '' }
+    if (!stopped) { workshop.value = result; if (!result.seats.length && result.cohort_seats) seats.value = result.cohort_seats; error.value = '' }
   } catch (e) { if (!stopped) error.value = e instanceof Error ? e.message : 'Could not load workshop status.' }
   finally { loading.value = false }
 }
 async function submit(action: Action) {
-  if (!associated.value || (action.username ? !visibleSeats.value.some(seat => seat.username === action.username) : !isCohort.value)) return
+  if (props.disabled || (action.action === 'link' ? !props.eligibleCohort || action.deployment_id !== props.deploymentId
+    : !associated.value || (action.username ? !visibleSeats.value.some(seat => seat.username === action.username) : !isCohort.value))) return
   submitting.value = true; message.value = ''; error.value = ''
   try {
     const operation = await backendRequest<Operation>('/v1/admin/workshop/actions', { method: 'POST', body: JSON.stringify(action) })
@@ -68,7 +69,25 @@ async function submit(action: Action) {
   } catch (e) { error.value = e instanceof Error ? e.message : 'The workshop action failed.' }
   finally { submitting.value = false }
 }
+let confirmationOpener: HTMLElement | null = null
+function closeConfirmation() {
+  pending.value = null
+  void nextTick(() => confirmationOpener?.focus())
+}
+function trapConfirmation(event: KeyboardEvent) {
+  const dialog = event.currentTarget as HTMLElement
+  const items = [...dialog.querySelectorAll<HTMLElement>('input:not([disabled]),button:not([disabled])')]
+  const first = items[0], last = items.at(-1)
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+}
+async function requestLink() {
+  confirmationOpener = document.activeElement as HTMLElement
+  pending.value = { action: 'link', deployment_id: props.deploymentId }
+  await nextTick(); document.getElementById('workshop-confirm-cancel')?.focus()
+}
 async function destructive(action: string, username: string) {
+  confirmationOpener = document.activeElement as HTMLElement
   pending.value = { action, username }; confirmation.value = ''
   await nextTick(); confirmInput.value?.focus()
 }
@@ -87,7 +106,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
 </script>
 
 <template>
-  <section v-if="associated" class="my-4 space-y-6" data-testid="deployment-participants">
+  <section v-if="associated || eligibleCohort || error || loading" class="my-4 space-y-6" data-testid="deployment-participants">
     <header class="flex flex-wrap gap-4 items-start justify-between">
       <div>
         <h2 class="text-xl font-semibold">Participants and access</h2>
@@ -99,7 +118,13 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
     <p v-if="error" role="alert" class="alert alert-error">{{ error }}</p>
     <p v-if="message" role="status" class="alert alert-info">{{ message }}</p>
     <p v-if="loading && !workshop" role="status">Loading workshop…</p>
-    <template v-if="workshop">
+    <div v-if="workshop && !associated && eligibleCohort" class="rounded border border-base-300 p-4 space-y-3">
+      <h3 class="font-medium">Connect participant management</h3>
+      <p class="text-sm">Connect the platform’s prepared participant accounts and isolated environments to this whole-cohort deployment. Existing accounts, keys and machines are preserved.</p>
+      <p v-if="workshop.cohort_deployment_id" class="text-sm">Currently connected deployment: <RouterLink class="link" :to="`/deployments/${workshop.cohort_deployment_id}`">{{ workshop.cohort_deployment_id }}</RouterLink></p>
+      <button type="button" class="btn btn-primary btn-sm" :disabled="busy" data-testid="workshop-link-deployment" @click="requestLink">Connect participant management</button>
+    </div>
+    <template v-if="workshop && associated">
       <div v-if="isCohort" class="card bg-base-100 border border-base-300 p-4 space-y-3">
         <h2 class="font-semibold">Participant preparation</h2>
         <p class="text-sm text-base-content/70">Prepare once, then create accounts, issue connection keys and generate private PDFs. Repeating a step preserves existing credentials.</p>
@@ -159,16 +184,17 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
         </li></ul>
       </section>
     </template>
-    <div v-if="pending" role="dialog" aria-modal="true" aria-labelledby="workshop-confirm-title" class="modal modal-open" @keydown.esc="pending = null">
-      <form class="modal-box space-y-4" @submit.prevent="submit({ ...pending!, confirmation })">
-        <h2 id="workshop-confirm-title" class="font-semibold text-lg">Confirm: {{ labelFor(pending.action) }} for {{ pending.username }}</h2>
-        <p>{{ pending.action === 'close' ? 'This disables the participant account and VPN access.' : pending.action === 'replace_key' ? 'This invalidates previous VPN access and generates a new one-use key. Download the updated credential PDF after it finishes.' : 'This removes the participant’s current installation and lab data from this instance.' }} Other seats remain available.</p>
-        <label class="form-control">Type {{ pending.username }} to continue
-          <input ref="confirmInput" v-model="confirmation" data-testid="seat-confirmation" class="input input-bordered mt-2" autocomplete="off" />
+    <div v-if="pending" role="dialog" aria-modal="true" aria-labelledby="workshop-confirm-title" class="modal modal-open" @keydown.esc.prevent="closeConfirmation" @keydown.tab="trapConfirmation">
+      <form class="modal-box space-y-4" @submit.prevent="submit(pending!.action === 'link' ? pending! : { ...pending!, confirmation })">
+        <h2 id="workshop-confirm-title" class="font-semibold text-lg">Confirm: {{ labelFor(pending.action) }} for {{ pending.username || deploymentId }}</h2>
+        <p v-if="pending.action === 'link'">This moves participant management to this saved deployment. Accounts, credentials, VM allocations and the controller’s execution target are preserved.</p>
+        <p v-else>{{ pending.action === 'close' ? 'This disables the participant account and VPN access.' : pending.action === 'replace_key' ? 'This invalidates previous VPN access and generates a new one-use key. Download the updated credential PDF after it finishes.' : 'This removes the participant’s current installation and lab data from this instance.' }} Other seats remain available.</p>
+        <label v-if="pending.action !== 'link'" class="form-control">Type {{ pending.username }} to continue
+          <input ref="confirmInput" v-model="confirmation" data-testid="seat-confirmation" name="participant-confirmation" spellcheck="false" class="input input-bordered mt-2" autocomplete="off" />
         </label>
         <div class="modal-action">
-          <button type="button" class="btn" @click="pending = null">Cancel</button>
-          <button type="submit" data-testid="confirm-destructive" class="btn btn-error" :disabled="confirmation !== pending.username || submitting">{{ labelFor(pending.action) }}</button>
+          <button id="workshop-confirm-cancel" type="button" class="btn" @click="closeConfirmation">Cancel</button>
+          <button type="submit" data-testid="confirm-destructive" class="btn btn-error" :disabled="(pending.action !== 'link' && confirmation !== pending.username) || submitting">{{ labelFor(pending.action) }}</button>
         </div>
       </form>
     </div>

@@ -24,6 +24,16 @@ const features = ref<Feature[]>([])
 const selected = ref('')
 const flags = ref<Record<string, boolean>>({})
 const parametersText = ref('{}')
+const isWorkshop = computed(() => props.path === 'scenarios/range42-native-workshop')
+const workshopSeat = ref(0)
+const workshopAccepted = ref<Record<string, boolean>>({})
+const workshopChecks = [
+  {id: 'NETWORK', label: 'Participant bridges and host isolation have been verified.'},
+  {id: 'TEMPLATE', label: 'The nested Proxmox template has been validated.'},
+  {id: 'ALLOCATION', label: 'The declared VMIDs, addresses and host capacity are allocated to this workshop.'},
+]
+const workshopValid = computed(() => !isWorkshop.value || (workshopChecks.every(check => workshopAccepted.value[check.id])
+  && workshopSeat.value <= (flags.value.EXTRA_SEATS ? 10 : 5)))
 const busy = ref(false)
 const error = ref('')
 const reservationNotice = ref('')
@@ -33,7 +43,8 @@ const parameters = computed(() => {
   try {
     const advanced = JSON.parse(parametersText.value)
     if (!advanced || typeof advanced !== 'object' || Array.isArray(advanced)) return null
-    const value = { ...advanced, ...Object.fromEntries(Object.entries(setup.value).filter(([, v]) => v.trim())) }
+    const value = { ...advanced, ...Object.fromEntries(Object.entries(setup.value).filter(([, v]) => v.trim())),
+      ...(isWorkshop.value ? {WORKSHOP_ONLY_SEAT: workshopSeat.value, ...Object.fromEntries(workshopChecks.map(check => [`WORKSHOP_${check.id}_ACCEPTED`, !!workshopAccepted.value[check.id]]))} : {}) }
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 64
       || JSON.stringify(value).length > 16384 || Object.entries(value).some(([name, item]) =>
         !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) || /^(ansible_|range42_|r42_|proxmox_|deployer_|infrastructure_|install_)/i.test(name)
@@ -59,7 +70,7 @@ const parameters = computed(() => {
 watch(() => [props.projectId, props.revision, props.path, props.componentId, getBackendScope(), backend.token], async () => {
   const request = ++epoch
   contexts.value = []; features.value = []; selected.value = ''; flags.value = {}; error.value = ''; busy.value = true
-  topology.value = null; platform.value = null; setup.value = {}; parametersText.value = '{}'
+  workshopSeat.value = 0; workshopAccepted.value = {}; topology.value = null; platform.value = null; setup.value = {}; parametersText.value = '{}'
   reservationNotice.value = ''
   emit('select', null)
   try {
@@ -84,9 +95,9 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
   } catch (cause) { if (request === epoch) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (request === epoch) busy.value = false }
 }, { immediate: true })
-watch([context, flags, parameters, busy, error], () => {
+watch([context, flags, parameters, workshopValid, busy, error], () => {
   const current = context.value
-  emit('select', current?.ready && parameters.value && !busy.value && !error.value
+  emit('select', current?.ready && workshopValid.value && parameters.value && !busy.value && !error.value
     ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value } } : null)
 }, { deep: true })
 onBeforeUnmount(() => { epoch += 1 })
@@ -133,7 +144,21 @@ onBeforeUnmount(() => { epoch += 1 })
         <span class="text-sm"><span class="block">{{ feature.label || feature.id }}</span><span class="block text-xs text-base-content/70">{{ feature.description }}</span></span>
       </label>
     </fieldset>
-    <NativeScenarioPreview v-if="topology" :topology="topology" :features="features" :selected-features="flags" />
+    <fieldset v-if="isWorkshop" class="space-y-3 rounded border border-base-300 p-3" data-testid="workshop-setup" :disabled="busy">
+      <legend class="font-medium">Workshop setup</legend>
+      <label class="form-control gap-1"><span class="text-sm">Participant environments to deploy</span>
+        <select v-model.number="workshopSeat" name="workshop-seat" class="select select-bordered w-full" data-testid="workshop-seat">
+          <option :value="0">All selected participants ({{ flags.EXTRA_SEATS ? 10 : 5 }})</option>
+          <option v-for="seat in 10" :key="seat" :value="seat" :disabled="seat > (flags.EXTRA_SEATS ? 10 : 5)">user{{ String(seat).padStart(2, '0') }} only</option>
+        </select>
+      </label>
+      <p v-if="workshopSeat > (flags.EXTRA_SEATS ? 10 : 5)" role="alert" class="text-sm text-error">Enable ten participants or choose a participant from user01–user05.</p>
+      <p class="text-sm text-base-content/70">Confirm the platform qualification before deployment. These checks do not create the parent bridges or templates.</p>
+      <label v-for="check in workshopChecks" :key="check.id" class="flex items-start gap-2 text-sm">
+        <input v-model="workshopAccepted[check.id]" type="checkbox" :name="`workshop-accept-${check.id.toLowerCase()}`" class="checkbox checkbox-sm" :data-testid="`workshop-accept-${check.id}`" />{{ check.label }}
+      </label>
+    </fieldset>
+    <NativeScenarioPreview v-if="topology" :topology="topology" :features="features" :selected-features="flags" :selected-seat="isWorkshop ? workshopSeat : 0" compact />
     <details>
       <summary class="cursor-pointer text-sm">{{ t('deployment.native.parameters') }}</summary>
       <label class="block text-sm mt-2"><span>{{ t('deployment.native.parametersHint') }}</span>

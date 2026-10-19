@@ -117,3 +117,26 @@ it('shows only the associated participant when opened from a seat deployment', a
   expect(view.text()).not.toContain('Create accounts')
   view.unmount()
 })
+
+it('shows an actionable error when the first participant status request fails', async () => {
+  backendRequest.mockRejectedValue(new Error('Participant service unavailable'))
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  expect(view.get('[role="alert"]').text()).toContain('Participant service unavailable')
+  expect(view.findAll('button').some(b => b.text() === 'Refresh status')).toBe(true)
+  view.unmount()
+})
+it('can connect a qualified new cohort to participant management through the UI', async () => {
+  const view = mount(Workshop, { props: { deploymentId: 'new-cohort', eligibleCohort: true }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  await view.get('[data-testid="workshop-link-deployment"]').trigger('click')
+  await view.get('form').trigger('submit'); await flushPromises()
+  expect(backendRequest).toHaveBeenCalledWith('/v1/admin/workshop/actions', expect.objectContaining({ body: JSON.stringify({action:'link',deployment_id:'new-cohort'}) }))
+  view.unmount()
+})
+it('disables participant changes while the parent deployment is running', async () => {
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one', disabled: true }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  expect(view.get('[data-testid="reset-user01"]').attributes('disabled')).toBeDefined()
+  view.unmount()
+})
