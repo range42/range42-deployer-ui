@@ -128,3 +128,15 @@ export function createNativeFilesFs(binding: ProjectGitBinding, revision: string
     },
   }
 }
+
+/** A native deployment uses its committed files; edited files need an explicit save. */
+export function hasSavedNativeFiles(project: { head_sha?: string; files?: ProjectFiles; native_saved_files?: ProjectFiles }) {
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(project.head_sha || '') || !project.native_saved_files) return false
+  const current = project.files || {}; const saved = project.native_saved_files
+  const names = Object.keys(current).sort()
+  if (JSON.stringify(names) !== JSON.stringify(Object.keys(saved).sort())) return false
+  return names.every(name => {
+    const left = fileBytes(current[name]!); const right = fileBytes(saved[name]!)
+    return left.length === right.length && left.every((byte, index) => byte === right[index])
+  })
+}
