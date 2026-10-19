@@ -64,3 +64,16 @@ it('allows retrying a failed initial deployment from the workshop page', async (
   expect(button.attributes('disabled')).toBeUndefined()
   view.unmount()
 })
+
+it.each([
+  [{ action: 'deploy', username: 'user02', state: 'running' }, true],
+  [{ action: 'reset', username: 'user01', state: 'running' }, false],
+  [{ action: 'replace_key', username: 'user01', state: 'running' }, false],
+  [{ action: 'handouts', state: 'running' }, false],
+])('keeps private PDFs available unless their details are changing: %j', async (operation, available) => {
+  backendRequest.mockResolvedValue({ ...roster, operations: [operation] })
+  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const button = view.findAll('button').find(button => button.text() === 'Download credentials')
+  expect(button.attributes('disabled') === undefined).toBe(available)
+  view.unmount()
+})

@@ -30,6 +30,12 @@ const pending = ref<Action | null>(null)
 const confirmInput = ref<HTMLInputElement | null>(null)
 const busy = computed(() => submitting.value || loading.value || !!error.value ||
   workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state)))
+function downloadBlocked(seat: Seat) {
+  return submitting.value || loading.value || !!error.value || !seat.handout_ready ||
+    workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state) &&
+      (['prepare', 'accounts', 'keys', 'handouts'].includes(op.action) ||
+       (op.username === seat.username && ['deploy', 'configure', 'reset', 'teardown', 'replace_key', 'close'].includes(op.action))))
+}
 let timer: ReturnType<typeof setInterval> | undefined
 let stopped = false
 
@@ -111,7 +117,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
           </dl>
           <p v-if="seat.certificate_fingerprint" class="text-xs break-all">Verified certificate: {{ seat.certificate_fingerprint }}</p>
           <div class="flex flex-wrap gap-2">
-            <button class="btn btn-sm" :disabled="busy || !seat.handout_ready" @click="download(seat.username)">Download credentials</button>
+            <button class="btn btn-sm" :disabled="downloadBlocked(seat)" @click="download(seat.username)">Download credentials</button>
             <button class="btn btn-sm" :data-testid="`replace-key-${seat.username}`" :disabled="busy || !seat.account_ready || seat.closed || !!seat.device" @click="destructive('replace_key', seat.username)">Replace VPN key</button>
             <RouterLink v-if="seat.deployment_id" class="btn btn-sm" :to="`/deployments/${seat.deployment_id}`">Deployment and logs</RouterLink>
             <button class="btn btn-sm btn-primary" :disabled="busy || seat.closed || !seat.account_ready || (!!seat.deployment_id && !['failed', 'pending'].includes(seat.deployment_state))" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
