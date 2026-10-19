@@ -134,8 +134,10 @@ const errVault = computed(() => {
 })
 
 function readAllocationProof() {
-  const proof = getScenarioAllocationProof({ allocation: props.allocation,
-    localProjectId: props.localProjectId, targetHostId: targetHost.value })
+  const allocation = nativeSelection.value?.allocation || props.allocation
+  const proof = getScenarioAllocationProof({ allocation,
+    localProjectId: nativeSelection.value?.allocation?.reservation?.project_key || props.localProjectId,
+    targetHostId: targetHost.value })
   if (proof && (!usesPinnedScenario.value || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(props.projectSha))) {
     throw new Error(t('deployment.deploy.allocationPinRequired'))
   }
@@ -265,6 +267,7 @@ async function submit() {
         path: props.nativeScenario.path, context_id: nativeSelection.value.context_id,
         ...(props.nativeScenario.component_id ? { component_id: props.nativeScenario.component_id } : {}),
         features: nativeSelection.value.features, parameters: nativeSelection.value.parameters,
+        ...(nativeSelection.value.workshop ? {workshop: nativeSelection.value.workshop} : {}),
       } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }

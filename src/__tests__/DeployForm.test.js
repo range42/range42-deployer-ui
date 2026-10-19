@@ -45,12 +45,25 @@ function baseProps(overrides = {}) {
 function fetchMockHosts(extra = {}) {
   return vi.fn(async (url, opts) => {
     if (typeof url !== 'string') url = String(url)
+    if (extra.workshop && url.endsWith('/native-scenario/preview')) return {ok: true, status: 200, json: async () => ({
+      topology: {vms: [], templates: [], networks: [], warnings: []}, allocation_request: {
+        vmid_start: 45000, vmid_end: 45001,
+        networks: [{network_id: 'participant', bridge: 'vmbr600', subnet: '10.79.0.0/28', gateway: '10.79.0.1'}],
+        vms: [{node_id: 'user01-proxmox', vm_id: 45000, nics: [{network_id: 'participant', ip: '10.79.0.2'}]}],
+      },
+    })}
+    if (extra.workshop && url.endsWith('/reservations')) {
+      const request = JSON.parse(opts.body)
+      return {ok: true, status: 200, json: async () => ({reservation_id: 'workshop-lease', project_key: request.project_key,
+        host_id: 'host-2', expires_at: new Date(Date.now() + 3600000).toISOString(), assignments: []})}
+    }
     if (url.includes('/v1/contexts')) return { ok: true, status: 200, json: async () => ({ items: extra.contexts || [
       { id: 'training-demo', label: 'Training environment', target_host_id: 'host-2', ready: true, issues: [] },
     ] }) }
     if (url.includes('/native-scenario')) return { ok: true, status: 200, json: async () => ({
       path: 'training/exercise-a', actions: { full: 'exercise.setup.sh', teardown: 'exercise.delete_all.sh' },
       features: [{ id: 'WAZUH', label: 'Monitoring', description: 'Optional monitoring', default: false }],
+      ...(extra.workshop ? {workshop: {version: 1, kind: 'native-installation', min_seats: 1, max_seats: 10}} : {}),
       ...(extra.topology ? { topology: extra.topology } : {}),
     }) }
     if (url.includes('/v1/proxmox/hosts') && (!opts || opts.method !== 'POST')) {
@@ -87,6 +100,32 @@ describe('<DeployForm>', () => {
   })
   afterEach(() => {
     globalThis.fetch = originalFetch
+  })
+
+  it('transfers a workshop reservation in a private header with the exact reviewed native plan', async () => {
+    const fetchSpy = fetchMockHosts({workshop: true})
+    globalThis.fetch = fetchSpy
+    const wrapper = mount(DeployForm, {props: baseProps({nativeScenario: {version: 1, path: 'scenarios/installer-course'},
+      projectSha: 'a'.repeat(40), gamenet: false}), global: {plugins: [makeRouter(), makeI18n()]}})
+    await flushPromises()
+    for (const [name, value] of Object.entries({namespace: 'course-a', seats: '1', expires_at: '2030-10-23T18:00', vmid_start: '45000',
+      network_pool: '10.79.0.0/24', bridge_start: '600', proxmox_template: '9230', deployer_template: '9222', storage: 'ceph-range'})) {
+      await wrapper.get(`[data-testid="workshop-input-${name}"]`).setValue(value)
+    }
+    await wrapper.get('[data-testid="deploy-field-codename"] input').setValue('course')
+    await wrapper.get('[data-testid="deploy-sha-ack"] input').setValue(true)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="workshop-review-plan"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click'); await flushPromises()
+    const [url, options] = fetchSpy.mock.calls.find(([url, options]) => String(url).endsWith('/v1/deployments/') && options?.method === 'POST')
+    expect(url).toContain('/v1/deployments/')
+    const privateProof = new Headers(options.headers).get('X-Range42-Reservation-Token')
+    expect(privateProof).toMatch(/^[a-f0-9]{64}$/)
+    const body = JSON.parse(options.body)
+    expect(body.allocation_reservation_id).toBe('workshop-lease')
+    expect(body.native.workshop).toMatchObject({namespace: 'course-a', seats: 1, vmid_start: 45000})
+    expect(options.body).not.toContain(privateProof)
   })
 
   it('keeps dialog keyboard navigation inside and restores the opener after Escape', async () => {

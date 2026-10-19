@@ -519,6 +519,21 @@ describe('<DeploymentDetail>', () => {
     expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option=>option.element.value)).toEqual(['full','configure'])
   })
 
+  it('shows owned workshop controls in Overview while keeping reset participant-scoped', async () => {
+    globalThis.fetch = vi.fn(async url => ({ok: true, status: 200, json: async () => url.endsWith('/attempts') ? {items: []}
+      : {id: 'run-a', project_sha: 'a'.repeat(40), state: 'succeeded', native: {path: 'training/custom-course',
+        workshop_plan: {run_id: 'run-a'}, descriptor: {actions: {full: 'main.yml', configure: 'configure.yml', reset: 'reset.yml', teardown: 'teardown.yml'}}}}}))
+    const router = makeRouter(); await router.push('/deployments/run-a')
+    const wrapper = mount(DeploymentDetail, {global: {plugins: [router, makeI18n()], stubs: {
+      WorkshopRunParticipants: {template: '<section data-testid="owned-participants" />'},
+      DeploymentAllocations: {template: '<section data-testid="owned-allocations" />'},
+    }}})
+    await settle(wrapper)
+    expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option => option.element.value)).toEqual(['full', 'configure', 'teardown'])
+    expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="owned-participants"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="owned-allocations"]').exists()).toBe(true)
+  })
+
   it('offers only declared native lifecycle actions and confirms destructive scope', async () => {
     globalThis.fetch = vi.fn(async (url, options = {}) => ({ ok: true, status: 200, json: async () => {
       if (url.endsWith('/preflight')) return { result: 'pass', checks: [] }

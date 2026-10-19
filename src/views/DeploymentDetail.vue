@@ -1,6 +1,7 @@
 <script setup>
 import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
 import DeploymentParticipants from '@/components/deployment/DeploymentParticipants.vue'
+import WorkshopRunParticipants from '@/components/deployment/WorkshopRunParticipants.vue'
 /**
  * /deployments/:id — Plan C §C4.4
  *
@@ -119,6 +120,7 @@ const supportsLegacyActions = computed(() => !!meta.value && !meta.value.project
 const maintenanceScope = ref('configure')
 const maintenanceActions = computed(() => meta.value?.native
   ? Object.keys(meta.value.native.descriptor?.actions || {}).filter(action => ['full', 'configure', 'teardown', 'deploy_vms', 'delete_vms', 'reset', 'deploy_networks', 'delete_networks'].includes(action)
+    && !(meta.value.native.workshop_plan && action === 'reset')
     && !(meta.value.native.path === 'scenarios/range42-native-workshop' && !workshopSeat.value && ['reset', 'teardown', 'delete_vms', 'delete_networks'].includes(action)))
   : ['configure', 'teardown'])
 watch(maintenanceActions, actions => { if (!actions.includes(maintenanceScope.value)) maintenanceScope.value = actions[0] || '' })
@@ -713,7 +715,8 @@ onBeforeUnmount(() => {
       <p v-if="nativePreviewNotice" role="status" class="text-sm mb-3">{{ nativePreviewNotice }} <button type="button" class="btn btn-sm" @click="refreshNativePreview">Refresh preview</button></p>
       <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
       <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="operationControlsDisabled" />
-      <DeploymentAllocations v-if="meta && !meta.native && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
+      <WorkshopRunParticipants v-if="meta?.native?.workshop_plan && !loadError" :key="`run-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" @started="onRuntimeStarted" />
+      <DeploymentAllocations v-if="meta && (!meta.native || meta.native.workshop_plan) && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"
         :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
       <RuntimeControls v-if="supportsConcreteActions && !meta?.native" :deployment-id="String(route.params.id)"

@@ -78,6 +78,17 @@ function customizeButton(wrapper) {
 }
 
 describe('CatalogEntryDetail — customize gating by write access', () => {
+  it('explains the workshop layout before choosing a run-specific allocation', async () => {
+    const wrapper = await mountDetail({writable: false, entry: {...ENTRY, kind: 'scenario', document: {
+      format: 'range42-native', features: [], workshop: {version: 1, kind: 'native-installation', title: 'Install Range42', min_seats: 1, max_seats: 10},
+      topology: {vms: [], templates: [], networks: [], warnings: [], reservations: {status: 'missing', issues: []}},
+    }}})
+    expect(wrapper.get('[data-testid="workshop-template-preview"]').text()).toContain('Your Proxmox')
+    expect(wrapper.get('[data-testid="workshop-template-preview"]').text()).toContain('Your deployer')
+    expect(wrapper.text()).toContain('1–10 participants')
+    expect(wrapper.find('[data-testid="native-resource-summary"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('shows the declared native topology before creating or deploying a project', async () => {
     const wrapper = await mountDetail({ writable: false, entry: { ...ENTRY, kind: 'scenario', document: {
       format: 'range42-native', features: [], topology: { vms: [{ vm_id: 43010, vm_name: 'Participant Proxmox', bridge: 'vmbr430' }],

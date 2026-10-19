@@ -5,11 +5,13 @@ import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 
 import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
+import WorkshopRunSetup, { type WorkshopSpec, type WorkshopSelection } from './WorkshopRunSetup.vue'
+import WorkshopTemplatePreview from '@/components/catalog/WorkshopTemplatePreview.vue'
 import type { NativeTopology } from '@/services/nativeScenarioCanvas'
 
 const topology = ref<NativeTopology | null>(null)
 const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string }>()
-const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean> }] }>()
+const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; allocation?: WorkshopSelection['allocation'] }] }>()
 const { t } = useI18n()
 const backend = useBackendApiStore()
 type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[] }
@@ -18,13 +20,15 @@ type Platform = { id: string; domain: string; profile: string; unavailable: Reco
   presets: { id: string; features: Record<string, boolean> }[];
   parameters: { name: string; label: string; type: string; required: boolean }[] }
 const platform = ref<Platform | null>(null)
+const runDescriptor = ref<{version: number; kind: string; title: string; min_seats: number; max_seats: number} | null>(null)
+const runSelection = ref<WorkshopSelection | null>(null)
 const setup = ref<Record<string, string>>({})
 const contexts = ref<Context[]>([])
 const features = ref<Feature[]>([])
 const selected = ref('')
 const flags = ref<Record<string, boolean>>({})
 const parametersText = ref('{}')
-const isWorkshop = computed(() => props.path === 'scenarios/range42-native-workshop')
+const isWorkshop = computed(() => !runDescriptor.value && props.path === 'scenarios/range42-native-workshop')
 const workshopSeat = ref(0)
 const workshopAccepted = ref<Record<string, boolean>>({})
 const workshopChecks = [
@@ -71,6 +75,7 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
   const request = ++epoch
   contexts.value = []; features.value = []; selected.value = ''; flags.value = {}; error.value = ''; busy.value = true
   workshopSeat.value = 0; workshopAccepted.value = {}; topology.value = null; platform.value = null; setup.value = {}; parametersText.value = '{}'
+  runDescriptor.value = null; runSelection.value = null
   reservationNotice.value = ''
   emit('select', null)
   try {
@@ -78,7 +83,7 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
     if (props.componentId) query.set('component_id', props.componentId)
     const [environments, descriptor] = await Promise.all([
       backendRequest<{ items: Context[] }>('/v1/contexts'),
-      backendRequest<{ features: Feature[]; platform?: Platform; topology?: NativeTopology }>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario?${query}`),
+      backendRequest<{ features: Feature[]; platform?: Platform; topology?: NativeTopology; workshop?: typeof runDescriptor.value }>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario?${query}`),
     ])
     if (request !== epoch) return
     const registry = descriptor.topology?.reservations
@@ -89,16 +94,18 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
     contexts.value = environments.items
     features.value = descriptor.features
     platform.value = descriptor.platform || null
+    runDescriptor.value = descriptor.workshop || null
     flags.value = Object.fromEntries(descriptor.features.map(feature => [feature.id, feature.default]))
     const ready = contexts.value.filter(item => item.ready)
     if (ready.length === 1) selected.value = ready[0]!.id
   } catch (cause) { if (request === epoch) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (request === epoch) busy.value = false }
 }, { immediate: true })
-watch([context, flags, parameters, workshopValid, busy, error], () => {
+watch([context, flags, parameters, workshopValid, busy, error, runSelection], () => {
   const current = context.value
-  emit('select', current?.ready && workshopValid.value && parameters.value && !busy.value && !error.value
-    ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value } } : null)
+  emit('select', current?.ready && workshopValid.value && (!runDescriptor.value || runSelection.value) && parameters.value && !busy.value && !error.value
+    ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value },
+      ...(runSelection.value ? {workshop: {...runSelection.value.workshop}, allocation: runSelection.value.allocation} : {}) } : null)
 }, { deep: true })
 onBeforeUnmount(() => { epoch += 1 })
 </script>
@@ -158,7 +165,9 @@ onBeforeUnmount(() => { epoch += 1 })
         <input v-model="workshopAccepted[check.id]" type="checkbox" :name="`workshop-accept-${check.id.toLowerCase()}`" class="checkbox checkbox-sm" :data-testid="`workshop-accept-${check.id}`" />{{ check.label }}
       </label>
     </fieldset>
-    <NativeScenarioPreview v-if="topology" :topology="topology" :features="features" :selected-features="flags" :selected-seat="isWorkshop ? workshopSeat : 0" compact />
+    <WorkshopRunSetup v-if="runDescriptor" :key="`${projectId}:${revision}:${path}:${componentId || ''}`" :project-id="projectId" :revision="revision" :path="path" :component-id="componentId" :target-host-id="context?.target_host_id || ''" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" @select="runSelection = $event" />
+    <WorkshopTemplatePreview v-if="runDescriptor && !runSelection" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" />
+    <NativeScenarioPreview v-else-if="runSelection?.topology || topology" :topology="runSelection?.topology || topology!" :features="features" :selected-features="flags" :selected-seat="isWorkshop ? workshopSeat : 0" compact />
     <details>
       <summary class="cursor-pointer text-sm">{{ t('deployment.native.parameters') }}</summary>
       <label class="block text-sm mt-2"><span>{{ t('deployment.native.parametersHint') }}</span>

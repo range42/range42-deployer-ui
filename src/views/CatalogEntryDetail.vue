@@ -28,6 +28,7 @@ import CatalogProjectHandoff from '@/components/catalog/CatalogProjectHandoff.vu
 import CatalogAppendDialog from '@/components/catalog/CatalogAppendDialog.vue'
 import CatalogReadme from '@/components/catalog/CatalogReadme.vue'
 import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
+import WorkshopTemplatePreview from '@/components/catalog/WorkshopTemplatePreview.vue'
 import { ensureNamespaces } from '@/i18n'
 import { useCatalogSourceAccess } from '@/composables/useCatalogSourceAccess'
 import { catalogBrowseQuery, catalogCapabilities } from '@/services/catalogPresentation'
@@ -269,7 +270,8 @@ onMounted(async () => {
         </ul>
       </section>
 
-      <NativeScenarioPreview v-if="entry.document?.format === 'range42-native' && entry.document?.topology" :topology="entry.document.topology" :features="entry.document.features" />
+      <WorkshopTemplatePreview v-if="entry.document?.workshop" :min-seats="entry.document.workshop.min_seats" :max-seats="entry.document.workshop.max_seats" />
+      <NativeScenarioPreview v-else-if="entry.document?.format === 'range42-native' && entry.document?.topology" :topology="entry.document.topology" :features="entry.document.features" />
       <!-- README uses the shared HTML-disabled Markdown renderer. -->
       <section class="mb-8" data-testid="entry-readme">
         <h2 class="text-lg font-semibold mb-2">{{ t('catalog.detail.readme') }}</h2>
