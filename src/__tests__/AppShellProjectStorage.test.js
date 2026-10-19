@@ -45,3 +45,20 @@ it('shows a safe reload link when a lazy page fails and clears it after successf
   await flushPromises()
   expect(wrapper.find('[data-testid="route-load-error"]').exists()).toBe(false)
 })
+
+it('retains a route-load failure that happens before the app shell mounts', async () => {
+  const { installRouteRecovery } = await import('@/services/routeRecovery')
+  const failure = new Error('Initial module request failed: private-details')
+  const router = createRouter({history: createMemoryHistory(), routes: [
+    {path: '/', component: {template: '<p>Projects</p>'}},
+    {path: '/catalog', component: () => Promise.reject(failure)},
+    ...['/deployments', '/sources', '/settings'].map(path => ({path, component: {template: '<p>Page</p>'}})),
+  ]})
+  installRouteRecovery(router)
+  await router.push('/')
+  await expect(router.push('/catalog')).rejects.toBe(failure)
+  const wrapper = mount(AppShell, {global: {plugins: [router, i18n], stubs: {BackendAccessPanel: true, LegacyStorageBanner: true}}})
+  await flushPromises()
+  expect(wrapper.get('[data-testid="route-load-error"] a').attributes('href')).toBe('/catalog')
+  expect(wrapper.text()).not.toContain('private-details')
+})

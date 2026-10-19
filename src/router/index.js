@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { installRouteRecovery } from '@/services/routeRecovery'
 const Home = () => import('../views/Home.vue')
 const ProjectEditor = () => import('../views/ProjectEditor.vue')
 const Settings = () => import('../views/Settings.vue')
@@ -48,6 +49,8 @@ const router = createRouter({
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
+
+installRouteRecovery(router)
 
 router.beforeEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} - Range42 Deployer` : 'Range42 Deployer'

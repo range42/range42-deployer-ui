@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ensureNamespaces } from '@/i18n'
@@ -8,23 +8,14 @@ import AppNavigation from '@/components/AppNavigation.vue'
 import SidebarDrawer from '@/components/ui/SidebarDrawer.vue'
 import LegacyStorageBanner from '@/components/LegacyStorageBanner.vue'
 import BackendAccessPanel from '@/components/ui/BackendAccessPanel.vue'
+import { installRouteRecovery } from '@/services/routeRecovery'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const preferences = useUiPreferencesStore()
 const mobileOpen = ref(false)
-const failedNavigation = ref('')
-const stopErrors = router.onError((_error, to) => {
-  const destination = new URL(router.resolve(to).href, window.location.href)
-  if (destination.origin === window.location.origin) {
-    failedNavigation.value = destination.pathname + destination.search + destination.hash
-  }
-})
-const stopNavigation = router.afterEach((_to, _from, failure) => {
-  if (!failure) failedNavigation.value = ''
-})
-onBeforeUnmount(() => { stopErrors(); stopNavigation() })
+const failedNavigation = installRouteRecovery(router)
 onMounted(() => ensureNamespaces(['sidebar', 'common']))
 watch(() => route.path, () => { mobileOpen.value = false })
 watch(() => preferences.theme, theme => {
