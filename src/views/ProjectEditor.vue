@@ -560,7 +560,11 @@ function currentPushArgs() {
     `Save ${currentProject.value?.name || 'project'}`)
 }
 
-/** @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result */
+/**
+ * @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result
+ * @param {import('@/types/project').ProjectDraft | null} [project]
+ * @param {import('@/services/projectFiles').ProjectFiles} [savedFiles]
+ */
 function recordCheckpoint(result, project = currentProject.value, savedFiles = undefined) {
   if (!project?.git || !result.commit_sha) return
   const git = { ...project.git, ...(result.binding || {}), working_branch: result.branch,
@@ -953,7 +957,7 @@ const handleOpenDeploy = async (selection = undefined) => {
   const scope = getBackendScope()
   try {
     const native = !!currentProject.value?.native_scenario
-    if (native && !hasSavedNativeFiles(currentProject.value)) throw new Error('Save your native scenario changes before deploying. Reopen older imported scenarios to review their committed files.')
+    if (native && currentProject.value && !hasSavedNativeFiles(currentProject.value)) throw new Error('Save your native scenario changes before deploying. Reopen older imported scenarios to review their committed files.')
     const args = currentPushArgs()
     const before = args ? JSON.stringify(buildProjectFiles(args)) : null
     if (args) {
