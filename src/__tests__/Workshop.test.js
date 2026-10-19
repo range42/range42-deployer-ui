@@ -10,6 +10,26 @@ const roster = { cohort_deployment_id: 'cohort-one', id: 'native-friday', expire
 ] }
 beforeEach(() => { vi.clearAllMocks(); backendRequest.mockResolvedValue(roster) })
 describe('workshop administration', () => {
+  it('focuses participant confirmation after the modal becomes focusable on the next frame', async () => {
+    const frames = []
+    vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    let visible = false
+    const originalFocus = HTMLElement.prototype.focus
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (...args) {
+      if (this.closest('[role="dialog"]') && !visible) return
+      originalFocus.apply(this, args)
+    })
+    const view = mount(Workshop, {attachTo: document.body, props: {deploymentId: 'cohort-one'}, global: {stubs: ['RouterLink']}})
+    try {
+      await flushPromises()
+      await view.get('[data-testid="reset-user01"]').trigger('click')
+      visible = true
+      frames.splice(0).forEach(callback => callback())
+      await flushPromises()
+      expect(document.activeElement).toBe(view.get('[data-testid="seat-confirmation"]').element)
+    } finally { view.unmount(); focus.mockRestore(); vi.unstubAllGlobals() }
+  })
   it('shows per-seat readiness, instance links and verified devices without exposing credentials', async () => {
     const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
     await flushPromises()

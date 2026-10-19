@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { backendBlob, backendRequest } from '@/services/backendApi'
+import { focusWhenReady } from '@/composables/useDialogKeyboard'
 defineOptions({ name: 'DeploymentParticipants' })
 const props = defineProps<{ deploymentId: string; eligibleCohort?: boolean; disabled?: boolean }>()
 
@@ -70,7 +71,9 @@ async function submit(action: Action) {
   finally { submitting.value = false }
 }
 let confirmationOpener: HTMLElement | null = null
+let cancelConfirmationFocus = () => {}
 function closeConfirmation() {
+  cancelConfirmationFocus()
   pending.value = null
   void nextTick(() => confirmationOpener?.focus())
 }
@@ -82,14 +85,20 @@ function trapConfirmation(event: KeyboardEvent) {
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
 }
 async function requestLink() {
+  cancelConfirmationFocus()
   confirmationOpener = document.activeElement as HTMLElement
   pending.value = { action: 'link', deployment_id: props.deploymentId }
-  await nextTick(); document.getElementById('workshop-confirm-cancel')?.focus()
+  const current = pending.value
+  await nextTick()
+  cancelConfirmationFocus = focusWhenReady(() => document.getElementById('workshop-confirm-cancel'), () => !stopped && pending.value === current)
 }
 async function destructive(action: string, username: string) {
+  cancelConfirmationFocus()
   confirmationOpener = document.activeElement as HTMLElement
   pending.value = { action, username }; confirmation.value = ''
-  await nextTick(); confirmInput.value?.focus()
+  const current = pending.value
+  await nextTick()
+  cancelConfirmationFocus = focusWhenReady(() => confirmInput.value, () => !stopped && pending.value === current)
 }
 async function download(username: string) {
   if (!visibleSeats.value.some(seat => seat.username === username)) return
@@ -102,7 +111,7 @@ async function download(username: string) {
   finally { submitting.value = false }
 }
 onMounted(() => { void refresh(); timer = setInterval(() => { if (!pending.value) void refresh() }, 5000) })
-onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
+onUnmounted(() => { stopped = true; cancelConfirmationFocus(); if (timer) clearInterval(timer) })
 </script>
 
 <template>

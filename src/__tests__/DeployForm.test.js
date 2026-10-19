@@ -153,6 +153,29 @@ describe('<DeployForm>', () => {
     } finally { wrapper.unmount(); opener.remove() }
   })
 
+  it('focuses the dialog when its opening transition makes controls focusable on the next frame', async () => {
+    globalThis.fetch = fetchMockHosts()
+    const opener = document.createElement('button'); document.body.append(opener); opener.focus()
+    const frames = []
+    vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    let visible = false
+    const originalFocus = HTMLElement.prototype.focus
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (...args) {
+      if (this.closest('[role="dialog"]') && !visible) return
+      originalFocus.apply(this, args)
+    })
+    const wrapper = mount(DeployForm, {attachTo: document.body, props: baseProps(), global: {plugins: [makeRouter(), makeI18n()]}})
+    try {
+      await flushPromises()
+      expect(document.activeElement).toBe(opener)
+      visible = true
+      frames.splice(0).forEach(callback => callback())
+      await flushPromises()
+      expect(document.activeElement).toBe(wrapper.get('button[aria-label="Close"]').element)
+    } finally { wrapper.unmount(); focus.mockRestore(); vi.unstubAllGlobals(); opener.remove() }
+  })
+
   it.each([undefined, 'catalog-1'])('deploys a native scenario with its environment and saved component %s', async component_id => {
     const fetchSpy = fetchMockHosts()
     globalThis.fetch = fetchSpy
