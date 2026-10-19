@@ -105,7 +105,8 @@ const maintenanceBusy = ref(false)
 let maintenanceVersion = 0
 const canMaintain = computed(() => supportsConcreteActions.value && !loading.value && !loadError.value
   && attemptsIdle.value
-  && ['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value))
+  && (['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value)
+    || (!!meta.value?.native && ['pending', 'draft'].includes(effectiveState.value))))
 const maintenanceRequest = computed(() => meta.value?.native ? { scope: maintenanceScope.value } : maintenanceScope.value === 'configure'
   ? { scope: 'configure', project_sha: maintenanceSha.value.trim() } : { scope: 'teardown' })
 const maintenanceWarnings = computed(() => maintenanceRecord.value?.result === 'warn'

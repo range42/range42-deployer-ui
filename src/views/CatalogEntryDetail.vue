@@ -269,6 +269,7 @@ onMounted(async () => {
         </ul>
       </section>
 
+      <NativeScenarioPreview v-if="entry.document?.format === 'range42-native' && entry.document?.topology" :topology="entry.document.topology" :features="entry.document.features" />
       <!-- README uses the shared HTML-disabled Markdown renderer. -->
       <section class="mb-8" data-testid="entry-readme">
         <h2 class="text-lg font-semibold mb-2">{{ t('catalog.detail.readme') }}</h2>
@@ -277,7 +278,6 @@ onMounted(async () => {
       </section>
 
       <!-- Topology preview -->
-      <NativeScenarioPreview v-if="entry.document?.format === 'range42-native' && entry.document?.topology" :topology="entry.document.topology" :features="entry.document.features" />
       <section v-if="hasTopology" class="mb-8" data-testid="entry-topology">
         <h2 class="text-lg font-semibold mb-2">{{ t('catalog.detail.topology') }}</h2>
         <div class="card card-bordered bg-base-100 h-80">

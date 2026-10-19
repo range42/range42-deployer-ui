@@ -25,10 +25,10 @@ const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ co
     <div v-for="group in groups" :key="group.bridge" class="rounded-lg border border-base-300 bg-base-200/40 p-3" :data-testid="`native-network-${group.bridge}`">
       <div class="text-center text-sm font-medium"><span aria-hidden="true">◇ </span>{{ group.bridge }} <span class="font-mono">{{ group.network?.subnet }}</span><span v-if="group.network?.gateway" class="text-xs"> · gateway {{ group.network.gateway }}</span></div>
       <div class="mx-auto h-4 border-l-2 border-primary w-0" aria-hidden="true" />
-      <div class="grid gap-3 border-t-2 border-primary pt-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="grid gap-3 border-t-2 border-primary pt-3 sm:grid-cols-2" :class="group.vms.length > 2 ? 'lg:grid-cols-3' : ''">
         <article v-for="vm in group.vms" :key="vm.vm_id" class="rounded-lg border border-base-300 bg-base-100 p-3 min-w-0">
           <h3 class="font-medium break-words">{{ vm.vm_name || `VM ${vm.vm_id}` }}</h3>
-          <p class="text-xs text-base-content/70">{{ vm.group || vm.role }} · VM {{ vm.vm_id }}</p>
+          <p class="text-xs text-base-content/70">{{ vm.group }}<span v-if="vm.role"> · {{ vm.role }}</span> · VM {{ vm.vm_id }}</p>
           <p class="text-sm font-mono">{{ vm.ip }}</p>
           <p v-if="vm.cores || vm.memory_mib || vm.disk_gib" class="text-xs mt-1">{{ vm.cores ?? '—' }} vCPU · {{ vm.memory_mib ? vm.memory_mib / 1024 : '—' }} GiB RAM · {{ vm.disk_gib ?? '—' }} GiB disk</p>
         </article>
