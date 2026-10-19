@@ -1110,6 +1110,7 @@ const configOverlayFs = computed(() => {
     },
   })
   const project = currentProject.value
+  if (project?.native_scenario && project.native_saved_files) return local
   if (project?.native_scenario && project.git && project.head_sha) {
     try { return createNativeFilesFs(project.git, project.head_sha, providerForBinding(project.git), local) }
     catch (error) { return { ...local, listTree: async () => { throw error } } }

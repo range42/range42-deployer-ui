@@ -1,3 +1,4 @@
+import { backendRequest } from '@/services/backendApi'
 import type { GitProviderV1 } from '@/services/git/types'
 import type { ProjectGitBinding } from '@/composables/useProjectGitSync'
 import type { ProjectState } from '@/services/projectRepo'
@@ -139,4 +140,32 @@ export function hasSavedNativeFiles(project: { head_sha?: string; files?: Projec
     const left = fileBytes(current[name]!); const right = fileBytes(saved[name]!)
     return left.length === right.length && left.every((byte, index) => byte === right[index])
   })
+}
+
+/** Preview a registered source through backend Git; no browser provider API budget is used. */
+export async function loadNativeScenarioFromBackend(binding: ProjectGitBinding, selected: string, pinned?: string): Promise<ProjectState> {
+  const native = nativeScenario({ version: 1, path: selected })
+  const prefix = binding.subdir ? `${binding.subdir}/` : ''
+  const query = new URLSearchParams({ path: prefix + native.path })
+  if (pinned) query.set('sha', pinned)
+  const snapshot = await backendRequest<{ revision: string; path: string; files: ProjectFiles;
+    repository: { owner: string; repo: string; branch: string } }>(`/v1/catalog/sources/${encodeURIComponent(binding.source_id)}/native-preview?${query}`)
+  if (!/^[a-f0-9]{40}$/i.test(snapshot.revision) || (pinned && snapshot.revision !== pinned)
+    || snapshot.path !== prefix + native.path || snapshot.repository?.owner !== binding.repo_owner
+    || snapshot.repository?.repo !== binding.repo_name || snapshot.repository?.branch !== (binding.branch || 'main')) {
+    throw new Error('The native preview no longer matches the reviewed repository, branch and commit')
+  }
+  const files: ProjectFiles = {}
+  for (const [path, content] of Object.entries(snapshot.files)) {
+    if (!path.startsWith(prefix + native.path + '/') || !editablePath(path.slice(prefix.length))) throw new Error('Native preview returned an unscoped file')
+    files[path.slice(prefix.length)] = content
+  }
+  validateAuthoredFiles(files)
+  const manifest = JSON.parse(fileText(files[`${native.path}/manifest/scenario_vms.json`]!))
+  if (!manifest || !Array.isArray(manifest.vms) || manifest.vms.some((vm: { vm_id?: number }) => !Number.isInteger(vm?.vm_id) || Number(vm.vm_id) <= 0)
+    || ![`${native.path}/main.yml`, `${native.path}/main.yaml`].some(path => path in files)) throw new Error('Native scenario VM manifest or entrypoint is invalid')
+  const name = native.path.split('/').at(-1)!
+  return { revision: { branch: binding.branch || 'main', commit_sha: snapshot.revision }, files,
+    overlay: '{}', canvas_layout: '{}', topology: JSON.stringify({ schema_version: '1.0', kind: 'lab', name, nodes: [] }),
+    meta: { name, ui_project: { version: 1, native_scenario: native, generated_paths: [], variables: [] } } }
 }
