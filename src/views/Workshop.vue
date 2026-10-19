@@ -114,7 +114,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
             <button class="btn btn-sm" :disabled="busy || !seat.handout_ready" @click="download(seat.username)">Download credentials</button>
             <button class="btn btn-sm" :data-testid="`replace-key-${seat.username}`" :disabled="busy || !seat.key_ready || seat.closed || !!seat.device" @click="destructive('replace_key', seat.username)">Replace VPN key</button>
             <RouterLink v-if="seat.deployment_id" class="btn btn-sm" :to="`/deployments/${seat.deployment_id}`">Deployment and logs</RouterLink>
-            <button class="btn btn-sm btn-primary" :disabled="busy || seat.closed || !seat.account_ready || !!seat.deployment_id" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
+            <button class="btn btn-sm btn-primary" :disabled="busy || seat.closed || !seat.account_ready || (!!seat.deployment_id && !['failed', 'pending'].includes(seat.deployment_state))" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
             <button class="btn btn-sm" :disabled="busy || !seat.deployment_id || seat.closed" @click="submit({ action: 'configure', username: seat.username })">Check / configure</button>
             <button class="btn btn-sm" :data-testid="`reset-${seat.username}`" :disabled="busy || !seat.deployment_id" @click="destructive('reset', seat.username)">Reset instance</button>
             <button class="btn btn-sm btn-error btn-outline" :disabled="busy || !seat.deployment_id" @click="destructive('teardown', seat.username)">Delete instance</button>
@@ -137,7 +137,7 @@ onUnmounted(() => { stopped = true; if (timer) clearInterval(timer) })
       </div>
       <section v-if="workshop.operations.length" class="space-y-2">
         <h2 class="text-lg font-semibold">Recent operations</h2>
-        <ul class="space-y-2"><li v-for="op in workshop.operations" :key="op.operation_id" class="border border-base-300 rounded-lg p-3 text-sm">
+        <ul class="space-y-2"><li v-for="op in workshop.operations" :key="op.operation_id" :data-operation-id="op.operation_id" :data-state="op.state" class="border border-base-300 rounded-lg p-3 text-sm">
           <strong>{{ labelFor(op.action) }} {{ op.username || '' }}</strong> · {{ op.state }}<p v-if="op.message">{{ op.message }}</p>
         </li></ul>
       </section>

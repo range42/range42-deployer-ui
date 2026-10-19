@@ -56,3 +56,11 @@ it('lets the facilitator replace an unbound lost VPN key after confirming the pa
   }))
   view.unmount()
 })
+
+it('allows retrying a failed initial deployment from the workshop page', async () => {
+  backendRequest.mockResolvedValue({ ...roster, seats: [{ ...roster.seats[0], deployment_state: 'failed' }] })
+  const view = mount(Workshop, { global: { stubs: ['RouterLink'] } }); await flushPromises()
+  const button = view.findAll('button').find(button => button.text() === 'Deploy instance')
+  expect(button.attributes('disabled')).toBeUndefined()
+  view.unmount()
+})
