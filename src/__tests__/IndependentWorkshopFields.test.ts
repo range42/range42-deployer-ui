@@ -6,14 +6,14 @@ import NativeDeploymentFields from '@/components/project/NativeDeploymentFields.
 import deployment from '@/locales/en/deployment.json'
 
 enableAutoUnmount(afterEach)
-const calls = vi.hoisted(() => ({ preview: vi.fn(), reserve: vi.fn(), rejectReservation: false }))
+const calls = vi.hoisted(() => ({ preview: vi.fn(), reserve: vi.fn(), rejectReservation: false, hasProfile: true }))
 vi.mock('@/services/backendApi', () => ({ getBackendScope: () => 'fixture', backendRequest: async (url: string, options?: RequestInit) => {
   if (url === '/v1/proxmox/hosts/host/reservations') {
     const request = JSON.parse(String(options?.body)); calls.reserve(request)
     if (calls.rejectReservation) throw new Error('VMID is already occupied')
     return {project_key: request.project_key, host_id: 'host', reservation_id: 'lease', expires_at: new Date(Date.now() + 3600000).toISOString(), assignments: []}
   }
-  if (url === '/v1/contexts') return { items: [{ id: 'pve', target_host_id: 'host', ready: true, issues: [] }] }
+  if (url === '/v1/contexts') return { items: [{ id: 'pve', target_host_id: 'host', ready: true, issues: [], workshop_profile: calls.hasProfile ? {id: 'approved-workshops'} : null }] }
   if (url.endsWith('/native-scenario/preview')) {
     const request = JSON.parse(String(options?.body)); calls.preview(request)
     return {allocation_request: {vmid_start: request.workshop.vmid_start, vmid_end: request.workshop.vmid_start + 9, networks: [{network_id: 'vmbr600', bridge: 'vmbr600', subnet: '10.79.0.0/28'}], vms: [{node_id: 'user01-proxmox', vm_id: request.workshop.vmid_start, nics: [{index: 0, network_id: 'vmbr600', ip: '10.79.0.2'}]}]}, preview_only: true, resources_reserved: false, capacity: {memory_mib: 102400, vcpus: 30, disk_gib: 960},
@@ -48,4 +48,17 @@ it('provides human run setup at any catalog path and submits the reviewed plan i
   expect(view.emitted('select')?.at(-1)).toEqual([null])
   expect(view.text()).toContain('VMID is already occupied')
   calls.rejectReservation = false
+})
+
+
+it('blocks workshop authoring on a normal context without an approved provisioning profile', async () => {
+  calls.hasProfile = false
+  try {
+    const view = mount(NativeDeploymentFields, {props: {projectId: 'project', revision: 'a'.repeat(40), path: 'scenarios/installer-course'},
+      global: {plugins: [createPinia(), createI18n({legacy: false, locale: 'en', messages: {en: {deployment}}})]}})
+    await flushPromises()
+    expect(view.text()).toContain('Workshop provisioning profile is not configured')
+    expect(view.emitted('select')?.at(-1)).toEqual([null])
+    expect(view.get('[data-testid="workshop-review-plan"]').attributes('disabled')).toBeDefined()
+  } finally { calls.hasProfile = true }
 })

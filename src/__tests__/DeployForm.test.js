@@ -58,7 +58,7 @@ function fetchMockHosts(extra = {}) {
         host_id: 'host-2', expires_at: new Date(Date.now() + 3600000).toISOString(), assignments: []})}
     }
     if (url.includes('/v1/contexts')) return { ok: true, status: 200, json: async () => ({ items: extra.contexts || [
-      { id: 'training-demo', label: 'Training environment', target_host_id: 'host-2', ready: true, issues: [] },
+      { id: 'training-demo', label: 'Training environment', target_host_id: 'host-2', ready: true, issues: [], ...(extra.workshop ? {workshop_profile: {id: 'approved-workshops'}} : {}) },
     ] }) }
     if (url.includes('/native-scenario')) return { ok: true, status: 200, json: async () => ({
       path: 'training/exercise-a', actions: { full: 'exercise.setup.sh', teardown: 'exercise.delete_all.sh' },

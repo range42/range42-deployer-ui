@@ -14,7 +14,8 @@ const props = defineProps<{ projectId: string; revision: string; path: string; c
 const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; allocation?: WorkshopSelection['allocation'] }] }>()
 const { t } = useI18n()
 const backend = useBackendApiStore()
-type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[] }
+type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[];
+  workshop_profile?: {id: string} | null }
 type Feature = { id: string; label?: string; description?: string; default: boolean }
 type Platform = { id: string; domain: string; profile: string; unavailable: Record<string, string>;
   presets: { id: string; features: Record<string, boolean> }[];
@@ -96,14 +97,14 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
     platform.value = descriptor.platform || null
     runDescriptor.value = descriptor.workshop || null
     flags.value = Object.fromEntries(descriptor.features.map(feature => [feature.id, feature.default]))
-    const ready = contexts.value.filter(item => item.ready)
+    const ready = contexts.value.filter(item => item.ready && (!descriptor.workshop || item.workshop_profile))
     if (ready.length === 1) selected.value = ready[0]!.id
   } catch (cause) { if (request === epoch) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (request === epoch) busy.value = false }
 }, { immediate: true })
 watch([context, flags, parameters, workshopValid, busy, error, runSelection], () => {
   const current = context.value
-  emit('select', current?.ready && workshopValid.value && (!runDescriptor.value || runSelection.value) && parameters.value && !busy.value && !error.value
+  emit('select', current?.ready && (!runDescriptor.value || current.workshop_profile) && workshopValid.value && (!runDescriptor.value || runSelection.value) && parameters.value && !busy.value && !error.value
     ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value },
       ...(runSelection.value ? {workshop: {...runSelection.value.workshop}, allocation: runSelection.value.allocation} : {}) } : null)
 }, { deep: true })
@@ -121,9 +122,10 @@ onBeforeUnmount(() => { epoch += 1 })
       <span>{{ t('deployment.native.environment') }}</span>
       <select v-model="selected" class="select select-bordered w-full" data-testid="native-context" :disabled="busy">
         <option value="" disabled>{{ t('deployment.native.choose') }}</option>
-        <option v-for="item in contexts" :key="item.id" :value="item.id">{{ item.label }}</option>
+        <option v-for="item in contexts" :key="item.id" :value="item.id" :disabled="!!runDescriptor && (!item.ready || !item.workshop_profile)">{{ item.label }}{{ runDescriptor && !item.workshop_profile ? ' — Workshop provisioning profile is not configured' : '' }}</option>
       </select>
     </label>
+    <p v-if="runDescriptor && !busy && contexts.length && !contexts.some(item => item.ready && item.workshop_profile)" role="alert" class="text-sm text-warning">Workshop provisioning profile is not configured for an available environment. Prepare and register a dedicated profile before reserving participant resources.</p>
     <ul v-if="context?.issues.length" class="text-sm text-error" role="alert"><li v-for="issue in context.issues" :key="issue">{{ issue }}</li></ul>
     <fieldset v-if="platform" class="space-y-3" :disabled="busy">
       <legend class="font-medium">{{ t('deployment.platform.title') }} — {{ platform.id }}</legend>
