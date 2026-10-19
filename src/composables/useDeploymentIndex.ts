@@ -20,7 +20,7 @@ export function useDeploymentIndex() {
       let offset = 0
       while (true) {
         const page = await backendRequest<{ items: DeploymentRecord[]; total: number }>(
-          `/v1/deployments?offset=${offset}&limit=100`,
+          `/v1/deployments/?offset=${offset}&limit=100`,
         )
         if (request !== version) return
         loaded.push(...page.items)

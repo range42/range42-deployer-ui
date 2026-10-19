@@ -45,12 +45,25 @@ function baseProps(overrides = {}) {
 function fetchMockHosts(extra = {}) {
   return vi.fn(async (url, opts) => {
     if (typeof url !== 'string') url = String(url)
+    if (extra.workshop && url.endsWith('/native-scenario/preview')) return {ok: true, status: 200, json: async () => ({
+      topology: {vms: [], templates: [], networks: [], warnings: []}, allocation_request: {
+        vmid_start: 45000, vmid_end: 45001,
+        networks: [{network_id: 'participant', bridge: 'vmbr600', subnet: '10.79.0.0/28', gateway: '10.79.0.1'}],
+        vms: [{node_id: 'user01-proxmox', vm_id: 45000, nics: [{network_id: 'participant', ip: '10.79.0.2'}]}],
+      },
+    })}
+    if (extra.workshop && url.endsWith('/reservations')) {
+      const request = JSON.parse(opts.body)
+      return {ok: true, status: 200, json: async () => ({reservation_id: 'workshop-lease', project_key: request.project_key,
+        host_id: 'host-2', expires_at: new Date(Date.now() + 3600000).toISOString(), assignments: []})}
+    }
     if (url.includes('/v1/contexts')) return { ok: true, status: 200, json: async () => ({ items: extra.contexts || [
-      { id: 'training-demo', label: 'Training environment', target_host_id: 'host-2', ready: true, issues: [] },
+      { id: 'training-demo', label: 'Training environment', target_host_id: 'host-2', ready: true, issues: [], ...(extra.workshop ? {workshop_profile: {id: 'approved-workshops'}} : {}) },
     ] }) }
     if (url.includes('/native-scenario')) return { ok: true, status: 200, json: async () => ({
       path: 'training/exercise-a', actions: { full: 'exercise.setup.sh', teardown: 'exercise.delete_all.sh' },
       features: [{ id: 'WAZUH', label: 'Monitoring', description: 'Optional monitoring', default: false }],
+      ...(extra.workshop ? {workshop: {version: 1, kind: 'native-installation', min_seats: 1, max_seats: 10}} : {}),
       ...(extra.topology ? { topology: extra.topology } : {}),
     }) }
     if (url.includes('/v1/proxmox/hosts') && (!opts || opts.method !== 'POST')) {
@@ -89,6 +102,80 @@ describe('<DeployForm>', () => {
     globalThis.fetch = originalFetch
   })
 
+  it('transfers a workshop reservation in a private header with the exact reviewed native plan', async () => {
+    const fetchSpy = fetchMockHosts({workshop: true})
+    globalThis.fetch = fetchSpy
+    const wrapper = mount(DeployForm, {props: baseProps({nativeScenario: {version: 1, path: 'scenarios/installer-course'},
+      projectSha: 'a'.repeat(40), gamenet: false}), global: {plugins: [makeRouter(), makeI18n()]}})
+    await flushPromises()
+    for (const [name, value] of Object.entries({namespace: 'course-a', seats: '1', expires_at: '2030-10-23T18:00', vmid_start: '45000',
+      network_pool: '10.79.0.0/24', bridge_start: '600', proxmox_template: '9230', deployer_template: '9222', storage: 'ceph-range'})) {
+      await wrapper.get(`[data-testid="workshop-input-${name}"]`).setValue(value)
+    }
+    await wrapper.get('[data-testid="deploy-field-codename"] input').setValue('course')
+    await wrapper.get('[data-testid="deploy-sha-ack"] input').setValue(true)
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="workshop-review-plan"]').trigger('click'); await flushPromises()
+    expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-testid="deploy-submit"]').trigger('click'); await flushPromises()
+    const [url, options] = fetchSpy.mock.calls.find(([url, options]) => String(url).endsWith('/v1/deployments/') && options?.method === 'POST')
+    expect(url).toContain('/v1/deployments/')
+    const privateProof = new Headers(options.headers).get('X-Range42-Reservation-Token')
+    expect(privateProof).toMatch(/^[a-f0-9]{64}$/)
+    const body = JSON.parse(options.body)
+    expect(body.allocation_reservation_id).toBe('workshop-lease')
+    expect(body.native.workshop).toMatchObject({namespace: 'course-a', seats: 1, vmid_start: 45000})
+    expect(options.body).not.toContain(privateProof)
+  })
+
+  it('keeps dialog keyboard navigation inside and restores the opener after Escape', async () => {
+    globalThis.fetch = fetchMockHosts()
+    const opener = document.createElement('button')
+    document.body.append(opener)
+    opener.focus()
+    const wrapper = mount(DeployForm, { attachTo: document.body, props: baseProps(),
+      global: { plugins: [makeRouter(), makeI18n()] } })
+    try {
+      await flushPromises()
+      const first = wrapper.get('button[aria-label="Close"]')
+      const last = wrapper.findAll('button').find(button => button.text() === 'Cancel')
+      expect(document.activeElement).toBe(first.element)
+      last.element.focus()
+      await last.trigger('keydown', { key: 'Tab' })
+      expect(document.activeElement).toBe(first.element)
+      await first.trigger('keydown', { key: 'Tab', shiftKey: true })
+      expect(document.activeElement).toBe(last.element)
+      await last.trigger('keydown', { key: 'Escape' })
+      expect(wrapper.emitted('close')).toHaveLength(1)
+      await wrapper.setProps({ visible: false })
+      await flushPromises()
+      expect(document.activeElement).toBe(opener)
+    } finally { wrapper.unmount(); opener.remove() }
+  })
+
+  it('focuses the dialog when its opening transition makes controls focusable on the next frame', async () => {
+    globalThis.fetch = fetchMockHosts()
+    const opener = document.createElement('button'); document.body.append(opener); opener.focus()
+    const frames = []
+    vi.stubGlobal('requestAnimationFrame', callback => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    let visible = false
+    const originalFocus = HTMLElement.prototype.focus
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (...args) {
+      if (this.closest('[role="dialog"]') && !visible) return
+      originalFocus.apply(this, args)
+    })
+    const wrapper = mount(DeployForm, {attachTo: document.body, props: baseProps(), global: {plugins: [makeRouter(), makeI18n()]}})
+    try {
+      await flushPromises()
+      expect(document.activeElement).toBe(opener)
+      visible = true
+      frames.splice(0).forEach(callback => callback())
+      await flushPromises()
+      expect(document.activeElement).toBe(wrapper.get('button[aria-label="Close"]').element)
+    } finally { wrapper.unmount(); focus.mockRestore(); vi.unstubAllGlobals(); opener.remove() }
+  })
+
   it.each([undefined, 'catalog-1'])('deploys a native scenario with its environment and saved component %s', async component_id => {
     const fetchSpy = fetchMockHosts()
     globalThis.fetch = fetchSpy
@@ -103,7 +190,7 @@ describe('<DeployForm>', () => {
     expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeUndefined()
     await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
-    const request = fetchSpy.mock.calls.find(([url, opts]) => String(url).endsWith('/v1/deployments') && opts?.method === 'POST')
+    const request = fetchSpy.mock.calls.find(([url, opts]) => String(url).endsWith('/v1/deployments/') && opts?.method === 'POST')
     const body = JSON.parse(request[1].body)
     expect(body.scenario_label).toBe('exercise-a')
     expect(body.target_host_id).toBe('host-2')
@@ -243,7 +330,7 @@ describe('<DeployForm>', () => {
     await flushPromises()
     const postCall = fetchSpy.mock.calls.find(c => {
       const url = String(c[0])
-      return url.endsWith('/v1/deployments') && c[1]?.method === 'POST'
+      return url.endsWith('/v1/deployments/') && c[1]?.method === 'POST'
     })
     expect(postCall).toBeTruthy()
     const body = JSON.parse(postCall[1].body)
@@ -276,7 +363,7 @@ describe('<DeployForm>', () => {
     expect(wrapper.text()).toContain('credentials configured on the backend')
     await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
-    const request = fetchSpy.mock.calls.find(([url, options]) => String(url).endsWith('/deployments') && options?.method === 'POST')
+    const request = fetchSpy.mock.calls.find(([url, options]) => String(url).endsWith('/deployments/') && options?.method === 'POST')
     expect(JSON.parse(request[1].body)).not.toHaveProperty('secrets')
   })
 
@@ -323,7 +410,7 @@ describe('<DeployForm>', () => {
     await wrapper.find('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
     const postCall = fetchSpy.mock.calls.find(c =>
-      String(c[0]).endsWith('/v1/deployments') && c[1]?.method === 'POST')
+      String(c[0]).endsWith('/v1/deployments/') && c[1]?.method === 'POST')
     expect(postCall).toBeTruthy()
     expect(JSON.parse(postCall[1].body).team_count).toBe(1)
   })
@@ -365,7 +452,7 @@ describe('<DeployForm>', () => {
           }),
         }
       }
-      if (String(url).endsWith('/v1/deployments') && opts?.method === 'POST') {
+      if (String(url).endsWith('/v1/deployments/') && opts?.method === 'POST') {
         return { ok: true, status: 201, json: async () => ({ id: 'dep-new' }) }
       }
       return { ok: true, status: 200, json: async () => ({}) }
@@ -454,7 +541,7 @@ describe('DeployForm backend integration', () => {
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/validate'))).toBe(false)
     await wrapper.find('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
-    const request = fetch.mock.calls.find(([url]) => url.endsWith('/deployments'))
+    const request = fetch.mock.calls.find(([url]) => url.endsWith('/deployments/'))
     expect(JSON.parse(request[1].body).project_sha).toBe('eeff0011aabb2233')
   })
 
@@ -565,7 +652,7 @@ describe('DeployForm backend integration', () => {
     const next = backend.addHost({ url: 'https://new.test' })
     const base = fetchMockHosts()
     const creation = pendingResponse()
-    vi.stubGlobal('fetch', vi.fn((url, options) => options?.method === 'POST' && url.endsWith('/deployments')
+    vi.stubGlobal('fetch', vi.fn((url, options) => options?.method === 'POST' && url.endsWith('/deployments/')
       ? creation.promise : base(url, options)))
     const { wrapper, router } = await validForm()
     const push = vi.spyOn(router, 'push')
@@ -603,7 +690,7 @@ describe('DeployForm reservation handoff', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
   const formProps = () => ({ projectId: 'registered-backend-project', localProjectId: 'local-project',
     projectSha: 'a'.repeat(40), allocation })
-  const creation = () => requests.mock.calls.find(([url, opts]) => String(url).endsWith('/deployments') && opts?.method === 'POST')
+  const creation = () => requests.mock.calls.find(([url, opts]) => String(url).endsWith('/deployments/') && opts?.method === 'POST')
 
   it('hands off the lease by id and private header while keeping local ownership for uncertain outcomes', async () => {
     const stored = localStorage.getItem(ownerStorage)
@@ -660,7 +747,7 @@ describe('DeployForm reservation handoff', () => {
   it('does not navigate after the local authoring identity changes during creation', async () => {
     const base = requests.getMockImplementation()
     const pending = pendingResponse()
-    requests.mockImplementation((url, options) => String(url).endsWith('/deployments') && options?.method === 'POST'
+    requests.mockImplementation((url, options) => String(url).endsWith('/deployments/') && options?.method === 'POST'
       ? pending.promise : base(url, options))
     const { wrapper, router } = await validForm(formProps())
     const push = vi.spyOn(router, 'push')
@@ -676,7 +763,7 @@ describe('DeployForm reservation handoff', () => {
     const stored = localStorage.getItem(ownerStorage)
     const original = JSON.stringify(allocation)
     const base = requests.getMockImplementation()
-    requests.mockImplementation((url, options) => String(url).endsWith('/deployments') && options?.method === 'POST'
+    requests.mockImplementation((url, options) => String(url).endsWith('/deployments/') && options?.method === 'POST'
       ? Promise.resolve(response({ message: 'Saved manifest does not match the reservation', code: 'ALLOCATION_MISMATCH' }, 409))
       : base(url, options))
     const { wrapper } = await validForm(formProps())

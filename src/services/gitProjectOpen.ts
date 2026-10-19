@@ -1,3 +1,5 @@
+import { getBackendScope } from '@/services/backendApi'
+import { useInventoryStore } from '@/stores/inventoryStore'
 import { publicCatalogImports, publicCatalogReference, type CatalogImportReference } from '@/services/catalogReference'
 import { randomId } from '@/services/randomId'
 import { createProjectRepoAdapter, type ProjectState } from '@/services/projectRepo'
@@ -7,7 +9,7 @@ import { serializeToCatalogEntry, type CanvasModel } from '@/overlay/serialize'
 import { inspectProjectAuthoring, objectValue, publicProjectOverlay, type AuthoringInspection } from '@/services/projectAuthoring'
 import { captureCanvasSnapshot, readCanvasSnapshot } from '@/services/projectCanvasSnapshot'
 import { cloneFiles, validateAuthoredFiles, validateFilePath, type ProjectFiles } from '@/services/projectFiles'
-import { loadNativeScenario } from '@/services/nativeScenario'
+import { loadNativeScenario, loadNativeScenarioFromBackend } from '@/services/nativeScenario'
 
 export interface GitProjectPreview {
   catalogRef?: Record<string, string | number>
@@ -75,8 +77,11 @@ export async function loadGitProject(input: ProjectGitBinding, existingIds: stri
     source: { id: binding.source_id, provider: binding.provider, repos: [{ owner: binding.repo_owner,
       repo: binding.repo_name, branch: binding.branch || 'main' }] },
     branchStrategy: binding.branch_strategy, projectPath: binding.subdir || '', workingBranch })
+  const source = useInventoryStore().getSource(binding.source_id)
+  const backendPreview = source?.backend_url === getBackendScope() && source?.repos?.length === 1
   const state = options.nativePath
-    ? await loadNativeScenario(binding, options.nativePath, providerForBinding(binding), options.revision)
+    ? (backendPreview ? await loadNativeScenarioFromBackend(binding, options.nativePath, options.revision)
+      : await loadNativeScenario(binding, options.nativePath, providerForBinding(binding), options.revision))
     : await adapter.load(`open-${nonce}`, { branch: binding.branch || 'main' })
   if (!state.revision || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(state.revision.commit_sha)) throw new Error('Git did not return an exact project commit SHA')
   validateAuthoredFiles(state.files || {})
@@ -109,7 +114,7 @@ export function prepareGitProjectImport(preview: GitProjectPreview, mode: 'struc
     gamenet: preview.gamenet, bridge_base: preview.bridge_base, git: preview.binding, head_sha: preview.revision.commit_sha,
     git_opened: { ...preview.revision, mode: useScenario ? 'structured' : 'files', authoring_status: preview.authoring.status },
     ...(useScenario ? { scenario: preview.authoring.scenario } : {}),
-    ...(preview.authoring.native_scenario ? { native_scenario: preview.authoring.native_scenario } : {}),
+    ...(preview.authoring.native_scenario ? { native_scenario: preview.authoring.native_scenario, native_saved_files: preview.files } : {}),
     scenario_generated_paths: useScenario ? preview.authoring.generated_paths : [],
   }))
 }

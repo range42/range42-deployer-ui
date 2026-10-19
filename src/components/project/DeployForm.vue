@@ -45,6 +45,7 @@ import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { getScenarioAllocationProof } from '@/services/scenarioAllocation'
 import NativeDeploymentFields from './NativeDeploymentFields.vue'
+import { useDialogKeyboard } from '@/composables/useDialogKeyboard'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -61,6 +62,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'created'])
+const dialog = ref(null)
+const onDialogKeydown = useDialogKeyboard(() => props.visible, dialog, () => emit('close'))
 const router = useRouter()
 const { t } = useI18n({ useScope: 'global' })
 const backend = useBackendApiStore()
@@ -131,8 +134,10 @@ const errVault = computed(() => {
 })
 
 function readAllocationProof() {
-  const proof = getScenarioAllocationProof({ allocation: props.allocation,
-    localProjectId: props.localProjectId, targetHostId: targetHost.value })
+  const allocation = nativeSelection.value?.allocation || props.allocation
+  const proof = getScenarioAllocationProof({ allocation,
+    localProjectId: nativeSelection.value?.allocation?.reservation?.project_key || props.localProjectId,
+    targetHostId: targetHost.value })
   if (proof && (!usesPinnedScenario.value || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(props.projectSha))) {
     throw new Error(t('deployment.deploy.allocationPinRequired'))
   }
@@ -262,10 +267,11 @@ async function submit() {
         path: props.nativeScenario.path, context_id: nativeSelection.value.context_id,
         ...(props.nativeScenario.component_id ? { component_id: props.nativeScenario.component_id } : {}),
         features: nativeSelection.value.features, parameters: nativeSelection.value.parameters,
+        ...(nativeSelection.value.workshop ? {workshop: nativeSelection.value.workshop} : {}),
       } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }
-    const created = await backendRequest('/v1/deployments', {
+    const created = await backendRequest('/v1/deployments/', {
       method: 'POST',
       ...(allocationProof ? { headers: allocationProof.headers } : {}),
       body: JSON.stringify(body),
@@ -335,11 +341,14 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 <template>
   <div
     v-if="visible"
+    ref="dialog"
     class="modal modal-open z-[100]"
     role="dialog"
     aria-modal="true"
     aria-labelledby="deploy-form-title"
     data-testid="deploy-form"
+    tabindex="-1"
+    @keydown="onDialogKeydown"
   >
     <div class="modal-box max-w-2xl">
       <header class="flex items-start justify-between gap-4 mb-4">
@@ -361,10 +370,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         <NativeDeploymentFields v-if="nativeScenario" :project-id="projectId" :revision="projectSha" :path="nativeScenario.path" :component-id="nativeScenario.component_id" @select="selectNative" />
         <!-- Codename -->
         <div class="form-control" data-testid="deploy-field-codename">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-codename">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.codename') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <input
+            id="deploy-codename" name="deploy-codename" autocomplete="off"
             v-model="codename"
             type="text"
             class="input input-bordered input-sm"
@@ -377,10 +387,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 
         <!-- Scenario label -->
         <div class="form-control" data-testid="deploy-field-scenario">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-scenario">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.scenario') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <input
+            id="deploy-scenario" name="deploy-scenario" autocomplete="off"
             v-model="scenarioLabel"
             :readonly="!!nativeScenario"
             type="text"
@@ -393,10 +404,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 
         <!-- Target host -->
         <div class="form-control" data-testid="deploy-field-host">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-host">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.host') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <select
+            id="deploy-host" name="deploy-host" autocomplete="off"
             v-model="targetHost"
             class="select select-bordered select-sm"
             :disabled="hostsLoading || !!hostsError || !!nativeScenario"
@@ -421,10 +433,11 @@ onBeforeUnmount(() => { sessionVersion += 1 })
 
         <!-- Team count (gamenet only) -->
         <div v-if="gamenet && !nativeScenario" class="form-control" data-testid="deploy-field-team-count">
-          <label class="label pb-1">
+          <label class="label pb-1" for="deploy-team-count">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.teamCount') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <input
+            id="deploy-team-count" name="deploy-team-count"
             v-model.number="teamCount"
             type="number"
             min="1"

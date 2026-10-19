@@ -1,12 +1,37 @@
 import type { CanvasNode, CanvasEdge } from '@/overlay/serialize'
 import type { ProjectDraft } from '@/types/project'
+import { fileText, type ProjectFiles } from '@/services/projectFiles'
+import { parse } from 'yaml'
 
 export interface NativeTopology {
-  vms: Array<{ vm_id: number; vm_name?: string; ip?: string; bridge?: string; role?: string; group?: string }>
+  vms: Array<{ vm_id: number; vm_name?: string; ip?: string; bridge?: string; role?: string; group?: string;
+    seat?: number; cores?: number; memory_mib?: number; disk_gib?: number; requires_features?: string[] }>
   templates: Array<{ vm_id: number; vm_name?: string; bridge?: string; ip?: string }>
   networks: Array<{ vnet: string; subnet?: string; gateway?: string }>
   warnings: string[]
   reservations: { status: 'checked' | 'missing' | 'conflict' | 'invalid'; issues: string[] }
+}
+
+export interface NativeFeature { id: string; label?: string; description?: string; default: boolean }
+
+/** Preview the same pinned local declarations that the native playbook will read. */
+export function nativePreviewFromFiles(files: ProjectFiles, path: string): { topology: NativeTopology; features: NativeFeature[] } {
+  const read = (name: string) => files[`${path}/manifest/${name}`]
+  const manifest = JSON.parse(fileText(read('scenario_vms.json')!))
+  const networks = read('scenario_networks.json') ? JSON.parse(fileText(read('scenario_networks.json')!)).networks : []
+  const flags = read('feature_flags.yml') ? parse(fileText(read('feature_flags.yml')!)) : {}
+  const topology: NativeTopology = { vms: manifest.vms, templates: manifest.templates || [], networks: networks || [],
+    warnings: ['Declared resources; playbook conditions and the saved deployment parameters determine the effective deployment.'],
+    reservations: { status: 'missing', issues: ['Source declarations; live allocation checks run during preflight.'] } }
+  nativeScenarioCanvas('validation', 'Native scenario', path, topology)
+  return { topology, features: Array.isArray(flags?.features) ? flags.features : [] }
+}
+
+export function selectNativeTopology(topology: NativeTopology, features: Record<string, boolean>, seat = 0): NativeTopology {
+  const vms = topology.vms.filter(vm => !vm.requires_features?.some(flag => !features[flag]) && (!seat || vm.seat === seat))
+  const bridges = new Set(vms.map(vm => vm.bridge))
+  const declaredBridges = new Set(topology.vms.map(vm => vm.bridge))
+  return { ...topology, vms, networks: topology.networks.filter(network => !declaredBridges.has(network.vnet) || bridges.has(network.vnet)) }
 }
 
 /** Declared resources are an inspectable view of the original native workflow. */
@@ -45,7 +70,8 @@ export function nativeScenarioCanvas(id: string, name: string, path: string, top
       const vmId = `${id}-vm-${vm.vm_id}`
       nodes.push(owned(vmId, 'vm', vm.vm_name || `VM ${vm.vm_id}`, 40 + (i % 4) * 340, y + Math.floor(i / 4) * 210,
         { name: vm.vm_name || `VM ${vm.vm_id}`, vmid: vm.vm_id, ipAddress: vm.ip, bridge: vm.bridge,
-          description: vm.group || vm.role || 'Declared scenario VM' }))
+          description: vm.group || vm.role || 'Declared scenario VM', cores: vm.cores, memory_mib: vm.memory_mib,
+          disk_gib: vm.disk_gib }))
       if (network) edges.push({ id: `${vmId}-net0`, type: 'network', source: vmId, target: networkId,
         targetHandle: `top-${Math.min(3, i % 4 + 1)}`, data: { useDhcp: false, connection: {
           interfaceName: 'net0', interfaceModel: 'virtio', ipAddress: vm.ip ? vm.ip + (network.subnet ? `/${network.subnet.split('/')[1]}` : '') : '',

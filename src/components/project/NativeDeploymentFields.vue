@@ -4,22 +4,41 @@ import { useI18n } from 'vue-i18n'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 
+import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
+import WorkshopRunSetup, { type WorkshopSpec, type WorkshopSelection } from './WorkshopRunSetup.vue'
+import WorkshopTemplatePreview from '@/components/catalog/WorkshopTemplatePreview.vue'
+import type { NativeTopology } from '@/services/nativeScenarioCanvas'
+
+const topology = ref<NativeTopology | null>(null)
 const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string }>()
-const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean> }] }>()
+const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; allocation?: WorkshopSelection['allocation'] }] }>()
 const { t } = useI18n()
 const backend = useBackendApiStore()
-type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[] }
+type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[];
+  workshop_profile?: {id: string} | null }
 type Feature = { id: string; label?: string; description?: string; default: boolean }
 type Platform = { id: string; domain: string; profile: string; unavailable: Record<string, string>;
   presets: { id: string; features: Record<string, boolean> }[];
   parameters: { name: string; label: string; type: string; required: boolean }[] }
 const platform = ref<Platform | null>(null)
+const runDescriptor = ref<{version: number; kind: string; title: string; min_seats: number; max_seats: number} | null>(null)
+const runSelection = ref<WorkshopSelection | null>(null)
 const setup = ref<Record<string, string>>({})
 const contexts = ref<Context[]>([])
 const features = ref<Feature[]>([])
 const selected = ref('')
 const flags = ref<Record<string, boolean>>({})
 const parametersText = ref('{}')
+const isWorkshop = computed(() => !runDescriptor.value && props.path === 'scenarios/range42-native-workshop')
+const workshopSeat = ref(0)
+const workshopAccepted = ref<Record<string, boolean>>({})
+const workshopChecks = [
+  {id: 'NETWORK', label: 'Participant bridges and host isolation have been verified.'},
+  {id: 'TEMPLATE', label: 'The nested Proxmox template has been validated.'},
+  {id: 'ALLOCATION', label: 'The declared VMIDs, addresses and host capacity are allocated to this workshop.'},
+]
+const workshopValid = computed(() => !isWorkshop.value || (workshopChecks.every(check => workshopAccepted.value[check.id])
+  && workshopSeat.value <= (flags.value.EXTRA_SEATS ? 10 : 5)))
 const busy = ref(false)
 const error = ref('')
 const reservationNotice = ref('')
@@ -29,7 +48,8 @@ const parameters = computed(() => {
   try {
     const advanced = JSON.parse(parametersText.value)
     if (!advanced || typeof advanced !== 'object' || Array.isArray(advanced)) return null
-    const value = { ...advanced, ...Object.fromEntries(Object.entries(setup.value).filter(([, v]) => v.trim())) }
+    const value = { ...advanced, ...Object.fromEntries(Object.entries(setup.value).filter(([, v]) => v.trim())),
+      ...(isWorkshop.value ? {WORKSHOP_ONLY_SEAT: workshopSeat.value, ...Object.fromEntries(workshopChecks.map(check => [`WORKSHOP_${check.id}_ACCEPTED`, !!workshopAccepted.value[check.id]]))} : {}) }
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 64
       || JSON.stringify(value).length > 16384 || Object.entries(value).some(([name, item]) =>
         !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) || /^(ansible_|range42_|r42_|proxmox_|deployer_|infrastructure_|install_)/i.test(name)
@@ -55,7 +75,8 @@ const parameters = computed(() => {
 watch(() => [props.projectId, props.revision, props.path, props.componentId, getBackendScope(), backend.token], async () => {
   const request = ++epoch
   contexts.value = []; features.value = []; selected.value = ''; flags.value = {}; error.value = ''; busy.value = true
-  platform.value = null; setup.value = {}; parametersText.value = '{}'
+  workshopSeat.value = 0; workshopAccepted.value = {}; topology.value = null; platform.value = null; setup.value = {}; parametersText.value = '{}'
+  runDescriptor.value = null; runSelection.value = null
   reservationNotice.value = ''
   emit('select', null)
   try {
@@ -63,26 +84,29 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
     if (props.componentId) query.set('component_id', props.componentId)
     const [environments, descriptor] = await Promise.all([
       backendRequest<{ items: Context[] }>('/v1/contexts'),
-      backendRequest<{ features: Feature[]; platform?: Platform; topology?: { reservations: { status: string; issues: string[] } } }>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario?${query}`),
+      backendRequest<{ features: Feature[]; platform?: Platform; topology?: NativeTopology; workshop?: typeof runDescriptor.value }>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario?${query}`),
     ])
     if (request !== epoch) return
     const registry = descriptor.topology?.reservations
     if (registry && ['conflict', 'invalid'].includes(registry.status)) throw new Error(registry.issues.join(' '))
     if (registry) reservationNotice.value = registry.status === 'checked'
       ? 'Declared VMIDs and addresses match the scenario registry. Preflight checks the selected Proxmox host before execution.' : registry.issues.join(' ')
+    topology.value = descriptor.topology || null
     contexts.value = environments.items
     features.value = descriptor.features
     platform.value = descriptor.platform || null
+    runDescriptor.value = descriptor.workshop || null
     flags.value = Object.fromEntries(descriptor.features.map(feature => [feature.id, feature.default]))
-    const ready = contexts.value.filter(item => item.ready)
+    const ready = contexts.value.filter(item => item.ready && (!descriptor.workshop || item.workshop_profile))
     if (ready.length === 1) selected.value = ready[0]!.id
   } catch (cause) { if (request === epoch) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (request === epoch) busy.value = false }
 }, { immediate: true })
-watch([context, flags, parameters, busy, error], () => {
+watch([context, flags, parameters, workshopValid, busy, error, runSelection], () => {
   const current = context.value
-  emit('select', current?.ready && parameters.value && !busy.value && !error.value
-    ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value } } : null)
+  emit('select', current?.ready && (!runDescriptor.value || current.workshop_profile) && workshopValid.value && (!runDescriptor.value || runSelection.value) && parameters.value && !busy.value && !error.value
+    ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value },
+      ...(runSelection.value ? {workshop: {...runSelection.value.workshop}, allocation: runSelection.value.allocation} : {}) } : null)
 }, { deep: true })
 onBeforeUnmount(() => { epoch += 1 })
 </script>
@@ -98,9 +122,10 @@ onBeforeUnmount(() => { epoch += 1 })
       <span>{{ t('deployment.native.environment') }}</span>
       <select v-model="selected" class="select select-bordered w-full" data-testid="native-context" :disabled="busy">
         <option value="" disabled>{{ t('deployment.native.choose') }}</option>
-        <option v-for="item in contexts" :key="item.id" :value="item.id">{{ item.label }}</option>
+        <option v-for="item in contexts" :key="item.id" :value="item.id" :disabled="!!runDescriptor && (!item.ready || !item.workshop_profile)">{{ item.label }}{{ runDescriptor && !item.workshop_profile ? ' — Workshop provisioning profile is not configured' : '' }}</option>
       </select>
     </label>
+    <p v-if="runDescriptor && !busy && contexts.length && !contexts.some(item => item.ready && item.workshop_profile)" role="alert" class="text-sm text-warning">Workshop provisioning profile is not configured for an available environment. Prepare and register a dedicated profile before reserving participant resources.</p>
     <ul v-if="context?.issues.length" class="text-sm text-error" role="alert"><li v-for="issue in context.issues" :key="issue">{{ issue }}</li></ul>
     <fieldset v-if="platform" class="space-y-3" :disabled="busy">
       <legend class="font-medium">{{ t('deployment.platform.title') }} — {{ platform.id }}</legend>
@@ -128,6 +153,23 @@ onBeforeUnmount(() => { epoch += 1 })
         <span class="text-sm"><span class="block">{{ feature.label || feature.id }}</span><span class="block text-xs text-base-content/70">{{ feature.description }}</span></span>
       </label>
     </fieldset>
+    <fieldset v-if="isWorkshop" class="space-y-3 rounded border border-base-300 p-3" data-testid="workshop-setup" :disabled="busy">
+      <legend class="font-medium">Workshop setup</legend>
+      <label class="form-control gap-1"><span class="text-sm">Participant environments to deploy</span>
+        <select v-model.number="workshopSeat" name="workshop-seat" class="select select-bordered w-full" data-testid="workshop-seat">
+          <option :value="0">All selected participants ({{ flags.EXTRA_SEATS ? 10 : 5 }})</option>
+          <option v-for="seat in 10" :key="seat" :value="seat" :disabled="seat > (flags.EXTRA_SEATS ? 10 : 5)">user{{ String(seat).padStart(2, '0') }} only</option>
+        </select>
+      </label>
+      <p v-if="workshopSeat > (flags.EXTRA_SEATS ? 10 : 5)" role="alert" class="text-sm text-error">Enable ten participants or choose a participant from user01–user05.</p>
+      <p class="text-sm text-base-content/70">Confirm the platform qualification before deployment. These checks do not create the parent bridges or templates.</p>
+      <label v-for="check in workshopChecks" :key="check.id" class="flex items-start gap-2 text-sm">
+        <input v-model="workshopAccepted[check.id]" type="checkbox" :name="`workshop-accept-${check.id.toLowerCase()}`" class="checkbox checkbox-sm" :data-testid="`workshop-accept-${check.id}`" />{{ check.label }}
+      </label>
+    </fieldset>
+    <WorkshopRunSetup v-if="runDescriptor" :key="`${projectId}:${revision}:${path}:${componentId || ''}`" :project-id="projectId" :revision="revision" :path="path" :component-id="componentId" :target-host-id="context?.target_host_id || ''" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" @select="runSelection = $event" />
+    <WorkshopTemplatePreview v-if="runDescriptor && !runSelection" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" />
+    <NativeScenarioPreview v-else-if="runSelection?.topology || topology" :topology="runSelection?.topology || topology!" :features="features" :selected-features="flags" :selected-seat="isWorkshop ? workshopSeat : 0" compact />
     <details>
       <summary class="cursor-pointer text-sm">{{ t('deployment.native.parameters') }}</summary>
       <label class="block text-sm mt-2"><span>{{ t('deployment.native.parametersHint') }}</span>

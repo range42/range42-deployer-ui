@@ -62,8 +62,10 @@ import { useTopologyResolver } from '../composables/useTopologyResolver'
 import { useApiConfig } from '../composables/useApiConfig'
 import { useObservedGuestStatus } from '@/composables/useObservedGuestStatus'
 import { prepareEditorBranchRecovery, editorAuthoredSignature } from '@/services/gitEditorRecovery'
-import { createNativeFilesFs } from '@/services/nativeScenario'
+import { createNativeFilesFs, hasSavedNativeFiles } from '@/services/nativeScenario'
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
+import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
+import { nativePreviewFromFiles } from '@/services/nativeScenarioCanvas'
 import WorkloadReviewPanel from '../components/project/WorkloadReviewPanel.vue'
 
 // setBaseUrl is managed via useApiConfig composable
@@ -560,15 +562,21 @@ function currentPushArgs() {
     `Save ${currentProject.value?.name || 'project'}`)
 }
 
-/** @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result */
-function recordCheckpoint(result, project = currentProject.value) {
+/**
+ * @param {{ commit_sha: string; branch: string; binding?: import('@/composables/useProjectGitSync').ProjectGitBinding; targets?: import('@/composables/useProjectGitSync').ProjectPublishResult[] }} result
+ * @param {import('@/types/project').ProjectDraft | null} [project]
+ * @param {import('@/services/projectFiles').ProjectFiles} [savedFiles]
+ */
+function recordCheckpoint(result, project = currentProject.value, savedFiles = undefined) {
   if (!project?.git || !result.commit_sha) return
   const git = { ...project.git, ...(result.binding || {}), working_branch: result.branch,
     ...(result.targets ? { publish_results: result.targets } : {}) }
-  projectStore.updateProject(project.id, { head_sha: result.commit_sha, git })
+  const nativeSnapshot = project.native_scenario && savedFiles ? { native_saved_files: JSON.parse(JSON.stringify(savedFiles)) } : {}
+  projectStore.updateProject(project.id, { head_sha: result.commit_sha, git, ...nativeSnapshot })
   if (currentProject.value?.id === project.id) {
     currentProject.value.head_sha = result.commit_sha
     currentProject.value.git = git
+    Object.assign(currentProject.value, nativeSnapshot)
   }
 }
 
@@ -609,7 +617,7 @@ const manualSave = async ({ quiet = false } = {}) => {
     if (project.scenario) projectStore.updateProject(project.id, { files: args.files })
     const result = await gitSync.pushToGit(args)
     if (gitBindingIdentity(project.git) !== originalBinding) throw new Error('Git connection changed while saving. The previous repository result was retained remotely; this project binding was not changed.')
-    recordCheckpoint(result, project)
+    recordCheckpoint(result, project, args.files)
     if (!quiet) showToast(translate('project.git.saved', { branch: result.branch, sha: result.commit_sha.slice(0, 7) }), 'success')
     return result
   } catch (error) {
@@ -950,11 +958,15 @@ const handleOpenDeploy = async (selection = undefined) => {
   showDeploymentPicker.value = false
   const scope = getBackendScope()
   try {
+    const native = !!currentProject.value?.native_scenario
+    if (native && currentProject.value && !hasSavedNativeFiles(currentProject.value)) throw new Error('Save your native scenario changes before deploying. Reopen older imported scenarios to review their committed files.')
     const args = currentPushArgs()
     const before = args ? JSON.stringify(buildProjectFiles(args)) : null
     if (args) {
-      const saved = await manualSave()
-      if (!saved || scope !== getBackendScope()) return
+      if (!native) {
+        const saved = await manualSave()
+        if (!saved || scope !== getBackendScope()) return
+      }
       const registered = await ensureBackendProject(currentProject.value)
       if (scope !== getBackendScope()) return
       registeredProjectId.value = registered.id
@@ -996,8 +1008,13 @@ const confirmDeleteProject = () => {
 // ------------------------------------------------------------
 // URL state supports direct entry, reload and browser Back/Forward.
 // Canvas and the cached Config editor retain their local buffers across tabs.
+const nativePreview = computed(() => {
+  const project = currentProject.value
+  if (!project?.native_scenario) return null
+  try { return nativePreviewFromFiles(/** @type {import('@/services/projectFiles').ProjectFiles} */ (project.native_saved_files || project.files || {}), project.native_scenario.path) } catch { return null }
+})
 const TABS = ['canvas', 'config', 'variables', 'history', 'settings']
-const availableTabs = computed(() => currentProject.value?.native_scenario ? ['config', 'history', 'settings'] : TABS)
+const availableTabs = computed(() => currentProject.value?.native_scenario ? ['canvas', 'config', 'history', 'settings'] : TABS)
 const tab = computed(() => {
   const q = route.query.tab
   const v = Array.isArray(q) ? q[0] : q
@@ -1104,6 +1121,7 @@ const configOverlayFs = computed(() => {
     },
   })
   const project = currentProject.value
+  if (project?.native_scenario && project.native_saved_files) return local
   if (project?.native_scenario && project.git && project.head_sha) {
     try { return createNativeFilesFs(project.git, project.head_sha, providerForBinding(project.git), local) }
     catch (error) { return { ...local, listTree: async () => { throw error } } }
@@ -1337,8 +1355,8 @@ const handleInfrastructureImport = (result) => {
         <!-- Canvas and catalog actions -->
         <div class="project-toolbar flex w-full min-w-0 flex-wrap items-center gap-1.5 border-t border-base-300 pt-2">
           <button type="button" class="btn btn-ghost btn-sm" @click="showCommandPalette = true">{{ translate('sidebar.searchProject') }}</button>
-          <button v-if="tab === 'canvas'" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canUndo.value" @click="undoCanvas">{{ translate('sidebar.undo') }}</button>
-          <button v-if="tab === 'canvas'" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canRedo.value" @click="redoCanvas">{{ translate('sidebar.redo') }}</button>
+          <button v-if="tab === 'canvas' && !currentProject.native_scenario" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canUndo.value" @click="undoCanvas">{{ translate('sidebar.undo') }}</button>
+          <button v-if="tab === 'canvas' && !currentProject.native_scenario" type="button" class="btn btn-ghost btn-sm" :disabled="!canvasHistory.canRedo.value" @click="redoCanvas">{{ translate('sidebar.redo') }}</button>
           <!-- Organize layout button -->
           <button v-if="!currentProject.native_scenario" class="btn btn-ghost btn-sm gap-1" @click="handleAutoLayout" title="Organize topology layout" aria-label="Organize topology layout">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1403,8 +1421,13 @@ const handleInfrastructureImport = (result) => {
         </button>
       </div>
 
+      <div v-if="currentProject.native_scenario && tab === 'canvas'" class="flex-1 overflow-auto p-4" data-testid="native-project-preview">
+        <NativeScenarioPreview v-if="nativePreview" :topology="nativePreview.topology" :features="nativePreview.features" />
+        <p v-else role="status">Open Config to inspect the native playbook files. The deployment preview loads when this scenario declares its VM manifest.</p>
+      </div>
       <!-- VueFlow Canvas (v-show keeps state across tab switches) -->
       <div
+        v-if="!currentProject.native_scenario"
         v-show="tab === 'canvas'"
         class="canvas-workspace flex-1 relative transition-colors duration-200"
         :class="{ 'bg-primary/5 ring-2 ring-primary/20 ring-inset': isDragOver }"

@@ -58,7 +58,8 @@
     "close": "Fermer la navigation",
     "title": "Navigation",
     "breadcrumb": "Fil d’Ariane",
-    "skip": "Aller au contenu"
+    "skip": "Aller au contenu",
+    "workshop": "Atelier"
   },
   "items": {
     "vm": {

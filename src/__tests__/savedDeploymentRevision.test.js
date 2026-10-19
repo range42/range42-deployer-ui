@@ -80,7 +80,7 @@ it('saves without writing main and creates a deployment pinned to that working b
   await wrapper.find('[data-testid="deploy-sha-ack"] input').setValue(true)
   await wrapper.find('[data-testid="deploy-submit"]').trigger('click')
   await flushPromises()
-  const request = fetch.mock.calls.find(([url]) => url.endsWith('/deployments'))
+  const request = fetch.mock.calls.find(([url]) => url.endsWith('/deployments/'))
   const payload = JSON.parse(request[1].body)
   expect(payload.project_sha).toBe(revision)
   expect(payload).not.toHaveProperty('secrets')

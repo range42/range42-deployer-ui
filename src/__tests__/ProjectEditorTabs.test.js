@@ -84,11 +84,11 @@ describe('Actual ProjectEditor tab and selection navigation', () => {
     else expect(open).not.toHaveBeenCalled()
   })
 
-  it('opens native projects in the file editor and hides canvas generation', async () => {
+  it('offers the native topology preview alongside its playbook files', async () => {
     await editor('?tab=canvas', { native_scenario: { version: 1, path: 'training/example' }, nodes: [] })
     await flushPromises()
-    expect(wrapper.get('[data-testid="project-tab-config"]').attributes('aria-selected')).toBe('true')
-    expect(wrapper.find('[data-testid="project-tab-canvas"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="project-tab-canvas"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.find('[data-testid="native-project-preview"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="project-scenario"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Validate Topology')
   })
