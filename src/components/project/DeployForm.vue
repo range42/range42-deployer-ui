@@ -265,7 +265,7 @@ async function submit() {
       } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }
-    const created = await backendRequest('/v1/deployments', {
+    const created = await backendRequest('/v1/deployments/', {
       method: 'POST',
       ...(allocationProof ? { headers: allocationProof.headers } : {}),
       body: JSON.stringify(body),

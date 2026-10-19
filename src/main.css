@@ -581,3 +581,8 @@ html {
 }
 button, a, select, summary { touch-action: manipulation; }
 :where(h1, h2, h3, [id]) { scroll-margin-top: 1rem; }
+
+/* Keep inactive tab labels readable in both light and dark themes. */
+.tabs .tab:not([disabled]):not(.tab-disabled) {
+  color: var(--color-base-content);
+}

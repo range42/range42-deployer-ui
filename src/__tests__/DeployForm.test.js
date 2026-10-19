@@ -103,7 +103,7 @@ describe('<DeployForm>', () => {
     expect(wrapper.get('[data-testid="deploy-submit"]').attributes('disabled')).toBeUndefined()
     await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
-    const request = fetchSpy.mock.calls.find(([url, opts]) => String(url).endsWith('/v1/deployments') && opts?.method === 'POST')
+    const request = fetchSpy.mock.calls.find(([url, opts]) => String(url).endsWith('/v1/deployments/') && opts?.method === 'POST')
     const body = JSON.parse(request[1].body)
     expect(body.scenario_label).toBe('exercise-a')
     expect(body.target_host_id).toBe('host-2')
@@ -243,7 +243,7 @@ describe('<DeployForm>', () => {
     await flushPromises()
     const postCall = fetchSpy.mock.calls.find(c => {
       const url = String(c[0])
-      return url.endsWith('/v1/deployments') && c[1]?.method === 'POST'
+      return url.endsWith('/v1/deployments/') && c[1]?.method === 'POST'
     })
     expect(postCall).toBeTruthy()
     const body = JSON.parse(postCall[1].body)
@@ -276,7 +276,7 @@ describe('<DeployForm>', () => {
     expect(wrapper.text()).toContain('credentials configured on the backend')
     await wrapper.get('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
-    const request = fetchSpy.mock.calls.find(([url, options]) => String(url).endsWith('/deployments') && options?.method === 'POST')
+    const request = fetchSpy.mock.calls.find(([url, options]) => String(url).endsWith('/deployments/') && options?.method === 'POST')
     expect(JSON.parse(request[1].body)).not.toHaveProperty('secrets')
   })
 
@@ -323,7 +323,7 @@ describe('<DeployForm>', () => {
     await wrapper.find('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
     const postCall = fetchSpy.mock.calls.find(c =>
-      String(c[0]).endsWith('/v1/deployments') && c[1]?.method === 'POST')
+      String(c[0]).endsWith('/v1/deployments/') && c[1]?.method === 'POST')
     expect(postCall).toBeTruthy()
     expect(JSON.parse(postCall[1].body).team_count).toBe(1)
   })
@@ -365,7 +365,7 @@ describe('<DeployForm>', () => {
           }),
         }
       }
-      if (String(url).endsWith('/v1/deployments') && opts?.method === 'POST') {
+      if (String(url).endsWith('/v1/deployments/') && opts?.method === 'POST') {
         return { ok: true, status: 201, json: async () => ({ id: 'dep-new' }) }
       }
       return { ok: true, status: 200, json: async () => ({}) }
@@ -454,7 +454,7 @@ describe('DeployForm backend integration', () => {
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/validate'))).toBe(false)
     await wrapper.find('[data-testid="deploy-submit"]').trigger('click')
     await flushPromises()
-    const request = fetch.mock.calls.find(([url]) => url.endsWith('/deployments'))
+    const request = fetch.mock.calls.find(([url]) => url.endsWith('/deployments/'))
     expect(JSON.parse(request[1].body).project_sha).toBe('eeff0011aabb2233')
   })
 
@@ -565,7 +565,7 @@ describe('DeployForm backend integration', () => {
     const next = backend.addHost({ url: 'https://new.test' })
     const base = fetchMockHosts()
     const creation = pendingResponse()
-    vi.stubGlobal('fetch', vi.fn((url, options) => options?.method === 'POST' && url.endsWith('/deployments')
+    vi.stubGlobal('fetch', vi.fn((url, options) => options?.method === 'POST' && url.endsWith('/deployments/')
       ? creation.promise : base(url, options)))
     const { wrapper, router } = await validForm()
     const push = vi.spyOn(router, 'push')
@@ -603,7 +603,7 @@ describe('DeployForm reservation handoff', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
   const formProps = () => ({ projectId: 'registered-backend-project', localProjectId: 'local-project',
     projectSha: 'a'.repeat(40), allocation })
-  const creation = () => requests.mock.calls.find(([url, opts]) => String(url).endsWith('/deployments') && opts?.method === 'POST')
+  const creation = () => requests.mock.calls.find(([url, opts]) => String(url).endsWith('/deployments/') && opts?.method === 'POST')
 
   it('hands off the lease by id and private header while keeping local ownership for uncertain outcomes', async () => {
     const stored = localStorage.getItem(ownerStorage)
@@ -660,7 +660,7 @@ describe('DeployForm reservation handoff', () => {
   it('does not navigate after the local authoring identity changes during creation', async () => {
     const base = requests.getMockImplementation()
     const pending = pendingResponse()
-    requests.mockImplementation((url, options) => String(url).endsWith('/deployments') && options?.method === 'POST'
+    requests.mockImplementation((url, options) => String(url).endsWith('/deployments/') && options?.method === 'POST'
       ? pending.promise : base(url, options))
     const { wrapper, router } = await validForm(formProps())
     const push = vi.spyOn(router, 'push')
@@ -676,7 +676,7 @@ describe('DeployForm reservation handoff', () => {
     const stored = localStorage.getItem(ownerStorage)
     const original = JSON.stringify(allocation)
     const base = requests.getMockImplementation()
-    requests.mockImplementation((url, options) => String(url).endsWith('/deployments') && options?.method === 'POST'
+    requests.mockImplementation((url, options) => String(url).endsWith('/deployments/') && options?.method === 'POST'
       ? Promise.resolve(response({ message: 'Saved manifest does not match the reservation', code: 'ALLOCATION_MISMATCH' }, 409))
       : base(url, options))
     const { wrapper } = await validForm(formProps())
