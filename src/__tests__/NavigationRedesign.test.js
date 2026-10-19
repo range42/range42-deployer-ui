@@ -12,7 +12,7 @@ beforeEach(async () => { localStorage.clear(); await setLocale('en', ['sidebar',
 async function shell(path = '/') {
   const router = createRouter({ history: createMemoryHistory(), routes: [
     '/', '/catalog', '/catalog/:source/:entry', '/project/:id', '/deployments',
-    '/deployments/:id', '/deployments/:id/preflight', '/sources', '/settings',
+    '/deployments/:id', '/deployments/:id/preflight', '/workshop', '/sources', '/settings',
   ].map(path => ({ path, component: { template: '<h1>Page content</h1>' } })) })
   await router.push(path)
   const wrapper = mount(AppShell, { global: { plugins: [router, createPinia(), i18n],
@@ -24,10 +24,10 @@ async function shell(path = '/') {
 it('labels primary destinations instead of displaying their initials', async () => {
   const { wrapper } = await shell()
   const links = wrapper.get('nav[aria-label="Primary"]').findAll('a')
-  expect(links.map(link => link.text())).toEqual(['Projects', 'Catalog', 'Deployments', 'Sources', 'Settings'])
+  expect(links.map(link => link.text())).toEqual(['Projects', 'Catalog', 'Deployments', 'Workshop', 'Sources', 'Settings'])
 })
 
-it.each([['/project/example', '/'], ['/catalog/source/entry', '/catalog'], ['/deployments/run/preflight', '/deployments']])('marks the owning section for %s', async (path, href) => {
+it.each([['/project/example', '/'], ['/catalog/source/entry', '/catalog'], ['/deployments/run/preflight', '/deployments'], ['/workshop', '/workshop']])('marks the owning section for %s', async (path, href) => {
   const { wrapper } = await shell(path)
   const active = wrapper.get('nav[aria-label="Primary"]').findAll('a[aria-current]')
   expect(active).toHaveLength(1)
