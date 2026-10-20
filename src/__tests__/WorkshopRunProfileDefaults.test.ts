@@ -29,3 +29,14 @@ it('uses only consecutive approved bridge/subnet pairs when suggesting participa
   expect((view.get('[data-testid="workshop-input-network_pool"]').element as HTMLInputElement).value).toBe('10.79.0.0/27')
   view.unmount()
 })
+
+it('separates shared environment count from participant group size', async () => {
+  const view=mount(WorkshopRunSetup,{props:{...props,profile:profile()},global:{plugins:[createPinia()]}})
+  expect(view.text()).toContain('Environments')
+  const size=view.find('[data-testid="workshop-input-participants_per_environment"]')
+  expect(size.exists()).toBe(true)
+  await size.setValue('2')
+  expect(view.get('[data-testid="workshop-group-summary"]').text()).toContain('5 environments · up to 10 participants')
+  expect(view.get('[data-testid="workshop-group-summary"]').text()).toContain('100 GiB')
+  view.unmount()
+})

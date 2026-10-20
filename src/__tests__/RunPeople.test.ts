@@ -9,8 +9,9 @@ enableAutoUnmount(afterEach)
 vi.mock('@/services/backendApi', () => ({ backendRequest: vi.fn(), getBackendScope: () => 'fixture' }))
 const person = 'person-' + '1'.repeat(32)
 const initial = () => ({deployment_id: 'run-a', expires_at: '2030-01-02T00:00:00Z', teams: ['user01'], run_revision: 'b'.repeat(64),
+  participants_per_environment: 1,
   state: {registry_id: 'a'.repeat(32), revision: 7,
-    scopes: [{ref: 'run-a', expires_at: '2030-01-02T00:00:00Z'}],
+    scopes: [{ref: 'run-a', expires_at: '2030-01-02T00:00:00Z', participant_limit_per_team: 1}],
     people: [{id: person, kind: 'temporary', enabled: true, generation: 1, reconcile_state: 'unconfigured'}],
     source_references: [{scope_ref: 'run-a', record_ref: 'user01', person_id: person}],
     memberships: [] as {person_id: string; scope_ref: string; role: string; team_ref: string; active: boolean; effective: boolean}[],
@@ -18,7 +19,10 @@ const initial = () => ({deployment_id: 'run-a', expires_at: '2030-01-02T00:00:00
 let review: ReturnType<typeof initial>
 beforeEach(() => {
   localStorage.clear(); setActivePinia(createPinia()); review = initial(); vi.clearAllMocks()
-  vi.mocked(backendRequest).mockImplementation(async path => path === '/v1/auth/me' ? {role: 'admin'} : structuredClone(review))
+  vi.mocked(backendRequest).mockImplementation(async path => path === '/v1/auth/me' ? {role: 'admin'} : path.endsWith('/identities/capabilities') ? {
+    deployment_id: 'run-a', optional: true, configuration_state: 'configured', provider_access_verified: false,
+    required_for_environment_deployment: false,
+  } : structuredClone(review))
 })
 async function open() {
   const view = mount(People, {props: {deploymentId: 'run-a'}})
@@ -116,4 +120,37 @@ it('blocks a participant seat already assigned to another person', async () => {
   expect(view.get('[data-testid="membership-team"] option[value="user01"]').attributes('disabled')).toBeDefined()
   await view.get('[data-testid="membership-form"]').trigger('submit'); await flushPromises()
   expect(vi.mocked(backendRequest).mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
+})
+
+it('keeps unconfigured optional onboarding separate from environment deployment', async () => {
+  vi.mocked(backendRequest).mockImplementation(async path => path === '/v1/auth/me' ? {role: 'admin'} : {
+    deployment_id: 'run-a', optional: true, configuration_state: 'not_configured', provider_access_verified: false,
+    required_for_environment_deployment: false,
+  })
+  const view = await open()
+  expect(view.text()).toContain('Managed onboarding is optional')
+  expect(view.text()).toContain('Environment deployment does not require this integration')
+  expect(view.find('[data-testid="person-register-form"]').exists()).toBe(false)
+  expect(vi.mocked(backendRequest).mock.calls.some(([path]) => path.endsWith('/identities'))).toBe(false)
+})
+
+it('allows a second group member and refuses a third using the saved server limit', async () => {
+  review.participants_per_environment = 2
+  review.state.scopes[0]!.participant_limit_per_team = 2
+  const second = 'person-' + '2'.repeat(32), third = 'person-' + '3'.repeat(32)
+  for (const [index, id] of [second, third].entries()) {
+    review.state.people.push({id, kind: 'temporary', enabled: true, generation: 1, reconcile_state: 'unconfigured'})
+    review.state.source_references.push({scope_ref: 'run-a', record_ref: `user0${index + 2}`, person_id: id})
+  }
+  review.state.memberships.push({person_id: person, scope_ref: 'run-a', role: 'participant', team_ref: 'user01', active: true, effective: true})
+  const view = await open()
+  await view.get('[data-testid="membership-person"]').setValue(second)
+  expect(view.get('[data-testid="membership-team"] option[value="user01"]').attributes('disabled')).toBeUndefined()
+  await view.get('[data-testid="membership-team"]').setValue('user01')
+  await view.get('[data-testid="membership-form"]').trigger('submit'); await flushPromises()
+  expect(backendRequest).toHaveBeenCalledWith('/v1/deployments/run-a/identities', expect.objectContaining({method: 'POST', body: expect.stringContaining(second)}))
+  review.state.memberships.push({person_id: second, scope_ref: 'run-a', role: 'participant', team_ref: 'user01', active: true, effective: true})
+  await view.get('[data-testid="people-refresh"]').trigger('click'); await flushPromises()
+  await view.get('[data-testid="membership-person"]').setValue(third)
+  expect(view.get('[data-testid="membership-team"] option[value="user01"]').attributes('disabled')).toBeDefined()
 })
