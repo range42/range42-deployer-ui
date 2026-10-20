@@ -6,7 +6,7 @@ import { focusWhenReady } from '@/composables/useDialogKeyboard'
 import WorkshopAdmission, { type Admission } from './WorkshopAdmission.vue'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 defineOptions({ name: 'DeploymentParticipants' })
-const props = defineProps<{ deploymentId: string; eligibleCohort?: boolean; disabled?: boolean }>()
+const props = defineProps<{ deploymentId: string; eligibleCohort?: boolean; disabled?: boolean; vmOperationsDisabled?: boolean }>()
 const backend = useBackendApiStore()
 
 interface Device { id: number; address: string; name: string; online: boolean; bound?: boolean }
@@ -64,7 +64,9 @@ async function refresh() {
   } catch (e) { if (!stopped && current === epoch) error.value = e instanceof Error ? e.message : 'Could not load workshop status.' }
   finally { if (current === epoch) loading.value = false }
 }
+const vmAction = (action: string) => ['deploy','configure','reset','teardown'].includes(action)
 async function submit(action: Action) {
+  if (props.vmOperationsDisabled && vmAction(action.action)) return
   if ((['revoke', 'close'].includes(action.action) ? queueBusy.value : busy.value) || (action.action === 'link' ? !props.eligibleCohort || action.deployment_id !== props.deploymentId
     : !associated.value || (action.username ? !visibleSeats.value.some(seat => seat.username === action.username) : !isCohort.value))) return
   const current = epoch
@@ -101,6 +103,7 @@ async function requestLink() {
   cancelConfirmationFocus = focusWhenReady(() => document.getElementById('workshop-confirm-cancel'), () => !stopped && pending.value === current)
 }
 async function destructive(action: string, username: string) {
+  if (props.vmOperationsDisabled && vmAction(action)) return
   cancelConfirmationFocus()
   confirmationOpener = document.activeElement as HTMLElement
   pending.value = { action, username }; confirmation.value = ''
@@ -148,6 +151,7 @@ onUnmounted(() => { stopped = true; epoch++; cancelConfirmationFocus(); if (time
       <button type="button" class="btn btn-primary btn-sm" :disabled="busy" data-testid="workshop-link-deployment" @click="requestLink">Connect participant management</button>
     </div>
     <template v-if="workshop && associated">
+      <p v-if="vmOperationsDisabled" class="text-sm" role="status">Review existing ownership in this deployment’s Overview before running participant VM actions.</p>
       <WorkshopAdmission v-if="isCohort" :admission="workshop.admission" :disabled="disabled || loading || submitting || !!error" @changed="refresh" />
       <div v-if="isCohort" class="card bg-base-100 border border-base-300 p-4 space-y-3">
         <h2 class="font-semibold">Participant preparation</h2>
@@ -180,10 +184,10 @@ onUnmounted(() => { stopped = true; epoch++; cancelConfirmationFocus(); if (time
             <button class="btn btn-sm" :disabled="downloadBlocked(seat)" @click="download(seat.username)">Download credentials</button>
             <button class="btn btn-sm" :data-testid="`replace-key-${seat.username}`" :disabled="busy || !seat.account_ready || seat.closed || !!seat.device" @click="destructive('replace_key', seat.username)">Replace VPN key</button>
             <RouterLink v-if="seat.deployment_id" class="btn btn-sm" :to="`/deployments/${seat.deployment_id}`">Deployment and logs</RouterLink>
-            <button class="btn btn-sm btn-primary" :disabled="busy || seat.closed || !seat.account_ready || (!!seat.deployment_id && !['failed', 'pending'].includes(seat.deployment_state))" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
-            <button class="btn btn-sm" :disabled="busy || !seat.deployment_id || seat.closed" @click="submit({ action: 'configure', username: seat.username })">Check / configure</button>
-            <button class="btn btn-sm" :data-testid="`reset-${seat.username}`" :disabled="busy || !seat.deployment_id" @click="destructive('reset', seat.username)">Reset instance</button>
-            <button class="btn btn-sm btn-error btn-outline" :disabled="busy || !seat.deployment_id" @click="destructive('teardown', seat.username)">Delete instance</button>
+            <button class="btn btn-sm btn-primary" :disabled="busy || vmOperationsDisabled || seat.closed || !seat.account_ready || (!!seat.deployment_id && !['failed', 'pending'].includes(seat.deployment_state))" @click="submit({ action: 'deploy', username: seat.username })">Deploy instance</button>
+            <button class="btn btn-sm" :disabled="busy || vmOperationsDisabled || !seat.deployment_id || seat.closed" @click="submit({ action: 'configure', username: seat.username })">Check / configure</button>
+            <button class="btn btn-sm" :data-testid="`reset-${seat.username}`" :disabled="busy || vmOperationsDisabled || !seat.deployment_id" @click="destructive('reset', seat.username)">Reset instance</button>
+            <button class="btn btn-sm btn-error btn-outline" :disabled="busy || vmOperationsDisabled || !seat.deployment_id" @click="destructive('teardown', seat.username)">Delete instance</button>
           </div>
           <section class="border-t border-base-300 pt-3 space-y-2">
             <h3 class="font-medium text-sm">Laptop enrollment</h3>

@@ -516,7 +516,9 @@ describe('<DeploymentDetail>', () => {
       : {id:'d-cohort',project_sha:'a'.repeat(40),state:'succeeded',native:{path:'scenarios/range42-native-workshop',parameters:{WORKSHOP_ONLY_SEAT:0},descriptor:{actions:{full:'main.yml',configure:'configure.yml',reset:'reset.yml',teardown:'teardown.yml'}}}}}))
     const router=makeRouter();await router.push('/deployments/d-cohort')
     const wrapper=mount(DeploymentDetail,{global:{plugins:[router,makeI18n()]}});await settle(wrapper)
-    expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option=>option.element.value)).toEqual(['full','configure'])
+    expect(wrapper.find('[data-testid="maintenance-scope"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="ownership-refresh"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="deployment-start"]').exists()).toBe(false)
   })
 
   it.each(['training/custom-course', 'scenarios/range42-native-workshop'])('shows owned workshop controls at %s without connecting the legacy fixed cohort', async path => {

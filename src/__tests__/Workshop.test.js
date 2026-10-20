@@ -192,3 +192,15 @@ it('clears a reviewed pause and ignores an earlier status reply when backend cre
   expect(view.text()).not.toContain('user01')
   view.unmount()
 })
+
+it('blocks VM lifecycle controls until ownership is acknowledged and keeps account controls available', async () => {
+  const view = mount(Workshop, {props:{deploymentId:'cohort-one',vmOperationsDisabled:true},global:{stubs:['RouterLink']}})
+  await flushPromises()
+  for (const label of ['Deploy instance','Check / configure','Reset instance','Delete instance']) {
+    const button=view.findAll('button').find(button=>button.text()===label)
+    expect(button.attributes('disabled')).toBeDefined()
+  }
+  expect(view.get('[data-testid="bind-user01-5"]').attributes('disabled')).toBeUndefined()
+  expect(view.text()).toContain('Review existing ownership')
+  view.unmount()
+})

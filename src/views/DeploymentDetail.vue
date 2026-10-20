@@ -3,6 +3,7 @@ import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vu
 import DeploymentParticipants from '@/components/deployment/DeploymentParticipants.vue'
 import WorkshopRunParticipants from '@/components/deployment/WorkshopRunParticipants.vue'
 import RunPeople from '@/components/deployment/RunPeople.vue'
+import NativeOwnershipImport from '@/components/deployment/NativeOwnershipImport.vue'
 import DeploymentWriteAdmission from '@/components/deployment/DeploymentWriteAdmission.vue'
 /**
  * /deployments/:id — Plan C §C4.4
@@ -46,6 +47,8 @@ const attemptsError = ref(null)
 const meta = ref(null) // deployment metadata from the backend (non-live)
 const refreshedNativeTopology = ref(null)
 const nativePreviewNotice = ref('')
+const legacyNativeWorkshop = computed(() => meta.value?.native?.path === 'scenarios/range42-native-workshop' && !meta.value.native.workshop_plan)
+const ownershipPhase = ref(null)
 const workshopSeat = computed(() => meta.value?.native?.path === 'scenarios/range42-native-workshop'
   ? Number(meta.value.native.parameters?.WORKSHOP_ONLY_SEAT || 0) : 0)
 const needsNativePreviewRefresh = computed(() => workshopSeat.value > 0
@@ -84,7 +87,7 @@ const preflight = ref(null)
 const checkingPreflight = ref(false)
 const starting = ref(false)
 const warningsAck = ref(false)
-const canPrepare = computed(() => meta.value && !isRetired.value && !loading.value && !loadError.value
+const canPrepare = computed(() => !legacyNativeWorkshop.value && meta.value && !isRetired.value && !loading.value && !loadError.value
   && !managedWritesClosed.value && attemptsIdle.value && (['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value)
     || (supportsConcreteActions.value && !meta.value.native
       && ['runtime', 'teardown'].includes(attempts.value.find(attempt => attempt.id === meta.value.current_attempt_id)?.scope))))
@@ -118,7 +121,7 @@ const effectiveState = computed(() => {
 })
 
 // Match backend scope guards: retirement is independent of the project pin.
-const supportsConcreteActions = computed(() => !!meta.value?.project_sha && !isRetired.value)
+const supportsConcreteActions = computed(() => !legacyNativeWorkshop.value && !!meta.value?.project_sha && !isRetired.value)
 const supportsLegacyActions = computed(() => !managedWritesClosed.value && !!meta.value && !meta.value.project_sha && !isRetired.value)
 const maintenanceScope = ref('configure')
 const maintenanceActions = computed(() => meta.value?.native
@@ -735,7 +738,8 @@ onBeforeUnmount(() => {
       <DeploymentWriteAdmission v-if="meta && !loadError" :key="`admission-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="starting || maintenanceBusy" @changed="onWriteAdmissionChanged" />
       <p v-if="nativePreviewNotice" role="status" class="text-sm mb-3">{{ nativePreviewNotice }} <button type="button" class="btn btn-sm" @click="refreshNativePreview">Refresh preview</button></p>
       <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
-      <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !meta.native.workshop_plan && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="operationControlsDisabled" />
+      <NativeOwnershipImport v-if="legacyNativeWorkshop && !workshopSeat && !loadError" :key="`ownership-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="starting || maintenanceBusy" @changed="ownershipPhase = $event" />
+      <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !meta.native.workshop_plan && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="operationControlsDisabled" :vm-operations-disabled="ownershipPhase !== 'active'" />
       <WorkshopRunParticipants v-if="meta?.native?.workshop_plan && !loadError" :key="`run-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" @started="onRuntimeStarted" />
       <RunPeople v-if="meta?.native?.workshop_plan && !loadError" :key="`people-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <DeploymentAllocations v-if="meta && (!meta.native || meta.native.workshop_plan) && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
