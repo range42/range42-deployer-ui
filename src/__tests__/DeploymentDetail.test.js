@@ -510,13 +510,29 @@ describe('<DeploymentDetail>', () => {
     expect(request[0]).toContain('sha='+ 'a'.repeat(40))
   })
 
+  it('keeps participant offboarding available when only managed VM writes are paused', async () => {
+    globalThis.fetch=vi.fn(async url=>({ok:true,status:200,json:async()=>url.endsWith('/attempts')?{items:[]}
+      :{id:'d-cohort',project_sha:'a'.repeat(40),state:'succeeded',native:{path:'scenarios/range42-native-workshop',parameters:{WORKSHOP_ONLY_SEAT:0},descriptor:{actions:{full:'main.yml',reset:'reset.yml'}}}}}))
+    const router=makeRouter();await router.push('/deployments/d-cohort')
+    const wrapper=mount(DeploymentDetail,{global:{plugins:[router,makeI18n()],stubs:{DeploymentParticipants:{name:'DeploymentParticipants',props:['disabled','vmOperationsDisabled'],template:'<section />'}}}})
+    await settle(wrapper)
+    wrapper.findComponent({name:'NativeOwnershipImport'}).vm.$emit('changed','active');await flushPromises()
+    const people=wrapper.findComponent({name:'DeploymentParticipants'})
+    expect(people.props('vmOperationsDisabled')).toBe(false)
+    wrapper.findComponent({name:'DeploymentWriteAdmission'}).vm.$emit('changed',true);await flushPromises()
+    expect(people.props('disabled')).toBe(false)
+    expect(people.props('vmOperationsDisabled')).toBe(true)
+  })
+
   it('keeps workshop reset and deletion scoped to individual participants', async () => {
     globalThis.fetch=vi.fn(async url=>({ok:true,status:200,json:async()=> url.endsWith('/attempts') ? {items:[]}
       : url.endsWith('/workshop') ? {id:'test',seats:[],operations:[]}
       : {id:'d-cohort',project_sha:'a'.repeat(40),state:'succeeded',native:{path:'scenarios/range42-native-workshop',parameters:{WORKSHOP_ONLY_SEAT:0},descriptor:{actions:{full:'main.yml',configure:'configure.yml',reset:'reset.yml',teardown:'teardown.yml'}}}}}))
     const router=makeRouter();await router.push('/deployments/d-cohort')
     const wrapper=mount(DeploymentDetail,{global:{plugins:[router,makeI18n()]}});await settle(wrapper)
-    expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option=>option.element.value)).toEqual(['full','configure'])
+    expect(wrapper.find('[data-testid="maintenance-scope"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="ownership-refresh"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="deployment-start"]').exists()).toBe(false)
   })
 
   it.each(['training/custom-course', 'scenarios/range42-native-workshop'])('shows owned workshop controls at %s without connecting the legacy fixed cohort', async path => {
