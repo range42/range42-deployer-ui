@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
+import PhysicalCapacityObservation from './PhysicalCapacityObservation.vue'
 
 interface NodeReview {
   revision: string; target_host_id: string; physical_node_id: string; node_name: string;
@@ -112,5 +113,6 @@ async function save() {
       <p class="text-sm">This records identity. It does not prepare or start virtual machines.</p>
       <button type="button" class="btn btn-primary btn-sm" data-testid="save-physical-node" :disabled="disabled || busy" @click="save">Record reviewed identity</button>
     </div>
+    <PhysicalCapacityObservation v-if="snapshot?.binding" :host-id="hostId" :physical-node-id="snapshot.binding.physical_node_id" :disabled="disabled || busy || snapshot.needs_review || snapshot.configuration_state !== 'enrolled'" />
   </section>
 </template>
