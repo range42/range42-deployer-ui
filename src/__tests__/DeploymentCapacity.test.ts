@@ -18,7 +18,7 @@ const review = {deployment_id: 'run', review_revision: '3'.repeat(64), physical_
 const pending = {...empty, hold: {id: 'b'.repeat(32), allocation_id: 'c'.repeat(32), physical_node_id: 'a'.repeat(32), status: 'pending_root', revision: 1,
   approval_revision: review.review_revision, approved_by: 'director', created_at: '2026-10-20T12:00:00+00:00', requirements, reservation_recorded: true, root_accepted: false}}
 beforeEach(() => { vi.resetAllMocks(); connection.url = 'http://test'; connection.token = 'alpha' })
-async function load(state = empty, role = 'admin') {
+async function load(state: Record<string, unknown> = empty, role = 'admin') {
   expect(Object.values(modules)).toHaveLength(1)
   const component = await Object.values(modules)[0]()
   const view = mount(component.default, {props: {deploymentId: 'run'}})
@@ -106,4 +106,43 @@ it('explains shared storage overage without offering a reservation', async () =>
   expect(view.text()).toContain('256 GiB over the shared storage budget')
   expect(view.text()).toContain('768 GiB over the shared physical storage budget')
   expect(view.find('[data-testid="capacity-reserve"]').exists()).toBe(false); view.unmount()
+})
+
+it('reviews and confirms unused release while preserving allocation and execution gates', async () => {
+  const unused = {...pending, hold: {...pending.hold, unused_retirement_review_available: true, native_request_may_have_been_sent: false}}
+  const view = await load(unused)
+  expect(view.find('[data-testid="capacity-unused-review"]').exists()).toBe(true)
+  vi.mocked(backendRequest).mockResolvedValue({...review, unused_retirement_eligible: true})
+  await view.get('[data-testid="capacity-unused-review"]').trigger('click'); await flushPromises()
+  await view.get('[data-testid="capacity-unused-release"]').trigger('click')
+  expect(view.get('[role="dialog"]').text()).toContain('The original allocation is retained')
+  expect(vi.mocked(backendRequest).mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+  vi.mocked(backendRequest).mockResolvedValue({...unused, hold: {...unused.hold, status: 'retired', unused_retirement_review_available: false, retired_by: 'director'}})
+  await view.get('form[role="dialog"]').trigger('submit'); await flushPromises()
+  expect(backendRequest).toHaveBeenLastCalledWith('/v1/deployments/run/capacity', expect.objectContaining({method: 'DELETE', body: JSON.stringify({review_revision: review.review_revision})}))
+  expect(view.text()).toContain('Reservation retired')
+  expect(view.emitted('changed')?.at(-1)).toEqual([false]); view.unmount()
+})
+
+it('recovers a lost release response by reading status rather than replaying deletion', async () => {
+  const unused = {...pending, hold: {...pending.hold, unused_retirement_review_available: true, native_request_may_have_been_sent: false}}
+  const view = await load(unused)
+  vi.mocked(backendRequest).mockResolvedValue({...review, unused_retirement_eligible: true})
+  await view.get('[data-testid="capacity-unused-review"]').trigger('click'); await flushPromises()
+  await view.get('[data-testid="capacity-unused-release"]').trigger('click')
+  vi.mocked(backendRequest).mockImplementation(async (_path, options) => {
+    if (options?.method === 'DELETE') throw new Error('Release response lost')
+    return {...unused, hold: {...unused.hold, status: 'retired', unused_retirement_review_available: false}}
+  })
+  await view.get('form[role="dialog"]').trigger('submit'); await flushPromises()
+  expect(view.text()).toContain('Reservation retired')
+  expect(vi.mocked(backendRequest).mock.calls.filter(([, options]) => options?.method === 'DELETE')).toHaveLength(1)
+  expect(view.find('[role="dialog"]').exists()).toBe(false); view.unmount()
+})
+
+it('offers no unused release when native acceptance may already have been requested', async () => {
+  const view = await load({...pending, hold: {...pending.hold, native_request_may_have_been_sent: true, unused_retirement_review_available: false}})
+  expect(view.text()).toContain('Native acceptance may have been requested')
+  expect(view.find('[data-testid="capacity-unused-review"]').exists()).toBe(false)
+  expect(view.find('[data-testid="capacity-unused-release"]').exists()).toBe(false); view.unmount()
 })
