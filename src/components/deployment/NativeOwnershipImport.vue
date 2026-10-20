@@ -20,6 +20,7 @@ const emit = defineEmits<{changed: [phase: Phase | null]}>()
 const backend = useBackendApiStore()
 const state = ref<Status | null>(null), review = ref<Review | null>(null)
 const loading = ref(false), role = ref(''), error = ref('')
+const activity = ref('')
 const busy = computed(() => loading.value || !!props.disabled)
 let generation = 0, controller: AbortController | null = null
 const url = () => `/v1/deployments/${encodeURIComponent(props.deploymentId)}/allocations/import`
@@ -47,7 +48,7 @@ function accept(value: Status) {
 }
 function reset() {
   generation++;controller?.abort();controller=null
-  state.value=null;review.value=null;loading.value=false;role.value='';error.value='';emit('changed',null)
+  state.value=null;review.value=null;loading.value=false;role.value='';error.value='';activity.value='';emit('changed',null)
 }
 watch(()=>[props.deploymentId,backend.activeHost?.id,getBackendScope(),backend.token],reset,{flush:'sync'})
 onBeforeUnmount(()=>{generation++;controller?.abort()})
@@ -55,6 +56,7 @@ async function refresh() {
   if (busy.value) return
   const current = generation
   state.value=null;review.value=null;role.value='';error.value='';loading.value=true;controller=new AbortController();emit('changed',null)
+  activity.value='Reading retained ownership…'
   try {
     const identity=await backendRequest<{role:string}>('/v1/auth/me',{signal:controller.signal})
     if(current!==generation)return
@@ -69,6 +71,7 @@ async function inspect() {
   if(busy.value || role.value!=='admin' || state.value?.phase!=='unimported')return
   const current=generation
   review.value=null;error.value='';loading.value=true;controller=new AbortController()
+  activity.value='Verifying original guests and their current configuration…'
   try {
     const result=await backendRequest<Review>(url()+'/review',{method:'POST',body:'{}',signal:controller.signal})
     if(current!==generation)return
@@ -83,6 +86,7 @@ async function save() {
   if(busy.value || role.value!=='admin' || !hash(revision))return
   const current=generation
   error.value='';loading.value=true;controller=new AbortController()
+  activity.value='Saving ownership and confirming the handoff…'
   try {
     const result=await backendRequest<Status>(url(),{method:'POST',body:JSON.stringify({review_revision:revision}),signal:controller.signal})
     if(current===generation)accept(result)
@@ -103,6 +107,7 @@ async function save() {
     <p class="text-sm">Review the original guest records and import their ownership into this deployment. Participant actions then use this parent allocation.</p>
     <p class="text-sm">Importing ownership does not pause VM actions or make capacity available. Pause participant management before reviewing the existing guests.</p>
     <button type="button" class="btn btn-sm" data-testid="ownership-refresh" :disabled="busy" @click="refresh">{{ state ? 'Refresh ownership' : 'Review existing ownership' }}</button>
+    <p v-if="loading" role="status" data-testid="ownership-progress">{{ activity }}</p>
     <p v-if="role && role !== 'admin'" role="status">An administrator must review and import original ownership.</p>
     <template v-if="state">
       <p v-if="state.phase === 'unimported'" role="status">Original ownership has not been imported.</p>

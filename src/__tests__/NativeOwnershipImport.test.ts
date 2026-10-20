@@ -92,4 +92,14 @@ describe('existing native ownership handoff',()=>{
     expect(view.text()).not.toContain('Ownership acknowledged');view.unmount()
   })
 
+  it('announces the live guest check while a slow controller review is pending',async()=>{
+    const view=await load()
+    let resolve!:(value:unknown)=>void
+    vi.mocked(backendRequest).mockImplementation(()=>new Promise(done=>{resolve=done}))
+    await view.get('[data-testid="ownership-review"]').trigger('click');await flushPromises()
+    expect(view.get('[data-testid="ownership-progress"]').text()).toContain('Verifying original guests')
+    resolve(review);await flushPromises()
+    expect(view.find('[data-testid="ownership-progress"]').exists()).toBe(false);view.unmount()
+  })
+
 })
