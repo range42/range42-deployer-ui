@@ -11,6 +11,7 @@ import RegisteredTargetsPanel from '@/components/settings/RegisteredTargetsPanel
 import NativeEnvironmentsPanel from '@/components/settings/NativeEnvironmentsPanel.vue'
 import RetentionPreferencesPanel from '@/components/settings/RetentionPreferencesPanel.vue'
 import EditorPreferencesPanel from '@/components/settings/EditorPreferencesPanel.vue'
+import OptionalIntegrationsPanel from '@/components/settings/OptionalIntegrationsPanel.vue'
 
 defineOptions({ name: 'SettingsView' })
 const route = useRoute()
@@ -21,6 +22,7 @@ const user = useUserStore()
 const { confirm } = useConfirmDialog()
 const sections = [
   { id: 'connections', label: 'Connections', description: 'Backend access and Proxmox targets' },
+  { id: 'integrations', label: 'Integrations', description: 'Optional installation services' },
   { id: 'preferences', label: 'Preferences', description: 'Appearance and editor behaviour' },
   { id: 'identity', label: 'Identity', description: 'Your name in collaborative projects' },
   { id: 'snapshots', label: 'Snapshots', description: 'Retention review preferences' },
@@ -101,6 +103,7 @@ async function clearProjectList() {
             <router-link to="/sources" class="link inline-block text-sm mt-3 underline-offset-4">Open Sources</router-link>
           </section>
         </template>
+        <OptionalIntegrationsPanel v-else-if="active === 'integrations'" />
         <template v-else-if="active === 'preferences'">
           <section class="rounded-xl border border-base-300 p-5" aria-labelledby="appearance-heading">
             <h2 id="appearance-heading" class="text-xl font-semibold">Appearance</h2>

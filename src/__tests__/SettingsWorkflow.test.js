@@ -34,6 +34,11 @@ async function show(tab = 'connections') {
   return router
 }
 describe('Settings workflows', () => {
+  it('opens optional installation integrations in Settings', async () => {
+    await show('integrations')
+    expect(wrapper.find('[data-testid="optional-integrations-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="settings-link-integrations"]').attributes('aria-current')).toBe('page')
+  })
   it('reports a session-only connection and lets unchanged state be saved again', async () => {
     await show()
     await wrapper.get('[data-testid="backend-label"]').setValue('New profile')
