@@ -2,23 +2,30 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { backendRequest, getBackendScope } from '@/services/backendApi'
 import { useBackendApiStore } from '@/stores/backendApiStore'
+import { useDialogKeyboard } from '@/composables/useDialogKeyboard'
 
 interface Storage {pool_id: string; cluster_id: string; replicas: number; namespace: string; logical_bytes: number}
 interface Guest {vm_id: number; memory_mib: number; vcpus: number; storage: Storage[]}
-interface Hold {id: string; allocation_id: string; physical_node_id: string; status: string; revision: number; approval_revision: string; approved_by: string; created_at: string; requirements: Guest[]; reservation_recorded: true; root_accepted: false}
+interface Hold {id: string; allocation_id: string; physical_node_id: string; status: string; revision: number; approval_revision: string; approved_by: string; created_at: string; requirements: Guest[]; reservation_recorded: true; root_accepted: false;
+  native_request_may_have_been_sent?: boolean; unused_retirement_review_available?: boolean; retired_by?: string | null; retired_at?: string | null}
 interface Status {deployment_id: string; applicable: boolean; hold: Hold | null; live_verified: false; execution_ready: false; infrastructure_qualified: false}
 interface Pool {cluster_id: string; replicas: number; available_bytes: number; potential_bytes: number; held_bytes: number; logical_headroom_bytes: number}
 interface Cluster {available_bytes: number; potential_bytes: number; held_bytes: number; raw_headroom_bytes: number}
 interface Review {deployment_id: string; review_revision: string; physical_node_id: string; node_name: string; observed_at: string; requirements: Guest[];
   resources: {logical_cpus: number; memory_total_mib: number; memory_reserve_mib: number; max_vcpus: number};
   assessment: {admissible: boolean; memory_headroom_mib: number; vcpu_headroom: number; pools: Record<string, Pool>; clusters: Record<string, Cluster>; blocking_codes: string[]; allocation_granted: false};
-  execution_ready: false; infrastructure_qualified: false}
+  execution_ready: false; infrastructure_qualified: false; unused_retirement_eligible?: boolean}
 const props = defineProps<{deploymentId: string; disabled?: boolean}>()
 const emit = defineEmits<{changed: [accepted: boolean]}>()
 const backend = useBackendApiStore(), heading = useId()
 const state = ref<Status | null>(null), reviewed = ref<Review | null>(null), role = ref(''), error = ref(''), activity = ref('')
 const loading = ref(false), refreshButton = ref<HTMLButtonElement | null>(null)
+const confirmingRelease = ref(false), releaseDialog = ref<HTMLElement | null>(null), releaseHeading = useId()
+const releaseKeyboard = useDialogKeyboard(() => confirmingRelease.value, releaseDialog, () => { if (!loading.value) confirmingRelease.value = false })
 const busy = computed(() => loading.value || !!props.disabled)
+const canReviewUnused = computed(() => state.value?.hold?.status === 'pending_root'
+  && state.value.hold.unused_retirement_review_available === true
+  && state.value.hold.native_request_may_have_been_sent === false)
 const guests = computed(() => reviewed.value?.requirements || state.value?.hold?.requirements || [])
 const memory = computed(() => guests.value.reduce((total, guest) => total + guest.memory_mib, 0))
 const vcpus = computed(() => guests.value.reduce((total, guest) => total + guest.vcpus, 0))
@@ -43,12 +50,19 @@ function accept(value: Status) {
     if (!hash(hold.id, 32) || !hash(hold.allocation_id, 32) || !hash(hold.physical_node_id, 32) || !hash(hold.approval_revision) || !quantity(hold.revision) || !hold.revision ||
         !['pending_root', 'active', 'releasing', 'retired'].includes(hold.status) || hold.reservation_recorded !== true || hold.root_accepted !== false || !value.applicable) invalid()
     checkGuests(hold.requirements)
+    if ((hold.native_request_may_have_been_sent !== undefined && typeof hold.native_request_may_have_been_sent !== 'boolean')
+      || (hold.unused_retirement_review_available !== undefined && typeof hold.unused_retirement_review_available !== 'boolean')
+      || (hold.unused_retirement_review_available === true && (hold.status !== 'pending_root' || hold.native_request_may_have_been_sent !== false))) invalid()
   }
-  state.value = value; reviewed.value = null; emit('changed', false)
+  state.value = value; reviewed.value = null; confirmingRelease.value = false; emit('changed', false)
 }
 function acceptReview(value: Review) {
   if (!value || value.deployment_id !== props.deploymentId || !hash(value.review_revision) || !hash(value.physical_node_id, 32) || value.execution_ready !== false || value.infrastructure_qualified !== false || !Number.isFinite(Date.parse(value.observed_at))) invalid()
   checkGuests(value.requirements)
+  if (value.unused_retirement_eligible !== undefined && typeof value.unused_retirement_eligible !== 'boolean') invalid()
+  if (value.unused_retirement_eligible === true && (!canReviewUnused.value
+    || value.physical_node_id !== state.value?.hold?.physical_node_id
+    || JSON.stringify(value.requirements) !== JSON.stringify(state.value.hold.requirements))) invalid()
   const a = value.assessment, r = value.resources
   if (!a || !r || a.allocation_granted !== false || ![r.logical_cpus, r.memory_total_mib, r.memory_reserve_mib, r.max_vcpus].every(quantity) ||
       !signedQuantity(a.memory_headroom_mib) || !signedQuantity(a.vcpu_headroom) || !a.pools || !a.clusters || !Object.keys(a.pools).length || Object.keys(a.pools).length > 16 || Object.keys(a.clusters).length > 16 || !Array.isArray(a.blocking_codes)) invalid()
@@ -58,7 +72,7 @@ function acceptReview(value: Review) {
   if (a.admissible !== !reasons.length || JSON.stringify([...a.blocking_codes].sort()) !== JSON.stringify(reasons.sort())) invalid()
   reviewed.value = value
 }
-function reset() { generation++; controller?.abort(); controller = null; state.value = null; reviewed.value = null; loading.value = false; role.value = ''; error.value = ''; activity.value = ''; emit('changed', false) }
+function reset() { generation++; controller?.abort(); controller = null; state.value = null; reviewed.value = null; confirmingRelease.value = false; loading.value = false; role.value = ''; error.value = ''; activity.value = ''; emit('changed', false) }
 watch(() => [props.deploymentId, props.disabled, backend.activeHost?.id, getBackendScope(), backend.token], reset, {flush: 'sync'})
 onBeforeUnmount(() => { generation++; controller?.abort() })
 function message(cause: unknown) {
@@ -73,8 +87,9 @@ async function refresh() {
   catch (cause) { if (current === generation) error.value = message(cause) }
   finally { if (current === generation) { loading.value = false; activity.value = '' } }
 }
-async function inspect() {
-  if (busy.value || role.value !== 'admin' || !state.value?.applicable || state.value.hold) return
+async function inspect(releasing = false) {
+  if (busy.value || role.value !== 'admin' || !state.value?.applicable
+    || (releasing ? !canReviewUnused.value : !!state.value.hold)) return
   const current = generation; controller = new AbortController(); loading.value = true; reviewed.value = null; error.value = ''; activity.value = 'Checking configured resources and competing reservations. This can take up to two minutes…'
   try { const result = await backendRequest<Review>(endpoint() + '/review', {method: 'POST', body: '{}', signal: controller.signal}); if (current === generation) acceptReview(result) }
   catch (cause) { if (current === generation) error.value = message(cause) }
@@ -86,6 +101,24 @@ async function reserve() {
   try { const result = await backendRequest<Status>(endpoint(), {method: 'POST', body: JSON.stringify({review_revision: revision}), signal: controller.signal}); if (current === generation) accept(result) }
   catch (cause) { if (current === generation) { reviewed.value = null; error.value = message(cause); try { await readStatus(current) } catch { if (current === generation) state.value = null } } }
   finally { if (current === generation) { loading.value = false; activity.value = ''; await nextTick(); if (current === generation) refreshButton.value?.focus() } }
+}
+
+async function releaseUnused() {
+  if (busy.value || !confirmingRelease.value || role.value !== 'admin' || !canReviewUnused.value
+    || reviewed.value?.unused_retirement_eligible !== true) return
+  const current = generation, revision = reviewed.value.review_revision
+  controller = new AbortController(); loading.value = true; error.value = ''; activity.value = 'Rechecking original guest absence and retiring the unused reservation…'
+  try {
+    const result = await backendRequest<Status>(endpoint(), {method: 'DELETE', body: JSON.stringify({review_revision: revision}), signal: controller.signal})
+    if (current === generation) accept(result)
+  } catch (cause) {
+    if (current === generation) {
+      error.value = message(cause); reviewed.value = null; confirmingRelease.value = false
+      try { await readStatus(current) } catch { if (current === generation) state.value = null }
+    }
+  } finally {
+    if (current === generation) { loading.value = false; activity.value = ''; await nextTick(); if (current === generation) refreshButton.value?.focus() }
+  }
 }
 </script>
 
@@ -103,8 +136,11 @@ async function reserve() {
       <p v-else-if="state.hold.status === 'retired'" role="status">Reservation retired. Create a new run to reserve resources again.</p>
       <p v-else role="status">The retained reservation requires native reconciliation. Virtual machine operations remain blocked.</p>
       <p class="text-sm">Recorded by {{ state.hold.approved_by }} at {{ state.hold.created_at }}. Stopping a guest or a failed attempt does not release its reservation.</p>
+      <p v-if="state.hold.native_request_may_have_been_sent" role="status">Native acceptance may have been requested. Preserve this reservation until the original native outcome is reconciled.</p>
+      <p v-if="state.hold.status === 'retired' && state.hold.retired_by" class="text-sm">Unused reservation retired by {{ state.hold.retired_by }}. The allocation and audit record are retained.</p>
+      <button v-if="canReviewUnused && role === 'admin'" type="button" class="btn btn-outline btn-sm" data-testid="capacity-unused-review" :disabled="busy" @click="inspect(true)">Review unused reservation release</button>
     </template>
-    <button v-else-if="state?.applicable && role === 'admin'" type="button" class="btn btn-outline btn-sm" data-testid="capacity-review" :disabled="busy" @click="inspect">Review workshop capacity</button>
+    <button v-else-if="state?.applicable && role === 'admin'" type="button" class="btn btn-outline btn-sm" data-testid="capacity-review" :disabled="busy" @click="inspect()">Review workshop capacity</button>
     <template v-if="reviewed">
       <p class="font-medium">Reviewed physical server · {{ reviewed.node_name }}</p>
       <p class="text-sm">{{ gib(reviewed.resources.memory_total_mib) }} GiB physical memory, including a {{ gib(reviewed.resources.memory_reserve_mib) }} GiB host reserve. Current and pending guest configuration stay charged while stopped.</p>
@@ -126,5 +162,17 @@ async function reserve() {
       </div>
     </div>
     <button v-if="reviewed?.assessment.admissible && !state?.hold" type="button" class="btn btn-primary btn-sm" data-testid="capacity-reserve" :disabled="busy" @click="reserve">Reserve reviewed resources</button>
+    <template v-if="reviewed && state?.hold">
+      <p v-if="reviewed.unused_retirement_eligible" role="status">The planned guests are absent and no native acceptance request is recorded. Releasing this unused reservation preserves its allocation and audit record.</p>
+      <p v-else role="status">This reservation cannot be released as unused. Resolve existing guests or uncertain work through the native lifecycle.</p>
+      <button v-if="reviewed.unused_retirement_eligible && canReviewUnused" type="button" class="btn btn-outline btn-sm" data-testid="capacity-unused-release" :disabled="busy" @click="confirmingRelease = true">Release unused reservation</button>
+    </template>
+    <div v-if="confirmingRelease" class="modal modal-open" @keydown="releaseKeyboard">
+      <form ref="releaseDialog" role="dialog" aria-modal="true" :aria-labelledby="releaseHeading" tabindex="-1" class="modal-box space-y-4" @submit.prevent="releaseUnused">
+        <h3 :id="releaseHeading" class="text-lg font-semibold">Release this unused reservation?</h3>
+        <p>The original allocation is retained. No virtual machines or provider accounts are deleted. This run cannot reserve again after retirement; create a new run when needed.</p>
+        <div class="modal-action"><button type="button" class="btn" :disabled="loading" @click="confirmingRelease = false">Cancel</button><button type="submit" class="btn btn-primary" data-testid="capacity-confirm-release" :disabled="busy">Release reservation</button></div>
+      </form>
+    </div>
   </section>
 </template>
