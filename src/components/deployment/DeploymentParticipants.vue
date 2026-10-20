@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { backendBlob, backendRequest } from '@/services/backendApi'
 import { focusWhenReady } from '@/composables/useDialogKeyboard'
+import WorkshopAdmission, { type Admission } from './WorkshopAdmission.vue'
+import { useBackendApiStore } from '@/stores/backendApiStore'
 defineOptions({ name: 'DeploymentParticipants' })
 const props = defineProps<{ deploymentId: string; eligibleCohort?: boolean; disabled?: boolean }>()
+const backend = useBackendApiStore()
 
 interface Device { id: number; address: string; name: string; online: boolean; bound?: boolean }
 interface Seat {
@@ -13,7 +16,7 @@ interface Seat {
   deployment_id?: string | null; deployment_state: string; certificate_fingerprint?: string | null;
 }
 interface Operation { operation_id: string; action: string; username?: string; state: string; message?: string }
-interface Workshop { cohort_seats?: number | null; cohort_deployment_id?: string | null; id: string; expires_at: string; seats: Seat[]; operations: Operation[] }
+interface Workshop { cohort_seats?: number | null; cohort_deployment_id?: string | null; id: string; expires_at: string; seats: Seat[]; operations: Operation[]; admission?: Admission | null }
 interface Action { action: string; deployment_id?: string; username?: string; node_id?: number; seats?: number; confirmation?: string }
 const workshop = ref<Workshop | null>(null)
 const isCohort = computed(() => !!workshop.value?.cohort_deployment_id && workshop.value.cohort_deployment_id === props.deploymentId)
@@ -33,8 +36,9 @@ function labelFor(action: string) {
 const confirmation = ref('')
 const pending = ref<Action | null>(null)
 const confirmInput = ref<HTMLInputElement | null>(null)
-const busy = computed(() => props.disabled || submitting.value || loading.value || !!error.value ||
+const queueBusy = computed(() => props.disabled || submitting.value || loading.value || !!error.value ||
   workshop.value?.operations.some(op => ['queued', 'running'].includes(op.state)))
+const busy = computed(() => queueBusy.value || !!workshop.value?.admission && workshop.value.admission.state !== 'open')
 function failedAccess(username: string, action: string) {
   return workshop.value?.operations.find(op => op.username === username &&
     (action === 'revoke' ? ['revoke', 'close'].includes(op.action) : op.action === action))?.state === 'failed'
@@ -47,28 +51,32 @@ function downloadBlocked(seat: Seat) {
 }
 let timer: ReturnType<typeof setInterval> | undefined
 let stopped = false
+let epoch = 0
 
 async function refresh() {
   if (loading.value) return
+  const current = epoch
   loading.value = true
   try {
     const result = await backendRequest<Workshop>('/v1/admin/workshop')
     if (!result || !Array.isArray(result.seats) || !Array.isArray(result.operations)) throw new Error('Participant status is unavailable. Refresh to retry.')
-    if (!stopped) { workshop.value = result; if (!result.seats.length && result.cohort_seats) seats.value = result.cohort_seats; error.value = '' }
-  } catch (e) { if (!stopped) error.value = e instanceof Error ? e.message : 'Could not load workshop status.' }
-  finally { loading.value = false }
+    if (!stopped && current === epoch) { workshop.value = result; if (!result.seats.length && result.cohort_seats) seats.value = result.cohort_seats; error.value = '' }
+  } catch (e) { if (!stopped && current === epoch) error.value = e instanceof Error ? e.message : 'Could not load workshop status.' }
+  finally { if (current === epoch) loading.value = false }
 }
 async function submit(action: Action) {
-  if (props.disabled || (action.action === 'link' ? !props.eligibleCohort || action.deployment_id !== props.deploymentId
+  if ((['revoke', 'close'].includes(action.action) ? queueBusy.value : busy.value) || (action.action === 'link' ? !props.eligibleCohort || action.deployment_id !== props.deploymentId
     : !associated.value || (action.username ? !visibleSeats.value.some(seat => seat.username === action.username) : !isCohort.value))) return
+  const current = epoch
   submitting.value = true; message.value = ''; error.value = ''
   try {
     const operation = await backendRequest<Operation>('/v1/admin/workshop/actions', { method: 'POST', body: JSON.stringify(action) })
+    if (stopped || current !== epoch) return
     message.value = `${labelFor(action.action)} queued${action.username ? ` for ${action.username}` : ''}. Operation ${operation.operation_id}.`
     pending.value = null
     await refresh()
-  } catch (e) { error.value = e instanceof Error ? e.message : 'The workshop action failed.' }
-  finally { submitting.value = false }
+  } catch (e) { if (!stopped && current === epoch) error.value = e instanceof Error ? e.message : 'The workshop action failed.' }
+  finally { if (current === epoch) submitting.value = false }
 }
 let confirmationOpener: HTMLElement | null = null
 let cancelConfirmationFocus = () => {}
@@ -102,16 +110,22 @@ async function destructive(action: string, username: string) {
 }
 async function download(username: string) {
   if (!visibleSeats.value.some(seat => seat.username === username)) return
+  const current = epoch
   submitting.value = true
   try {
     const blob = await backendBlob(`/v1/admin/workshop/seats/${username}/handout`)
+    if (stopped || current !== epoch) return
     const url = URL.createObjectURL(blob); const link = document.createElement('a')
     link.href = url; link.download = `${username}.pdf`; link.click(); URL.revokeObjectURL(url)
-  } catch (e) { error.value = e instanceof Error ? e.message : 'Could not download the private handout.' }
-  finally { submitting.value = false }
+  } catch (e) { if (!stopped && current === epoch) error.value = e instanceof Error ? e.message : 'Could not download the private handout.' }
+  finally { if (current === epoch) submitting.value = false }
 }
+watch(() => [props.deploymentId, backend.url, backend.token], () => {
+  epoch++; cancelConfirmationFocus(); pending.value = null; confirmation.value = ''; workshop.value = null
+  loading.value = false; submitting.value = false; error.value = ''; message.value = ''; void refresh()
+})
 onMounted(() => { void refresh(); timer = setInterval(() => { if (!pending.value) void refresh() }, 5000) })
-onUnmounted(() => { stopped = true; cancelConfirmationFocus(); if (timer) clearInterval(timer) })
+onUnmounted(() => { stopped = true; epoch++; cancelConfirmationFocus(); if (timer) clearInterval(timer) })
 </script>
 
 <template>
@@ -134,6 +148,7 @@ onUnmounted(() => { stopped = true; cancelConfirmationFocus(); if (timer) clearI
       <button type="button" class="btn btn-primary btn-sm" :disabled="busy" data-testid="workshop-link-deployment" @click="requestLink">Connect participant management</button>
     </div>
     <template v-if="workshop && associated">
+      <WorkshopAdmission v-if="isCohort" :admission="workshop.admission" :disabled="disabled || loading || submitting || !!error" @changed="refresh" />
       <div v-if="isCohort" class="card bg-base-100 border border-base-300 p-4 space-y-3">
         <h2 class="font-semibold">Participant preparation</h2>
         <p class="text-sm text-base-content/70">Prepare once, then create accounts, issue connection keys and generate private PDFs. Repeating a step preserves existing credentials.</p>
@@ -180,8 +195,8 @@ onUnmounted(() => { stopped = true; cancelConfirmationFocus(); if (timer) clearI
               <button class="btn btn-xs" :data-testid="`bind-${seat.username}-${device.id}`" :disabled="busy || !device.online || (device.bound && !failedAccess(seat.username, 'bind')) || (!!seat.device && (!failedAccess(seat.username, 'bind') || seat.device.id !== device.id)) || seat.closed" @click="submit({ action: 'bind', username: seat.username, node_id: device.id })">{{ device.bound && !failedAccess(seat.username, 'bind') ? 'Access enabled' : 'Enable laptop access' }}</button>
             </div>
             <div class="flex flex-wrap gap-2">
-              <button v-if="seat.device || failedAccess(seat.username, 'revoke')" class="btn btn-xs" :disabled="busy" @click="submit({ action: 'revoke', username: seat.username })">Revoke laptop access</button>
-              <button class="btn btn-xs btn-ghost" :disabled="busy || seat.closed" @click="destructive('close', seat.username)">Close participant access</button>
+              <button v-if="seat.device || failedAccess(seat.username, 'revoke')" class="btn btn-xs" :disabled="queueBusy" @click="submit({ action: 'revoke', username: seat.username })">Revoke laptop access</button>
+              <button class="btn btn-xs btn-ghost" :disabled="queueBusy || seat.closed" @click="destructive('close', seat.username)">Close participant access</button>
             </div>
           </section>
         </article>
