@@ -4,6 +4,7 @@ import DeploymentParticipants from '@/components/deployment/DeploymentParticipan
 import WorkshopRunParticipants from '@/components/deployment/WorkshopRunParticipants.vue'
 import RunPeople from '@/components/deployment/RunPeople.vue'
 import NativeOwnershipImport from '@/components/deployment/NativeOwnershipImport.vue'
+import DeploymentCapacity from '@/components/deployment/DeploymentCapacity.vue'
 import DeploymentWriteAdmission from '@/components/deployment/DeploymentWriteAdmission.vue'
 /**
  * /deployments/:id — Plan C §C4.4
@@ -49,6 +50,9 @@ const refreshedNativeTopology = ref(null)
 const nativePreviewNotice = ref('')
 const legacyNativeWorkshop = computed(() => meta.value?.native?.path === 'scenarios/range42-native-workshop' && !meta.value.native.workshop_plan)
 const ownershipPhase = ref(null)
+const capacityAccepted = ref(false)
+const capacityBlocksVMs = computed(() => !!meta.value?.native?.workshop_plan && !capacityAccepted.value)
+watch([() => route.params.id, () => backend.activeHost?.id, getBackendScope, () => backend.token], () => { capacityAccepted.value = false }, {flush: 'sync'})
 const workshopSeat = computed(() => meta.value?.native?.path === 'scenarios/range42-native-workshop'
   ? Number(meta.value.native.parameters?.WORKSHOP_ONLY_SEAT || 0) : 0)
 const needsNativePreviewRefresh = computed(() => workshopSeat.value > 0
@@ -93,7 +97,7 @@ const canPrepare = computed(() => !legacyNativeWorkshop.value && meta.value && !
       && ['runtime', 'teardown'].includes(attempts.value.find(attempt => attempt.id === meta.value.current_attempt_id)?.scope))))
 const hasWarnings = computed(() => preflight.value?.result === 'warn'
   || preflight.value?.checks?.some(check => check.result === 'warn'))
-const canStart = computed(() => canPrepare.value && !checkingPreflight.value && !starting.value
+const canStart = computed(() => canPrepare.value && !capacityBlocksVMs.value && !checkingPreflight.value && !starting.value
   && preflight.value && ['pass', 'warn'].includes(preflight.value.result)
   && !preflight.value.checks?.some(check => check.result === 'block')
   && (!hasWarnings.value || warningsAck.value))
@@ -146,7 +150,7 @@ const maintenanceRequest = computed(() => meta.value?.native ? { scope: maintena
   ? { scope: 'configure', project_sha: maintenanceSha.value.trim() } : { scope: 'teardown' })
 const maintenanceWarnings = computed(() => maintenanceRecord.value?.result === 'warn'
   || maintenanceRecord.value?.checks?.some(check => check.result === 'warn'))
-const canRunMaintenance = computed(() => canMaintain.value && !maintenanceBusy.value
+const canRunMaintenance = computed(() => canMaintain.value && !capacityBlocksVMs.value && !maintenanceBusy.value
   && maintenanceRecord.value && ['pass', 'warn'].includes(maintenanceRecord.value.result)
   && !maintenanceRecord.value.checks?.some(check => check.result === 'block')
   && JSON.stringify(maintenanceSnapshot.value) === JSON.stringify(maintenanceRequest.value)
@@ -671,6 +675,7 @@ onBeforeUnmount(() => {
           :disabled="!canStart" @click="startDeployment">{{ t('deployment.detail.start') }}</button>
       </div>
       <PreflightReport v-if="preflight" :record="preflight" />
+      <p v-if="capacityBlocksVMs" role="status" class="text-sm">Complete the capacity reservation and physical acceptance in Overview before starting workshop virtual machines.</p>
       <label v-if="hasWarnings" class="flex items-center gap-2 text-sm">
         <input v-model="warningsAck" type="checkbox" class="checkbox checkbox-sm" data-testid="deployment-warnings-ack" />
         {{ t('deployment.deploy.preflight.acknowledge') }}
@@ -738,9 +743,10 @@ onBeforeUnmount(() => {
       <DeploymentWriteAdmission v-if="meta && !loadError" :key="`admission-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="starting || maintenanceBusy" @changed="onWriteAdmissionChanged" />
       <p v-if="nativePreviewNotice" role="status" class="text-sm mb-3">{{ nativePreviewNotice }} <button type="button" class="btn btn-sm" @click="refreshNativePreview">Refresh preview</button></p>
       <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
+      <DeploymentCapacity v-if="meta?.native?.workshop_plan && !loadError" :key="`capacity-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="!attemptsIdle || starting || maintenanceBusy" @changed="capacityAccepted = $event === true" />
       <NativeOwnershipImport v-if="legacyNativeWorkshop && !workshopSeat && !loadError" :key="`ownership-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="starting || maintenanceBusy" @changed="ownershipPhase = $event" />
       <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !meta.native.workshop_plan && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="!attemptsIdle || starting || checkingPreflight || maintenanceBusy" :vm-operations-disabled="managedWritesClosed || ownershipPhase !== 'active'" />
-      <WorkshopRunParticipants v-if="meta?.native?.workshop_plan && !loadError" :key="`run-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" @started="onRuntimeStarted" />
+      <WorkshopRunParticipants v-if="meta?.native?.workshop_plan && !loadError" :key="`run-${route.params.id}`" :deployment-id="String(route.params.id)" :participants-per-environment="meta.native.workshop_plan.participants_per_environment ?? 1" :disabled="operationControlsDisabled || capacityBlocksVMs" @started="onRuntimeStarted" />
       <RunPeople v-if="meta?.native?.workshop_plan && !loadError" :key="`people-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <DeploymentAllocations v-if="meta && (!meta.native || meta.native.workshop_plan) && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"

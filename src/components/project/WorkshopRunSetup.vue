@@ -6,7 +6,7 @@ import { reserveScenarioAllocation, type ScenarioReservation } from '@/services/
 import type { NativeTopology } from '@/services/nativeScenarioCanvas'
 
 export interface WorkshopSpec {
-  namespace: string; seats: number; expires_at: string; vmid_start: number;
+  namespace: string; seats: number; participants_per_environment?: number; expires_at: string; vmid_start: number;
   network_pool: string; bridge_start: number; proxmox_template: number; deployer_template: number;
   storage: string;
 }
@@ -24,16 +24,17 @@ const backend = useBackendApiStore()
 const draftKey = `workshop-${crypto.randomUUID()}`
 const fields = [
   {name: 'namespace', label: 'Run name', type: 'text', hint: 'Unique short name, such as training-october.'},
-  {name: 'seats', label: 'Participants', type: 'number', hint: 'Each participant receives a Proxmox VM and a deployer VM.'},
+  {name: 'seats', label: 'Environments', type: 'number', hint: 'Each environment has one Proxmox VM and one CLI VM, shared by its group.'},
+  {name: 'participants_per_environment', label: 'Participants per environment', type: 'number', hint: 'Roster capacity for each group. Individual login and laptop access are separate optional integrations.'},
   {name: 'expires_at', label: 'Workshop ends', type: 'datetime-local', hint: 'Your local time; saved in UTC.'},
-  {name: 'vmid_start', label: 'First participant VMID', type: 'number', hint: 'Two consecutive VMIDs per participant. Existing allocations are protected.'},
-  {name: 'network_pool', label: 'Participant network pool', type: 'text', hint: 'Private IPv4 CIDR, such as 10.79.0.0/24. One separate /28 per participant.'},
+  {name: 'vmid_start', label: 'First participant VMID', type: 'number', hint: 'Two consecutive VMIDs per environment. Existing allocations are protected.'},
+  {name: 'network_pool', label: 'Participant network pool', type: 'text', hint: 'Private IPv4 CIDR, such as 10.79.0.0/24. One separate /28 per environment.'},
   {name: 'bridge_start', label: 'First participant bridge number', type: 'number', hint: 'For example, 600 uses vmbr600, vmbr601 and so on.'},
   {name: 'proxmox_template', label: 'Nested Proxmox template VMID', type: 'number', hint: 'Reusable qualified template; retained when the run is deleted.'},
   {name: 'deployer_template', label: 'Deployer template VMID', type: 'number', hint: 'Clean Linux template used for the native installation exercise.'},
   {name: 'storage', label: 'Participant VM storage', type: 'text', hint: 'Storage on the selected target for the cloned participant disks.'},
 ] as const
-const input = reactive<Record<string, string | number>>({namespace: '', seats: Math.min(5, props.maxSeats), expires_at: '',
+const input = reactive<Record<string, string | number>>({namespace: '', seats: Math.min(5, props.maxSeats), participants_per_environment: 1, expires_at: '',
   vmid_start: '', network_pool: '', bridge_start: '', proxmox_template: '', deployer_template: '', storage: ''})
 const busy = ref(false)
 const error = ref('')
@@ -68,14 +69,16 @@ watch(() => props.profile, profile => {
 }, {immediate: true, deep: true})
 const specification = computed<WorkshopSpec | null>(() => {
   const expiry = new Date(String(input.expires_at))
-  const numbers = ['seats', 'vmid_start', 'bridge_start', 'proxmox_template', 'deployer_template']
+  const numbers = ['seats', 'participants_per_environment', 'vmid_start', 'bridge_start', 'proxmox_template', 'deployer_template']
   if (!/^[a-z][a-z0-9-]{0,19}$/.test(String(input.namespace)) || !input.network_pool || !/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(String(input.storage))
     || !Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()
     || numbers.some(name => !Number.isSafeInteger(Number(input[name])) || Number(input[name]) < 1)
-    || Number(input.seats) < props.minSeats || Number(input.seats) > props.maxSeats) return null
+    || Number(input.seats) < props.minSeats || Number(input.seats) > props.maxSeats
+    || Number(input.participants_per_environment) > 10) return null
   return {namespace: String(input.namespace), seats: Number(input.seats), expires_at: expiry.toISOString(),
     vmid_start: Number(input.vmid_start), network_pool: String(input.network_pool), bridge_start: Number(input.bridge_start),
-    proxmox_template: Number(input.proxmox_template), deployer_template: Number(input.deployer_template), storage: String(input.storage)}
+    proxmox_template: Number(input.proxmox_template), deployer_template: Number(input.deployer_template), storage: String(input.storage),
+    ...(Number(input.participants_per_environment) === 1 ? {} : {participants_per_environment: Number(input.participants_per_environment)})}
 })
 watch(input, invalidate, {deep: true})
 watch(() => [props.projectId, props.revision, props.path, props.componentId, props.targetHostId, getBackendScope(), backend.token], invalidate)
@@ -122,11 +125,12 @@ onBeforeUnmount(() => { epoch++; clearTimeout(expiryTimer) })
         <span class="text-sm font-medium">{{ field.label }}</span>
         <input v-model="input[field.name]" :type="field.type" :data-testid="`workshop-input-${field.name}`"
           :min="field.name === 'seats' ? minSeats : field.type === 'number' ? 1 : undefined"
-          :max="field.name === 'seats' ? maxSeats : undefined" required class="input input-bordered w-full"
+          :max="field.name === 'seats' ? maxSeats : field.name === 'participants_per_environment' ? 10 : undefined" required class="input input-bordered w-full"
           :aria-describedby="`workshop-hint-${field.name}`" />
         <span :id="`workshop-hint-${field.name}`" class="text-xs text-base-content/70">{{ field.hint }}</span>
       </label>
     </div>
+    <p data-testid="workshop-group-summary" class="text-sm">{{ input.seats }} environments · up to {{ Number(input.seats) * Number(input.participants_per_environment) }} participants · {{ Number(input.seats) * 20 }} GiB guest RAM. A reset replaces the shared environment for its whole group.</p>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
     <p v-if="!reviewed" role="status" class="text-sm">Review the updated resource plan before creating the deployment.</p>
     <p v-else role="status" class="text-sm">VM IDs and addresses are reserved on the selected target. Creating the deployment transfers this reservation to the run. Preflight verifies templates, networks and capacity before execution.</p>

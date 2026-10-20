@@ -547,9 +547,26 @@ describe('<DeploymentDetail>', () => {
     }}})
     await settle(wrapper)
     expect(wrapper.get('[data-testid="maintenance-scope"]').findAll('option').map(option => option.element.value)).toEqual(['full', 'configure', 'teardown'])
+    expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="deployment-capacity"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="owned-participants"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="panel-overview"]').find('[data-testid="owned-allocations"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="legacy-participants"]').exists()).toBe(false)
+  })
+
+  it('requires physical capacity acceptance before workshop VM actions while keeping people management available', async () => {
+    globalThis.fetch=vi.fn(async url=>({ok:true,status:200,json:async()=>url.endsWith('/preflight')?{result:'pass',checks:[]}
+      :url.endsWith('/attempts')?{items:[]}
+      :{id:'run-capacity',state:'pending',project_sha:'a'.repeat(40),native:{path:'training/course',workshop_plan:{run_id:'run-capacity'},descriptor:{actions:{full:'main.yml',configure:'configure.yml'}}}}}))
+    const router=makeRouter();await router.push('/deployments/run-capacity')
+    const view=mount(DeploymentDetail,{global:{plugins:[router,makeI18n()],stubs:{WorkshopRunParticipants:{name:'WorkshopRunParticipants',props:['disabled'],template:'<section />'},RunPeople:{name:'RunPeople',props:['disabled'],template:'<section />'}}}})
+    await settle(view)
+    await view.get('[data-testid="deployment-run-preflight"]').trigger('click');await flushPromises()
+    expect(view.get('[data-testid="deployment-start"]').attributes('disabled')).toBeDefined()
+    await view.get('[data-testid="maintenance-preflight"]').trigger('click');await flushPromises()
+    expect(view.get('[data-testid="maintenance-start"]').attributes('disabled')).toBeDefined()
+    expect(view.get('[data-testid="capacity-refresh"]').attributes('disabled')).toBeUndefined()
+    expect(view.findComponent({name:'WorkshopRunParticipants'}).props('disabled')).toBe(true)
+    expect(view.findComponent({name:'RunPeople'}).props('disabled')).toBe(false)
   })
 
   it('offers only declared native lifecycle actions and confirms destructive scope', async () => {
