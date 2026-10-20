@@ -17,6 +17,7 @@ vi.mock('@/services/backendApi', () => ({
       return {id:'scoped', name:body.name, api_url:body.api_url, node_name:body.node_name, has_token:true}
     }
     if(path==='/v1/proxmox/hosts') return {items:[{id:'scoped', name:'Scoped provisioner', api_url:'https://pve.test:8006', node_name:'pve'}]}
+    if(path==='/v1/environments/infrastructure/review')return {guests:[{vmid:42130,node:'pve',vmgenid:'12345678-1234-1234-1234-123456789abc',owner:'platform:gateway',nics:[{interface:'net1',bridge:'vmbr600',mac:'02:00:00:00:00:02'}]}]}
     if(path==='/v1/environments/review') return {revision:'a'.repeat(64), ready_for_planning:true, infrastructure_qualified:false, workshop_profile:body.workshop_profile, requirements:['Live infrastructure preflight is required.']}
     if(path==='/v1/environments' && options?.method==='POST') return {id:'env-saved', label:body.label}
     return {items:[], base_contexts:[{id:'trusted', label:'Trusted native runtime', target_node:'pve', target_api_url:'https://pve.test:8006', ready:true, issues:[]}]}
@@ -102,4 +103,20 @@ it('ignores an old registration response without clearing credentials entered fo
   calls.releaseRegister?.();await flushPromises()
   expect((view.get('[data-testid="environment-target-token_ref"]').element as HTMLInputElement).value).toBe('NEW-TARGET-TEST-KEY')
   expect(view.text()).not.toContain('Dedicated target registered')
+})
+
+
+it('inspects a retained gateway before including its generation-bound participant interfaces in review',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  for(const [key,value]of Object.entries({label:'Gateway environment',base_context_id:'trusted',target_host_id:'scoped',profile_id:'gateway-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/23',network_count:'20',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+  await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
+  await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
+  expect(calls.requests.find(row=>row.path==='/v1/environments/infrastructure/review')?.body).toMatchObject({vmids:[42130],target_host_id:'scoped'})
+  await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+  expect(calls.requests.find(row=>row.path==='/v1/environments/review')?.body?.workshop_profile).toMatchObject({infrastructure_guests:[expect.objectContaining({vmid:42130,vmgenid:'12345678-1234-1234-1234-123456789abc',nics:[{interface:'net1',bridge:'vmbr600',mac:'02:00:00:00:00:02'}]})]})
+  await view.get('[data-testid="environment-bridge_start"]').setValue('620')
+  await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+  expect(view.text()).toContain('Inspect the selected infrastructure again')
+  expect(view.find('[data-testid="save-native-environment"]').exists()).toBe(false)
 })

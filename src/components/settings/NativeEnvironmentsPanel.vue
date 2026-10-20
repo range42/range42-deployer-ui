@@ -6,6 +6,7 @@ import { useBackendApiStore } from '@/stores/backendApiStore'
 type Base = {id: string; label: string; target_node: string; target_api_url: string; ready: boolean; issues: string[]}
 type Target = {id: string; name: string; api_url: string; node_name: string}
 type Environment = {id: string; label: string; ready_for_planning: boolean; issues: string[]}
+type InfrastructureGuest = {vmid:number;node:string;vmgenid:string;owner:string;nics:Array<{interface:string;bridge:string;mac:string}>}
 type Review = {revision: string; requirements: string[]; infrastructure_qualified: boolean}
 const emit = defineEmits<{dirty: [value: boolean]}>()
 const backend = useBackendApiStore()
@@ -15,15 +16,17 @@ const editing=ref(false), addingTarget=ref(false), reviewed=ref<Review|null>(nul
 const initial = () => ({label:'',base_context_id:'',target_host_id:'',profile_id:'',vmid_start:'',vmid_end:'',network_pool:'',network_count:'10',bridge_start:'',proxmox_template:'',deployer_template:'',storage:''})
 const form=ref(initial())
 const target=ref({name:'',api_url:'',node_name:'',token_ref:''})
+const gatewayVmids=ref(''), infrastructureGuests=ref<InfrastructureGuest[]>([])
 let generation=0, controller: AbortController|null=null
 const dirty=computed(()=>editing.value||addingTarget.value)
 watch(dirty,value=>emit('dirty',value))
-watch(form,()=>{reviewed.value=null}, {deep:true,flush:'sync'})
+watch(form,()=>{reviewed.value=null;infrastructureGuests.value=[]}, {deep:true,flush:'sync'})
+watch(gatewayVmids,()=>{reviewed.value=null;infrastructureGuests.value=[]},{flush:'sync'})
 function reset() {
   generation++;controller?.abort();controller=null
   items.value=[];bases.value=[];targets.value=[];loaded.value=false;busy.value=false;role.value=''
   error.value='';notice.value='';editing.value=false;addingTarget.value=false;reviewed.value=null;revalidating.value=''
-  form.value=initial();target.value={name:'',api_url:'',node_name:'',token_ref:''}
+  form.value=initial();target.value={name:'',api_url:'',node_name:'',token_ref:''};gatewayVmids.value='';infrastructureGuests.value=[]
 }
 watch(()=>JSON.stringify([backend.activeHost?.id,getBackendScope(),backend.token]),reset,{flush:'sync'})
 onBeforeUnmount(reset)
@@ -46,7 +49,7 @@ async function load() {
   }catch(cause){fail(cause,request)}finally{if(active(request))busy.value=false}
 }
 function newEnvironment() {
-  form.value=initial()
+  form.value=initial();gatewayVmids.value='';infrastructureGuests.value=[]
   if(bases.value.length===1)form.value.base_context_id=bases.value[0]!.id
   if(targets.value.length===1)form.value.target_host_id=targets.value[0]!.id
   reviewed.value=null;revalidating.value='';editing.value=true;notice.value='';error.value=''
@@ -55,8 +58,16 @@ function integer(value:string,min:number,max:number,label:string) {
   if(!/^\d+$/.test(value)||!Number.isSafeInteger(Number(value))||Number(value)<min||Number(value)>max)throw new Error(`${label} must be an integer from ${min} to ${max}.`)
   return Number(value)
 }
-function selection() {
+function gatewayIds() {
+  if(!gatewayVmids.value.trim())return []
+  const ids=gatewayVmids.value.split(',').map(value=>integer(value.trim(),100,999999999,'Infrastructure VM ID'))
+  if(ids.length>32||new Set(ids).size!==ids.length)throw new Error('Choose at most32 unique infrastructure VM IDs.')
+  return ids
+}
+function selection(allowUnobservedInfrastructure=false) {
   const value=form.value
+  const ids=gatewayIds()
+  if(ids.length&&!allowUnobservedInfrastructure&&(ids.length!==infrastructureGuests.value.length||infrastructureGuests.value.some(guest=>!ids.includes(guest.vmid))))throw new Error('Inspect the selected infrastructure again before reviewing this environment.')
   if(!value.label.trim()||!value.base_context_id||!value.target_host_id||!/^([a-z][a-z0-9-]{0,63})$/.test(value.profile_id))throw new Error('Choose a runtime and target, and enter an environment name and a lowercase profile identifier.')
   const start=integer(value.vmid_start,1000,999999999,'First VM ID'),end=integer(value.vmid_end,start,Math.min(start+4095,999999999),'Last VM ID')
   const count=integer(value.network_count,1,64,'Participant networks'),bridge=integer(value.bridge_start,1,99999999999-63,'First bridge number')
@@ -69,7 +80,19 @@ function selection() {
   return {label:value.label.trim(),base_context_id:value.base_context_id,target_host_id:value.target_host_id,
     workshop_profile:{version:1,id:value.profile_id,vmid_ranges:[[start,end]],
       networks:Array.from({length:count},(_,index)=>({bridge:`vmbr${bridge+index}`,subnet:`${ip(address+16*index)}/28`,gateway:ip(address+16*index+1)})),
-      proxmox_template:integer(value.proxmox_template,100,999999999,'Proxmox template'),deployer_template:integer(value.deployer_template,100,999999999,'Deployer template'),storage:value.storage.trim()}}
+      proxmox_template:integer(value.proxmox_template,100,999999999,'Proxmox template'),deployer_template:integer(value.deployer_template,100,999999999,'Deployer template'),storage:value.storage.trim(),...(infrastructureGuests.value.length?{infrastructure_guests:infrastructureGuests.value}:{})}}
+}
+async function inspectInfrastructure() {
+  const request=generation;error.value='';reviewed.value=null
+  try {
+    const vmids=gatewayIds()
+    if(!vmids.length)throw new Error('Choose at least one retained gateway VM ID.')
+    const payload=selection(true);busy.value=true
+    const result=await backendRequest<{guests:InfrastructureGuest[]}>('/v1/environments/infrastructure/review',{method:'POST',body:JSON.stringify({...payload,vmids})})
+    if(!active(request))return
+    if(result.guests.length!==vmids.length||result.guests.some(guest=>!vmids.includes(guest.vmid)))throw new Error('The returned infrastructure references do not match the selected VMs.')
+    infrastructureGuests.value=result.guests
+  }catch(cause){if(active(request))infrastructureGuests.value=[];fail(cause,request)}finally{if(active(request))busy.value=false}
 }
 async function review() {
   const request=generation;error.value='';notice.value='';reviewed.value=null
@@ -133,6 +156,7 @@ const fields=[['label','Environment name','text'],['profile_id','Profile identif
       <div class="flex flex-wrap gap-2"><button type="button" class="btn btn-outline btn-sm" :disabled="busy||editing||addingTarget||!bases.length" data-testid="new-native-environment" @click="newEnvironment">Register environment</button><button type="button" class="btn btn-outline btn-sm" :disabled="busy||addingTarget" data-testid="new-environment-target" @click="addingTarget=true">Register dedicated Proxmox target</button></div>
       <form v-if="addingTarget" data-testid="environment-target-form" class="space-y-3 rounded border border-base-300 p-4" @submit.prevent="registerTarget"><fieldset :disabled="busy" class="grid gap-3 sm:grid-cols-2"><legend class="font-medium mb-2">Dedicated target credential</legend><label v-for="[key,label,type] in ([['name','Target name','text'],['api_url','HTTPS API origin','url'],['node_name','Proxmox node','text'],['token_ref','Proxmox API credential','password']] as const)" :key="key" class="form-control gap-1"><span class="text-sm">{{ label }}</span><input v-model="target[key]" :type="type" :data-testid="`environment-target-${key}`" class="input input-bordered w-full" :autocomplete="key==='token_ref'?'new-password':'off'" required /></label></fieldset><p class="text-xs">The backend stores this credential. It is cleared from this form after submission and is never saved in browser settings.</p><div class="flex gap-2"><button type="submit" class="btn btn-primary btn-sm" :disabled="busy" data-testid="register-environment-target">Register target</button><button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="addingTarget=false;target.token_ref=''">Cancel</button></div></form>
       <form v-if="editing" data-testid="native-environment-form" class="space-y-4 rounded border border-base-300 p-4" @submit.prevent="review"><fieldset :disabled="busy" class="grid gap-3 sm:grid-cols-2"><legend class="font-medium mb-2">Provisioning bounds</legend><label class="form-control gap-1"><span class="text-sm">Trusted native runtime</span><select v-model="form.base_context_id" class="select select-bordered w-full" data-testid="environment-base_context_id" required><option disabled value="">Choose a runtime</option><option v-for="base in bases" :key="base.id" :value="base.id" :disabled="!base.ready">{{ base.label }} · {{ base.target_node }}</option></select></label><label class="form-control gap-1"><span class="text-sm">Dedicated Proxmox target</span><select v-model="form.target_host_id" class="select select-bordered w-full" data-testid="environment-target_host_id" required><option disabled value="">Choose a target</option><option v-for="host in targets" :key="host.id" :value="host.id">{{ host.name }} · {{ host.node_name }}</option></select></label><label v-for="[key,label,type] in fields" :key="key" class="form-control gap-1"><span class="text-sm">{{ label }}</span><input v-model="form[key]" :type="type" :data-testid="`environment-${key}`" class="input input-bordered w-full" required /></label></fieldset>
+        <fieldset :disabled="busy" class="space-y-2"><legend class="text-sm font-medium">Retained gateway (optional)</legend><label class="form-control gap-1"><span class="text-sm">Infrastructure VM IDs, separated by commas</span><input v-model="gatewayVmids" type="text" class="input input-bordered w-full" data-testid="environment-gateway-vmids" placeholder="For example, 3001" /></label><p class="text-xs text-base-content/75">Select the existing managed gateway that is attached to participant bridges. Inspection reads its original generation and interfaces; workshop reset and retirement retain this infrastructure.</p><button type="button" class="btn btn-outline btn-sm" :disabled="busy||!gatewayVmids.trim()" data-testid="inspect-environment-infrastructure" @click="inspectInfrastructure">Inspect infrastructure</button><p v-if="infrastructureGuests.length" role="status" class="text-sm">{{ infrastructureGuests.length }} infrastructure VM(s) checked against current and pending configuration. Review again after changing the participant networks.</p></fieldset>
         <p class="text-sm">Each participant network is a separate /28, with its first address as gateway. This records approved bounds; it does not create bridges or modify source templates. Saved bounds are versioned: register another environment to change them.</p>
         <div v-if="reviewed&&!revalidating" class="rounded bg-base-200 p-3 space-y-2" data-testid="environment-reviewed"><p class="font-medium">Configuration reviewed · Live infrastructure preflight required</p><p v-for="requirement in reviewed.requirements" :key="requirement" class="text-sm">{{ requirement }}</p><button type="button" class="btn btn-primary btn-sm" :disabled="busy" data-testid="save-native-environment" @click="save">Save reviewed environment</button></div>
         <div class="flex gap-2"><button type="submit" class="btn btn-outline btn-sm" :disabled="busy" data-testid="review-native-environment">Review configuration</button><button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="editing=false;reviewed=null">Cancel</button></div>
