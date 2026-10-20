@@ -11,6 +11,7 @@ vi.mock('@/services/backendApi', () => ({
   backendRequest: async (path: string, options?: RequestInit) => {
     const body = options?.body ? JSON.parse(String(options.body)) : undefined
     calls.requests.push({path, body, method: options?.method || 'GET'})
+    if(path==='/v1/proxmox/hosts/scoped/physical-node')return {target_host_id:'scoped',configuration_state:'unavailable',binding:null,needs_review:true}
     if(path==='/v1/proxmox/hosts/scoped/credential/review')return {revision:'b'.repeat(64),host:{id:'scoped',name:'Scoped provisioner',api_url:'https://pve.test:8006',node_name:'pve'}}
     if(path==='/v1/proxmox/hosts/scoped/credential')return {id:'scoped',name:'Scoped provisioner',api_url:'https://pve.test:8006',node_name:'pve',has_token:true}
     if(path==='/v1/auth/me') return {role: calls.role}
@@ -39,6 +40,17 @@ async function show() {
   view=mount({template:'<RouterView />'}, {global:{plugins:[router]}})
   await flushPromises()
 }
+
+it('offers physical-node review for the selected target within environment setup',async()=>{
+  await show()
+  await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await flushPromises()
+  expect(view.get('[data-testid="physical-node-identity"]').text()).toContain('Physical server identity')
+  expect(calls.requests.some(row=>row.path.endsWith('/physical-node'))).toBe(false)
+  await view.get('[data-testid="load-physical-node"]').trigger('click');await flushPromises()
+  expect(calls.requests).toContainEqual({path:'/v1/proxmox/hosts/scoped/physical-node',method:'GET',body:undefined})
+  expect(view.get('[data-testid="physical-node-identity"]').text()).toContain('not enrolled')
+})
 
 it('reviews human provisioning bounds and requires a fresh review after edits', async()=>{
   await show()
