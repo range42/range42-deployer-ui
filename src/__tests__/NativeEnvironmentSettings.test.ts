@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import Settings from '@/views/Settings.vue'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 
-const calls = vi.hoisted(() => ({ requests: [] as {path: string; body?: Record<string, unknown>; method?: string}[], role: 'admin', deferRegister: false, releaseRegister: null as null | (() => void) }))
+const calls = vi.hoisted(() => ({ requests: [] as {path: string; body?: Record<string, unknown>; method?: string}[], role: 'admin', failEnvironmentSave: false, deferRegister: false, releaseRegister: null as null | (() => void) }))
 vi.mock('@/services/backendApi', () => ({
   getBackendScope: () => useBackendApiStore().activeHost?.url || '',
   backendRequest: async (path: string, options?: RequestInit) => {
@@ -19,14 +19,19 @@ vi.mock('@/services/backendApi', () => ({
       return {id:'scoped', name:body.name, api_url:body.api_url, node_name:body.node_name, has_token:true}
     }
     if(path==='/v1/proxmox/hosts') return {items:[{id:'scoped', name:'Scoped provisioner', api_url:'https://pve.test:8006', node_name:'pve'}]}
+    if(path==='/v1/environments/foundation/review') {
+      const count=body.workshop_profile.networks.length
+      if(count+14>32)throw new Error(`The gateway uses 14 of 32 NIC slots and needs ${count} additional participant ports. Reduce this environment’s network count or choose another gateway.`)
+      return {gateway_foundation:{vmid:body.vmid,node:'pve',name:'Retained gateway',vmgenid:'12345678-1234-1234-1234-123456789abc',owner:'platform:gateway',configuration_revision:'c'.repeat(64),nics:Array.from({length:14},(_,index)=>({interface:`net${index}`,bridge:`vmbr${400+index}`,mac:`02:00:00:00:00:${index.toString(16).padStart(2,'0')}`}))},nic_capacity:{limit:32,occupied:14,additional_required:count,available:18,remaining_after_preparation:18-count},infrastructure_qualified:false}
+    }
     if(path==='/v1/environments/infrastructure/review')return {guests:[{vmid:42130,node:'pve',vmgenid:'12345678-1234-1234-1234-123456789abc',owner:'platform:gateway',nics:[{interface:'net1',bridge:'vmbr600',mac:'02:00:00:00:00:02'}]}]}
     if(path==='/v1/environments/review') return {revision:'a'.repeat(64), ready_for_planning:true, infrastructure_qualified:false, workshop_profile:body.workshop_profile, requirements:['Live infrastructure preflight is required.']}
-    if(path==='/v1/environments' && options?.method==='POST') return {id:'env-saved', label:body.label}
+    if(path==='/v1/environments' && options?.method==='POST') {if(calls.failEnvironmentSave)throw new Error('The gateway changed after inspection. Inspect it again.');return {id:'env-saved', label:body.label}}
     return {items:[], base_contexts:[{id:'trusted', label:'Trusted native runtime', target_node:'pve', target_api_url:'https://pve.test:8006', ready:true, issues:[]}]}
   },
 }))
 let view: VueWrapper
-beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()); calls.requests=[]; calls.role='admin';calls.deferRegister=false;calls.releaseRegister=null; useBackendApiStore().addHost({url:'https://backend.test', nodeName:'pve', token:'STAFF-ONLY-TEST-KEY'}) })
+beforeEach(() => { localStorage.clear(); setActivePinia(createPinia()); calls.requests=[]; calls.role='admin';calls.failEnvironmentSave=false;calls.deferRegister=false;calls.releaseRegister=null; useBackendApiStore().addHost({url:'https://backend.test', nodeName:'pve', token:'STAFF-ONLY-TEST-KEY'}) })
 afterEach(() => view?.unmount())
 async function show() {
   const router=createRouter({history:createMemoryHistory(), routes:[{path:'/:pathMatch(.*)*', component:Settings}]})
@@ -119,18 +124,18 @@ it('ignores an old registration response without clearing credentials entered fo
 })
 
 
-it('inspects a retained gateway before including its generation-bound participant interfaces in review',async()=>{
+it('retains gateway inspection only while its preparation bounds remain unchanged',async()=>{
   await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
   await view.get('[data-testid="new-native-environment"]').trigger('click')
-  for(const [key,value]of Object.entries({label:'Gateway environment',base_context_id:'trusted',target_host_id:'scoped',profile_id:'gateway-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/23',network_count:'20',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+  for(const [key,value]of Object.entries({label:'Gateway environment',base_context_id:'trusted',target_host_id:'scoped',profile_id:'gateway-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/23',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
   await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
-  expect(calls.requests.find(row=>row.path==='/v1/environments/infrastructure/review')?.body).toMatchObject({vmids:[42130],target_host_id:'scoped'})
+  expect(calls.requests.find(row=>row.path==='/v1/environments/foundation/review')?.body).toMatchObject({vmid:42130,target_host_id:'scoped'})
   await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
-  expect(calls.requests.find(row=>row.path==='/v1/environments/review')?.body?.workshop_profile).toMatchObject({infrastructure_guests:[expect.objectContaining({vmid:42130,vmgenid:'12345678-1234-1234-1234-123456789abc',nics:[{interface:'net1',bridge:'vmbr600',mac:'02:00:00:00:00:02'}]})]})
+  expect(calls.requests.find(row=>row.path==='/v1/environments/review')?.body?.gateway_foundation).toMatchObject({vmid:42130,vmgenid:'12345678-1234-1234-1234-123456789abc',nics:expect.any(Array)})
   await view.get('[data-testid="environment-bridge_start"]').setValue('620')
   await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
-  expect(view.text()).toContain('Inspect the selected infrastructure again')
+  expect(view.text()).toContain('Inspect the selected gateway again')
   expect(view.find('[data-testid="save-native-environment"]').exists()).toBe(false)
 })
 
@@ -182,4 +187,54 @@ it('lets a malformed replacement be corrected without discarding the unchanged r
   await view.get('[data-testid="target-rotation-credential"]').setValue('workshops@pve!renewed=PRIVATE-CORRECTED-TEST-KEY')
   await view.get('[data-testid="target-rotation-form"]').trigger('submit');await flushPromises()
   expect(view.text()).toContain('Credential replaced')
+})
+
+
+it('reviews a retained gateway before its new participant ports exist',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  for(const [key,value]of Object.entries({label:'Future gateway environment',base_context_id:'trusted',target_host_id:'scoped',profile_id:'future-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/24',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+  await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
+  await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
+  expect(calls.requests.find(row=>row.path==='/v1/environments/foundation/review')?.body).toMatchObject({vmid:42130,target_host_id:'scoped'})
+  const reviewed=view.get('[data-testid="gateway-foundation-review"]')
+  expect(reviewed.text()).toContain('14 in use')
+  expect(reviewed.text()).toContain('10 additional')
+  expect(reviewed.text()).toContain('8 remain')
+  expect(reviewed.findAll('tbody tr')).toHaveLength(14)
+  await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+  const body=calls.requests.find(row=>row.path==='/v1/environments/review')?.body
+  expect(body?.gateway_foundation).toMatchObject({vmid:42130,configuration_revision:'c'.repeat(64),nics:expect.any(Array)})
+  expect((body?.workshop_profile as {infrastructure_guests?:unknown}).infrastructure_guests).toBeUndefined()
+})
+
+it('shows the actual NIC limit and requires reinspection after reducing the network count',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  for(const [key,value]of Object.entries({label:'Port capacity review',base_context_id:'trusted',target_host_id:'scoped',profile_id:'future-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/23',network_count:'20',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+  await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
+  await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
+  expect(view.text()).toContain('14 of 32 NIC slots')
+  expect(view.find('[data-testid="gateway-foundation-review"]').exists()).toBe(false)
+  await view.get('[data-testid="environment-network_count"]').setValue('10')
+  await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+  expect(view.text()).toContain('Inspect the selected gateway again')
+  expect(calls.requests.filter(row=>row.path==='/v1/environments/review')).toHaveLength(0)
+})
+
+
+it('clears a failed save review and reloads registered environments before retry',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  for(const [key,value]of Object.entries({label:'Failed gateway save',base_context_id:'trusted',target_host_id:'scoped',profile_id:'retry-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/24',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+  await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
+  await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+  expect(view.find('[data-testid="save-native-environment"]').exists()).toBe(true)
+  calls.failEnvironmentSave=true
+  await view.get('[data-testid="save-native-environment"]').trigger('click');await flushPromises()
+  expect(view.find('[data-testid="save-native-environment"]').exists()).toBe(false)
+  expect(view.find('[data-testid="gateway-foundation-review"]').exists()).toBe(false)
+  expect(view.text()).toContain('gateway changed after inspection')
+  expect(calls.requests.filter(row=>row.path==='/v1/environments'&&row.method==='GET')).toHaveLength(2)
 })
