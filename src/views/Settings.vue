@@ -8,6 +8,7 @@ import { useUserStore, validateDisplayName, validateColor } from '@/stores/userS
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import BackendConnectionsPanel from '@/components/settings/BackendConnectionsPanel.vue'
 import RegisteredTargetsPanel from '@/components/settings/RegisteredTargetsPanel.vue'
+import NativeEnvironmentsPanel from '@/components/settings/NativeEnvironmentsPanel.vue'
 import RetentionPreferencesPanel from '@/components/settings/RetentionPreferencesPanel.vue'
 import EditorPreferencesPanel from '@/components/settings/EditorPreferencesPanel.vue'
 
@@ -31,7 +32,8 @@ function sectionFor(location) {
 }
 const active = computed(() => sectionFor(route))
 const activeSection = computed(() => sections.find(section => section.id === active.value))
-const panelDirty = ref(false)
+const connectionDirty = ref(false), environmentDirty = ref(false)
+const panelDirty = computed(() => connectionDirty.value || environmentDirty.value)
 const identityForm = ref({ display_name: user.display_name, color: user.color })
 const nameError = ref(''), colorError = ref(''), identityStatus = ref('')
 const nameInput = ref(null), colorInput = ref(null), dataError = ref(''), dataStatus = ref('')
@@ -43,7 +45,7 @@ async function allowNavigation() {
 onBeforeRouteLeave(allowNavigation)
 onBeforeRouteUpdate((to, from) => sectionFor(to) === sectionFor(from) || allowNavigation())
 watch(active, () => {
-  panelDirty.value = false
+  connectionDirty.value = false; environmentDirty.value = false
   identityForm.value = { display_name: user.display_name, color: user.color }
   nameError.value = ''; colorError.value = ''; identityStatus.value = ''
 })
@@ -90,8 +92,9 @@ async function clearProjectList() {
       <div class="min-w-0 space-y-6">
         <p class="text-xs font-medium uppercase tracking-wide text-base-content/65">{{ activeSection.description }}<span v-if="dirty" class="ml-3 normal-case tracking-normal text-warning">Unsaved changes</span></p>
         <template v-if="active === 'connections'">
-          <BackendConnectionsPanel @dirty="panelDirty = $event" />
+          <BackendConnectionsPanel @dirty="connectionDirty = $event" />
           <RegisteredTargetsPanel :profile-id="backend.activeHost?.id || ''" />
+          <NativeEnvironmentsPanel @dirty="environmentDirty = $event" />
           <section class="rounded-xl border border-base-300 p-5" aria-labelledby="sources-heading">
             <h2 id="sources-heading" class="font-semibold">Catalog and Git providers</h2>
             <p class="text-sm text-base-content/75 mt-2">Manage public and private repositories, source credentials and indexing in Sources. GitHub, GitLab and Gitea use the same source workflow.</p>

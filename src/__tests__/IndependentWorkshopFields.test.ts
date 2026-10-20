@@ -6,21 +6,21 @@ import NativeDeploymentFields from '@/components/project/NativeDeploymentFields.
 import deployment from '@/locales/en/deployment.json'
 
 enableAutoUnmount(afterEach)
-const calls = vi.hoisted(() => ({ preview: vi.fn(), reserve: vi.fn(), rejectReservation: false, hasProfile: true }))
+const calls = vi.hoisted(() => ({ preview: vi.fn(), reserve: vi.fn(), rejectReservation: false, hasProfile: true, managed: false, isWorkshop: true }))
 vi.mock('@/services/backendApi', () => ({ getBackendScope: () => 'fixture', backendRequest: async (url: string, options?: RequestInit) => {
   if (url === '/v1/proxmox/hosts/host/reservations') {
     const request = JSON.parse(String(options?.body)); calls.reserve(request)
     if (calls.rejectReservation) throw new Error('VMID is already occupied')
     return {project_key: request.project_key, host_id: 'host', reservation_id: 'lease', expires_at: new Date(Date.now() + 3600000).toISOString(), assignments: []}
   }
-  if (url === '/v1/contexts') return { items: [{ id: 'pve', target_host_id: 'host', ready: true, issues: [], workshop_profile: calls.hasProfile ? {id: 'approved-workshops'} : null }] }
+  if (url === '/v1/contexts') return { items: [{ id: 'pve', target_host_id: 'host', ready: true, issues: [], ...(calls.managed ? {purpose: 'workshop', execution_ready: false} : {}), workshop_profile: calls.hasProfile ? {id: 'approved-workshops'} : null }] }
   if (url.endsWith('/native-scenario/preview')) {
     const request = JSON.parse(String(options?.body)); calls.preview(request)
     return {allocation_request: {vmid_start: request.workshop.vmid_start, vmid_end: request.workshop.vmid_start + 9, networks: [{network_id: 'vmbr600', bridge: 'vmbr600', subnet: '10.79.0.0/28'}], vms: [{node_id: 'user01-proxmox', vm_id: request.workshop.vmid_start, nics: [{index: 0, network_id: 'vmbr600', ip: '10.79.0.2'}]}]}, preview_only: true, resources_reserved: false, capacity: {memory_mib: 102400, vcpus: 30, disk_gib: 960},
       assignments: [], topology: { vms: [{vm_id: request.workshop.vmid_start, vm_name: 'owned-pve', bridge: 'vmbr600'}], templates: [], networks: [], warnings: [], reservations: {status: 'checked', issues: []} } }
   }
   return { features: [], topology: {vms: [], templates: [], networks: [], warnings: [], reservations: {status: 'missing', issues: []}},
-    workshop: {version: 1, kind: 'native-installation', title: 'Install Range42', min_seats: 1, max_seats: 10} }
+    ...(calls.isWorkshop ? {workshop: {version: 1, kind: 'native-installation', title: 'Install Range42', min_seats: 1, max_seats: 10}} : {}) }
 } }))
 
 it('provides human run setup at any catalog path and submits the reviewed plan inputs', async () => {
@@ -61,4 +61,26 @@ it('blocks workshop authoring on a normal context without an approved provisioni
     expect(view.emitted('select')?.at(-1)).toEqual([null])
     expect(view.get('[data-testid="workshop-review-plan"]').attributes('disabled')).toBeDefined()
   } finally { calls.hasProfile = true }
+})
+
+
+it('does not offer a bounded workshop environment for an ordinary native workflow',async()=>{
+  calls.managed=true;calls.isWorkshop=false
+  try {
+    const view=mount(NativeDeploymentFields,{props:{projectId:'project',revision:'a'.repeat(40),path:'scenarios/ordinary'},global:{plugins:[createPinia(),createI18n({legacy:false,locale:'en',messages:{en:{deployment}}})]}})
+    await flushPromises()
+    expect(view.emitted('select')?.at(-1)).toEqual([null])
+    expect(view.get('[data-testid="native-context"] option[value="pve"]').attributes('disabled')).toBeDefined()
+    expect(view.text()).toContain('Workshop only')
+  }finally{calls.managed=false;calls.isWorkshop=true}
+})
+
+it('explains that registered resources can be planned while execution awaits qualification',async()=>{
+  calls.managed=true
+  try {
+    const view=mount(NativeDeploymentFields,{props:{projectId:'project',revision:'a'.repeat(40),path:'scenarios/course'},global:{plugins:[createPinia(),createI18n({legacy:false,locale:'en',messages:{en:{deployment}}})]}})
+    await flushPromises()
+    expect(view.text()).toContain('Infrastructure qualification is required before starting guests')
+    expect(view.find('[data-testid="independent-workshop-setup"]').exists()).toBe(true)
+  }finally{calls.managed=false}
 })

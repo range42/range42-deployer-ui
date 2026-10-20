@@ -35,3 +35,9 @@ it('previews only the selected feature resources and keeps networks isolated', (
     === graph.nodes.find(node => node.id === edge.target)?.data.config.bridge)).toBe(true)
   expect(graph.nodes.find(node => node.id === 'preview-vm-43010')?.data.config.cores).toBe(4)
 })
+
+it('retains typed workshop intent for the project preview before any VMs are allocated',()=>{
+  const descriptor={version:1,kind:'native-installation',title:'Install Range42',min_seats:1,max_seats:10}
+  const dynamic={...files,[`${path}/manifest/scenario_vms.json`]:JSON.stringify({version:2,vms:[]}),[`${path}/manifest/workshop.json`]:JSON.stringify(descriptor)}
+  expect(native.nativePreviewFromFiles(dynamic,path)).toMatchObject({workshop:descriptor,topology:{vms:[]}})
+})

@@ -20,8 +20,9 @@
  * `range42_backend_api`. Legacy single-config payloads ({ url, token, health })
  * are migrated into a one-host list on first load.
  *
- * Proxmox host CRUD is NOT in the UI — the backend owns it. The UI reads
- * `/v1/proxmox/hosts` read-only from the configured backend to populate pickers.
+ * The backend owns Proxmox credentials and host records. Most pickers read
+ * `/v1/proxmox/hosts`; the administrator environment form can register a dedicated
+ * target through the authenticated host API without persisting its credential here.
  */
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
