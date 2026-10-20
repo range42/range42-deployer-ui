@@ -28,6 +28,44 @@ async function load(state: Record<string, unknown> = empty, role = 'admin') {
   return view
 }
 
+it('requests physical acceptance with only the original approval and keeps execution closed', async () => {
+  const waiting = {...pending, hold: {...pending.hold, native_acceptance_available: true, native_request_may_have_been_sent: false}}
+  const view = await load(waiting)
+  expect(view.find('[data-testid="capacity-native-accept"]').exists()).toBe(true)
+  vi.mocked(backendRequest).mockResolvedValue({...waiting, hold: {...waiting.hold, native_acceptance_available: false, native_request_may_have_been_sent: true, root_accepted: true}})
+  await view.get('[data-testid="capacity-native-accept"]').trigger('click'); await flushPromises()
+  expect(backendRequest).toHaveBeenLastCalledWith('/v1/deployments/run/capacity/native', expect.objectContaining({method: 'POST', body: JSON.stringify({review_revision: pending.hold.approval_revision})}))
+  expect(view.text()).toContain('Physical acceptance recorded')
+  expect(view.text()).toContain('execution remains blocked')
+  expect(view.emitted('changed')?.at(-1)).toEqual([false])
+  expect(view.find('[data-testid="capacity-native-accept"]').exists()).toBe(false); view.unmount()
+})
+
+it('recovers a lost native reply by reading status and explicitly reconciling the original request', async () => {
+  const waiting = {...pending, hold: {...pending.hold, native_acceptance_available: true, native_request_may_have_been_sent: false}}
+  const unknown = {...pending, hold: {...pending.hold, native_reconciliation_available: true, native_request_may_have_been_sent: true}}
+  const view = await load(waiting)
+  vi.mocked(backendRequest).mockImplementation(async (_path, options) => {
+    if (options?.method === 'POST') throw new Error('Response lost')
+    return unknown
+  })
+  await view.get('[data-testid="capacity-native-accept"]').trigger('click'); await flushPromises()
+  expect(vi.mocked(backendRequest).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  expect(view.find('[data-testid="capacity-native-accept"]').exists()).toBe(false)
+  expect(view.find('[data-testid="capacity-native-reconcile"]').exists()).toBe(true)
+  vi.mocked(backendRequest).mockResolvedValue({...unknown, hold: {...unknown.hold, native_reconciliation_available: false, root_accepted: true}})
+  await view.get('[data-testid="capacity-native-reconcile"]').trigger('click'); await flushPromises()
+  expect(backendRequest).toHaveBeenLastCalledWith('/v1/deployments/run/capacity/native/reconcile', expect.objectContaining({method: 'POST', body: '{}'}))
+  expect(view.text()).toContain('Physical acceptance recorded')
+  expect(view.emitted('changed')?.at(-1)).toEqual([false]); view.unmount()
+})
+
+it('refuses a response offering new native acceptance after an uncertain request', async () => {
+  const view = await load({...pending, hold: {...pending.hold, native_acceptance_available: true, native_request_may_have_been_sent: true}})
+  expect(view.get('[role="alert"]').text()).toContain('verified')
+  expect(view.find('[data-testid="capacity-native-accept"]').exists()).toBe(false); view.unmount()
+})
+
 describe('deployment capacity reservation in Overview', () => {
   it('shows exact requirements and reserves only the server review reference', async () => {
     const view = await load()

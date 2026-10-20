@@ -6,8 +6,8 @@ import { useDialogKeyboard } from '@/composables/useDialogKeyboard'
 
 interface Storage {pool_id: string; cluster_id: string; replicas: number; namespace: string; logical_bytes: number}
 interface Guest {vm_id: number; memory_mib: number; vcpus: number; storage: Storage[]}
-interface Hold {id: string; allocation_id: string; physical_node_id: string; status: string; revision: number; approval_revision: string; approved_by: string; created_at: string; requirements: Guest[]; reservation_recorded: true; root_accepted: false;
-  native_request_may_have_been_sent?: boolean; unused_retirement_review_available?: boolean; retired_by?: string | null; retired_at?: string | null}
+interface Hold {id: string; allocation_id: string; physical_node_id: string; status: string; revision: number; approval_revision: string; approved_by: string; created_at: string; requirements: Guest[]; reservation_recorded: true; root_accepted: boolean;
+  native_request_may_have_been_sent?: boolean; native_acceptance_available?: boolean; native_reconciliation_available?: boolean; unused_retirement_review_available?: boolean; retired_by?: string | null; retired_at?: string | null}
 interface Status {deployment_id: string; applicable: boolean; hold: Hold | null; live_verified: false; execution_ready: false; infrastructure_qualified: false}
 interface Pool {cluster_id: string; replicas: number; available_bytes: number; potential_bytes: number; held_bytes: number; logical_headroom_bytes: number}
 interface Cluster {available_bytes: number; potential_bytes: number; held_bytes: number; raw_headroom_bytes: number}
@@ -48,11 +48,16 @@ function accept(value: Status) {
   if (value.hold) {
     const hold = value.hold
     if (!hash(hold.id, 32) || !hash(hold.allocation_id, 32) || !hash(hold.physical_node_id, 32) || !hash(hold.approval_revision) || !quantity(hold.revision) || !hold.revision ||
-        !['pending_root', 'active', 'releasing', 'retired'].includes(hold.status) || hold.reservation_recorded !== true || hold.root_accepted !== false || !value.applicable) invalid()
+        !['pending_root', 'active', 'releasing', 'retired'].includes(hold.status) || hold.reservation_recorded !== true || typeof hold.root_accepted !== 'boolean' || !value.applicable) invalid()
     checkGuests(hold.requirements)
     if ((hold.native_request_may_have_been_sent !== undefined && typeof hold.native_request_may_have_been_sent !== 'boolean')
       || (hold.unused_retirement_review_available !== undefined && typeof hold.unused_retirement_review_available !== 'boolean')
-      || (hold.unused_retirement_review_available === true && (hold.status !== 'pending_root' || hold.native_request_may_have_been_sent !== false))) invalid()
+      || (hold.native_acceptance_available !== undefined && typeof hold.native_acceptance_available !== 'boolean')
+      || (hold.native_reconciliation_available !== undefined && typeof hold.native_reconciliation_available !== 'boolean')
+      || (hold.native_acceptance_available === true && (hold.status !== 'pending_root' || hold.native_request_may_have_been_sent !== false || hold.root_accepted))
+      || (hold.native_reconciliation_available === true && (hold.status !== 'pending_root' || hold.native_request_may_have_been_sent !== true || hold.root_accepted))
+      || (hold.root_accepted && hold.native_request_may_have_been_sent !== true)
+      || (hold.unused_retirement_review_available === true && (hold.status !== 'pending_root' || hold.native_request_may_have_been_sent !== false || hold.root_accepted))) invalid()
   }
   state.value = value; reviewed.value = null; confirmingRelease.value = false; emit('changed', false)
 }
@@ -103,6 +108,26 @@ async function reserve() {
   finally { if (current === generation) { loading.value = false; activity.value = ''; await nextTick(); if (current === generation) refreshButton.value?.focus() } }
 }
 
+async function nativeAcceptance(reconcile = false) {
+  const hold = state.value?.hold
+  if (busy.value || role.value !== 'admin' || !hold || (reconcile ? hold.native_reconciliation_available !== true : hold.native_acceptance_available !== true)) return
+  const current = generation
+  controller = new AbortController(); loading.value = true; error.value = ''; reviewed.value = null
+  activity.value = reconcile ? 'Reading the original physical acceptance…' : 'Requesting physical acceptance of the original reservation…'
+  try {
+    const result = await backendRequest<Status>(endpoint() + (reconcile ? '/native/reconcile' : '/native'),
+      {method: 'POST', body: reconcile ? '{}' : JSON.stringify({review_revision: hold.approval_revision}), signal: controller.signal})
+    if (current === generation) accept(result)
+  } catch (cause) {
+    if (current === generation) {
+      error.value = message(cause)
+      try { await readStatus(current) } catch { if (current === generation) state.value = null }
+    }
+  } finally {
+    if (current === generation) { loading.value = false; activity.value = ''; await nextTick(); if (current === generation) refreshButton.value?.focus() }
+  }
+}
+
 async function releaseUnused() {
   if (busy.value || !confirmingRelease.value || role.value !== 'admin' || !canReviewUnused.value
     || reviewed.value?.unused_retirement_eligible !== true) return
@@ -132,11 +157,14 @@ async function releaseUnused() {
     <p v-if="role && role !== 'admin'" role="status">An administrator must review and reserve this workshop’s physical resources.</p>
     <p v-if="state && !state.applicable" role="status">This deployment does not declare a managed workshop resource plan.</p>
     <template v-if="state?.hold">
-      <p v-if="state.hold.status === 'pending_root'" role="status" class="alert alert-info"><strong>Physical acceptance pending.</strong> The reservation is recorded. Virtual machine operations remain blocked until the original physical-node acceptance and execution checks pass.</p>
+      <p v-if="state.hold.root_accepted" role="status" class="alert alert-info"><strong>Physical acceptance recorded.</strong> Environment preparation and bounded execution remain required; execution remains blocked.</p>
+      <p v-else-if="state.hold.status === 'pending_root'" role="status" class="alert alert-info"><strong>Physical acceptance pending.</strong> The reservation is recorded. Virtual machine operations remain blocked until the original physical-node acceptance and execution checks pass.</p>
       <p v-else-if="state.hold.status === 'retired'" role="status">Reservation retired. Create a new run to reserve resources again.</p>
       <p v-else role="status">The retained reservation requires native reconciliation. Virtual machine operations remain blocked.</p>
       <p class="text-sm">Recorded by {{ state.hold.approved_by }} at {{ state.hold.created_at }}. Stopping a guest or a failed attempt does not release its reservation.</p>
-      <p v-if="state.hold.native_request_may_have_been_sent" role="status">Native acceptance may have been requested. Preserve this reservation until the original native outcome is reconciled.</p>
+      <p v-if="state.hold.native_request_may_have_been_sent && !state.hold.root_accepted" role="status">Native acceptance may have been requested. Preserve this reservation until the original native outcome is reconciled.</p>
+      <button v-if="state.hold.native_acceptance_available && role === 'admin'" type="button" class="btn btn-primary btn-sm" data-testid="capacity-native-accept" :disabled="busy" @click="nativeAcceptance()">Request physical acceptance</button>
+      <button v-if="state.hold.native_reconciliation_available && role === 'admin'" type="button" class="btn btn-outline btn-sm" data-testid="capacity-native-reconcile" :disabled="busy" @click="nativeAcceptance(true)">Reconcile physical acceptance</button>
       <p v-if="state.hold.status === 'retired' && state.hold.retired_by" class="text-sm">Unused reservation retired by {{ state.hold.retired_by }}. The allocation and audit record are retained.</p>
       <button v-if="canReviewUnused && role === 'admin'" type="button" class="btn btn-outline btn-sm" data-testid="capacity-unused-review" :disabled="busy" @click="inspect(true)">Review unused reservation release</button>
     </template>
