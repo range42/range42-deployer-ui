@@ -2,6 +2,7 @@
 import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
 import DeploymentParticipants from '@/components/deployment/DeploymentParticipants.vue'
 import WorkshopRunParticipants from '@/components/deployment/WorkshopRunParticipants.vue'
+import RunPeople from '@/components/deployment/RunPeople.vue'
 /**
  * /deployments/:id — Plan C §C4.4
  *
@@ -716,6 +717,7 @@ onBeforeUnmount(() => {
       <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
       <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !meta.native.workshop_plan && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="operationControlsDisabled" />
       <WorkshopRunParticipants v-if="meta?.native?.workshop_plan && !loadError" :key="`run-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" @started="onRuntimeStarted" />
+      <RunPeople v-if="meta?.native?.workshop_plan && !loadError" :key="`people-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <DeploymentAllocations v-if="meta && (!meta.native || meta.native.workshop_plan) && !loadError" :deployment-id="String(route.params.id)" :disabled="operationControlsDisabled" />
       <SnapshotSets v-if="supportsConcreteActions && meta && !meta.native && !loadError" :deployment-id="String(route.params.id)"
         :project-sha="meta.project_sha" :host-id="meta.target_host_id" :disabled="!canMaintain || starting || maintenanceBusy" @changed="loadMeta" />
