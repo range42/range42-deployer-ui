@@ -5,12 +5,14 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import Settings from '@/views/Settings.vue'
 import { useBackendApiStore } from '@/stores/backendApiStore'
 
-const calls = vi.hoisted(() => ({ requests: [] as {path: string; body?: Record<string, unknown>}[], role: 'admin', deferRegister: false, releaseRegister: null as null | (() => void) }))
+const calls = vi.hoisted(() => ({ requests: [] as {path: string; body?: Record<string, unknown>; method?: string}[], role: 'admin', deferRegister: false, releaseRegister: null as null | (() => void) }))
 vi.mock('@/services/backendApi', () => ({
   getBackendScope: () => useBackendApiStore().activeHost?.url || '',
   backendRequest: async (path: string, options?: RequestInit) => {
     const body = options?.body ? JSON.parse(String(options.body)) : undefined
-    calls.requests.push({path, body})
+    calls.requests.push({path, body, method: options?.method || 'GET'})
+    if(path==='/v1/proxmox/hosts/scoped/credential/review')return {revision:'b'.repeat(64),host:{id:'scoped',name:'Scoped provisioner',api_url:'https://pve.test:8006',node_name:'pve'}}
+    if(path==='/v1/proxmox/hosts/scoped/credential')return {id:'scoped',name:'Scoped provisioner',api_url:'https://pve.test:8006',node_name:'pve',has_token:true}
     if(path==='/v1/auth/me') return {role: calls.role}
     if(path==='/v1/proxmox/hosts' && options?.method==='POST') {
       if(calls.deferRegister) await new Promise<void>(resolve=>{calls.releaseRegister=resolve})
@@ -130,4 +132,54 @@ it('inspects a retained gateway before including its generation-bound participan
   await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
   expect(view.text()).toContain('Inspect the selected infrastructure again')
   expect(view.find('[data-testid="save-native-environment"]').exists()).toBe(false)
+})
+
+
+it('replaces only a reviewed existing target credential without posting host defaults',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="rotate-target-scoped"]').trigger('click');await flushPromises()
+  expect(view.get('[data-testid="target-rotation-form"]').text()).toContain('Scoped provisioner')
+  expect(view.get('[data-testid="target-rotation-form"]').text()).toContain('https://pve.test:8006')
+  await view.get('[data-testid="target-rotation-credential"]').setValue('workshops@pve!renewed=PRIVATE-ROTATED-TEST-KEY')
+  await view.get('[data-testid="target-rotation-form"]').trigger('submit');await flushPromises()
+  expect(calls.requests.find(row=>row.path==='/v1/proxmox/hosts/scoped/credential')).toEqual({
+    path:'/v1/proxmox/hosts/scoped/credential',method:'PUT',body:{expected_revision:'b'.repeat(64),token_ref:'workshops@pve!renewed=PRIVATE-ROTATED-TEST-KEY'},
+  })
+  expect(calls.requests.some(row=>row.path==='/v1/proxmox/hosts'&&row.method==='POST')).toBe(false)
+  expect(view.html()).not.toContain('PRIVATE-ROTATED-TEST-KEY')
+  expect(JSON.stringify(localStorage)).not.toContain('PRIVATE-ROTATED-TEST-KEY')
+  expect(view.text()).toContain('Credential replaced')
+})
+
+it('clears an entered replacement on cancel without submitting it',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="rotate-target-scoped"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="target-rotation-credential"]').setValue('workshops@pve!renewed=PRIVATE-CANCELLED-TEST-KEY')
+  await view.get('[data-testid="cancel-target-rotation"]').trigger('click')
+  expect(view.find('[data-testid="target-rotation-form"]').exists()).toBe(false)
+  expect(calls.requests.some(row=>row.path==='/v1/proxmox/hosts/scoped/credential')).toBe(false)
+  expect(view.html()).not.toContain('PRIVATE-CANCELLED-TEST-KEY')
+})
+
+it('clears replacement authority and credentials when the backend changes',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="rotate-target-scoped"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="target-rotation-credential"]').setValue('workshops@pve!renewed=PRIVATE-UNSENT-TEST-KEY')
+  const backend=useBackendApiStore();backend.setActiveHost(backend.addHost({url:'https://other.test',nodeName:'pve',token:'OTHER-STAFF-KEY'}));await flushPromises()
+  expect(view.find('[data-testid="target-rotation-form"]').exists()).toBe(false)
+  expect(calls.requests.some(row=>row.path==='/v1/proxmox/hosts/scoped/credential')).toBe(false)
+  expect(view.html()).not.toContain('PRIVATE-UNSENT-TEST-KEY')
+})
+
+
+it('lets a malformed replacement be corrected without discarding the unchanged review',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="rotate-target-scoped"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="target-rotation-credential"]').setValue('mistyped')
+  await view.get('[data-testid="target-rotation-form"]').trigger('submit');await flushPromises()
+  expect(view.get('[data-testid="submit-target-rotation"]').attributes('disabled')).toBeUndefined()
+  expect(calls.requests.some(row=>row.path==='/v1/proxmox/hosts/scoped/credential')).toBe(false)
+  await view.get('[data-testid="target-rotation-credential"]').setValue('workshops@pve!renewed=PRIVATE-CORRECTED-TEST-KEY')
+  await view.get('[data-testid="target-rotation-form"]').trigger('submit');await flushPromises()
+  expect(view.text()).toContain('Credential replaced')
 })

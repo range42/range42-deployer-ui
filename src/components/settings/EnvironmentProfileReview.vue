@@ -23,7 +23,7 @@ defineProps<{profile: ReviewedEnvironmentProfile}>()
     <div class="max-h-64 overflow-auto rounded border border-base-300 focus-visible:outline-2 focus-visible:outline-primary" tabindex="0" role="region" aria-label="Reviewed participant network allocations">
       <table class="table table-sm w-full" data-testid="environment-reviewed-networks">
         <caption class="p-2 text-left text-sm font-medium">Exact reviewed networks</caption>
-        <thead><tr><th scope="col">Bridge</th><th scope="col">Participant subnet</th><th scope="col">Gateway</th></tr></thead>
+        <thead class="sticky top-0 z-10 bg-base-200"><tr><th scope="col">Bridge</th><th scope="col">Participant subnet</th><th scope="col">Gateway</th></tr></thead>
         <tbody><tr v-for="network in profile.networks" :key="network.bridge"><th scope="row">{{ network.bridge }}</th><td>{{ network.subnet }}</td><td>{{ network.gateway }}</td></tr></tbody>
       </table>
     </div>
