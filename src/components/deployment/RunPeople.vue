@@ -7,7 +7,7 @@ import { useDialogKeyboard } from '@/composables/useDialogKeyboard'
 type Person = {id: string; kind: 'temporary' | 'permanent'; enabled: boolean; generation: number; reconcile_state: string}
 type Membership = {person_id: string; scope_ref: string; role: string; team_ref: string | null; active: boolean; effective: boolean}
 type Reference = {person_id: string; scope_ref: string; record_ref: string}
-type Review = {deployment_id: string; expires_at: string; teams: string[]; run_revision: string; state: {
+type Review = {deployment_id: string; expires_at: string; teams: string[]; participants_per_environment?: number; run_revision: string; state: {
   registry_id: string; revision: number; people: Person[]; scopes: {ref: string; expires_at: string; participant_limit_per_team?: number | null}[];
   source_references: Reference[]; memberships: Membership[];
   providers: {id: string; kind: string}[]; bindings: {person_id: string; provider_id: string; subject: string}[];
@@ -17,6 +17,7 @@ const props = defineProps<{deploymentId: string; disabled?: boolean}>()
 const backend = useBackendApiStore()
 const review = ref<Review | null>(null), loading = ref(false), sending = ref(false)
 const error = ref(''), notice = ref(''), role = ref('')
+const integrationState = ref('')
 const alias = ref(''), kind = ref<'temporary' | 'permanent'>('temporary'), returningPerson = ref('')
 const selectedPerson = ref(''), membershipRole = ref('participant'), team = ref('')
 const pending = ref<{person: Person; alias: string} | null>(null), confirmation = ref('')
@@ -27,6 +28,7 @@ function reset() {
   generation++; controller?.abort(); controller = null
   review.value = null; loading.value = false; sending.value = false; role.value = ''
   error.value = ''; notice.value = ''; alias.value = ''; kind.value = 'temporary'; returningPerson.value = ''
+  integrationState.value = ''
   selectedPerson.value = ''; membershipRole.value = 'participant'; team.value = ''; pending.value = null; confirmation.value = ''
 }
 watch(() => JSON.stringify([props.deploymentId, backend.activeHost?.id, getBackendScope(), backend.token]), reset, {flush: 'sync'})
@@ -48,8 +50,10 @@ function returningLabel(person: Person) {
   return `${refs.map(row => `${row.scope_ref}: ${row.record_ref}`).join(', ') || 'Person'} · ${person.id}`
 }
 function seatOccupied(seat: string) {
-  return review.value?.state.memberships.some(row => row.scope_ref === props.deploymentId && row.team_ref === seat
-    && row.role === 'participant' && row.effective && row.person_id !== selectedPerson.value) || false
+  const limit = review.value?.participants_per_environment ?? 1
+  const members = review.value?.state.memberships.filter(row => row.scope_ref === props.deploymentId && row.team_ref === seat
+    && row.role === 'participant' && row.effective && row.person_id !== selectedPerson.value) || []
+  return new Set(members.map(row => row.person_id)).size >= limit
 }
 function membership(person: Person) {
   return review.value?.state.memberships.find(row => row.person_id === person.id && row.scope_ref === props.deploymentId)
@@ -68,17 +72,33 @@ function accept(value: Review) {
   if (value.deployment_id !== props.deploymentId || !value.state || !Array.isArray(value.state.people)) {
     throw new Error('The identity review does not match this deployment. Refresh to retry.')
   }
+  const limit = value.participants_per_environment ?? 1
+  if (!Number.isInteger(limit) || limit < 1 || limit > 10 || value.state.scopes.some(scope =>
+    scope.ref === props.deploymentId && (scope.participant_limit_per_team ?? 1) !== limit)) {
+    throw new Error('The roster policy differs from the saved group size. Refresh the integration review.')
+  }
   review.value = value
 }
 async function refresh() {
   if (busy.value) return
   const current = generation
-  loading.value = true; error.value = ''; notice.value = ''; review.value = null; controller = new AbortController()
+  loading.value = true; error.value = ''; notice.value = ''; review.value = null; integrationState.value = ''; controller = new AbortController()
   try {
     const identity = await backendRequest<{role: string}>('/v1/auth/me', {signal: controller.signal})
     if (current !== generation) return
     role.value = identity.role
     if (identity.role !== 'admin') throw new Error('Administrator access is required to manage run identities.')
+    const capability = await backendRequest<{deployment_id: string; optional: boolean; configuration_state: string;
+      provider_access_verified: boolean; required_for_environment_deployment: boolean}>(
+      `/v1/deployments/${encodeURIComponent(props.deploymentId)}/identities/capabilities`, {signal: controller.signal})
+    if (current !== generation) return
+    if (capability.deployment_id !== props.deploymentId || capability.optional !== true
+      || capability.provider_access_verified !== false || capability.required_for_environment_deployment !== false
+      || !['configured', 'not_configured', 'invalid_configuration'].includes(capability.configuration_state)) {
+      throw new Error('Could not verify the optional onboarding configuration. Environment deployment is independent.')
+    }
+    integrationState.value = capability.configuration_state
+    if (capability.configuration_state !== 'configured') return
     const value = await backendRequest<Review>(`/v1/deployments/${encodeURIComponent(props.deploymentId)}/identities`, {signal: controller.signal})
     if (current === generation) accept(value)
   } catch (cause) { if (current === generation) error.value = cause instanceof Error ? cause.message : 'Could not load the identity review.' }
@@ -135,6 +155,7 @@ async function confirmRemoval() {
     <p v-if="loading" role="status">Loading identity review…</p>
     <p v-if="error" role="alert" class="rounded border border-error bg-base-100 p-3 text-base-content">{{ error }}</p>
     <p v-if="notice" role="status" class="rounded border border-info bg-base-100 p-3 text-base-content">{{ notice }}</p>
+    <p v-if="integrationState && integrationState !== 'configured'" role="status" class="rounded border border-info bg-base-100 p-3 text-base-content">Managed onboarding is optional. {{ integrationState === 'not_configured' ? 'No identity integration is configured.' : 'The configured identity integration needs administrator attention.' }} Environment deployment does not require this integration. Login and laptop access have not been verified.</p>
     <template v-if="review && role === 'admin'">
       <p class="text-sm">Access ends {{ review.expires_at }} (UTC). Registry revision {{ review.state.revision }}.</p>
       <p role="status" class="rounded border border-warning bg-base-100 p-3 text-base-content">Login and laptop access require verified integrations. A saved membership records desired access; each integration must confirm it.</p>
@@ -152,11 +173,11 @@ async function confirmRemoval() {
         </form>
         <form v-if="runPeople.length" class="space-y-3 rounded border border-base-300 p-4" data-testid="membership-form" @submit.prevent="assignMembership">
           <h3 class="font-semibold">Assign a run membership</h3>
-          <p class="text-sm">Choose an available participant seat. Removing a current assignment makes that seat available again.</p>
+          <p class="text-sm">Choose a group environment with an available place. Up to {{ review.participants_per_environment ?? 1 }} participants may share each environment. Removing a membership does not reset its environment.</p>
           <div class="grid gap-3 md:grid-cols-3">
             <label class="form-control gap-1"><span>Person</span><select v-model="selectedPerson" data-testid="membership-person" class="select select-bordered w-full" required :disabled="busy"><option value="" disabled>Choose a person</option><option v-for="person in runPeople.filter(item => item.enabled)" :key="person.id" :value="person.id">{{ label(person) }}</option></select></label>
             <label class="form-control gap-1"><span>Run role</span><select v-model="membershipRole" class="select select-bordered w-full" :disabled="busy"><option value="participant">Participant</option><option value="facilitator">Facilitator</option><option value="director">Director</option><option value="observer">Observer</option></select></label>
-            <label class="form-control gap-1"><span>Participant seat</span><select v-model="team" data-testid="membership-team" class="select select-bordered w-full" :required="membershipRole === 'participant'" :disabled="busy"><option value="">{{ membershipRole === 'participant' ? 'Choose a seat' : 'No seat restriction' }}</option><option v-for="seat in review.teams" :key="seat" :value="seat" :disabled="membershipRole === 'participant' && seatOccupied(seat)">{{ seat }}{{ membershipRole === 'participant' && seatOccupied(seat) ? ' (occupied)' : '' }}</option></select></label>
+            <label class="form-control gap-1"><span>Group environment</span><select v-model="team" data-testid="membership-team" class="select select-bordered w-full" :required="membershipRole === 'participant'" :disabled="busy"><option value="">{{ membershipRole === 'participant' ? 'Choose an environment' : 'No environment restriction' }}</option><option v-for="seat in review.teams" :key="seat" :value="seat" :disabled="membershipRole === 'participant' && seatOccupied(seat)">{{ seat }}{{ membershipRole === 'participant' && seatOccupied(seat) ? ' (full)' : '' }}</option></select></label>
           </div>
           <button type="submit" class="btn btn-sm" :disabled="busy || !selectedPerson || (membershipRole === 'participant' && (!team || seatOccupied(team)))">Save membership</button>
         </form>

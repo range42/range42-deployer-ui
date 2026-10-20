@@ -4,7 +4,7 @@ import { backendBlob, backendRequest, getBackendScope } from '@/services/backend
 import { useBackendApiStore } from '@/stores/backendApiStore'
 import { useDialogKeyboard } from '@/composables/useDialogKeyboard'
 
-const props = defineProps<{deploymentId: string; disabled?: boolean}>()
+const props = defineProps<{deploymentId: string; disabled?: boolean; participantsPerEnvironment?: number}>()
 const emit = defineEmits<{started: [attempt: {id: string; state: string}]}>()
 interface Participant {username: string; seat: number; state: string; attempt_id?: string | null; proxmox_address: string; deployer_address: string}
 interface Workshop {deployment_id: string; namespace: string; phase: string; ready: boolean; expires_at: string;
@@ -21,6 +21,7 @@ let epoch = 0, timer: ReturnType<typeof setInterval> | undefined
 const busy = computed(() => props.disabled || loading.value || sending.value || !!error.value ||
   status.value?.participants.some(person => ['pending', 'running', 'deploying', 'running_attempt'].includes(person.state)))
 const canManage = computed(() => !!status.value?.permissions.manage_instances && !busy.value)
+const groupSize = computed(() => props.participantsPerEnvironment ?? 1)
 watch(() => [props.deploymentId, getBackendScope(), backend.token], () => {
   epoch++; status.value = null; pending.value = null; loading.value = false; sending.value = false
   error.value = ''; actionError.value = ''; message.value = ''; void refresh()
@@ -80,7 +81,7 @@ onBeforeUnmount(() => { epoch++; if (timer) clearInterval(timer) })
 <template>
   <section class="my-4 space-y-4" data-testid="workshop-run-participants" aria-labelledby="workshop-run-title">
     <header class="flex flex-wrap justify-between gap-3">
-      <div><h2 id="workshop-run-title" class="text-xl font-semibold">Participants and access</h2>
+      <div><h2 id="workshop-run-title" class="text-xl font-semibold">{{ groupSize > 1 ? 'Group environments' : 'Participants and access' }}</h2>
         <p v-if="status" class="text-sm">{{ status.namespace }} · {{ status.phase }} · Ends {{ status.expires_at }} (UTC)</p></div>
       <button type="button" class="btn btn-sm" :disabled="loading" @click="refresh">Refresh status</button>
     </header>
@@ -88,6 +89,7 @@ onBeforeUnmount(() => { epoch++; if (timer) clearInterval(timer) })
     <p v-if="error" role="alert" class="alert alert-error">{{ error }}</p>
     <p v-if="actionError && !pending" role="alert" class="alert alert-error">{{ actionError }}</p>
     <p v-if="message" role="status" class="alert alert-info">{{ message }}</p>
+    <p v-if="groupSize > 1" class="text-sm">Up to {{ groupSize }} participants share each environment. Environment credentials are separate from individual identity and laptop access.</p>
     <p v-if="status?.access.state === 'not_configured'" role="status" class="alert alert-warning">Laptop access is not configured. Instance preparation and participant network access are tracked separately.</p>
     <div v-if="status" class="grid gap-4 lg:grid-cols-2">
       <article v-for="person in status.participants" :key="person.username" class="rounded border border-base-300 p-4 space-y-3">
@@ -106,7 +108,8 @@ onBeforeUnmount(() => { epoch++; if (timer) clearInterval(timer) })
     <div v-if="pending" class="modal modal-open" @keydown="keyboard">
       <form ref="dialog" role="dialog" aria-modal="true" aria-labelledby="workshop-action-title" tabindex="-1" class="modal-box space-y-4" @submit.prevent="action(pending.action, pending.participant)">
         <h3 id="workshop-action-title" class="font-semibold text-lg">{{ pending.action === 'reset' ? 'Reset' : 'Delete' }} {{ pending.participant.username }}?</h3>
-        <p>This replaces or deletes only the selected participant's environment. Its installed labs and data will be lost.</p>
+        <p v-if="groupSize > 1">This affects {{ groupSize === 2 ? 'both members' : 'all members' }} of this group. Its installed labs and data will be lost. Other group environments are retained.</p>
+        <p v-else>This replaces or deletes only the selected participant's environment. Its installed labs and data will be lost.</p>
         <p v-if="actionError" role="alert" class="alert alert-error">{{ actionError }}</p>
         <label class="form-control gap-2"><span>Type {{ pending.participant.username }} to confirm</span>
           <input v-model="confirmation" class="input input-bordered" data-testid="run-confirm-participant" autocomplete="off" /></label>
