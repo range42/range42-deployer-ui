@@ -2,13 +2,16 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import Workshop from '@/components/deployment/DeploymentParticipants.vue'
 import { backendRequest } from '@/services/backendApi'
-vi.mock('@/services/backendApi', () => ({ backendRequest: vi.fn(), backendBlob: vi.fn() }))
+import { reactive } from 'vue'
+const connection = reactive({ url: 'http://test', token: 'alpha' })
+vi.mock('@/stores/backendApiStore', () => ({useBackendApiStore: () => connection}))
+vi.mock('@/services/backendApi', () => ({ backendRequest: vi.fn(), backendBlob: vi.fn(), getBackendScope: () => 'test' }))
 const roster = { cohort_deployment_id: 'cohort-one', id: 'native-friday', expires_at: '2026-10-23T18:00:00Z', operations: [], seats: [
   { username: 'user01', account_ready: true, key_ready: true, handout_ready: true,
     proxmox_address: '10.77.32.2', deployer_address: '10.77.32.3', deployment_id: 'seat-one',
     deployment_state: 'succeeded', devices: [{ id: 5, address: '100.80.0.5', online: true, name: 'laptop' }] },
 ] }
-beforeEach(() => { vi.clearAllMocks(); backendRequest.mockResolvedValue(roster) })
+beforeEach(() => { vi.clearAllMocks(); connection.url = 'http://test'; connection.token = 'alpha'; backendRequest.mockResolvedValue(roster) })
 describe('workshop administration', () => {
   it('focuses participant confirmation after the modal becomes focusable on the next frame', async () => {
     const frames = []
@@ -158,5 +161,34 @@ it('disables participant changes while the parent deployment is running', async 
   const view = mount(Workshop, { props: { deploymentId: 'cohort-one', disabled: true }, global: { stubs: ['RouterLink'] } })
   await flushPromises()
   expect(view.get('[data-testid="reset-user01"]').attributes('disabled')).toBeDefined()
+  view.unmount()
+})
+
+it('blocks paused management changes while allowing emergency revocation and private handouts', async () => {
+  backendRequest.mockResolvedValue({ ...roster, admission: { scope: 'legacy_controller_queue', state: 'paused', revision: 1,
+    pause_id: 'a'.repeat(32), queued_count: 0, running_count: 0 }, seats: [{ ...roster.seats[0],
+    device: { id: 5, address: '100.80.0.5', online: true, name: 'laptop', bound: true } }] })
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  expect(view.get('[data-testid="reset-user01"]').attributes('disabled')).toBeDefined()
+  const button = text => view.findAll('button').find(item => item.text() === text)
+  expect(button('Revoke laptop access').attributes('disabled')).toBeUndefined()
+  expect(button('Download credentials').attributes('disabled')).toBeUndefined()
+  expect(view.find('[data-testid="workshop-resume"]').exists()).toBe(true)
+  await button('Revoke laptop access').trigger('click'); await flushPromises()
+  expect(backendRequest).toHaveBeenCalledWith('/v1/admin/workshop/actions', expect.objectContaining({ body: JSON.stringify({action: 'revoke', username: 'user01'}) }))
+  view.unmount()
+})
+
+it('clears a reviewed pause and ignores an earlier status reply when backend credentials change', async () => {
+  let resolveEarlier
+  backendRequest.mockImplementationOnce(() => new Promise(resolve => { resolveEarlier = resolve }))
+  const view = mount(Workshop, { props: { deploymentId: 'cohort-one' }, global: { stubs: ['RouterLink'] } })
+  await flushPromises()
+  backendRequest.mockResolvedValue({ ...roster, seats: [{ ...roster.seats[0], username: 'user02' }] })
+  connection.token = 'bravo'; await flushPromises()
+  expect(view.text()).toContain('user02')
+  resolveEarlier(roster); await flushPromises()
+  expect(view.text()).not.toContain('user01')
   view.unmount()
 })
