@@ -14,7 +14,11 @@ export interface WorkshopSelection {
   workshop: WorkshopSpec; topology: NativeTopology;
   allocation: {backend_url: string; target_host_id: string; reservation: ScenarioReservation};
 }
-const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string; targetHostId: string; minSeats: number; maxSeats: number }>()
+export interface ProvisioningProfile {
+  id: string; vmid_ranges?: number[][]; networks?: Array<{bridge: string; subnet: string}>;
+  proxmox_template?: number; deployer_template?: number; storage?: string;
+}
+const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string; targetHostId: string; minSeats: number; maxSeats: number; profile?: ProvisioningProfile | null }>()
 const emit = defineEmits<{ select: [value: null | WorkshopSelection] }>()
 const backend = useBackendApiStore()
 const draftKey = `workshop-${crypto.randomUUID()}`
@@ -39,6 +43,29 @@ let expiryTimer: ReturnType<typeof setTimeout> | undefined
 function invalidate() {
   epoch++; clearTimeout(expiryTimer); reviewed.value = false; error.value = ''; busy.value = false; emit('select', null)
 }
+watch(() => props.profile, profile => {
+  if (!profile?.networks?.length || !profile.vmid_ranges?.length || !profile.proxmox_template || !profile.deployer_template || !profile.storage) return
+  const range = [...profile.vmid_ranges].sort((a, b) => a[0]! - b[0]!)[0]
+  if (!range || range.length !== 2) return
+  const address = (subnet: string) => subnet.split('/')[0]!.split('.').reduce((total, part) => total * 256 + Number(part), 0)
+  const networks = profile.networks.map(network => ({...network, bridgeNumber: Number(network.bridge.replace(/^vmbr/, '')), address: address(network.subnet)}))
+    .sort((a, b) => a.bridgeNumber - b.bridgeNumber)
+  let best: {bridge: number; address: number; prefix: number; seats: number} | null = null
+  for (const [index, network] of networks.entries()) {
+    const limit = Math.min(props.maxSeats, Math.floor((range[1]! - range[0]! + 1) / 2), networks.length - index)
+    for (let seats = 1; seats <= limit; seats++) {
+      const last = networks[index + seats - 1]!
+      if (last.bridgeNumber !== network.bridgeNumber + seats - 1 || last.address !== network.address + 16 * (seats - 1)) break
+      const size = 2 ** Math.ceil(Math.log2(seats * 16))
+      if (network.address % size === 0 && (!best || seats > best.seats)) best = {bridge: network.bridgeNumber, address: network.address, prefix: 32 - Math.log2(size), seats}
+    }
+  }
+  if (!best) return
+  const ip = [24, 16, 8, 0].map(shift => Math.floor(best!.address / 2 ** shift) % 256).join('.')
+  Object.assign(input, {vmid_start: range[0], proxmox_template: profile.proxmox_template,
+    deployer_template: profile.deployer_template, storage: profile.storage,
+    bridge_start: best.bridge, network_pool: `${ip}/${best.prefix}`, seats: Math.min(5, best.seats)})
+}, {immediate: true, deep: true})
 const specification = computed<WorkshopSpec | null>(() => {
   const expiry = new Date(String(input.expires_at))
   const numbers = ['seats', 'vmid_start', 'bridge_start', 'proxmox_template', 'deployer_template']
@@ -89,6 +116,7 @@ onBeforeUnmount(() => { epoch++; clearTimeout(expiryTimer) })
   <fieldset class="space-y-4 rounded border border-base-300 p-3" data-testid="independent-workshop-setup">
     <legend class="font-medium">Independent workshop run</legend>
     <p class="text-sm">Participants install Range42 in their own environments. Instance credentials are generated separately for each run. Central application login and laptop network access are configured independently.</p>
+    <p v-if="profile" class="text-sm text-base-content/75">Defaults use profile {{ profile.id }}. Keep changes within its approved bounds; live reservation checks availability.</p>
     <div class="grid gap-3 sm:grid-cols-2">
       <label v-for="field in fields" :key="field.name" class="form-control gap-1">
         <span class="text-sm font-medium">{{ field.label }}</span>

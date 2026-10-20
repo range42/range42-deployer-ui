@@ -12,6 +12,8 @@ import VariablesTab from '@/components/project/VariablesTab.vue'
 import HistoryTab from '@/components/project/HistoryTab.vue'
 import CommandPalette from '@/components/project/CommandPalette.vue'
 import Sidebar from '@/components/Sidebar.vue'
+import WorkshopTemplatePreview from '@/components/catalog/WorkshopTemplatePreview.vue'
+import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
 import ProjectRepositoryConnection from '@/components/ProjectRepositoryConnection.vue'
 import ProxmoxSettingsModal from '@/components/ProxmoxSettingsModal.vue'
 import { useProjectStore } from '@/stores/projectStore'
@@ -222,4 +224,16 @@ describe('Actual ProjectEditor tab and selection navigation', () => {
     expect(JSON.parse(localStorage.getItem('range42_projects'))[0].nodes).toEqual(store.getProject('tabs').nodes)
     expect(pushToGit).not.toHaveBeenCalled()
   })
+})
+
+
+it('explains a parameterized workshop in the project editor instead of showing a zero-VM topology',async()=>{
+  const path='scenarios/installation-workshop'
+  const files={ [`${path}/manifest/scenario_vms.json`]:JSON.stringify({version:2,vms:[]}),
+    [`${path}/manifest/workshop.json`]:JSON.stringify({version:1,kind:'native-installation',title:'Install Range42',min_seats:1,max_seats:10}) }
+  await editor('?tab=canvas',{native_scenario:{version:1,path},files,native_saved_files:files,nodes:[]})
+  const preview=wrapper.findComponent(WorkshopTemplatePreview)
+  expect(preview.exists()).toBe(true)
+  expect(preview.props()).toMatchObject({minSeats:1,maxSeats:10})
+  expect(wrapper.findComponent(NativeScenarioPreview).exists()).toBe(false)
 })

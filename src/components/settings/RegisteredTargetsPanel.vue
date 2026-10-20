@@ -149,6 +149,6 @@ function useNode(target: Target) {
       </li>
     </ul>
     <p class="text-xs text-base-content/65">Target tests check API access and update the backend's recorded health. They do not verify guest connectivity or SDN traffic.</p>
-    <p class="text-xs text-base-content/65">Registration and credential changes are managed by the backend administrator through its deployment configuration or authenticated host API. This panel changes only the local profile's default node.</p>
+    <p class="text-xs text-base-content/65">An administrator can register a dedicated target in Native provisioning environments below. This list changes the local profile's default node.</p>
   </section>
 </template>

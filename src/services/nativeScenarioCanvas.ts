@@ -13,18 +13,25 @@ export interface NativeTopology {
 }
 
 export interface NativeFeature { id: string; label?: string; description?: string; default: boolean }
+export interface NativeWorkshop { version: 1; kind: 'native-installation'; title: string; min_seats: number; max_seats: number }
 
 /** Preview the same pinned local declarations that the native playbook will read. */
-export function nativePreviewFromFiles(files: ProjectFiles, path: string): { topology: NativeTopology; features: NativeFeature[] } {
+export function nativePreviewFromFiles(files: ProjectFiles, path: string): { topology: NativeTopology; features: NativeFeature[]; workshop?: NativeWorkshop } {
   const read = (name: string) => files[`${path}/manifest/${name}`]
   const manifest = JSON.parse(fileText(read('scenario_vms.json')!))
   const networks = read('scenario_networks.json') ? JSON.parse(fileText(read('scenario_networks.json')!)).networks : []
   const flags = read('feature_flags.yml') ? parse(fileText(read('feature_flags.yml')!)) : {}
+  const declaredWorkshop = read('workshop.json') !== undefined
+  const workshop: NativeWorkshop | undefined = declaredWorkshop ? JSON.parse(fileText(read('workshop.json')!)) : undefined
+  if (declaredWorkshop && (!workshop || Object.keys(workshop).some(key => !['version', 'kind', 'title', 'min_seats', 'max_seats'].includes(key)) || workshop.version !== 1 || workshop.kind !== 'native-installation'
+    || typeof workshop.title !== 'string' || !workshop.title.trim() || workshop.title.length > 120
+    || !Number.isInteger(workshop.min_seats) || !Number.isInteger(workshop.max_seats)
+    || workshop.min_seats < 1 || workshop.max_seats > 10 || workshop.min_seats > workshop.max_seats)) throw new Error('Invalid native workshop descriptor')
   const topology: NativeTopology = { vms: manifest.vms, templates: manifest.templates || [], networks: networks || [],
     warnings: ['Declared resources; playbook conditions and the saved deployment parameters determine the effective deployment.'],
     reservations: { status: 'missing', issues: ['Source declarations; live allocation checks run during preflight.'] } }
   nativeScenarioCanvas('validation', 'Native scenario', path, topology)
-  return { topology, features: Array.isArray(flags?.features) ? flags.features : [] }
+  return { topology, features: Array.isArray(flags?.features) ? flags.features : [], ...(workshop ? {workshop} : {}) }
 }
 
 export function selectNativeTopology(topology: NativeTopology, features: Record<string, boolean>, seat = 0): NativeTopology {
