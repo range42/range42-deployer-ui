@@ -667,4 +667,24 @@ describe('<DeploymentDetail>', () => {
     expect(cancelCall).toBeTruthy()
     expect(cancelCall[1]?.method).toBe('POST')
   })
+  it('discards preflight authorization across a managed-write pause and resume', async () => {
+    globalThis.fetch = vi.fn(async url => ({ok:true,status:200,json:async()=> {
+      if(url.endsWith('/preflight')) return {result:'pass',checks:[]}
+      if(url.endsWith('/attempts')) return {items:[],total:0}
+      return {id:'d-native',codename:'NATIVE',state:'pending',project_sha:'a'.repeat(40),
+        native:{context_id:'training',path:'training/example',descriptor:{actions:{full:'main.yml',configure:'configure.yml'}}}}
+    }}))
+    const router = makeRouter()
+    await router.push('/deployments/d-native')
+    const wrapper = mount(DeploymentDetail,{global:{plugins:[router,makeI18n()]}})
+    await settle(wrapper)
+    await wrapper.get('[data-testid="maintenance-preflight"]').trigger('click');await flushPromises()
+    expect(wrapper.get('[data-testid="maintenance-start"]').attributes('disabled')).toBeUndefined()
+    const admission = wrapper.findComponent({name:'DeploymentWriteAdmission'})
+    admission.vm.$emit('changed',true);await flushPromises()
+    expect(wrapper.find('[data-testid="maintenance-start"]').exists()).toBe(false)
+    admission.vm.$emit('changed',false);await flushPromises()
+    expect(wrapper.get('[data-testid="maintenance-start"]').attributes('disabled')).toBeDefined()
+  })
+
 })

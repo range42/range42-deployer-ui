@@ -3,6 +3,7 @@ import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vu
 import DeploymentParticipants from '@/components/deployment/DeploymentParticipants.vue'
 import WorkshopRunParticipants from '@/components/deployment/WorkshopRunParticipants.vue'
 import RunPeople from '@/components/deployment/RunPeople.vue'
+import DeploymentWriteAdmission from '@/components/deployment/DeploymentWriteAdmission.vue'
 /**
  * /deployments/:id — Plan C §C4.4
  *
@@ -70,6 +71,7 @@ async function refreshNativePreview() {
 }
 watch(() => meta.value?.id, refreshNativePreview)
 const isRetired = computed(() => meta.value?.scenario_label === '_universal')
+const managedWritesClosed = ref(false)
 const loading = ref(true)
 const loadError = ref(null)
 const logFilter = ref('')
@@ -83,7 +85,7 @@ const checkingPreflight = ref(false)
 const starting = ref(false)
 const warningsAck = ref(false)
 const canPrepare = computed(() => meta.value && !isRetired.value && !loading.value && !loadError.value
-  && attemptsIdle.value && (['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value)
+  && !managedWritesClosed.value && attemptsIdle.value && (['pending', 'preflight_review', 'failed', 'cancelled'].includes(effectiveState.value)
     || (supportsConcreteActions.value && !meta.value.native
       && ['runtime', 'teardown'].includes(attempts.value.find(attempt => attempt.id === meta.value.current_attempt_id)?.scope))))
 const hasWarnings = computed(() => preflight.value?.result === 'warn'
@@ -117,7 +119,7 @@ const effectiveState = computed(() => {
 
 // Match backend scope guards: retirement is independent of the project pin.
 const supportsConcreteActions = computed(() => !!meta.value?.project_sha && !isRetired.value)
-const supportsLegacyActions = computed(() => !!meta.value && !meta.value.project_sha && !isRetired.value)
+const supportsLegacyActions = computed(() => !managedWritesClosed.value && !!meta.value && !meta.value.project_sha && !isRetired.value)
 const maintenanceScope = ref('configure')
 const maintenanceActions = computed(() => meta.value?.native
   ? Object.keys(meta.value.native.descriptor?.actions || {}).filter(action => ['full', 'configure', 'teardown', 'deploy_vms', 'delete_vms', 'reset', 'deploy_networks', 'delete_networks'].includes(action)
@@ -133,7 +135,7 @@ const maintenanceSnapshot = ref(null)
 const maintenanceWarningsAck = ref(false)
 const maintenanceBusy = ref(false)
 let maintenanceVersion = 0
-const canMaintain = computed(() => supportsConcreteActions.value && !loading.value && !loadError.value
+const canMaintain = computed(() => !managedWritesClosed.value && supportsConcreteActions.value && !loading.value && !loadError.value
   && attemptsIdle.value
   && (['succeeded', 'deployed', 'failed', 'cancelled', 'partial', 'preflight_review'].includes(effectiveState.value)
     || (!!meta.value?.native && ['pending', 'draft'].includes(effectiveState.value))))
@@ -178,8 +180,24 @@ const attemptsIdle = computed(() => !loading.value && !loadError.value && !attem
   && !(live.value?.state === 'unknown' && live.value.last_event_seq > 0)
   && (!meta.value?.current_attempt_id || attempts.value.some(attempt => attempt.id === meta.value.current_attempt_id))
   && attempts.value.every(attempt => TERMINAL_ATTEMPT_STATES.has(attempt.state)))
-const operationControlsDisabled = computed(() => !attemptsIdle.value
+const operationControlsDisabled = computed(() => managedWritesClosed.value || !attemptsIdle.value
   || starting.value || checkingPreflight.value || maintenanceBusy.value)
+
+function onWriteAdmissionChanged(closed) {
+  if (managedWritesClosed.value === closed) return
+  managedWritesClosed.value = closed
+  preflight.value = null
+  warningsAck.value = false
+  maintenanceVersion += 1
+  maintenanceRecord.value = null
+  maintenanceSnapshot.value = null
+  maintenanceWarningsAck.value = false
+  maintenanceConfirm.value = ''
+  showResetModal.value = false
+  showSnapshotModal.value = false
+  showRollbackModal.value = false
+  showTeardown.value = false
+}
 
 function onOpenReset(payload) {
   if (!supportsLegacyActions.value) return
@@ -515,6 +533,7 @@ watch([() => route.params.id, getBackendScope, () => backend.token], async ([id]
   const version = ++contextVersion
   if (previous?.[0]) store.unsubscribe(String(previous[0]))
   meta.value = null
+  managedWritesClosed.value = false
   attempts.value = []
   newRuntimeAttempt.value = null
   attemptsError.value = null
@@ -713,6 +732,7 @@ onBeforeUnmount(() => {
 
     <!-- Overview -->
     <section v-show="activeTab === 'overview'" data-testid="panel-overview" role="tabpanel">
+      <DeploymentWriteAdmission v-if="meta && !loadError" :key="`admission-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="starting || maintenanceBusy" @changed="onWriteAdmissionChanged" />
       <p v-if="nativePreviewNotice" role="status" class="text-sm mb-3">{{ nativePreviewNotice }} <button type="button" class="btn btn-sm" @click="refreshNativePreview">Refresh preview</button></p>
       <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
       <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !meta.native.workshop_plan && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="operationControlsDisabled" />
