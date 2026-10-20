@@ -13,7 +13,7 @@ const review = {revision: 'r'.repeat(64).replaceAll('r', 'a'), target_host_id: '
   configuration_revision: 'e'.repeat(64), supported_operations: ['inspect'], execution_ready: false, infrastructure_qualified: false}
 const binding = {...review, binding_recorded: true, live_verified: false, alias_count: 2, recorded_at: '2026-10-20T00:00:00+00:00'}
 const saved = {...empty, binding, needs_review: false}
-beforeEach(() => { vi.clearAllMocks(); connection.url = 'http://test'; connection.token = 'alpha' })
+beforeEach(() => { vi.clearAllMocks(); vi.mocked(backendRequest).mockReset(); connection.url = 'http://test'; connection.token = 'alpha' })
 
 describe('physical node identity in environment setup', () => {
   it('loads only after a deliberate click and describes missing canonical enrollment', async () => {
@@ -77,4 +77,61 @@ describe('physical node identity in environment setup', () => {
     expect(view.find('[data-testid="save-physical-node"]').exists()).toBe(false)
     view.unmount()
   })
+})
+
+const capacitySnapshot = {
+  target_host_id: 'host-a', observed_at: '2026-10-20T12:00:00+00:00',
+  observation: {protocol: 'range42-capacity-observation-v1', node: {...review, supported_operations: ['inspect', 'capacity']},
+    resources: {logical_cpus: 32, memory_total_mib: 65536, max_vcpus: 128, memory_reserve_mib: 16384,
+      guests: [{vm_id: 45000, kind: 'qemu', state: 'stopped', template: false, resumable: true, vmgenid: review.boot_id,
+        memory_mib: 57344, vcpus: 8, configuration_revision: 'f'.repeat(64)}],
+      storage: [{storage: 'ceph-range', namespace: '', pool_id: '1'.repeat(64), cluster_id: '2'.repeat(64), rados_pool_id: 7, replicas: 3,
+        logical_available_bytes: 3000000, cluster_raw_available_bytes: 9000000, potential_bytes: 1048576,
+        volumes: [{volume: 'vm-45000-disk-0', size_bytes: 1048576}]}], execution_ready: false, infrastructure_qualified: false}},
+  summary: {configured_memory_mib: 57344, memory_headroom_mib: -8192, configured_vcpus: 8, vcpu_headroom: 120,
+    resumable_guests: 1, allocation_granted: false, execution_ready: false, infrastructure_qualified: false},
+}
+
+it('reads full configured resources and explains a deficit without granting deployment', async () => {
+  vi.mocked(backendRequest).mockResolvedValueOnce(saved).mockResolvedValueOnce(capacitySnapshot)
+  const view = mount(PhysicalNodeIdentity, {props: {hostId: 'host-a'}})
+  await view.get('[data-testid="load-physical-node"]').trigger('click'); await flushPromises()
+  await view.get('[data-testid="read-physical-capacity"]').trigger('click'); await flushPromises()
+  expect(backendRequest).toHaveBeenLastCalledWith('/v1/proxmox/hosts/host-a/physical-node/capacity/review', expect.objectContaining({method: 'POST', body: '{}'}))
+  const report = view.get('[data-testid="physical-capacity-observation"]')
+  expect(report.text()).toContain('8 GiB over the memory budget')
+  expect(view.text()).toContain('Stopped guests retain their configured resources')
+  expect(report.text()).toContain('No capacity has been reserved')
+  expect(report.text()).toContain('45000')
+  expect(report.get('[role="region"][aria-label="Guest resource commitments"]').attributes('tabindex')).toBe('0')
+  view.unmount()
+})
+
+it.each(['target', 'physical-node', 'ready', 'optimistic-summary'])('refuses inconsistent capacity observations: %s', async damage => {
+  const invalid = structuredClone(capacitySnapshot)
+  if (damage === 'target') invalid.target_host_id = 'other'
+  if (damage === 'physical-node') invalid.observation.node.physical_node_id = '9'.repeat(32)
+  if (damage === 'ready') invalid.summary.allocation_granted = true
+  if (damage === 'optimistic-summary') invalid.summary.memory_headroom_mib = 8192
+  vi.mocked(backendRequest).mockResolvedValueOnce(saved).mockResolvedValueOnce(invalid)
+  const view = mount(PhysicalNodeIdentity, {props: {hostId: 'host-a'}})
+  await view.get('[data-testid="load-physical-node"]').trigger('click'); await flushPromises()
+  await view.get('[data-testid="read-physical-capacity"]').trigger('click'); await flushPromises()
+  expect(view.find('[data-testid="physical-capacity-observation"]').exists()).toBe(false)
+  expect(view.get('[data-testid="physical-capacity-error"]').text()).toContain('does not match')
+  view.unmount()
+})
+
+it('clears resource evidence on refresh failure or a changed backend credential', async () => {
+  vi.mocked(backendRequest).mockResolvedValueOnce(saved).mockResolvedValueOnce(capacitySnapshot).mockRejectedValueOnce(new Error('Inspector unavailable'))
+  const view = mount(PhysicalNodeIdentity, {props: {hostId: 'host-a'}})
+  await view.get('[data-testid="load-physical-node"]').trigger('click'); await flushPromises()
+  await view.get('[data-testid="read-physical-capacity"]').trigger('click'); await flushPromises()
+  expect(view.find('[data-testid="physical-capacity-observation"]').exists()).toBe(true)
+  await view.get('[data-testid="read-physical-capacity"]').trigger('click'); await flushPromises()
+  expect(view.find('[data-testid="physical-capacity-observation"]').exists()).toBe(false)
+  expect(view.get('[data-testid="physical-capacity-error"]').text()).toContain('Inspector unavailable')
+  connection.token = 'changed'; await flushPromises()
+  expect(view.find('[data-testid="read-physical-capacity"]').exists()).toBe(false)
+  view.unmount()
 })
