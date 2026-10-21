@@ -6,7 +6,9 @@ const selection = ref<Record<string, boolean>>({})
 watch(() => props.features, features => { selection.value = Object.fromEntries((features || []).map(feature => [feature.id, feature.default])) }, { immediate: true })
 const effective = computed(() => selectNativeTopology(props.topology, props.selectedFeatures ?? selection.value, props.selectedSeat))
 const groups = computed(() => [...new Set([...effective.value.networks.map(network => network.vnet), ...effective.value.vms.map(vm => vm.bridge || 'Unattached')])]
-  .map(bridge => ({ bridge, network: effective.value.networks.find(network => network.vnet === bridge), vms: effective.value.vms.filter(vm => (vm.bridge || 'Unattached') === bridge) })))
+  .map(bridge => ({ bridge, network: effective.value.networks.find(network => network.vnet === bridge), vms: effective.value.vms.filter(vm => (vm.bridge || 'Unattached') === bridge),
+    gatewayPorts: effective.value.vms.filter(vm => vm.role === 'gateway').flatMap(vm => (vm.nics || [])
+      .filter(nic => nic.bridge === bridge).map(nic => ({name: vm.vm_name || `VM ${vm.vm_id}`, vmid: vm.vm_id, ...nic}))), })))
 const disksDeclared = computed(() => effective.value.vms.every(vm => typeof vm.disk_gib === 'number'))
 const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ cores: total.cores + (vm.cores || 0), memory: total.memory + (vm.memory_mib || 0), disk: total.disk + (vm.disk_gib || 0) }), { cores: 0, memory: 0, disk: 0 }))
 </script>
@@ -27,12 +29,16 @@ const resources = computed(() => effective.value.vms.reduce((total, vm) => ({ co
       <summary class="cursor-pointer text-sm font-medium">Inspect VM and network topology</summary>
     <div v-for="group in groups" :key="group.bridge" class="rounded-lg border border-base-300 bg-base-200/40 p-3" :data-testid="`native-network-${group.bridge}`">
       <div class="text-center text-sm font-medium"><span aria-hidden="true">◇ </span>{{ group.bridge }} <span class="font-mono">{{ group.network?.subnet }}</span><span v-if="group.network?.gateway" class="text-xs"> · gateway {{ group.network.gateway }}</span></div>
+      <p v-for="port in group.gatewayPorts" :key="`${port.vmid}:${port.index}`" class="text-center text-xs mt-1">Gateway: {{ port.name }} · net{{ port.index }} · {{ port.ip }}</p>
       <div class="mx-auto h-4 border-l-2 border-primary w-0" aria-hidden="true" />
       <div class="grid gap-3 border-t-2 border-primary pt-3 sm:grid-cols-2" :class="group.vms.length > 2 ? 'lg:grid-cols-3' : ''">
         <article v-for="vm in group.vms" :key="vm.vm_id" class="rounded-lg border border-base-300 bg-base-100 p-3 min-w-0">
           <h3 class="font-medium break-words">{{ vm.vm_name || `VM ${vm.vm_id}` }}</h3>
           <p class="text-xs text-base-content/70">{{ vm.group }}<span v-if="vm.role"> · {{ vm.role }}</span> · VM {{ vm.vm_id }}</p>
           <p class="text-sm font-mono">{{ vm.ip }}</p>
+          <ul v-if="vm.nics?.length" class="mt-2 text-xs space-y-1" aria-label="Network interfaces">
+            <li v-for="nic in vm.nics" :key="nic.index" data-testid="native-gateway-interface" class="break-words">net{{ nic.index }} · {{ nic.bridge }}<template v-if="nic.ip"> · {{ nic.ip }}<template v-if="nic.prefix">/{{ nic.prefix }}</template></template></li>
+          </ul>
           <p v-if="vm.cores || vm.memory_mib || vm.disk_gib" class="text-xs mt-1">{{ vm.cores ?? '—' }} vCPU · {{ vm.memory_mib ? vm.memory_mib / 1024 : '—' }} GiB RAM · {{ vm.disk_gib ?? '—' }} GiB disk</p>
         </article>
       </div>

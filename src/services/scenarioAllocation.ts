@@ -7,7 +7,7 @@ export interface ScenarioVm {
   [key: string]: unknown
 }
 export interface AllocationNetwork {
-  id: string; vnet: string; subnet: string; gateway?: string; reserved_ips?: string[]
+  id: string; vnet: string; subnet: string; gateway?: string; gateway_node_id?: string; reserved_ips?: string[]
 }
 export interface AllocationAssignment {
   node_id: string; vm_id: number
@@ -99,6 +99,7 @@ export async function reserveScenarioAllocation(input: {
   vms.forEach(vm => validateNicKeys(vm.nics))
   const body = { project_key: projectKey, vmid_start: vmidStart, vmid_end: vmidEnd,
     networks: networks.map(network => ({ network_id: network.id, bridge: network.vnet, subnet: network.subnet,
+      ...(network.gateway_node_id ? { gateway_node_id: network.gateway_node_id } : {}),
       ...(network.gateway ? { gateway: network.gateway } : {}), ...(network.reserved_ips?.length ? { reserved_ips: network.reserved_ips } : {}) })),
     vms: vms.map(vm => ({ node_id: vm.node_id, ...(!missing(vm.vm_id) ? { vm_id: Number(vm.vm_id) } : {}),
       nics: vm.nics.map((nic, index) => ({ index, ...(nic.key !== undefined ? { nic_key: nic.key } : {}), network_id: nic.network_id, ...(!missing(nic.ip) ? { ip: nic.ip } : {}) })) })),

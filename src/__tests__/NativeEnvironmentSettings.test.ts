@@ -250,3 +250,21 @@ it('clears a failed save review and reloads registered environments before retry
   expect(view.text()).toContain('gateway changed after inspection')
   expect(calls.requests.filter(row=>row.path==='/v1/environments'&&row.method==='GET')).toHaveLength(2)
 })
+
+it('reviews and saves an explicitly selected per-run gateway capability in existing environment settings',async()=>{
+  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  for(const [key,value]of Object.entries({label:'Isolated per-run gateways',base_context_id:'trusted',target_host_id:'scoped',profile_id:'per-run-gateway',vmid_start:'45000',vmid_end:'45039',network_pool:'10.78.0.0/24',network_count:'16',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+  const enable=view.get('[data-testid="environment-managed-gateway"]')
+  expect((enable.element as HTMLInputElement).checked).toBe(false)
+  await enable.setValue(true)
+  await view.get('[data-testid="environment-gateway-management-bridge"]').setValue('vmbr550')
+  await view.get('[data-testid="environment-gateway-management-subnet"]').setValue('10.78.255.0/29')
+  await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+  const request=calls.requests.find(row=>row.path==='/v1/environments/review')?.body
+  expect(request?.workshop_profile).toMatchObject({managed_gateway:{management_bridge:'vmbr550',management_subnet:'10.78.255.0/29'}})
+  expect(view.get('[data-testid="environment-reviewed"]').text()).toContain('One gateway per run')
+  expect(view.get('[data-testid="environment-reviewed"]').text()).toContain('10.78.255.0/29')
+  await view.get('[data-testid="save-native-environment"]').trigger('click');await flushPromises()
+  expect(calls.requests.find(row=>row.path==='/v1/environments'&&row.method==='POST')?.body?.workshop_profile).toMatchObject({managed_gateway:{management_bridge:'vmbr550',management_subnet:'10.78.255.0/29'}})
+})
