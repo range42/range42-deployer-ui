@@ -26,3 +26,12 @@ Connections → Native provisioning environments records this policy; it still
 requires native preparation before execution. Existing profiles retain their
 original shared-infrastructure behavior. Central login and VPN onboarding are
 optional installation integrations.
+
+
+When a workshop uses another physical node, Settings → Connections can reuse an
+installed native runtime for that separately reviewed target. Select the runtime
+and target, explicitly enable **Use this installed runtime for the selected
+reviewed node**, and inspect/record the target's physical identity if needed.
+Review displays its retained node name and identity before Save. The original
+workspace stays unchanged. This registers planning bounds; native infrastructure
+preparation and execution still require qualification.
