@@ -5,6 +5,7 @@ import { parse } from 'yaml'
 
 export interface NativeTopology {
   vms: Array<{ vm_id: number; vm_name?: string; ip?: string; bridge?: string; role?: string; group?: string;
+    nics?: Array<{index: number; bridge: string; ip?: string; prefix?: number}>;
     seat?: number; cores?: number; memory_mib?: number; disk_gib?: number; requires_features?: string[] }>
   templates: Array<{ vm_id: number; vm_name?: string; bridge?: string; ip?: string }>
   networks: Array<{ vnet: string; subnet?: string; gateway?: string }>
@@ -57,7 +58,15 @@ export function nativeScenarioCanvas(id: string, name: string, path: string, top
     config: { name, platformStack: id, scenario, nativeScenario: true, declaredTopology: topology, ...(origin ? { nativeCatalog: origin } : {}) } } }
   nodes.push(group)
   const networks = new Map(topology.networks.map(network => [network.vnet, network]))
-  for (const vm of topology.vms) if (vm.bridge && !networks.has(vm.bridge)) networks.set(vm.bridge, { vnet: vm.bridge })
+  for (const vm of topology.vms) {
+    if (vm.bridge && !networks.has(vm.bridge)) networks.set(vm.bridge, { vnet: vm.bridge })
+    if (vm.nics) {
+      if (!Array.isArray(vm.nics) || vm.nics.length > 32 || vm.nics.some((nic, index) => nic.index !== index
+        || typeof nic.bridge !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,14}$/.test(nic.bridge))) throw new Error('Refresh the native scenario to load valid interface identities')
+      for (const nic of vm.nics) if (!networks.has(nic.bridge)) networks.set(nic.bridge, {vnet: nic.bridge})
+    }
+  }
+  const networkIds = new Map<string, string>()
   let y = 110, width = 760
   const owned = (nodeId: string, type: string, label: string, x: number, y: number, config: Record<string, unknown>): CanvasNode => ({
     id: nodeId, type, parentNode: id, extent: 'parent', position: { x, y }, data: { label, config: { ...config, platformStack: id, nativeScenario: true } },
@@ -71,20 +80,35 @@ export function nativeScenarioCanvas(id: string, name: string, path: string, top
     width = Math.max(width, rowWidth)
     const networkId = `${id}-network-${index + 1}`
     const networkY = y + Math.max(1, Math.ceil(vms.length / 4)) * 210
-    if (network) nodes.push(owned(networkId, 'network-segment', network.vnet, (rowWidth - 280) / 2, networkY,
-      { name: network.vnet, bridge: network.vnet, vnet: network.vnet, cidr: network.subnet, gateway: network.gateway, segmentType: 'management' }))
+    if (network) {
+      networkIds.set(network.vnet, networkId)
+      nodes.push(owned(networkId, 'network-segment', network.vnet, (rowWidth - 280) / 2, networkY,
+        { name: network.vnet, bridge: network.vnet, vnet: network.vnet, cidr: network.subnet, gateway: network.gateway, segmentType: 'management' }))
+    }
     for (const [i, vm] of vms.entries()) {
       const vmId = `${id}-vm-${vm.vm_id}`
       nodes.push(owned(vmId, 'vm', vm.vm_name || `VM ${vm.vm_id}`, 40 + (i % 4) * 340, y + Math.floor(i / 4) * 210,
         { name: vm.vm_name || `VM ${vm.vm_id}`, vmid: vm.vm_id, ipAddress: vm.ip, bridge: vm.bridge,
           description: vm.group || vm.role || 'Declared scenario VM', cores: vm.cores, memory_mib: vm.memory_mib,
-          disk_gib: vm.disk_gib }))
-      if (network) edges.push({ id: `${vmId}-net0`, type: 'network', source: vmId, target: networkId,
-        targetHandle: `top-${Math.min(3, i % 4 + 1)}`, data: { useDhcp: false, connection: {
-          interfaceName: 'net0', interfaceModel: 'virtio', ipAddress: vm.ip ? vm.ip + (network.subnet ? `/${network.subnet.split('/')[1]}` : '') : '',
-        } } })
+          disk_gib: vm.disk_gib, ...(vm.nics ? {nics: vm.nics} : {}) }))
     }
     y = networkY + 260
+  }
+  const connected = new Map<string, number>()
+  for (const vm of topology.vms) {
+    const nics = vm.nics || (vm.bridge ? [{index: 0, bridge: vm.bridge, ip: vm.ip}] : [])
+    for (const nic of nics) {
+      const target = networkIds.get(nic.bridge), network = networks.get(nic.bridge)
+      if (!target || !network) continue
+      const ordinal = connected.get(nic.bridge) || 0
+      connected.set(nic.bridge, ordinal + 1)
+      const vmId = `${id}-vm-${vm.vm_id}`, prefix = 'prefix' in nic ? nic.prefix : undefined
+      const suffix = prefix ? `/${prefix}` : network.subnet ? `/${network.subnet.split('/')[1]}` : ''
+      edges.push({id: `${vmId}-net${nic.index}`, type: 'network', source: vmId, target,
+        targetHandle: `top-${Math.min(3, ordinal % 4 + 1)}`, data: {useDhcp: false, connection: {
+          interfaceName: `net${nic.index}`, interfaceModel: 'virtio', ipAddress: nic.ip ? nic.ip + suffix : '',
+        }}})
+    }
   }
   group.style = { width: `${width}px`, height: `${Math.max(300, y)}px` }
   return { nodes, edges }

@@ -4,6 +4,7 @@ export type ReviewedEnvironmentProfile = {
   proxmox_template: number
   deployer_template: number
   storage: string
+  managed_gateway?: {management_bridge: string; management_subnet: string} | null
   networks: {bridge: string; subnet: string; gateway: string}[]
 }
 </script>
@@ -19,6 +20,7 @@ defineProps<{profile: ReviewedEnvironmentProfile}>()
       <div><dt class="font-medium">Target storage</dt><dd>{{ profile.storage }}</dd></div>
       <div><dt class="font-medium">Source templates</dt><dd>Proxmox template {{ profile.proxmox_template }} · Deployer template {{ profile.deployer_template }}</dd></div>
       <div><dt class="font-medium">Participant networks</dt><dd>{{ profile.networks.length }} separate /28 networks</dd></div>
+      <div v-if="profile.managed_gateway"><dt class="font-medium">One gateway per run</dt><dd>{{ profile.managed_gateway.management_bridge }} · {{ profile.managed_gateway.management_subnet }} · 4 GiB RAM per gateway</dd></div>
     </dl>
     <div class="max-h-64 overflow-auto rounded border border-base-300 focus-visible:outline-2 focus-visible:outline-primary" tabindex="0" role="region" aria-label="Reviewed participant network allocations">
       <table class="table table-sm w-full" data-testid="environment-reviewed-networks">

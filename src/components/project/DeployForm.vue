@@ -350,7 +350,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
     tabindex="-1"
     @keydown="onDialogKeydown"
   >
-    <div class="modal-box max-w-2xl">
+    <div class="modal-box w-[calc(100%-2rem)] min-w-0 max-w-2xl p-3 sm:p-6">
       <header class="flex items-start justify-between gap-4 mb-4">
         <div class="min-w-0">
           <h2 id="deploy-form-title" class="text-lg font-bold">
@@ -366,10 +366,10 @@ onBeforeUnmount(() => { sessionVersion += 1 })
       <p class="text-xs text-base-content/70 mb-3" data-testid="deploy-backend">
         {{ t('deployment.deploy.backend', { backend: backendLabel }) }}
       </p>
-      <fieldset class="space-y-3" :disabled="submitting">
+      <fieldset class="min-w-0 space-y-3" :disabled="submitting">
         <NativeDeploymentFields v-if="nativeScenario" :project-id="projectId" :revision="projectSha" :path="nativeScenario.path" :component-id="nativeScenario.component_id" @select="selectNative" />
         <!-- Codename -->
-        <div class="form-control" data-testid="deploy-field-codename">
+        <div class="flex min-w-0 flex-col form-control" data-testid="deploy-field-codename">
           <label class="label pb-1" for="deploy-codename">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.codename') }}<span class="text-error ml-0.5">*</span></span>
           </label>
@@ -377,7 +377,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
             id="deploy-codename" name="deploy-codename" autocomplete="off"
             v-model="codename"
             type="text"
-            class="input input-bordered input-sm"
+            class="input input-bordered input-sm w-full max-w-full"
             :placeholder="t('deployment.deploy.fields.codenamePlaceholder')"
             :aria-invalid="errCodename ? 'true' : 'false'"
             @blur="onBlurTriggerPreflight"
@@ -386,7 +386,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         </div>
 
         <!-- Scenario label -->
-        <div class="form-control" data-testid="deploy-field-scenario">
+        <div class="flex min-w-0 flex-col form-control" data-testid="deploy-field-scenario">
           <label class="label pb-1" for="deploy-scenario">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.scenario') }}<span class="text-error ml-0.5">*</span></span>
           </label>
@@ -395,7 +395,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
             v-model="scenarioLabel"
             :readonly="!!nativeScenario"
             type="text"
-            class="input input-bordered input-sm"
+            class="input input-bordered input-sm w-full max-w-full"
             :placeholder="t('deployment.deploy.fields.scenarioPlaceholder')"
             @blur="onBlurTriggerPreflight"
           />
@@ -403,14 +403,14 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         </div>
 
         <!-- Target host -->
-        <div class="form-control" data-testid="deploy-field-host">
+        <div class="flex min-w-0 flex-col form-control" data-testid="deploy-field-host">
           <label class="label pb-1" for="deploy-host">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.host') }}<span class="text-error ml-0.5">*</span></span>
           </label>
           <select
             id="deploy-host" name="deploy-host" autocomplete="off"
             v-model="targetHost"
-            class="select select-bordered select-sm"
+            class="select select-bordered select-sm w-full max-w-full"
             :disabled="hostsLoading || !!hostsError || !!nativeScenario"
             @blur="onBlurTriggerPreflight"
           >
@@ -432,7 +432,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
         </div>
 
         <!-- Team count (gamenet only) -->
-        <div v-if="gamenet && !nativeScenario" class="form-control" data-testid="deploy-field-team-count">
+        <div v-if="gamenet && !nativeScenario" class="flex min-w-0 flex-col form-control" data-testid="deploy-field-team-count">
           <label class="label pb-1" for="deploy-team-count">
             <span class="label-text font-medium">{{ t('deployment.deploy.fields.teamCount') }}<span class="text-error ml-0.5">*</span></span>
           </label>
@@ -443,14 +443,14 @@ onBeforeUnmount(() => { sessionVersion += 1 })
             min="1"
             max="64"
             step="1"
-            class="input input-bordered input-sm"
+            class="input input-bordered input-sm w-full max-w-full"
             @blur="onBlurTriggerPreflight"
           />
           <p v-if="errTeamCount" class="text-xs text-error mt-1">{{ errTeamCount }}</p>
         </div>
 
         <!-- Backend credentials are inherited unless explicitly overridden. -->
-        <div v-if="!nativeScenario" class="form-control space-y-2" data-testid="deploy-field-vault">
+        <div v-if="!nativeScenario" class="flex min-w-0 flex-col form-control space-y-2" data-testid="deploy-field-vault">
           <p class="text-sm text-base-content/70">{{ t('deployment.deploy.fields.backendCredentials') }}</p>
           <label class="flex items-center gap-2 text-sm">
             <input v-model="vaultOverride" type="checkbox" class="checkbox checkbox-sm" data-testid="deploy-vault-override" />
@@ -465,7 +465,7 @@ onBeforeUnmount(() => { sessionVersion += 1 })
               id="deploy-vault-password"
               v-model="vaultPassword"
               type="password"
-              class="input input-bordered input-sm"
+              class="input input-bordered input-sm w-full max-w-full"
               autocomplete="new-password"
               :aria-invalid="errVault ? 'true' : 'false'"
             />

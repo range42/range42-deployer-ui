@@ -14,3 +14,15 @@ All actions for an existing deployment use its original commit and feature selec
 If no environment is listed, the operator must connect this backend to existing contexts on the deployer-cli. The UI does not guess a disposable target or initialize a new infrastructure context. See the backend's `docs/native-scenarios.md` for setup and the acceptance matrix.
 
 Preflight can block protected VM IDs. The current public `blank_scenario_4_subnets` and `kunai_lab` defaults contain protected IDs; change these consistently in your fork. A diagnostic scenario with zero declared VMs can still alter existing VM NICs and SDN resources. Use its own documented disposable targets and parameters.
+
+
+For an environment with the optional per-run gateway policy, Deploy includes a
+**Managed gateway** section. Its VMID follows the participant VM pairs; choose an
+unused management address in the approved /29. **Review and reserve resources**
+claims the gateway and all participant VMs together. The preview includes every
+gateway connection, and the memory summary includes its additional 4 GiB.
+Changing the address or profile discards the previous review. Settings →
+Connections → Native provisioning environments records this policy; it still
+requires native preparation before execution. Existing profiles retain their
+original shared-infrastructure behavior. Central login and VPN onboarding are
+optional installation integrations.

@@ -9,6 +9,7 @@ export interface WorkshopSpec {
   namespace: string; seats: number; participants_per_environment?: number; expires_at: string; vmid_start: number;
   network_pool: string; bridge_start: number; proxmox_template: number; deployer_template: number;
   storage: string;
+  managed_gateway?: {vm_id: number; management_bridge: string; management_subnet: string; management_ip: string};
 }
 export interface WorkshopSelection {
   workshop: WorkshopSpec; topology: NativeTopology;
@@ -17,6 +18,7 @@ export interface WorkshopSelection {
 export interface ProvisioningProfile {
   id: string; vmid_ranges?: number[][]; networks?: Array<{bridge: string; subnet: string}>;
   proxmox_template?: number; deployer_template?: number; storage?: string;
+  managed_gateway?: {management_bridge: string; management_subnet: string} | null;
 }
 const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string; targetHostId: string; minSeats: number; maxSeats: number; profile?: ProvisioningProfile | null }>()
 const emit = defineEmits<{ select: [value: null | WorkshopSelection] }>()
@@ -36,6 +38,16 @@ const fields = [
 ] as const
 const input = reactive<Record<string, string | number>>({namespace: '', seats: Math.min(5, props.maxSeats), participants_per_environment: 1, expires_at: '',
   vmid_start: '', network_pool: '', bridge_start: '', proxmox_template: '', deployer_template: '', storage: ''})
+const gatewayAddress = ref('')
+const gatewayVmid = computed(() => Number(input.vmid_start) + Number(input.seats) * 2)
+const gatewayAddresses = computed(() => {
+  const match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\/29$/.exec(props.profile?.managed_gateway?.management_subnet || '')
+  if (!match) return []
+  const octets = match.slice(1).map(Number), address = octets.reduce((sum, part) => sum * 256 + part, 0)
+  if (octets.some(part => part > 255) || address % 8 !== 0) return []
+  return Array.from({length: 5}, (_, index) => [24, 16, 8, 0].map(shift => Math.floor((address + index + 2) / 2 ** shift) % 256).join('.'))
+})
+watch(gatewayAddresses, addresses => { gatewayAddress.value = addresses[0] || '' }, {immediate: true})
 const busy = ref(false)
 const error = ref('')
 const reviewed = ref(false)
@@ -53,7 +65,7 @@ watch(() => props.profile, profile => {
     .sort((a, b) => a.bridgeNumber - b.bridgeNumber)
   let best: {bridge: number; address: number; prefix: number; seats: number} | null = null
   for (const [index, network] of networks.entries()) {
-    const limit = Math.min(props.maxSeats, Math.floor((range[1]! - range[0]! + 1) / 2), networks.length - index)
+    const limit = Math.min(props.maxSeats, Math.floor((range[1]! - range[0]! + 1 - (profile.managed_gateway ? 1 : 0)) / 2), networks.length - index)
     for (let seats = 1; seats <= limit; seats++) {
       const last = networks[index + seats - 1]!
       if (last.bridgeNumber !== network.bridgeNumber + seats - 1 || last.address !== network.address + 16 * (seats - 1)) break
@@ -75,12 +87,18 @@ const specification = computed<WorkshopSpec | null>(() => {
     || numbers.some(name => !Number.isSafeInteger(Number(input[name])) || Number(input[name]) < 1)
     || Number(input.seats) < props.minSeats || Number(input.seats) > props.maxSeats
     || Number(input.participants_per_environment) > 10) return null
+  const policy = props.profile?.managed_gateway
+  if (policy && (!gatewayAddresses.value.includes(gatewayAddress.value) || !props.profile?.vmid_ranges?.some(
+    range => range[0]! <= gatewayVmid.value && gatewayVmid.value <= range[1]!))) return null
   return {namespace: String(input.namespace), seats: Number(input.seats), expires_at: expiry.toISOString(),
     vmid_start: Number(input.vmid_start), network_pool: String(input.network_pool), bridge_start: Number(input.bridge_start),
     proxmox_template: Number(input.proxmox_template), deployer_template: Number(input.deployer_template), storage: String(input.storage),
-    ...(Number(input.participants_per_environment) === 1 ? {} : {participants_per_environment: Number(input.participants_per_environment)})}
+    ...(Number(input.participants_per_environment) === 1 ? {} : {participants_per_environment: Number(input.participants_per_environment)}),
+    ...(policy ? {managed_gateway: {...policy, vm_id: gatewayVmid.value, management_ip: gatewayAddress.value}} : {})}
 })
 watch(input, invalidate, {deep: true})
+watch(gatewayAddress, invalidate)
+watch(() => props.profile, invalidate, {deep: true})
 watch(() => [props.projectId, props.revision, props.path, props.componentId, props.targetHostId, getBackendScope(), backend.token], invalidate)
 async function review() {
   if (!specification.value || !props.targetHostId || busy.value) return
@@ -91,7 +109,7 @@ async function review() {
   try {
     const result = await backendRequest<{topology: NativeTopology; allocation_request: {
       vmid_start: number; vmid_end: number;
-      networks: Array<{network_id: string; bridge: string; subnet: string; gateway?: string}>;
+      networks: Array<{network_id: string; bridge: string; subnet: string; gateway?: string; gateway_node_id?: string}>;
       vms: Array<{node_id: string; vm_id: number; nics: Array<{network_id: string; ip: string}>}>;
     }}>(`/v1/projects/${encodeURIComponent(props.projectId)}/native-scenario/preview`, {
       method: 'POST', body: JSON.stringify({sha: props.revision, path: props.path, workshop,
@@ -101,7 +119,8 @@ async function review() {
     const plan = result.allocation_request
     const reservation = await reserveScenarioAllocation({projectKey: draftKey, targetHostId: target,
       vmidStart: plan.vmid_start, vmidEnd: plan.vmid_end, vms: plan.vms,
-      networks: plan.networks.map(net => ({id: net.network_id, vnet: net.bridge, subnet: net.subnet, gateway: net.gateway}))})
+      networks: plan.networks.map(net => ({id: net.network_id, vnet: net.bridge, subnet: net.subnet, gateway: net.gateway,
+        ...(net.gateway_node_id ? {gateway_node_id: net.gateway_node_id} : {})}))})
     if (request !== epoch) return
     const remaining = Date.parse(reservation.expires_at) - Date.now()
     if (remaining <= 0) throw new Error('Reservation expired; review and reserve again.')
@@ -116,12 +135,12 @@ onBeforeUnmount(() => { epoch++; clearTimeout(expiryTimer) })
 </script>
 
 <template>
-  <fieldset class="space-y-4 rounded border border-base-300 p-3" data-testid="independent-workshop-setup">
+  <fieldset class="min-w-0 space-y-4 rounded border border-base-300 p-3" data-testid="independent-workshop-setup">
     <legend class="font-medium">Independent workshop run</legend>
     <p class="text-sm">Participants install Range42 in their own environments. Instance credentials are generated separately for each run. Central application login and laptop network access are configured independently.</p>
     <p v-if="profile" class="text-sm text-base-content/75">Defaults use profile {{ profile.id }}. Keep changes within its approved bounds; live reservation checks availability.</p>
     <div class="grid gap-3 sm:grid-cols-2">
-      <label v-for="field in fields" :key="field.name" class="form-control gap-1">
+      <label v-for="field in fields" :key="field.name" class="flex min-w-0 flex-col form-control gap-1">
         <span class="text-sm font-medium">{{ field.label }}</span>
         <input v-model="input[field.name]" :type="field.type" :data-testid="`workshop-input-${field.name}`"
           :min="field.name === 'seats' ? minSeats : field.type === 'number' ? 1 : undefined"
@@ -130,7 +149,21 @@ onBeforeUnmount(() => { epoch++; clearTimeout(expiryTimer) })
         <span :id="`workshop-hint-${field.name}`" class="text-xs text-base-content/70">{{ field.hint }}</span>
       </label>
     </div>
-    <p data-testid="workshop-group-summary" class="text-sm">{{ input.seats }} environments · up to {{ Number(input.seats) * Number(input.participants_per_environment) }} participants · {{ Number(input.seats) * 20 }} GiB guest RAM. A reset replaces the shared environment for its whole group.</p>
+    <fieldset v-if="profile?.managed_gateway" data-testid="workshop-managed-gateway" class="min-w-0 rounded border border-base-300 p-3 space-y-3">
+      <legend class="font-medium">Managed gateway</legend>
+      <p class="text-sm">This run owns a gateway connecting its isolated group networks through {{ profile.managed_gateway.management_bridge }}. Its resources are reserved with the participant VMs.</p>
+      <label class="flex min-w-0 flex-col form-control gap-1"><span class="text-sm font-medium">Gateway VMID</span>
+        <input :value="gatewayVmid" readonly data-testid="workshop-input-gateway_vm_id" class="input input-bordered w-full" aria-describedby="workshop-gateway-id-hint" />
+        <span id="workshop-gateway-id-hint" class="text-xs">The next VMID after the participant pairs.</span>
+      </label>
+      <label class="flex min-w-0 flex-col form-control gap-1"><span class="text-sm font-medium">Gateway management address</span>
+        <select v-model="gatewayAddress" data-testid="workshop-input-gateway_management_ip" class="select select-bordered w-full" aria-describedby="workshop-gateway-address-hint">
+          <option v-for="address in gatewayAddresses" :key="address" :value="address">{{ address }}</option>
+        </select>
+        <span id="workshop-gateway-address-hint" class="text-xs">Choose a distinct address in {{ profile.managed_gateway.management_subnet }} for this run. Reservation checks existing allocations.</span>
+      </label>
+    </fieldset>
+    <p data-testid="workshop-group-summary" class="text-sm">{{ input.seats }} environments · up to {{ Number(input.seats) * Number(input.participants_per_environment) }} participants · {{ Number(input.seats) * 20 }} GiB guest RAM<template v-if="profile?.managed_gateway"> + 4 GiB gateway</template>. A reset replaces the shared environment for its whole group.</p>
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
     <p v-if="!reviewed" role="status" class="text-sm">Review the updated resource plan before creating the deployment.</p>
     <p v-else role="status" class="text-sm">VM IDs and addresses are reserved on the selected target. Creating the deployment transfers this reservation to the run. Preflight verifies templates, networks and capacity before execution.</p>
