@@ -118,7 +118,7 @@ onBeforeUnmount(() => { epoch += 1 })
     <p v-if="error" role="alert" class="text-sm text-error">{{ error }}</p>
     <p v-if="reservationNotice" class="text-xs text-base-content/70">{{ reservationNotice }}</p>
     <p v-if="!busy && !error && !contexts.length" role="status" data-testid="native-context-empty" class="text-sm">{{ t('deployment.native.empty') }}</p>
-    <label v-if="contexts.length" class="form-control gap-1">
+    <label v-if="contexts.length" class="flex min-w-0 flex-col form-control gap-1">
       <span>{{ t('deployment.native.environment') }}</span>
       <select v-model="selected" class="select select-bordered w-full" data-testid="native-context" :disabled="busy">
         <option value="" disabled>{{ t('deployment.native.choose') }}</option>
@@ -128,7 +128,7 @@ onBeforeUnmount(() => { epoch += 1 })
     <p v-if="runDescriptor && !busy && contexts.length && !contexts.some(item => item.ready && item.workshop_profile)" role="alert" class="text-sm text-warning">Workshop provisioning profile is not configured for an available environment. Prepare and register a dedicated profile before reserving participant resources. <router-link to="/settings?tab=connections#native-environments" class="link underline-offset-4">Configure a provisioning environment</router-link></p>
     <p v-if="runDescriptor && context?.execution_ready === false" role="status" class="text-sm text-warning">Infrastructure qualification is required before starting guests. You can review and reserve a draft run while its templates and network policy are prepared.</p>
     <ul v-if="context?.issues.length" class="text-sm text-error" role="alert"><li v-for="issue in context.issues" :key="issue">{{ issue }}</li></ul>
-    <fieldset v-if="platform" class="space-y-3" :disabled="busy">
+    <fieldset v-if="platform" class="min-w-0 space-y-3" :disabled="busy">
       <legend class="font-medium">{{ t('deployment.platform.title') }} — {{ platform.id }}</legend>
       <p class="text-sm">{{ platform.domain }}</p>
       <div class="flex flex-wrap gap-2">
@@ -140,23 +140,23 @@ onBeforeUnmount(() => { epoch += 1 })
       <p class="text-sm">{{ t('deployment.platform.unavailable') }}:
         <span v-for="(reason, name) in platform.unavailable" :key="name" class="mr-3">{{ name }} ({{ reason }})</span>
       </p>
-      <label v-for="field in platform.parameters" :key="field.name" class="form-control gap-1">
+      <label v-for="field in platform.parameters" :key="field.name" class="flex min-w-0 flex-col form-control gap-1">
         <span class="text-sm">{{ field.label }}{{ field.required ? ' *' : '' }}</span>
         <input v-model="setup[field.name]" class="input input-bordered w-full"
           :data-testid="`platform-input-${field.name}`" :required="field.required" autocomplete="off" />
       </label>
       <p v-if="!parameters" role="status" class="text-sm">{{ t('deployment.platform.setupRequired') }}</p>
     </fieldset>
-    <fieldset v-if="features.length" class="space-y-2" :disabled="busy">
+    <fieldset v-if="features.length" class="min-w-0 space-y-2" :disabled="busy">
       <legend class="font-medium mb-2">{{ t('deployment.native.features') }}</legend>
       <label v-for="feature in features" :key="feature.id" class="flex gap-3 items-start">
         <input v-model="flags[feature.id]" type="checkbox" class="checkbox checkbox-sm" :data-testid="`native-feature-${feature.id}`" />
         <span class="text-sm"><span class="block">{{ feature.label || feature.id }}</span><span class="block text-xs text-base-content/70">{{ feature.description }}</span></span>
       </label>
     </fieldset>
-    <fieldset v-if="isWorkshop" class="space-y-3 rounded border border-base-300 p-3" data-testid="workshop-setup" :disabled="busy">
+    <fieldset v-if="isWorkshop" class="min-w-0 space-y-3 rounded border border-base-300 p-3" data-testid="workshop-setup" :disabled="busy">
       <legend class="font-medium">Workshop setup</legend>
-      <label class="form-control gap-1"><span class="text-sm">Participant environments to deploy</span>
+      <label class="flex min-w-0 flex-col form-control gap-1"><span class="text-sm">Participant environments to deploy</span>
         <select v-model.number="workshopSeat" name="workshop-seat" class="select select-bordered w-full" data-testid="workshop-seat">
           <option :value="0">All selected participants ({{ flags.EXTRA_SEATS ? 10 : 5 }})</option>
           <option v-for="seat in 10" :key="seat" :value="seat" :disabled="seat > (flags.EXTRA_SEATS ? 10 : 5)">user{{ String(seat).padStart(2, '0') }} only</option>

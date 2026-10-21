@@ -135,12 +135,12 @@ onBeforeUnmount(() => { epoch++; clearTimeout(expiryTimer) })
 </script>
 
 <template>
-  <fieldset class="space-y-4 rounded border border-base-300 p-3" data-testid="independent-workshop-setup">
+  <fieldset class="min-w-0 space-y-4 rounded border border-base-300 p-3" data-testid="independent-workshop-setup">
     <legend class="font-medium">Independent workshop run</legend>
     <p class="text-sm">Participants install Range42 in their own environments. Instance credentials are generated separately for each run. Central application login and laptop network access are configured independently.</p>
     <p v-if="profile" class="text-sm text-base-content/75">Defaults use profile {{ profile.id }}. Keep changes within its approved bounds; live reservation checks availability.</p>
     <div class="grid gap-3 sm:grid-cols-2">
-      <label v-for="field in fields" :key="field.name" class="form-control gap-1">
+      <label v-for="field in fields" :key="field.name" class="flex min-w-0 flex-col form-control gap-1">
         <span class="text-sm font-medium">{{ field.label }}</span>
         <input v-model="input[field.name]" :type="field.type" :data-testid="`workshop-input-${field.name}`"
           :min="field.name === 'seats' ? minSeats : field.type === 'number' ? 1 : undefined"
@@ -149,14 +149,14 @@ onBeforeUnmount(() => { epoch++; clearTimeout(expiryTimer) })
         <span :id="`workshop-hint-${field.name}`" class="text-xs text-base-content/70">{{ field.hint }}</span>
       </label>
     </div>
-    <fieldset v-if="profile?.managed_gateway" data-testid="workshop-managed-gateway" class="rounded border border-base-300 p-3 space-y-3">
+    <fieldset v-if="profile?.managed_gateway" data-testid="workshop-managed-gateway" class="min-w-0 rounded border border-base-300 p-3 space-y-3">
       <legend class="font-medium">Managed gateway</legend>
       <p class="text-sm">This run owns a gateway connecting its isolated group networks through {{ profile.managed_gateway.management_bridge }}. Its resources are reserved with the participant VMs.</p>
-      <label class="form-control gap-1"><span class="text-sm font-medium">Gateway VMID</span>
+      <label class="flex min-w-0 flex-col form-control gap-1"><span class="text-sm font-medium">Gateway VMID</span>
         <input :value="gatewayVmid" readonly data-testid="workshop-input-gateway_vm_id" class="input input-bordered w-full" aria-describedby="workshop-gateway-id-hint" />
         <span id="workshop-gateway-id-hint" class="text-xs">The next VMID after the participant pairs.</span>
       </label>
-      <label class="form-control gap-1"><span class="text-sm font-medium">Gateway management address</span>
+      <label class="flex min-w-0 flex-col form-control gap-1"><span class="text-sm font-medium">Gateway management address</span>
         <select v-model="gatewayAddress" data-testid="workshop-input-gateway_management_ip" class="select select-bordered w-full" aria-describedby="workshop-gateway-address-hint">
           <option v-for="address in gatewayAddresses" :key="address" :value="address">{{ address }}</option>
         </select>
