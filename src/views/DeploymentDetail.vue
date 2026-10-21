@@ -35,6 +35,7 @@ import PreflightReport from '@/components/ui/PreflightReport.vue'
 import { useToast } from '@/composables/useToast'
 import { latestSavedProjectRevision } from '@/services/backendProjectRegistration'
 import FoundationExecution from '@/components/deployment/FoundationExecution.vue'
+import EnvironmentNetworkPreparation from '@/components/deployment/EnvironmentNetworkPreparation.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,8 +54,9 @@ const legacyNativeWorkshop = computed(() => meta.value?.native?.path === 'scenar
 const ownershipPhase = ref(null)
 const capacityAccepted = ref(false)
 const foundationAvailable = ref(false)
-const capacityBlocksVMs = computed(() => meta.value?.native?.foundation_plan ? !foundationAvailable.value : !!meta.value?.native?.workshop_plan && !capacityAccepted.value)
-watch([() => route.params.id, () => backend.activeHost?.id, getBackendScope, () => backend.token], () => { capacityAccepted.value = false; foundationAvailable.value = false }, {flush: 'sync'})
+const environmentNetworksAvailable = ref(false)
+const capacityBlocksVMs = computed(() => meta.value?.native?.foundation_plan ? (!foundationAvailable.value || !!meta.value.native.prepare_environment_networks && !environmentNetworksAvailable.value) : !!meta.value?.native?.workshop_plan && !capacityAccepted.value)
+watch([() => route.params.id, () => backend.activeHost?.id, getBackendScope, () => backend.token], () => { capacityAccepted.value = false; foundationAvailable.value = false; environmentNetworksAvailable.value = false }, {flush: 'sync'})
 const workshopSeat = computed(() => meta.value?.native?.path === 'scenarios/range42-native-workshop'
   ? Number(meta.value.native.parameters?.WORKSHOP_ONLY_SEAT || 0) : 0)
 const needsNativePreviewRefresh = computed(() => workshopSeat.value > 0
@@ -747,6 +749,7 @@ onBeforeUnmount(() => {
       <NativeScenarioPreview v-if="deploymentPreviewTopology && !loadError" :topology="deploymentPreviewTopology" :features="meta.native.descriptor.features" :selected-features="meta.native.features || {}" :selected-seat="workshopSeat" compact />
       <DeploymentCapacity v-if="(meta?.native?.workshop_plan || meta?.native?.foundation_plan) && !loadError" :key="`capacity-${route.params.id}`" :deployment-id="String(route.params.id)" :foundation="!!meta.native.foundation_plan" :disabled="!attemptsIdle || starting || maintenanceBusy" @changed="capacityAccepted = $event === true" />
       <FoundationExecution v-if="meta?.native?.foundation_plan && !loadError" :key="`foundation-${route.params.id}`" :deployment-id="String(route.params.id)" :template-ids="meta.native.foundation_plan.templates.map(copy => copy.vm_id)" :disabled="!attemptsIdle || starting || maintenanceBusy" @changed="foundationAvailable = $event === true" />
+      <EnvironmentNetworkPreparation v-if="meta?.native?.foundation_plan && meta.native.prepare_environment_networks && !loadError" :key="`environment-network-${route.params.id}`" :deployment-id="String(route.params.id)" :environment-id="meta.native.context_id" :disabled="!attemptsIdle || starting || maintenanceBusy" @changed="environmentNetworksAvailable = $event === true" />
       <NativeOwnershipImport v-if="legacyNativeWorkshop && !workshopSeat && !loadError" :key="`ownership-${route.params.id}`" :deployment-id="String(route.params.id)" :disabled="starting || maintenanceBusy" @changed="ownershipPhase = $event" />
       <DeploymentParticipants v-if="meta?.native?.path === 'scenarios/range42-native-workshop' && !meta.native.workshop_plan && !loadError" :key="String(route.params.id)" :deployment-id="String(route.params.id)" :eligible-cohort="Number(meta.native.parameters?.WORKSHOP_ONLY_SEAT || 0) === 0" :disabled="!attemptsIdle || starting || checkingPreflight || maintenanceBusy" :vm-operations-disabled="managedWritesClosed || ownershipPhase !== 'active'" />
       <WorkshopRunParticipants v-if="meta?.native?.workshop_plan && !loadError" :key="`run-${route.params.id}`" :deployment-id="String(route.params.id)" :participants-per-environment="meta.native.workshop_plan.participants_per_environment ?? 1" :disabled="operationControlsDisabled || capacityBlocksVMs" @started="onRuntimeStarted" />

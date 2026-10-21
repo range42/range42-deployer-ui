@@ -569,6 +569,32 @@ describe('<DeploymentDetail>', () => {
     expect(view.findComponent({name:'RunPeople'}).props('disabled')).toBe(false)
   })
 
+  it('keeps the normal foundation apply blocked until its optional bridge request is retained too', async () => {
+    globalThis.fetch = vi.fn(async url => ({ok: true, status: 200, json: async () =>
+      url.endsWith('/preflight') ? {result: 'pass', checks: []}
+        : url.endsWith('/attempts') ? {items: []}
+          : {id: 'foundation', state: 'pending', project_sha: 'a'.repeat(40), native: {
+            context_id: 'env-'+'a'.repeat(24), path: 'training/foundation', prepare_environment_networks: true,
+            foundation_plan: {templates: [{vm_id: 9240}, {vm_id: 9241}]}, descriptor: {actions: {full: 'main.yml'}},
+          }},
+    }))
+    const router = makeRouter(); await router.push('/deployments/foundation?tab=overview')
+    const view = mount(DeploymentDetail, {global: {plugins: [router, makeI18n()], stubs: {
+      FoundationExecution: {name: 'FoundationExecution', emits: ['changed'], template: '<section />'},
+      EnvironmentNetworkPreparation: {name: 'EnvironmentNetworkPreparation', emits: ['changed'], template: '<section />'},
+    }}})
+    await settle(view)
+    await view.get('[data-testid="deployment-run-preflight"]').trigger('click'); await flushPromises()
+    const templates = view.findComponent({name: 'FoundationExecution'})
+    const bridges = view.findComponent({name: 'EnvironmentNetworkPreparation'})
+    templates.vm.$emit('changed', true); await flushPromises()
+    expect(view.get('[data-testid="deployment-start"]').attributes('disabled')).toBeDefined()
+    bridges.vm.$emit('changed', true); await flushPromises()
+    expect(view.get('[data-testid="deployment-start"]').attributes('disabled')).toBeUndefined()
+    bridges.vm.$emit('changed', false); await flushPromises()
+    expect(view.get('[data-testid="deployment-start"]').attributes('disabled')).toBeDefined()
+  })
+
   it('offers only declared native lifecycle actions and confirms destructive scope', async () => {
     globalThis.fetch = vi.fn(async (url, options = {}) => ({ ok: true, status: 200, json: async () => {
       if (url.endsWith('/preflight')) return { result: 'pass', checks: [] }
