@@ -126,6 +126,25 @@ export async function restoreScenarioAllocation(project: string, host: string): 
   return result
 }
 
+/** The backend derives the two template IDs; the general allocator stays protected. */
+export async function reserveFoundationAllocation(input: {
+  projectId: string; projectKey: string; targetHostId: string; sha: string; path: string;
+  contextId: string; componentId?: string;
+  foundation: {namespace: string; source_node: string; proxmox_source: number; deployer_source: number};
+}): Promise<ScenarioReservation> {
+  const scope = getBackendScope(), key = ownerKey(scope, input.projectKey, input.targetHostId)
+  const owner = ensureOwner(key)
+  const result = await backendRequest<ScenarioReservation>(`/v1/projects/${encodeURIComponent(input.projectId)}/native-scenario/foundation/reservations`, {
+    method: 'POST', headers: {'X-Range42-Reservation-Token': owner.token},
+    body: JSON.stringify({sha: input.sha, path: input.path, context_id: input.contextId,
+      target_host_id: input.targetHostId, project_key: input.projectKey, foundation: input.foundation,
+      ...(input.componentId ? {component_id: input.componentId} : {})}),
+  })
+  checkResponse(result, input.projectKey, input.targetHostId, scope)
+  saveOwner(key, {...owner, reservation_id: result.reservation_id})
+  return result
+}
+
 export async function releaseScenarioAllocation(project: string, host: string, reservationId: string): Promise<void> {
   const scope = getBackendScope()
   const key = ownerKey(scope, project, host)

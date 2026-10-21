@@ -41,3 +41,12 @@ it('retains typed workshop intent for the project preview before any VMs are all
   const dynamic={...files,[`${path}/manifest/scenario_vms.json`]:JSON.stringify({version:2,vms:[]}),[`${path}/manifest/workshop.json`]:JSON.stringify(descriptor)}
   expect(native.nativePreviewFromFiles(dynamic,path)).toMatchObject({workshop:descriptor,topology:{vms:[]}})
 })
+
+it('keeps reusable foundation intent visible in the catalog and saved project before allocation', () => {
+  const preparation = {version: 1, kind: 'native-workshop-foundation', title: 'Prepare templates'}
+  const foundation = {[`${path}/manifest/scenario_vms.json`]: JSON.stringify({version: 2, vms: [], templates: []}),
+    [`${path}/manifest/preparation.json`]: JSON.stringify(preparation)}
+  expect(native.nativePreviewFromFiles(foundation, path)).toMatchObject({preparation, topology: {vms: [], networks: []}})
+  expect(() => native.nativePreviewFromFiles({...foundation,
+    [`${path}/manifest/preparation.json`]: JSON.stringify({...preparation, command: 'id'})}, path)).toThrow('foundation')
+})

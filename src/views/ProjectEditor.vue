@@ -66,6 +66,7 @@ import { createNativeFilesFs, hasSavedNativeFiles } from '@/services/nativeScena
 const ConfigTab = defineAsyncComponent(() => import('../components/project/ConfigTab.vue'))
 import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
 import WorkshopTemplatePreview from '@/components/catalog/WorkshopTemplatePreview.vue'
+import FoundationTemplatePreview from '@/components/catalog/FoundationTemplatePreview.vue'
 import { nativePreviewFromFiles } from '@/services/nativeScenarioCanvas'
 import WorkloadReviewPanel from '../components/project/WorkloadReviewPanel.vue'
 
@@ -1424,6 +1425,7 @@ const handleInfrastructureImport = (result) => {
 
       <div v-if="currentProject.native_scenario && tab === 'canvas'" class="flex-1 overflow-auto p-4" data-testid="native-project-preview">
         <WorkshopTemplatePreview v-if="nativePreview?.workshop" :min-seats="nativePreview.workshop.min_seats" :max-seats="nativePreview.workshop.max_seats" />
+        <FoundationTemplatePreview v-else-if="nativePreview?.preparation" />
         <NativeScenarioPreview v-else-if="nativePreview" :topology="nativePreview.topology" :features="nativePreview.features" />
         <p v-else role="status">Open Config to inspect the native playbook files. The deployment preview loads when this scenario declares its VM manifest.</p>
       </div>

@@ -15,7 +15,7 @@ interface Review {deployment_id: string; review_revision: string; physical_node_
   resources: {logical_cpus: number; memory_total_mib: number; memory_reserve_mib: number; max_vcpus: number};
   assessment: {admissible: boolean; memory_headroom_mib: number; vcpu_headroom: number; pools: Record<string, Pool>; clusters: Record<string, Cluster>; blocking_codes: string[]; allocation_granted: false};
   execution_ready: false; infrastructure_qualified: false; unused_retirement_eligible?: boolean}
-const props = defineProps<{deploymentId: string; disabled?: boolean}>()
+const props = defineProps<{deploymentId: string; disabled?: boolean; foundation?: boolean}>()
 const emit = defineEmits<{changed: [accepted: boolean]}>()
 const backend = useBackendApiStore(), heading = useId()
 const state = ref<Status | null>(null), reviewed = ref<Review | null>(null), role = ref(''), error = ref(''), activity = ref('')
@@ -149,7 +149,7 @@ async function releaseUnused() {
 
 <template>
   <section class="mb-4 rounded border border-base-300 p-4 space-y-3" :aria-labelledby="heading" data-testid="deployment-capacity">
-    <h3 :id="heading" class="font-semibold">Workshop resources</h3>
+    <h3 :id="heading" class="font-semibold">{{ foundation ? 'Foundation resources' : 'Workshop resources' }}</h3>
     <p class="text-sm">Review this run’s configured resources against the physical server and shared storage, including other retained reservations.</p>
     <button ref="refreshButton" type="button" class="btn btn-outline btn-sm" data-testid="capacity-refresh" :disabled="busy" @click="refresh">{{ state ? 'Refresh reservation' : 'Load capacity reservation' }}</button>
     <p v-if="activity" role="status">{{ activity }}</p>
@@ -157,7 +157,7 @@ async function releaseUnused() {
     <p v-if="role && role !== 'admin'" role="status">An administrator must review and reserve this workshop’s physical resources.</p>
     <p v-if="state && !state.applicable" role="status">This deployment does not declare a managed workshop resource plan.</p>
     <template v-if="state?.hold">
-      <p v-if="state.hold.root_accepted" role="status" class="alert alert-info"><strong>Physical acceptance recorded.</strong> Environment preparation and bounded execution remain required; execution remains blocked.</p>
+      <p v-if="state.hold.root_accepted" role="status" class="alert alert-info"><strong>Physical acceptance recorded.</strong> <template v-if="foundation">Review the template preparation request below before applying the foundation. These resources remain reserved.</template><template v-else>Environment preparation and bounded execution remain required; execution remains blocked.</template></p>
       <p v-else-if="state.hold.status === 'pending_root'" role="status" class="alert alert-info"><strong>Physical acceptance pending.</strong> The reservation is recorded. Virtual machine operations remain blocked until the original physical-node acceptance and execution checks pass.</p>
       <p v-else-if="state.hold.status === 'retired'" role="status">Reservation retired. Create a new run to reserve resources again.</p>
       <p v-else role="status">The retained reservation requires native reconciliation. Virtual machine operations remain blocked.</p>

@@ -15,14 +15,19 @@ export interface NativeTopology {
 
 export interface NativeFeature { id: string; label?: string; description?: string; default: boolean }
 export interface NativeWorkshop { version: 1; kind: 'native-installation'; title: string; min_seats: number; max_seats: number }
+export interface NativePreparation {version: 1; kind: 'native-workshop-foundation'; title: string}
 
 /** Preview the same pinned local declarations that the native playbook will read. */
-export function nativePreviewFromFiles(files: ProjectFiles, path: string): { topology: NativeTopology; features: NativeFeature[]; workshop?: NativeWorkshop } {
+export function nativePreviewFromFiles(files: ProjectFiles, path: string): { topology: NativeTopology; features: NativeFeature[]; workshop?: NativeWorkshop; preparation?: NativePreparation } {
   const read = (name: string) => files[`${path}/manifest/${name}`]
   const manifest = JSON.parse(fileText(read('scenario_vms.json')!))
   const networks = read('scenario_networks.json') ? JSON.parse(fileText(read('scenario_networks.json')!)).networks : []
   const flags = read('feature_flags.yml') ? parse(fileText(read('feature_flags.yml')!)) : {}
   const declaredWorkshop = read('workshop.json') !== undefined
+  const preparation: NativePreparation | undefined = read('preparation.json') === undefined ? undefined : JSON.parse(fileText(read('preparation.json')!))
+  if (read('preparation.json') !== undefined && (!preparation || Object.keys(preparation).some(key => !['version', 'kind', 'title'].includes(key))
+    || preparation.version !== 1 || preparation.kind !== 'native-workshop-foundation' || typeof preparation.title !== 'string'
+    || !preparation.title.trim() || preparation.title.length > 120 || declaredWorkshop || read('platform.json') !== undefined)) throw new Error('Invalid native foundation descriptor')
   const workshop: NativeWorkshop | undefined = declaredWorkshop ? JSON.parse(fileText(read('workshop.json')!)) : undefined
   if (declaredWorkshop && (!workshop || Object.keys(workshop).some(key => !['version', 'kind', 'title', 'min_seats', 'max_seats'].includes(key)) || workshop.version !== 1 || workshop.kind !== 'native-installation'
     || typeof workshop.title !== 'string' || !workshop.title.trim() || workshop.title.length > 120
@@ -32,7 +37,7 @@ export function nativePreviewFromFiles(files: ProjectFiles, path: string): { top
     warnings: ['Declared resources; playbook conditions and the saved deployment parameters determine the effective deployment.'],
     reservations: { status: 'missing', issues: ['Source declarations; live allocation checks run during preflight.'] } }
   nativeScenarioCanvas('validation', 'Native scenario', path, topology)
-  return { topology, features: Array.isArray(flags?.features) ? flags.features : [], ...(workshop ? {workshop} : {}) }
+  return { topology, features: Array.isArray(flags?.features) ? flags.features : [], ...(workshop ? {workshop} : {}), ...(preparation ? {preparation} : {}) }
 }
 
 export function selectNativeTopology(topology: NativeTopology, features: Record<string, boolean>, seat = 0): NativeTopology {

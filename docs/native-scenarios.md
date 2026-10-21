@@ -35,3 +35,25 @@ reviewed node**, and inspect/record the target's physical identity if needed.
 Review displays its retained node name and identity before Save. The original
 workspace stays unchanged. This registers planning bounds; native infrastructure
 preparation and execution still require qualification.
+
+## Prepare reusable workshop templates
+
+Choose **Prepare reusable workshop templates** from Catalog and open it as a
+normal project. Save the scenario's commit, then choose Deploy and a registered
+workshop environment. Review the original source node/template IDs and the
+profile's destination copies. Reserve those exact copies before creating the
+foundation deployment. This is a separate deployment from participant runs.
+
+In its Overview, load the capacity reservation, review/reserve the original
+physical resources and request physical acceptance. Load preparation status,
+then review and retain the preparation request. Apply or resume the full
+scenario action. Refresh node status after an interrupted attempt. An uncertain
+clone keeps its capacity and requires administrator reconciliation of its
+original native task; creating a replacement deployment is not recovery.
+
+The foundation owns two stopped reusable copies with inherited network/login
+settings removed. Its 20 GiB configured RAM, six vCPUs and disk commitment remain
+reserved. Later workshop runs own their own participant VMs and gateway. Bridge,
+gateway and participant isolation qualification remain required. The optional
+preparation module has no Keycloak or Headscale dependency and does not perform
+participant onboarding.

@@ -268,6 +268,7 @@ async function submit() {
         ...(props.nativeScenario.component_id ? { component_id: props.nativeScenario.component_id } : {}),
         features: nativeSelection.value.features, parameters: nativeSelection.value.parameters,
         ...(nativeSelection.value.workshop ? {workshop: nativeSelection.value.workshop} : {}),
+        ...(nativeSelection.value.foundation ? {foundation: nativeSelection.value.foundation} : {}),
       } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }

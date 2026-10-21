@@ -184,3 +184,12 @@ it('offers no unused release when native acceptance may already have been reques
   expect(view.find('[data-testid="capacity-unused-review"]').exists()).toBe(false)
   expect(view.find('[data-testid="capacity-unused-release"]').exists()).toBe(false); view.unmount()
 })
+
+it('explains the next foundation step after physical acceptance without claiming general execution readiness', async () => {
+  const view = await load({...pending, hold: {...pending.hold, root_accepted: true, native_request_may_have_been_sent: true}})
+  await view.setProps({foundation: true})
+  // Changing presentation must not open the generic guest execution gate.
+  expect(view.text()).toContain('template preparation request below')
+  expect(view.text()).not.toContain('execution remains blocked')
+  expect(view.emitted('changed')?.at(-1)).toEqual([false])
+})
