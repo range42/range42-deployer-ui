@@ -12,7 +12,7 @@ import type { NativeTopology } from '@/services/nativeScenarioCanvas'
 
 const topology = ref<NativeTopology | null>(null)
 const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string }>()
-const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; foundation?: FoundationSpec; allocation?: WorkshopSelection['allocation'] }] }>()
+const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; foundation?: FoundationSpec; prepare_environment_networks?: true; allocation?: WorkshopSelection['allocation'] }] }>()
 const { t } = useI18n()
 const backend = useBackendApiStore()
 type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[];
@@ -112,7 +112,8 @@ watch([context, flags, parameters, workshopValid, busy, error, runSelection, fou
   emit('select', current?.ready && (requiresProfile.value ? current.workshop_profile : current.purpose !== 'workshop') && workshopValid.value && (!runDescriptor.value || runSelection.value) && (!foundationDescriptor.value || foundationSelection.value) && parameters.value && !busy.value && !error.value
     ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value },
       ...(runSelection.value ? {workshop: {...runSelection.value.workshop}, allocation: runSelection.value.allocation} : {}),
-      ...(foundationSelection.value ? {foundation: {...foundationSelection.value.foundation}, allocation: foundationSelection.value.allocation} : {}) } : null)
+      ...(foundationSelection.value ? {foundation: {...foundationSelection.value.foundation}, allocation: foundationSelection.value.allocation,
+        ...(foundationSelection.value.prepare_environment_networks ? {prepare_environment_networks: true as const} : {})} : {}) } : null)
 }, { deep: true })
 onBeforeUnmount(() => { epoch += 1 })
 </script>

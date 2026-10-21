@@ -269,6 +269,7 @@ async function submit() {
         features: nativeSelection.value.features, parameters: nativeSelection.value.parameters,
         ...(nativeSelection.value.workshop ? {workshop: nativeSelection.value.workshop} : {}),
         ...(nativeSelection.value.foundation ? {foundation: nativeSelection.value.foundation} : {}),
+        ...(nativeSelection.value.prepare_environment_networks ? {prepare_environment_networks: true} : {}),
       } } : {}),
       ...(vaultOverride.value ? { secrets: { vault_password: vaultPassword.value } } : {}),
     }
