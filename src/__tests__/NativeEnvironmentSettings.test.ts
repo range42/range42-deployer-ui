@@ -26,7 +26,7 @@ vi.mock('@/services/backendApi', () => ({
       return {gateway_foundation:{vmid:body.vmid,node:'pve',name:'Retained gateway',vmgenid:'12345678-1234-1234-1234-123456789abc',owner:'platform:gateway',configuration_revision:'c'.repeat(64),nics:Array.from({length:14},(_,index)=>({interface:`net${index}`,bridge:`vmbr${400+index}`,mac:`02:00:00:00:00:${index.toString(16).padStart(2,'0')}`}))},nic_capacity:{limit:32,occupied:14,additional_required:count,available:18,remaining_after_preparation:18-count},infrastructure_qualified:false}
     }
     if(path==='/v1/environments/infrastructure/review')return {guests:[{vmid:42130,node:'pve',vmgenid:'12345678-1234-1234-1234-123456789abc',owner:'platform:gateway',nics:[{interface:'net1',bridge:'vmbr600',mac:'02:00:00:00:00:02'}]}]}
-    if(path==='/v1/environments/review') return {revision:'a'.repeat(64), ready_for_planning:true, infrastructure_qualified:false, workshop_profile:body.workshop_profile, requirements:['Live infrastructure preflight is required.']}
+    if(path==='/v1/environments/review') return {revision:'a'.repeat(64), ready_for_planning:true, infrastructure_qualified:false, workshop_profile:body.workshop_profile, ...(body.reuse_runtime ? {runtime_target:{version:1,physical_node_id:'b'.repeat(32),hardware_binding:'c'.repeat(64),node_name:'pve',installation_id:'d'.repeat(32)}} : {}), requirements:['Live infrastructure preflight is required.']}
     if(path==='/v1/environments' && options?.method==='POST') {if(calls.failEnvironmentSave)throw new Error('The gateway changed after inspection. Inspect it again.');return {id:'env-saved', label:body.label}}
     return {items:[], base_contexts:[{id:'trusted', label:'Trusted native runtime', target_node:'pve', target_api_url:'https://pve.test:8006', ready:true, issues:[]}]}
   },
@@ -267,4 +267,22 @@ it('reviews and saves an explicitly selected per-run gateway capability in exist
   expect(view.get('[data-testid="environment-reviewed"]').text()).toContain('10.78.255.0/29')
   await view.get('[data-testid="save-native-environment"]').trigger('click');await flushPromises()
   expect(calls.requests.find(row=>row.path==='/v1/environments'&&row.method==='POST')?.body?.workshop_profile).toMatchObject({managed_gateway:{management_bridge:'vmbr550',management_subnet:'10.78.255.0/29'}})
+})
+
+
+it('requires an explicit runtime reuse option and shows the server-observed physical target',async()=>{
+ await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
+ await view.get('[data-testid="new-native-environment"]').trigger('click')
+ expect((view.get('[data-testid="environment-reuse-runtime"]').element as HTMLInputElement).checked).toBe(false)
+ for(const[key,value]of Object.entries({label:'Reviewed runtime reuse',profile_id:'runtime-reuse',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/24',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
+ await view.get('[data-testid="environment-reuse-runtime"]').setValue(true)
+ await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+ expect(calls.requests.filter(row=>row.path==='/v1/environments/review').at(-1)?.body).toMatchObject({reuse_runtime:true})
+ expect(view.get('[data-testid="environment-reviewed-runtime-target"]').text()).toContain('pve')
+ expect(view.get('[data-testid="environment-reviewed-runtime-target"]').text()).toContain('b'.repeat(32))
+ await view.get('[data-testid="environment-reuse-runtime"]').setValue(false)
+ expect(view.find('[data-testid="save-native-environment"]').exists()).toBe(false)
+ await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
+ expect(calls.requests.filter(row=>row.path==='/v1/environments/review').at(-1)?.body).not.toHaveProperty('reuse_runtime')
+ expect(view.find('[data-testid="environment-reviewed-runtime-target"]').exists()).toBe(false)
 })
