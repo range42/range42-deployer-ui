@@ -6,14 +6,14 @@ import NativeDeploymentFields from '@/components/project/NativeDeploymentFields.
 import deployment from '@/locales/en/deployment.json'
 
 enableAutoUnmount(afterEach)
-const calls = vi.hoisted(() => ({ preview: vi.fn(), reserve: vi.fn(), rejectReservation: false, hasProfile: true, managed: false, isWorkshop: true }))
+const calls = vi.hoisted(() => ({ preview: vi.fn(), reserve: vi.fn(), rejectReservation: false, hasProfile: true, managed: false, isWorkshop: true, general: false }))
 vi.mock('@/services/backendApi', () => ({ getBackendScope: () => 'fixture', backendRequest: async (url: string, options?: RequestInit) => {
   if (url === '/v1/proxmox/hosts/host/reservations') {
     const request = JSON.parse(String(options?.body)); calls.reserve(request)
     if (calls.rejectReservation) throw new Error('VMID is already occupied')
     return {project_key: request.project_key, host_id: 'host', reservation_id: 'lease', expires_at: new Date(Date.now() + 3600000).toISOString(), assignments: []}
   }
-  if (url === '/v1/contexts') return { items: [{ id: 'pve', target_host_id: 'host', ready: true, issues: [], ...(calls.managed ? {purpose: 'workshop', execution_ready: false} : {}), workshop_profile: calls.hasProfile ? {id: 'approved-workshops'} : null }] }
+  if (url === '/v1/contexts') return { items: [{ id: 'pve', target_host_id: 'host', ready: true, issues: [], ...(calls.managed ? {purpose: 'workshop', execution_ready: false} : {}), ...(calls.general ? {provisioning_profile:{version:1,id:'general-installation',vmid_ranges:[[45000,45039]],networks:[{bridge:'vmbr600',subnet:'10.79.0.0/28',gateway:'10.79.0.1'}],storage:'ceph-range',templates:{proxmox:{vm_id:9240,memory_mib:16384,cores:4,disks_gib:[32,128]},deployer:{vm_id:9241,memory_mib:4096,cores:2,disks_gib:[32]}}},workshop_profile:null} : {workshop_profile: calls.hasProfile ? {id: 'approved-workshops'} : null}) }] }
   if (url.endsWith('/native-scenario/preview')) {
     const request = JSON.parse(String(options?.body)); calls.preview(request)
     return {allocation_request: {vmid_start: request.workshop.vmid_start, vmid_end: request.workshop.vmid_start + 9, networks: [{network_id: 'vmbr600', bridge: 'vmbr600', subnet: '10.79.0.0/28'}], vms: [{node_id: 'user01-proxmox', vm_id: request.workshop.vmid_start, nics: [{index: 0, network_id: 'vmbr600', ip: '10.79.0.2'}]}]}, preview_only: true, resources_reserved: false, capacity: {memory_mib: 102400, vcpus: 30, disk_gib: 960},
@@ -83,4 +83,20 @@ it('explains that registered resources can be planned while execution awaits qua
     expect(view.text()).toContain('Infrastructure qualification is required before starting guests')
     expect(view.find('[data-testid="independent-workshop-setup"]').exists()).toBe(true)
   }finally{calls.managed=false}
+})
+
+
+it('uses the installation recipe with a general resource profile in the normal deploy form',async()=>{
+  calls.general=true
+  try {
+    const view=mount(NativeDeploymentFields,{props:{projectId:'project',revision:'a'.repeat(40),path:'scenarios/installer-course'},
+      global:{plugins:[createPinia(),createI18n({legacy:false,locale:'en',messages:{en:{deployment}}})]}})
+    await flushPromises()
+    expect((view.get('[data-testid="workshop-input-proxmox_template"]').element as HTMLInputElement).value).toBe('9240')
+    expect((view.get('[data-testid="workshop-input-deployer_template"]').element as HTMLInputElement).value).toBe('9241')
+    for(const[name,value]of Object.entries({namespace:'general-course',seats:'1',expires_at:'2030-10-23T18:00',vmid_start:'45000',network_pool:'10.79.0.0/28',bridge_start:'600'}))
+      await view.get(`[data-testid="workshop-input-${name}"]`).setValue(value)
+    await view.get('[data-testid="workshop-review-plan"]').trigger('click');await flushPromises()
+    expect(view.emitted('select')?.at(-1)?.[0]).toMatchObject({workshop:{proxmox_template:9240,deployer_template:9241,seats:1}})
+  }finally{calls.general=false}
 })

@@ -44,7 +44,7 @@ async function show() {
 it('offers physical-node review for the selected target within environment setup',async()=>{
   await show()
   await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click');await flushPromises()
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation');await flushPromises()
   expect(view.get('[data-testid="physical-node-identity"]').text()).toContain('Physical server identity')
   expect(calls.requests.some(row=>row.path.endsWith('/physical-node'))).toBe(false)
   await view.get('[data-testid="load-physical-node"]').trigger('click');await flushPromises()
@@ -57,7 +57,7 @@ it('reviews human provisioning bounds and requires a fresh review after edits', 
   expect(view.find('[data-testid="native-environments"]').exists()).toBe(true)
   expect(calls.requests).toHaveLength(0)
   await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
   for(const [key,value] of Object.entries({label:'Workshop provisioner', base_context_id:'trusted', target_host_id:'scoped', profile_id:'training', vmid_start:'45000', vmid_end:'45039', network_pool:'10.79.0.0/23', network_count:'20', bridge_start:'600', proxmox_template:'9240', deployer_template:'9241', storage:'ceph-range'})) await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   await view.get('[data-testid="native-environment-form"]').trigger('submit');await flushPromises()
   const request=calls.requests.find(row=>row.path==='/v1/environments/review')?.body
@@ -138,7 +138,7 @@ it('ignores an old registration response without clearing credentials entered fo
 
 it('retains gateway inspection only while its preparation bounds remain unchanged',async()=>{
   await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
   for(const [key,value]of Object.entries({label:'Gateway environment',base_context_id:'trusted',target_host_id:'scoped',profile_id:'gateway-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/23',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
   await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
@@ -204,7 +204,7 @@ it('lets a malformed replacement be corrected without discarding the unchanged r
 
 it('reviews a retained gateway before its new participant ports exist',async()=>{
   await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
   for(const [key,value]of Object.entries({label:'Future gateway environment',base_context_id:'trusted',target_host_id:'scoped',profile_id:'future-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/24',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
   await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
@@ -222,7 +222,7 @@ it('reviews a retained gateway before its new participant ports exist',async()=>
 
 it('shows the actual NIC limit and requires reinspection after reducing the network count',async()=>{
   await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
   for(const [key,value]of Object.entries({label:'Port capacity review',base_context_id:'trusted',target_host_id:'scoped',profile_id:'future-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/23',network_count:'20',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
   await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
@@ -237,7 +237,7 @@ it('shows the actual NIC limit and requires reinspection after reducing the netw
 
 it('clears a failed save review and reloads registered environments before retry',async()=>{
   await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
   for(const [key,value]of Object.entries({label:'Failed gateway save',base_context_id:'trusted',target_host_id:'scoped',profile_id:'retry-course',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/24',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   await view.get('[data-testid="environment-gateway-vmids"]').setValue('42130')
   await view.get('[data-testid="inspect-environment-infrastructure"]').trigger('click');await flushPromises()
@@ -253,7 +253,7 @@ it('clears a failed save review and reloads registered environments before retry
 
 it('reviews and saves an explicitly selected per-run gateway capability in existing environment settings',async()=>{
   await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
-  await view.get('[data-testid="new-native-environment"]').trigger('click')
+  await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
   for(const [key,value]of Object.entries({label:'Isolated per-run gateways',base_context_id:'trusted',target_host_id:'scoped',profile_id:'per-run-gateway',vmid_start:'45000',vmid_end:'45039',network_pool:'10.78.0.0/24',network_count:'16',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
   const enable=view.get('[data-testid="environment-managed-gateway"]')
   expect((enable.element as HTMLInputElement).checked).toBe(false)
@@ -272,7 +272,7 @@ it('reviews and saves an explicitly selected per-run gateway capability in exist
 
 it('requires an explicit runtime reuse option and shows the server-observed physical target',async()=>{
  await show();await view.get('[data-testid="load-native-environments"]').trigger('click');await flushPromises()
- await view.get('[data-testid="new-native-environment"]').trigger('click')
+ await view.get('[data-testid="new-native-environment"]').trigger('click');await view.get('[data-testid="environment-profile-type"]').setValue('installation')
  expect((view.get('[data-testid="environment-reuse-runtime"]').element as HTMLInputElement).checked).toBe(false)
  for(const[key,value]of Object.entries({label:'Reviewed runtime reuse',profile_id:'runtime-reuse',vmid_start:'45000',vmid_end:'45039',network_pool:'10.79.0.0/24',network_count:'10',bridge_start:'600',proxmox_template:'9240',deployer_template:'9241',storage:'ceph-range'}))await view.get(`[data-testid="environment-${key}"]`).setValue(value)
  await view.get('[data-testid="environment-reuse-runtime"]').setValue(true)

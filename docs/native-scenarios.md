@@ -57,3 +57,24 @@ reserved. Later workshop runs own their own participant VMs and gateway. Bridge,
 gateway and participant isolation qualification remain required. The optional
 preparation module has no Keycloak or Headscale dependency and does not perform
 participant onboarding.
+
+## Reusable resources for any scenario
+
+Settings → Native provisioning environments → **Custom template set** registers
+named templates, their destination VMIDs and hardware within a reviewed target
+profile. It does not require the Range42 installation recipe, participant accounts
+or an identity/VPN provider.
+
+Open the `template_preparation` catalog scenario and save its project revision.
+Deploy lists one original source VMID per approved template role, then previews
+and reserves the complete template set. Optional environment bridge preparation
+also appears in the topology preview; the environment retains bridge ownership
+separately from the deployment's NIC-less template copies. Overview uses the
+normal physical capacity, request review, deployment attempt and reconciliation
+controls. Generic registrations remain blocked from unqualified guest execution.
+
+The current bounded module supports one to sixteen templates, one or two SCSI
+disks each, CPU `host`, enabled guest agent and cloud-init. Existing Range42
+installation profiles remain compatible and consume the same shared resource
+and preparation implementation. General gateway execution, template retirement
+and live qualification remain separate work.

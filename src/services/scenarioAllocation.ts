@@ -17,6 +17,7 @@ export interface ScenarioReservation {
   reservation_id: string; project_key: string; host_id: string; node_name: string
   expires_at: string; checked_at: string; assignments: AllocationAssignment[]; limitations: string[]
 }
+export interface ScenarioAllocationSelection {backend_url:string;target_host_id:string;reservation:ScenarioReservation}
 interface Owner { token: string; reservation_id?: string }
 const STORAGE = 'range42_scenario_reservation_owners'
 const missing = (value: unknown) => value === '' || value === undefined || value === null
@@ -126,11 +127,11 @@ export async function restoreScenarioAllocation(project: string, host: string): 
   return result
 }
 
-/** The backend derives the two template IDs; the general allocator stays protected. */
+/** The backend derives the approved template IDs; the general allocator stays protected. */
 export async function reserveFoundationAllocation(input: {
   projectId: string; projectKey: string; targetHostId: string; sha: string; path: string;
-  contextId: string; componentId?: string;
-  foundation: {namespace: string; source_node: string; proxmox_source: number; deployer_source: number};
+  contextId: string; componentId?: string; prepareEnvironmentNetworks?: boolean;
+  foundation: import('@/components/project/FoundationSetup.vue').FoundationSpec;
 }): Promise<ScenarioReservation> {
   const scope = getBackendScope(), key = ownerKey(scope, input.projectKey, input.targetHostId)
   const owner = ensureOwner(key)
@@ -138,6 +139,7 @@ export async function reserveFoundationAllocation(input: {
     method: 'POST', headers: {'X-Range42-Reservation-Token': owner.token},
     body: JSON.stringify({sha: input.sha, path: input.path, context_id: input.contextId,
       target_host_id: input.targetHostId, project_key: input.projectKey, foundation: input.foundation,
+      ...(input.prepareEnvironmentNetworks ? {prepare_environment_networks:true} : {}),
       ...(input.componentId ? {component_id: input.componentId} : {})}),
   })
   checkResponse(result, input.projectKey, input.targetHostId, scope)
