@@ -39,7 +39,7 @@ const specification = computed<FoundationSpec | null>(() => {
   if (!roles.length) return null
   const sources=Object.fromEntries(roles.map(role=>[role,Number(input[generic.value ? `source-${role}` : `${role}_source`])]))
   const ids=Object.values(sources), outputs=Object.values(templates.value).map(row=>row.vm_id)
-  if (ids.some(id=>!Number.isSafeInteger(id)||id<1000||id>999999999||outputs.includes(id)) || new Set(ids).size!==ids.length) return null
+  if (ids.some(id=>!Number.isSafeInteger(id)||id<(generic.value?100:1000)||id>999999999||outputs.includes(id)) || new Set(ids).size!==ids.length) return null
   return generic.value ? {namespace:input.namespace!,source_node:input.source_node!,sources} :
     {namespace:input.namespace!,source_node:input.source_node!,proxmox_source:sources.proxmox!,deployer_source:sources.deployer!}
 })
@@ -84,7 +84,7 @@ onBeforeUnmount(() => {epoch++; clearTimeout(expiryTimer)})
     <div class="grid gap-3 sm:grid-cols-2">
       <label v-for="field in fields" :key="field.name" class="flex min-w-0 flex-col form-control gap-1">
         <span>{{ field.label }}</span>
-        <input v-model="input[field.name]" :type="field.type" :min="field.type === 'number' ? 1000 : undefined"
+        <input v-model="input[field.name]" :type="field.type" :min="field.type === 'number' ? (generic ? 100 : 1000) : undefined"
           :max="field.type === 'number' ? 999999999 : undefined" required class="input input-bordered w-full"
           :data-testid="`foundation-input-${field.name}`" />
       </label>

@@ -59,3 +59,14 @@ it('includes the selected environment bridge capability in the server preview',a
  expect(calls.requests).toHaveLength(2)
  expect(calls.requests.every(call=>call.body.prepare_environment_networks===true)).toBe(true)
 })
+
+it('accepts an explicitly reviewed standard Proxmox source ID without changing destination bounds',async()=>{
+ const {default:FoundationSetup}=await import('@/components/project/FoundationSetup.vue')
+ calls.requests=[]
+ const view=mount(FoundationSetup,{props:{projectId:'p',revision:'a'.repeat(40),path:'scenarios/monitoring',contextId:'env-'+'c'.repeat(24),targetHostId:'h',kind:'native-template-preparation',
+  profile:{version:1,id:'monitoring',vmid_ranges:[[46000,46015]],storage:'ceph-range',networks:[],templates:{sensor:{vm_id:9250,memory_mib:2048,cores:1,disks_gib:[24]}}}},global:{plugins:[createPinia()]}})
+ for(const[key,value]of Object.entries({namespace:'monitor-base',source_node:'node-a','source-sensor':100}))await view.get(`[data-testid="foundation-input-${key}"]`).setValue(value)
+ expect((view.get('[data-testid="foundation-review-plan"]').element as HTMLButtonElement).disabled).toBe(false)
+ await view.get('[data-testid="foundation-review-plan"]').trigger('click');await flushPromises()
+ expect(calls.requests[0]?.body.foundation).toMatchObject({sources:{sensor:100}})
+})
