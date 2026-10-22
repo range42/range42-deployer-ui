@@ -7,16 +7,18 @@ import { useBackendApiStore } from '@/stores/backendApiStore'
 import NativeScenarioPreview from '@/components/catalog/NativeScenarioPreview.vue'
 import WorkshopRunSetup, { type WorkshopSpec, type WorkshopSelection, type ProvisioningProfile } from './WorkshopRunSetup.vue'
 import WorkshopTemplatePreview from '@/components/catalog/WorkshopTemplatePreview.vue'
+import type {ScenarioAllocationSelection} from '@/services/scenarioAllocation'
+import {installationProfile, type ResourceProfile } from '@/services/provisioning'
 import FoundationSetup, { type FoundationSpec, type FoundationSelection } from './FoundationSetup.vue'
 import type { NativeTopology } from '@/services/nativeScenarioCanvas'
 
 const topology = ref<NativeTopology | null>(null)
 const props = defineProps<{ projectId: string; revision: string; path: string; componentId?: string }>()
-const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; foundation?: FoundationSpec; prepare_environment_networks?: true; allocation?: WorkshopSelection['allocation'] }] }>()
+const emit = defineEmits<{ select: [selection: null | { context_id: string; target_host_id: string; features: Record<string, boolean>; parameters: Record<string, string | number | boolean>; workshop?: WorkshopSpec; foundation?: FoundationSpec; prepare_environment_networks?: true; allocation?: ScenarioAllocationSelection }] }>()
 const { t } = useI18n()
 const backend = useBackendApiStore()
 type Context = { id: string; label: string; target_host_id: string; ready: boolean; issues: string[];
-  workshop_profile?: ProvisioningProfile | null; purpose?: 'native' | 'workshop'; execution_ready?: boolean }
+  workshop_profile?: ProvisioningProfile | null; provisioning_profile?: ResourceProfile | null; purpose?: 'native' | 'workshop'; execution_ready?: boolean }
 type Feature = { id: string; label?: string; description?: string; default: boolean }
 type Platform = { id: string; domain: string; profile: string; unavailable: Record<string, string>;
   presets: { id: string; features: Record<string, boolean> }[];
@@ -26,6 +28,12 @@ const runDescriptor = ref<{version: number; kind: string; title: string; min_sea
 const runSelection = ref<WorkshopSelection | null>(null)
 const foundationDescriptor = ref<{version: number; kind: string; title: string} | null>(null)
 const foundationSelection = ref<FoundationSelection | null>(null)
+const selectedInstallationProfile=computed(()=>installationProfile(context.value?.provisioning_profile || context.value?.workshop_profile))
+function usableProfile(item: Context) {
+  if(runDescriptor.value)return !!installationProfile(item.provisioning_profile || item.workshop_profile)
+  if(foundationDescriptor.value)return foundationDescriptor.value.kind === 'native-template-preparation' ? !!(item.provisioning_profile || item.workshop_profile) : !!installationProfile(item.provisioning_profile || item.workshop_profile)
+  return item.purpose !== 'workshop'
+}
 const requiresProfile = computed(() => !!runDescriptor.value || !!foundationDescriptor.value)
 const setup = ref<Record<string, string>>({})
 const contexts = ref<Context[]>([])
@@ -102,14 +110,14 @@ watch(() => [props.projectId, props.revision, props.path, props.componentId, get
     runDescriptor.value = descriptor.workshop || null
     foundationDescriptor.value = descriptor.preparation || null
     flags.value = Object.fromEntries(descriptor.features.map(feature => [feature.id, feature.default]))
-    const ready = contexts.value.filter(item => item.ready && (requiresProfile.value ? item.workshop_profile : item.purpose !== 'workshop'))
+    const ready = contexts.value.filter(item => item.ready && usableProfile(item))
     if (ready.length === 1) selected.value = ready[0]!.id
   } catch (cause) { if (request === epoch) error.value = cause instanceof Error ? cause.message : String(cause) }
   finally { if (request === epoch) busy.value = false }
 }, { immediate: true })
 watch([context, flags, parameters, workshopValid, busy, error, runSelection, foundationSelection], () => {
   const current = context.value
-  emit('select', current?.ready && (requiresProfile.value ? current.workshop_profile : current.purpose !== 'workshop') && workshopValid.value && (!runDescriptor.value || runSelection.value) && (!foundationDescriptor.value || foundationSelection.value) && parameters.value && !busy.value && !error.value
+  emit('select', current?.ready && usableProfile(current) && workshopValid.value && (!runDescriptor.value || runSelection.value) && (!foundationDescriptor.value || foundationSelection.value) && parameters.value && !busy.value && !error.value
     ? { context_id: current.id, target_host_id: current.target_host_id, features: { ...flags.value }, parameters: { ...parameters.value },
       ...(runSelection.value ? {workshop: {...runSelection.value.workshop}, allocation: runSelection.value.allocation} : {}),
       ...(foundationSelection.value ? {foundation: {...foundationSelection.value.foundation}, allocation: foundationSelection.value.allocation,
@@ -129,10 +137,10 @@ onBeforeUnmount(() => { epoch += 1 })
       <span>{{ t('deployment.native.environment') }}</span>
       <select v-model="selected" class="select select-bordered w-full" data-testid="native-context" :disabled="busy">
         <option value="" disabled>{{ t('deployment.native.choose') }}</option>
-        <option v-for="item in contexts" :key="item.id" :value="item.id" :disabled="requiresProfile ? (!item.ready || !item.workshop_profile) : item.purpose === 'workshop'">{{ item.label }}{{ !requiresProfile && item.purpose === 'workshop' ? ' — Workshop only' : requiresProfile && !item.workshop_profile ? ' — Workshop provisioning profile is not configured' : '' }}</option>
+        <option v-for="item in contexts" :key="item.id" :value="item.id" :disabled="!item.ready || !usableProfile(item)">{{ item.label }}{{ !requiresProfile && item.purpose === 'workshop' ? ' — Workshop only' : requiresProfile && !usableProfile(item) ? (runDescriptor ? ' — Workshop provisioning profile is not configured' : ' — Resource provisioning profile is not configured') : '' }}</option>
       </select>
     </label>
-    <p v-if="runDescriptor && !busy && contexts.length && !contexts.some(item => item.ready && item.workshop_profile)" role="alert" class="text-sm text-warning">Workshop provisioning profile is not configured for an available environment. Prepare and register a dedicated profile before reserving participant resources. <router-link to="/settings?tab=connections#native-environments" class="link underline-offset-4">Configure a provisioning environment</router-link></p>
+    <p v-if="runDescriptor && !busy && contexts.length && !contexts.some(item => item.ready && item.workshop_profile)" role="alert" class="text-sm text-warning">Resource provisioning profile is not configured for an available environment. Prepare and register a dedicated profile before reserving participant resources. <router-link to="/settings?tab=connections#native-environments" class="link underline-offset-4">Configure a provisioning environment</router-link></p>
     <p v-if="runDescriptor && context?.execution_ready === false" role="status" class="text-sm text-warning">Infrastructure qualification is required before starting guests. You can review and reserve a draft run while its templates and network policy are prepared.</p>
     <ul v-if="context?.issues.length" class="text-sm text-error" role="alert"><li v-for="issue in context.issues" :key="issue">{{ issue }}</li></ul>
     <fieldset v-if="platform" class="min-w-0 space-y-3" :disabled="busy">
@@ -175,8 +183,8 @@ onBeforeUnmount(() => { epoch += 1 })
         <input v-model="workshopAccepted[check.id]" type="checkbox" :name="`workshop-accept-${check.id.toLowerCase()}`" class="checkbox checkbox-sm" :data-testid="`workshop-accept-${check.id}`" />{{ check.label }}
       </label>
     </fieldset>
-    <WorkshopRunSetup v-if="runDescriptor" :key="`${projectId}:${revision}:${path}:${componentId || ''}`" :project-id="projectId" :revision="revision" :path="path" :component-id="componentId" :target-host-id="context?.target_host_id || ''" :profile="context?.workshop_profile" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" @select="runSelection = $event" />
-    <FoundationSetup v-if="foundationDescriptor" :key="`${projectId}:${revision}:${path}:${componentId || ''}`" :project-id="projectId" :revision="revision" :path="path" :component-id="componentId" :context-id="context?.id || ''" :target-host-id="context?.target_host_id || ''" :profile="context?.workshop_profile" @select="foundationSelection = $event" />
+    <WorkshopRunSetup v-if="runDescriptor" :key="`${projectId}:${revision}:${path}:${componentId || ''}`" :project-id="projectId" :revision="revision" :path="path" :component-id="componentId" :target-host-id="context?.target_host_id || ''" :profile="selectedInstallationProfile" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" @select="runSelection = $event" />
+    <FoundationSetup v-if="foundationDescriptor" :key="`${projectId}:${revision}:${path}:${componentId || ''}`" :project-id="projectId" :revision="revision" :path="path" :component-id="componentId" :context-id="context?.id || ''" :target-host-id="context?.target_host_id || ''" :kind="foundationDescriptor.kind" :profile="foundationDescriptor.kind==='native-template-preparation' ? (context?.provisioning_profile || context?.workshop_profile) : selectedInstallationProfile" @select="foundationSelection = $event" />
     <WorkshopTemplatePreview v-if="runDescriptor && !runSelection" :min-seats="runDescriptor.min_seats" :max-seats="runDescriptor.max_seats" />
     <NativeScenarioPreview v-else-if="foundationSelection?.topology || runSelection?.topology || topology" :topology="foundationSelection?.topology || runSelection?.topology || topology!" :features="features" :selected-features="flags" :selected-seat="isWorkshop ? workshopSeat : 0" compact />
     <details v-if="!foundationDescriptor">

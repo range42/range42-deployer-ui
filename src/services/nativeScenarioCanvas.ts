@@ -15,7 +15,7 @@ export interface NativeTopology {
 
 export interface NativeFeature { id: string; label?: string; description?: string; default: boolean }
 export interface NativeWorkshop { version: 1; kind: 'native-installation'; title: string; min_seats: number; max_seats: number }
-export interface NativePreparation {version: 1; kind: 'native-workshop-foundation'; title: string}
+export interface NativePreparation {version: 1; kind: 'native-workshop-foundation' | 'native-template-preparation'; title: string}
 
 /** Preview the same pinned local declarations that the native playbook will read. */
 export function nativePreviewFromFiles(files: ProjectFiles, path: string): { topology: NativeTopology; features: NativeFeature[]; workshop?: NativeWorkshop; preparation?: NativePreparation } {
@@ -26,7 +26,7 @@ export function nativePreviewFromFiles(files: ProjectFiles, path: string): { top
   const declaredWorkshop = read('workshop.json') !== undefined
   const preparation: NativePreparation | undefined = read('preparation.json') === undefined ? undefined : JSON.parse(fileText(read('preparation.json')!))
   if (read('preparation.json') !== undefined && (!preparation || Object.keys(preparation).some(key => !['version', 'kind', 'title'].includes(key))
-    || preparation.version !== 1 || preparation.kind !== 'native-workshop-foundation' || typeof preparation.title !== 'string'
+    || preparation.version !== 1 || !['native-workshop-foundation','native-template-preparation'].includes(preparation.kind) || typeof preparation.title !== 'string'
     || !preparation.title.trim() || preparation.title.length > 120 || declaredWorkshop || read('platform.json') !== undefined)) throw new Error('Invalid native foundation descriptor')
   const workshop: NativeWorkshop | undefined = declaredWorkshop ? JSON.parse(fileText(read('workshop.json')!)) : undefined
   if (declaredWorkshop && (!workshop || Object.keys(workshop).some(key => !['version', 'kind', 'title', 'min_seats', 'max_seats'].includes(key)) || workshop.version !== 1 || workshop.kind !== 'native-installation'
