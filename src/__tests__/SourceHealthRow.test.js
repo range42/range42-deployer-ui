@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import axe from 'axe-core'
 import SourceHealthRow from '@/components/ui/SourceHealthRow.vue'
 import sourcesEn from '@/locales/en/sources.json'
 
@@ -69,5 +70,25 @@ describe('<SourceHealthRow> write-access badge', () => {
       health: { status: 'unknown' },
     })
     expect(wrapper.find('[data-testid="source-access-badge"]').exists()).toBe(false)
+  })
+})
+
+
+describe('<SourceHealthRow> accessible health indicator', () => {
+  it('exposes health labels using permitted screen-reader semantics', async () => {
+    const wrapper = mount(SourceHealthRow, {
+      props: { source: baseSource(), health: { status: 'ok' } },
+      attachTo: document.body,
+      global: { plugins: [makeI18n()] },
+    })
+    try {
+      const check = async () => {
+        const result = await axe.run(wrapper.element, { runOnly: { type: 'rule', values: ['aria-prohibited-attr'] } })
+        expect(result.violations.map(item => item.id)).toEqual([])
+      }
+      await check()
+      await wrapper.setProps({ health: { status: 'down' } })
+      await check()
+    } finally { wrapper.unmount() }
   })
 })

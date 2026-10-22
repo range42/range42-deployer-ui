@@ -82,6 +82,7 @@ const writable = computed(() => {
     <div class="flex-1 min-w-0 basis-48">
       <div class="flex flex-wrap items-center gap-2">
         <span
+          role="img"
           class="inline-block w-2 h-2 rounded-full"
           :class="statusClass"
           :aria-label="t(`status_${health?.status || 'unknown'}`)"
